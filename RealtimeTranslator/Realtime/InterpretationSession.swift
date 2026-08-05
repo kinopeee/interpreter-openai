@@ -80,6 +80,16 @@ final class InterpretationSession {
     func start() async {
         guard state == .idle || state == .error else { return }
         cancelPostStopSubtitleClear()
+
+        // 旧sessionTaskが世代不一致のforceClose/stopを後から走らせ、
+        // 新しい接続やマイクを落とさないよう先に排水する。
+        let previousSessionTask = sessionTask
+        previousSessionTask?.cancel()
+        sessionTask = nil
+        if let previousSessionTask {
+            await previousSessionTask.value
+        }
+
         lifecycleGeneration += 1
         let generation = lifecycleGeneration
         reconnectAttempt = 0
@@ -88,7 +98,6 @@ final class InterpretationSession {
         aggregator.setStatusBanner("OpenAI Realtimeへ接続中…")
         publishSubtitles()
 
-        sessionTask?.cancel()
         sessionTask = Task { @MainActor [weak self] in
             await self?.runSessionLoop(generation: generation)
         }
@@ -293,13 +302,16 @@ final class InterpretationSession {
         aggregator.setStatusBanner("録音を終了中…")
         publishSubtitles()
 
-        sessionTask?.cancel()
+        let runningSessionTask = sessionTask
+        runningSessionTask?.cancel()
         sessionTask = nil
         renderTask?.cancel()
         renderTask = nil
         let pending = pendingUpdate
         pendingUpdate = nil
 
+        // 先にI/Oを解放して接続待ちをほどき、その後sessionTaskを排水する。
+        // cancelだけで抜けると、世代不一致パスのforceCloseが次のstartへ飛び火する。
         await audioCapture.stop()
         do {
             try await dualClient.closeGracefully()
@@ -308,6 +320,9 @@ final class InterpretationSession {
                 "Graceful close failed: \(error.localizedDescription, privacy: .public)"
             )
             await dualClient.forceClose()
+        }
+        if let runningSessionTask {
+            await runningSessionTask.value
         }
 
         if let pending {
