@@ -56,7 +56,11 @@ final class SubtitleWindowController: NSObject {
         controlHostingView.autoresizingMask = [.width, .height]
         controlContainerView.addSubview(controlHostingView)
         controlPanel.contentView = controlContainerView
-        controlPanel.orderFrontRegardless()
+        if SubtitleWindowGeometry.showsRecordingControl {
+            controlPanel.orderFrontRegardless()
+        } else {
+            controlPanel.orderOut(nil)
+        }
 
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
@@ -81,7 +85,11 @@ final class SubtitleWindowController: NSObject {
 
     func show() {
         panel.orderFrontRegardless()
-        controlPanel.orderFrontRegardless()
+        if SubtitleWindowGeometry.showsRecordingControl {
+            controlPanel.orderFrontRegardless()
+        } else {
+            controlPanel.orderOut(nil)
+        }
     }
 
     func update(
@@ -268,6 +276,10 @@ final class SubtitleWindowController: NSObject {
     private func apply(_ layout: SubtitleWindowLayout) {
         if panel.frame != layout.subtitleFrame {
             panel.setFrame(layout.subtitleFrame, display: true)
+        }
+        guard SubtitleWindowGeometry.showsRecordingControl else {
+            controlPanel.orderOut(nil)
+            return
         }
         if controlPanel.frame != layout.controlFrame {
             controlPanel.setFrame(layout.controlFrame, display: true)

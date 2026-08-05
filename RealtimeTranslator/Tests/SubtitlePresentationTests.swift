@@ -163,7 +163,7 @@ final class SubtitlePresentationTests: XCTestCase {
         let idleOnly = SubtitleView(
             snapshot: snapshot(
                 current: .empty,
-                statusBanner: "待機中 — 「録音開始」を押してください"
+                statusBanner: "待機中 — Control + Option + Space で録音開始"
             ),
             fontSize: 32,
             isEditingPosition: false
@@ -171,7 +171,7 @@ final class SubtitlePresentationTests: XCTestCase {
         let withCurrent = SubtitleView(
             snapshot: snapshot(
                 current: subtitle(source: "現在の原文", translation: "Current translation"),
-                statusBanner: "待機中 — 「録音開始」を押してください"
+                statusBanner: "待機中 — Control + Option + Space で録音開始"
             ),
             fontSize: 32,
             isEditingPosition: false
@@ -181,7 +181,7 @@ final class SubtitlePresentationTests: XCTestCase {
         let idleHeight = measuredHeight(of: idleOnly, width: 600)
         let withCurrentHeight = measuredHeight(of: withCurrent, width: 600)
 
-        // Then: currentスロットは確保したまま、バナーはその下（操作パネル側）に付く
+        // Then: currentスロットは確保したまま、バナーはその下に付く
         XCTAssertEqual(idleHeight, withCurrentHeight, accuracy: 0.5)
     }
 
@@ -207,7 +207,7 @@ final class SubtitlePresentationTests: XCTestCase {
         let withoutHeight = measuredHeight(of: withoutBanner, width: 600)
         let withHeight = measuredHeight(of: withBanner, width: 600)
 
-        // Then: バナーは表示時だけ高さを取り、非表示時は操作パネルとの隙間を空けない
+        // Then: バナーは表示時だけ高さを取り、非表示時は余分な隙間を空けない
         XCTAssertGreaterThan(withHeight, withoutHeight + 10)
     }
 
@@ -245,19 +245,21 @@ final class SubtitlePresentationTests: XCTestCase {
                 ?? NSScreen.screens.first?.visibleFrame
         )
 
-        // Then: SwiftUIの固有高に再拡大されず、操作パネル分を残して画面内に収まる
+        // Then: SwiftUIの固有高に再拡大されず、画面内に収まる
+        let reserved = SubtitleWindowGeometry.showsRecordingControl
+            ? SubtitleWindowGeometry.controlSize.height
+                + SubtitleWindowGeometry.controlSpacing
+            : 0
         XCTAssertNil(subtitlePanel.contentViewController)
         XCTAssertLessThanOrEqual(
             subtitlePanel.frame.height,
-            visibleFrame.height
-                - SubtitleWindowGeometry.controlSize.height
-                - SubtitleWindowGeometry.controlSpacing
+            visibleFrame.height - reserved
         )
         XCTAssertTrue(visibleFrame.contains(subtitlePanel.frame))
     }
 
-    func testControllerKeepsControlPositionWhileSubtitleGrows() throws {
-        // Given: 短文字幕を表示した字幕・操作パネル
+    func testControllerKeepsSubtitleOriginWhileContentGrows() throws {
+        // Given: 短文字幕を表示した字幕パネル
         let existingPanels = Set(
             NSApp.windows
                 .compactMap { $0 as? SubtitlePanel }
@@ -272,14 +274,14 @@ final class SubtitlePresentationTests: XCTestCase {
             fontSize: 32,
             translationState: .listening
         )
-        let controlPanel = try XCTUnwrap(
-            createdPanels(excluding: existingPanels).min {
+        let subtitlePanel = try XCTUnwrap(
+            createdPanels(excluding: existingPanels).max {
                 $0.frame.width < $1.frame.width
             }
         )
-        let shortOrigin = controlPanel.frame.origin
+        let shortOrigin = subtitlePanel.frame.origin
         let longerText = Array(
-            repeating: "通常の発話で字幕行が増えても操作位置を固定します。",
+            repeating: "通常の発話で字幕行が増えても下端位置を固定します。",
             count: 8
         ).joined()
 
@@ -293,9 +295,33 @@ final class SubtitlePresentationTests: XCTestCase {
         )
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
 
-        // Then: 録音終了ボタンのパネル位置は変化しない
-        XCTAssertEqual(controlPanel.frame.origin.x, shortOrigin.x, accuracy: 0.5)
-        XCTAssertEqual(controlPanel.frame.origin.y, shortOrigin.y, accuracy: 0.5)
+        // Then: 字幕パネルの下端（origin）は変化しない
+        XCTAssertEqual(subtitlePanel.frame.origin.x, shortOrigin.x, accuracy: 0.5)
+        XCTAssertEqual(subtitlePanel.frame.origin.y, shortOrigin.y, accuracy: 0.5)
+    }
+
+    func testControllerHidesRecordingControlWhenDisabled() throws {
+        // Given: 録音ボタン非表示設定で字幕コントローラを起動する
+        guard !SubtitleWindowGeometry.showsRecordingControl else {
+            throw XCTSkip("録音ボタン表示中はこの検証をスキップ")
+        }
+        let existingPanels = Set(
+            NSApp.windows
+                .compactMap { $0 as? SubtitlePanel }
+                .map(ObjectIdentifier.init)
+        )
+        let controller = SubtitleWindowController()
+        defer { controller.tearDown() }
+        controller.show()
+
+        // When: 生成されたパネルの可視状態を確認する
+        let panels = createdPanels(excluding: existingPanels)
+        let narrowPanel = try XCTUnwrap(
+            panels.min { $0.frame.width < $1.frame.width }
+        )
+
+        // Then: 操作パネルは非表示のまま
+        XCTAssertFalse(narrowPanel.isVisible)
     }
 
     private func snapshot(

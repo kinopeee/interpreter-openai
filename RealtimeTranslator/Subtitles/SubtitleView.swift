@@ -20,8 +20,7 @@ struct SubtitleView: View {
     let isEditingPosition: Bool
 
     var body: some View {
-        // Banner is last so idle prompts sit next to the control panel under the
-        // subtitle window.
+        // Banner is last so idle prompts sit under the reserved current slot.
         VStack(alignment: .leading, spacing: 8) {
             currentSlot
 

@@ -3,7 +3,7 @@ import XCTest
 
 final class SubtitleWindowGeometryTests: XCTestCase {
     func testUsesMeasuredContentHeightWhenItFits() {
-        // Given: 録音ボタンを含めても画面内に収まる字幕内容高
+        // Given: 画面内に収まる字幕内容高
         let visibleFrame = CGRect(x: -300, y: -100, width: 1_000, height: 700)
 
         // When: 字幕パネル高を算出する
@@ -16,9 +16,13 @@ final class SubtitleWindowGeometryTests: XCTestCase {
         XCTAssertEqual(height, 322)
     }
 
-    func testCapsContentHeightBelowControlPanel() {
+    func testCapsContentHeightToVisibleFrame() {
         // Given: 画面の利用可能高を超える字幕内容高
         let visibleFrame = CGRect(x: -300, y: -100, width: 1_000, height: 700)
+        let reserved = SubtitleWindowGeometry.showsRecordingControl
+            ? SubtitleWindowGeometry.controlSize.height
+                + SubtitleWindowGeometry.controlSpacing
+            : 0
 
         // When: 字幕パネル高を算出する
         let height = SubtitleWindowGeometry.subtitleHeight(
@@ -26,8 +30,8 @@ final class SubtitleWindowGeometryTests: XCTestCase {
             in: visibleFrame
         )
 
-        // Then: 48ptの操作パネルと8ptの間隔を除いた高さへ制限する
-        XCTAssertEqual(height, 644)
+        // Then: 操作パネル予約分を除いた高さへ制限する
+        XCTAssertEqual(height, 700 - reserved)
     }
 
     func testSelectsNegativeCoordinateSecondaryScreen() {
@@ -91,71 +95,75 @@ final class SubtitleWindowGeometryTests: XCTestCase {
         // Given: 字幕パネルが画面左端から50ptはみ出す配置
         let visibleFrame = testVisibleFrame
 
-        // When: 字幕と操作パネルを一体で配置する
+        // When: 字幕レイアウトを算出する
         let layout = SubtitleWindowGeometry.layout(
             subtitleOrigin: CGPoint(x: -350, y: 0),
             subtitleSize: testSubtitleSize,
             in: visibleFrame
         )
 
-        // Then: 字幕を左端へ寄せ、操作パネルとの8pt間隔を保つ
+        // Then: 字幕を左端へ寄せる
         XCTAssertEqual(layout.subtitleFrame.minX, visibleFrame.minX)
         XCTAssertEqual(layout.combinedFrame.minX, visibleFrame.minX)
-        assertControlSpacing(in: layout)
+        assertControlLayout(in: layout)
     }
 
     func testClampsBothPanelsAtRightEdge() {
         // Given: 字幕パネルが画面右端から50ptはみ出す配置
         let visibleFrame = testVisibleFrame
 
-        // When: 字幕と操作パネルを一体で配置する
+        // When: 字幕レイアウトを算出する
         let layout = SubtitleWindowGeometry.layout(
             subtitleOrigin: CGPoint(x: 150, y: 0),
             subtitleSize: testSubtitleSize,
             in: visibleFrame
         )
 
-        // Then: 字幕を右端へ寄せ、操作パネルとの8pt間隔を保つ
+        // Then: 字幕を右端へ寄せる
         XCTAssertEqual(layout.subtitleFrame.maxX, visibleFrame.maxX)
         XCTAssertEqual(layout.combinedFrame.maxX, visibleFrame.maxX)
-        assertControlSpacing(in: layout)
+        assertControlLayout(in: layout)
     }
 
-    func testClampsBothPanelsAtBottomEdge() {
-        // Given: 字幕の下にある操作パネルが画面下端からはみ出す配置
+    func testClampsAtBottomEdge() {
+        // Given: 字幕（または操作パネル）が画面下端からはみ出す配置
         let visibleFrame = testVisibleFrame
 
-        // When: 字幕と操作パネルを一体で配置する
+        // When: 字幕レイアウトを算出する
         let layout = SubtitleWindowGeometry.layout(
             subtitleOrigin: CGPoint(x: -100, y: -240),
             subtitleSize: testSubtitleSize,
             in: visibleFrame
         )
 
-        // Then: 操作パネルを下端へ寄せ、字幕との8pt間隔を保つ
-        XCTAssertEqual(layout.controlFrame.minY, visibleFrame.minY)
+        // Then: 下端へ寄せ、画面内に収める
+        if SubtitleWindowGeometry.showsRecordingControl {
+            XCTAssertEqual(layout.controlFrame.minY, visibleFrame.minY)
+        } else {
+            XCTAssertEqual(layout.subtitleFrame.minY, visibleFrame.minY)
+        }
         XCTAssertEqual(layout.combinedFrame.minY, visibleFrame.minY)
-        assertControlSpacing(in: layout)
+        assertControlLayout(in: layout)
     }
 
     func testClampsBothPanelsAtTopEdge() {
         // Given: 字幕パネルが画面上端からはみ出す配置
         let visibleFrame = testVisibleFrame
 
-        // When: 字幕と操作パネルを一体で配置する
+        // When: 字幕レイアウトを算出する
         let layout = SubtitleWindowGeometry.layout(
             subtitleOrigin: CGPoint(x: -100, y: 400),
             subtitleSize: testSubtitleSize,
             in: visibleFrame
         )
 
-        // Then: 字幕パネルを上端へ寄せ、操作パネルとの8pt間隔を保つ
+        // Then: 字幕パネルを上端へ寄せる
         XCTAssertEqual(layout.subtitleFrame.maxY, visibleFrame.maxY)
         XCTAssertEqual(layout.combinedFrame.maxY, visibleFrame.maxY)
-        assertControlSpacing(in: layout)
+        assertControlLayout(in: layout)
     }
 
-    func testControlPositionDoesNotMoveAsSubtitleGrows() {
+    func testSubtitleOriginDoesNotMoveAsSubtitleGrows() {
         // Given: 同じ下端位置にある短い字幕と長い字幕
         let visibleFrame = CGRect(x: 0, y: 0, width: 1_000, height: 800)
         let subtitleOrigin = CGPoint(x: 200, y: 104)
@@ -172,9 +180,12 @@ final class SubtitleWindowGeometryTests: XCTestCase {
             in: visibleFrame
         )
 
-        // Then: 録音操作パネルは字幕下端を基準に同じ位置を保つ
-        XCTAssertEqual(tallLayout.controlFrame, shortLayout.controlFrame)
-        assertControlSpacing(in: tallLayout)
+        // Then: 字幕下端（origin）は同じ位置を保つ
+        XCTAssertEqual(tallLayout.subtitleFrame.origin, shortLayout.subtitleFrame.origin)
+        if SubtitleWindowGeometry.showsRecordingControl {
+            XCTAssertEqual(tallLayout.controlFrame, shortLayout.controlFrame)
+        }
+        assertControlLayout(in: tallLayout)
     }
 
     private var testVisibleFrame: CGRect {
@@ -185,11 +196,22 @@ final class SubtitleWindowGeometryTests: XCTestCase {
         CGSize(width: 600, height: 200)
     }
 
-    private func assertControlSpacing(
+    private func assertControlLayout(
         in layout: SubtitleWindowLayout,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
+        guard SubtitleWindowGeometry.showsRecordingControl else {
+            XCTAssertEqual(layout.controlFrame.size, .zero, file: file, line: line)
+            XCTAssertEqual(
+                layout.combinedFrame,
+                layout.subtitleFrame,
+                file: file,
+                line: line
+            )
+            return
+        }
+
         XCTAssertEqual(
             layout.subtitleFrame.minY - layout.controlFrame.maxY,
             SubtitleWindowGeometry.controlSpacing,

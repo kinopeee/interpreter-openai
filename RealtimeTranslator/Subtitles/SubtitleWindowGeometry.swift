@@ -10,12 +10,26 @@ struct SubtitleWindowLayout: Equatable {
 }
 
 enum SubtitleWindowGeometry {
+    /// 一時的に字幕下の録音ボタンを隠す。再表示するときは `true` に戻す。
+    static let showsRecordingControl = false
+
     static let controlSize = CGSize(width: 160, height: 48)
     static let controlSpacing: CGFloat = 8
 
     private static let maximumSubtitleWidth: CGFloat = 1200
     private static let subtitleWidthRatio: CGFloat = 0.70
-    private static let defaultBottomOffset: CGFloat = 104
+    private static let defaultBottomOffsetWithControl: CGFloat = 104
+    private static let defaultBottomOffsetWithoutControl: CGFloat = 24
+
+    private static var defaultBottomOffset: CGFloat {
+        showsRecordingControl
+            ? defaultBottomOffsetWithControl
+            : defaultBottomOffsetWithoutControl
+    }
+
+    private static var reservedControlHeight: CGFloat {
+        showsRecordingControl ? controlSize.height + controlSpacing : 0
+    }
 
     static func subtitleWidth(in visibleFrame: CGRect) -> CGFloat {
         min(max(0, visibleFrame.width * subtitleWidthRatio), maximumSubtitleWidth)
@@ -25,10 +39,7 @@ enum SubtitleWindowGeometry {
         measuredContentHeight: CGFloat,
         in visibleFrame: CGRect
     ) -> CGFloat {
-        let availableHeight = max(
-            0,
-            visibleFrame.height - controlSize.height - controlSpacing
-        )
+        let availableHeight = max(0, visibleFrame.height - reservedControlHeight)
         return min(max(0, ceil(measuredContentHeight)), availableHeight)
     }
 
@@ -97,7 +108,9 @@ enum SubtitleWindowGeometry {
         in visibleFrame: CGRect
     ) -> SubtitleWindowLayout {
         let subtitleFrame = CGRect(origin: subtitleOrigin, size: subtitleSize)
-        let controlFrame = controlFrame(for: subtitleFrame)
+        let controlFrame = showsRecordingControl
+            ? controlFrame(for: subtitleFrame)
+            : CGRect(origin: subtitleFrame.origin, size: .zero)
         return clamped(
             SubtitleWindowLayout(
                 subtitleFrame: subtitleFrame,
@@ -120,16 +133,18 @@ enum SubtitleWindowGeometry {
         _ layout: SubtitleWindowLayout,
         to visibleFrame: CGRect
     ) -> SubtitleWindowLayout {
-        let combinedFrame = layout.combinedFrame
+        let frameToClamp = showsRecordingControl
+            ? layout.combinedFrame
+            : layout.subtitleFrame
         let dx = offset(
-            lowerBound: combinedFrame.minX,
-            upperBound: combinedFrame.maxX,
+            lowerBound: frameToClamp.minX,
+            upperBound: frameToClamp.maxX,
             containerLowerBound: visibleFrame.minX,
             containerUpperBound: visibleFrame.maxX
         )
         let dy = offset(
-            lowerBound: combinedFrame.minY,
-            upperBound: combinedFrame.maxY,
+            lowerBound: frameToClamp.minY,
+            upperBound: frameToClamp.maxY,
             containerLowerBound: visibleFrame.minY,
             containerUpperBound: visibleFrame.maxY
         )
