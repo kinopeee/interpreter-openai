@@ -214,11 +214,28 @@ final class InterpretationSession {
         _ first: Task<Void, Error>,
         _ second: Task<Void, Error>
     ) async -> Result<Void, Error> {
+        // 先に完了した側の結果で戻る。負け側の非構造化Taskも必ずcancelしないと、
+        // withTaskGroupが `.result` 待ちの子タスクで戻りを阻み、再接続不能になる。
         await withTaskGroup(of: Result<Void, Error>.self) { group in
-            group.addTask { await first.result }
-            group.addTask { await second.result }
+            group.addTask {
+                await withTaskCancellationHandler {
+                    await first.result
+                } onCancel: {
+                    first.cancel()
+                }
+            }
+            group.addTask {
+                await withTaskCancellationHandler {
+                    await second.result
+                } onCancel: {
+                    second.cancel()
+                }
+            }
             let value = await group.next() ?? .failure(CancellationError())
+            first.cancel()
+            second.cancel()
             group.cancelAll()
+            while await group.next() != nil {}
             return value
         }
     }
