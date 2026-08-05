@@ -2,6 +2,51 @@
 import XCTest
 @testable import RealtimeTranslator
 
+final class RealtimeAudioFrameYieldOutcomeTests: XCTestCase {
+    func testBufferingNewestDropOfOldestIsAccepted() async {
+        // Given: capacity 1のbufferingNewest（満杯でoldestがdropされる）
+        let (stream, continuation) = AsyncStream<Data>.makeStream(
+            bufferingPolicy: .bufferingNewest(1)
+        )
+        var iterator = stream.makeAsyncIterator()
+        XCTAssertTrue(
+            RealtimeAudioFrameYieldOutcome.didAccept(continuation.yield(Data([1])))
+        )
+
+        // When: 2件目をyieldしてoldest dropが返る
+        let secondResult = continuation.yield(Data([2]))
+        let accepted = RealtimeAudioFrameYieldOutcome.didAccept(secondResult)
+
+        // Then: 新規frameは受理済みなので継続扱い（pipelineOverloadedにしない）
+        guard case .dropped(let dropped) = secondResult else {
+            XCTFail("Expected dropped oldest for bufferingNewest")
+            return
+        }
+        XCTAssertEqual(dropped, Data([1]))
+        XCTAssertTrue(accepted)
+        let kept = await iterator.next()
+        XCTAssertEqual(kept, Data([2]))
+        continuation.finish()
+    }
+
+    func testTerminatedYieldIsRejected() {
+        // Given: 終了済みcontinuation
+        let (stream, continuation) = AsyncStream<Data>.makeStream(
+            bufferingPolicy: .bufferingNewest(1)
+        )
+        _ = stream
+        continuation.finish()
+
+        // When: finish後にyieldする
+        let accepted = RealtimeAudioFrameYieldOutcome.didAccept(
+            continuation.yield(Data([9]))
+        )
+
+        // Then: 終了は失敗として扱う
+        XCTAssertFalse(accepted)
+    }
+}
+
 @MainActor
 final class AudioBufferOwnershipTests: XCTestCase {
     func testTapYieldsDeepOwnedBufferCopy() async throws {
