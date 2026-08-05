@@ -390,6 +390,73 @@ final class InterpretationSessionTests: XCTestCase {
         // Then: 転送されない
         XCTAssertEqual(dual.updateTranscriptionTuningCallCount, 0)
     }
+
+    func testInvalidAPIKeyRuntimeErrorDoesNotLeakKeyMaterial() async throws {
+        // Given: listening中のセッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        // When: キー断片を含むinvalid_api_keyエラーが届く
+        dual.emit(
+            target: .english,
+            event: .error(
+                message: "Incorrect API key provided: sk-leak-example",
+                code: "invalid_api_key"
+            )
+        )
+        await waitUntil { session.state == .error }
+
+        // Then: 認証エラーになり、sk-や原文メッセージはdelegateへ出ない
+        XCTAssertEqual(delegate.messages.first, "OpenAI APIキーが無効です")
+        XCTAssertFalse(delegate.messages.contains(where: { $0.contains("sk-") }))
+        XCTAssertFalse(
+            delegate.latestSnapshot?.statusBanner?.contains("sk-") == true
+        )
+        await session.stop()
+    }
+
+    func testNonAuthServerErrorRedactsAPIKeyLikePayload() async throws {
+        // Given: listening中のセッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        // When: codeは非認証だが文言にAPIキー断片が含まれる
+        dual.emit(
+            target: .english,
+            event: .error(
+                message: "Provider echo included sk-should-not-appear",
+                code: "server_error"
+            )
+        )
+        await waitUntil { session.state == .error }
+
+        // Then: 汎用エラー文言に置換され秘密情報は出ない
+        XCTAssertEqual(delegate.messages.first, "翻訳サーバーでエラーが発生しました")
+        XCTAssertFalse(delegate.messages.contains(where: { $0.contains("sk-") }))
+        await session.stop()
+    }
 }
 
 // MARK: - Fakes

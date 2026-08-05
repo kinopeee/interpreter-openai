@@ -260,11 +260,13 @@ final class InterpretationSession {
                 if code == "transport" {
                     throw RealtimeTranslationError.recoverableTransportFailure(message)
                 }
-                let lowered = (code ?? "").lowercased()
-                if lowered.contains("auth") || lowered.contains("401") || lowered.contains("403") {
+                if Self.isAuthenticationFailure(code: code, message: message) {
                     throw RealtimeTranslationError.authenticationFailed
                 }
-                throw RealtimeTranslationError.fatalServerError(message)
+                // サーバー文言にキー断片が含まれる場合があるため、ユーザー向け文言はサニタイズする。
+                throw RealtimeTranslationError.fatalServerError(
+                    Self.userFacingServerMessage(message)
+                )
             }
 
             if case .inputTranscriptDelta(let delta, _, _) = streamEvent.event {
@@ -514,5 +516,29 @@ final class InterpretationSession {
         aggregator.setStatusBanner(error.localizedDescription)
         publishSubtitles()
         delegate?.interpretationSession(self, didEncounterMessage: error.localizedDescription)
+    }
+
+    /// ランタイムerrorイベントの認証判定。handshake側のclassifyと揃える。
+    private static func isAuthenticationFailure(code: String?, message: String) -> Bool {
+        let lowered = "\(code ?? "") \(message)".lowercased()
+        return lowered.contains("auth")
+            || lowered.contains("unauthorized")
+            || lowered.contains("invalid_api_key")
+            || lowered.contains("incorrect api key")
+            || lowered.contains("401")
+            || lowered.contains("403")
+    }
+
+    /// アラート・バナー・ログへ出してよいサーバー文言へ正規化する。
+    private static func userFacingServerMessage(_ message: String) -> String {
+        let lowered = message.lowercased()
+        if lowered.contains("sk-")
+            || lowered.contains("api key")
+            || lowered.contains("authorization")
+            || lowered.contains("bearer ")
+        {
+            return "翻訳サーバーでエラーが発生しました"
+        }
+        return message.isEmpty ? "翻訳サーバーでエラーが発生しました" : message
     }
 }
