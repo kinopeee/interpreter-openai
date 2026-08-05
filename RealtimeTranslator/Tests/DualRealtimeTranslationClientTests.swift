@@ -414,6 +414,58 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         await dual.forceClose()
     }
 
+    func testUpdateTranscriptionTuningPreservesConnectedNoiseReduction() async throws {
+        // Given: far_fieldで開始したdual
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport,
+            tuning: RealtimeSessionTuning(
+                noiseReduction: .farField,
+                transcriptionDelay: .low,
+                transcriptionPrompt: RealtimeSessionTuning.defaultPrompt,
+                transcriptionKeywords: RealtimeSessionTuning.defaultKeywords
+            )
+        )
+        let sentBefore = await sourceTransport.sent.count
+
+        // When: 設定側がnear_fieldに変わったtuningでlive updateする
+        try await dual.updateTranscriptionTuning(
+            RealtimeSessionTuning(
+                noiseReduction: .nearField,
+                transcriptionDelay: .high,
+                transcriptionPrompt: "Keep noise reduction pinned",
+                transcriptionKeywords: ["Acme"]
+            )
+        )
+        try await waitUntilSent(sourceTransport, minimum: sentBefore + 1)
+
+        // Then: prompt/delayは更新され、noise_reductionは接続時のfar_fieldのまま
+        let updates = try await sessionUpdates(from: sourceTransport)
+        let second = try XCTUnwrap(updates.last)
+        let input = try XCTUnwrap(
+            ((second["session"] as? [String: Any])?["audio"] as? [String: Any])?["input"]
+                as? [String: Any]
+        )
+        let transcription = try XCTUnwrap(input["transcription"] as? [String: Any])
+        XCTAssertEqual(transcription["prompt"] as? String, "Keep noise reduction pinned")
+        XCTAssertEqual(transcription["delay"] as? String, "high")
+        XCTAssertEqual(
+            (input["noise_reduction"] as? [String: Any])?["type"] as? String,
+            "far_field"
+        )
+        await dual.forceClose()
+    }
+
     func testOneSidedFailureForceClosesPair() async throws {
         // Given: readyなdual
         let sourceTransport = FakeRealtimeWebSocketTransport()

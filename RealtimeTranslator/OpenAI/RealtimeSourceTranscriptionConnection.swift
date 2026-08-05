@@ -13,6 +13,8 @@ actor RealtimeSourceTranscriptionConnection {
     private var epoch = 0
     private var isReady = false
     private var didReceiveCompleted = false
+    /// 接続開始時のnoise_reduction。live updateでは変更しない。
+    private var connectedNoiseReduction: RealtimeTranslationNoiseReduction = .farField
     private var receiveTask: Task<Void, Never>?
     private var eventContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation?
     private(set) var events: AsyncStream<RealtimeTranslationStreamEvent>
@@ -53,6 +55,7 @@ actor RealtimeSourceTranscriptionConnection {
                 throw classifyError(created)
             }
 
+            connectedNoiseReduction = tuning.noiseReduction
             try await sendJSON(makeSessionUpdatePayload(tuning: tuning))
 
             let updated = try await receiveJSON(timeoutNanoseconds: handshakeTimeoutNanoseconds)
@@ -70,12 +73,14 @@ actor RealtimeSourceTranscriptionConnection {
         }
     }
 
-    /// 録音中にprompt/keywordsを更新する。noise_reductionも同payloadで送るが接続時値を維持する。
+    /// 録音中にprompt/keywords/delayを更新する。noise_reductionは接続時値を維持する。
     func updateTuning(_ tuning: RealtimeSessionTuning) async throws {
         guard isReady else {
             throw RealtimeTranslationError.notConnected
         }
-        try await sendJSON(makeSessionUpdatePayload(tuning: tuning))
+        var liveTuning = tuning
+        liveTuning.noiseReduction = connectedNoiseReduction
+        try await sendJSON(makeSessionUpdatePayload(tuning: liveTuning))
     }
 
     func appendAudioFrame(_ pcm16LE: Data) async throws {
