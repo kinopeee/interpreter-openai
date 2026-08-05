@@ -52,7 +52,7 @@ CLIからビルド・起動する場合:
   → 24 kHz PCM16 mono / 100 ms frames
   → gpt-live-transcribe（常時送信、原文delta、delay=low、far-field noise reduction）
   → Realtime Translation WebSocket × 2
-      - 言語判定前は原文のみ＋直近2秒preroll
+      - 言語判定前は原文のみ＋直近4秒preroll
       - target=en（日本語判定後にprerollから送信、英訳）
       - target=ja（英語判定後にprerollから送信、和訳）
   → lane選択と字幕整列

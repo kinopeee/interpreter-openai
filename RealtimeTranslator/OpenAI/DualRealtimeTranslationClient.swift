@@ -2,7 +2,7 @@ import Foundation
 
 protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
     var events: AsyncStream<RealtimeTranslationStreamEvent> { get async }
-    func start(apiKey: String) async throws
+    func start(apiKey: String, tuning: RealtimeSessionTuning) async throws
     func appendAudioFrame(_ pcm16LE: Data) async throws
     func setSpokenLanguage(_ language: SpokenLanguage) async throws
     func resetAudioRouting() async
@@ -12,8 +12,8 @@ protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
 }
 
 actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
-    /// 100 ms frame × 20 = 直近2秒。
-    private static let translationPrerollFrameLimit = 20
+    /// 100 ms frame × 40 = 直近4秒。言語判定遅延でも発話冒頭を翻訳へ届ける。
+    private static let translationPrerollFrameLimit = 40
     private static let consecutiveTranslationFailureLimit = 3
 
     private let sourceConnection: RealtimeSourceTranscriptionConnection
@@ -55,7 +55,10 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         eventContinuation = pair.continuation
     }
 
-    func start(apiKey: String) async throws {
+    func start(
+        apiKey: String,
+        tuning: RealtimeSessionTuning = .default
+    ) async throws {
         await forceClose()
         recreateEventStream()
         connectionEpoch += 1
@@ -72,18 +75,22 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         do {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
-                    try await self.sourceConnection.start(apiKey: apiKey)
+                    try await self.sourceConnection.start(apiKey: apiKey, tuning: tuning)
                 }
                 group.addTask {
                     try await self.englishConnection.start(
                         apiKey: apiKey,
-                        config: .englishTargetWithoutSourceTranscription()
+                        config: .englishTargetWithoutSourceTranscription(
+                            noiseReduction: tuning.noiseReduction
+                        )
                     )
                 }
                 group.addTask {
                     try await self.japaneseConnection.start(
                         apiKey: apiKey,
-                        config: .japaneseTargetWithoutSourceTranscription()
+                        config: .japaneseTargetWithoutSourceTranscription(
+                            noiseReduction: tuning.noiseReduction
+                        )
                     )
                 }
                 try await group.waitForAll()
@@ -117,7 +124,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
             )
         }
 
-        // 言語切替検出の遅延を吸収するため、選択後も直近2秒をrolling保持する。
+        // 言語切替検出の遅延を吸収するため、選択後も直近4秒をrolling保持する。
         appendRollingPreroll(pcm16LE)
         if let selectedTranslationTarget {
             enqueueTranslationFrame(pcm16LE, target: selectedTranslationTarget)

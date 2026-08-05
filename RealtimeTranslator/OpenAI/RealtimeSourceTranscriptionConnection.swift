@@ -4,17 +4,6 @@ actor RealtimeSourceTranscriptionConnection {
     static let endpointURL = URL(
         string: "wss://api.openai.com/v1/realtime?intent=transcription"
     )!
-    /// 固有名詞・カタカナ語の誤認識を抑えるヒント。発話内容そのものはログしない。
-    static let transcriptionPrompt =
-        "Japanese and English conversation about software development, programming, and hackathons."
-    static let transcriptionKeywords = [
-        "ハッカソン",
-        "hackathon",
-        "エンジニア",
-        "エンジニアリング",
-        "クレジット",
-        "モデル",
-    ]
 
     private let transport: any RealtimeWebSocketTransport
     private let safetyIdentifier: String
@@ -41,7 +30,10 @@ actor RealtimeSourceTranscriptionConnection {
         (events, eventContinuation) = Self.makeEventStream()
     }
 
-    func start(apiKey: String) async throws {
+    func start(
+        apiKey: String,
+        tuning: RealtimeSessionTuning = .default
+    ) async throws {
         await forceClose()
         recreateEventStream()
         epoch += 1
@@ -75,11 +67,11 @@ actor RealtimeSourceTranscriptionConnection {
                                 "model": "gpt-live-transcribe",
                                 "languages": ["ja", "en"],
                                 "delay": "low",
-                                "prompt": Self.transcriptionPrompt,
-                                "keywords": Self.transcriptionKeywords,
+                                "prompt": tuning.transcriptionPrompt,
+                                "keywords": tuning.transcriptionKeywords,
                             ],
                             "noise_reduction": [
-                                "type": "far_field",
+                                "type": tuning.noiseReduction.rawValue,
                             ],
                             "turn_detection": NSNull(),
                         ],

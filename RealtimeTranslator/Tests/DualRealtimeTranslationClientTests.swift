@@ -262,15 +262,111 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         XCTAssertEqual(sourceTranscription["delay"] as? String, "low")
         XCTAssertEqual(
             sourceTranscription["prompt"] as? String,
-            RealtimeSourceTranscriptionConnection.transcriptionPrompt
+            RealtimeSessionTuning.defaultPrompt
         )
         XCTAssertEqual(
             sourceTranscription["keywords"] as? [String],
-            RealtimeSourceTranscriptionConnection.transcriptionKeywords
+            RealtimeSessionTuning.defaultKeywords
         )
         XCTAssertEqual(sourceNoiseReduction["type"] as? String, "far_field")
         XCTAssertNil(englishInput["transcription"])
         XCTAssertNil(japaneseInput["transcription"])
+    }
+
+    func testStartAppliesCustomTuningToSourceAndTranslationSessions() async throws {
+        // Given: near_fieldとカスタムprompt/keywordsのtuning
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        let tuning = RealtimeSessionTuning(
+            noiseReduction: .nearField,
+            transcriptionPrompt: "Custom domain glossary hints",
+            transcriptionKeywords: ["固有名詞", "Acme"]
+        )
+
+        // When: custom tuningで開始する
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport,
+            tuning: tuning
+        )
+
+        // Then: 原文・翻訳双方のsession.updateへ反映される
+        let sourceUpdate = try await firstSessionUpdate(sourceTransport)
+        let englishUpdate = try await firstSessionUpdate(englishTransport)
+        let japaneseUpdate = try await firstSessionUpdate(japaneseTransport)
+        let sourceInput = try XCTUnwrap(
+            ((sourceUpdate["session"] as? [String: Any])?["audio"] as? [String: Any])?["input"]
+                as? [String: Any]
+        )
+        let englishInput = try XCTUnwrap(
+            ((englishUpdate["session"] as? [String: Any])?["audio"] as? [String: Any])?["input"]
+                as? [String: Any]
+        )
+        let japaneseInput = try XCTUnwrap(
+            ((japaneseUpdate["session"] as? [String: Any])?["audio"] as? [String: Any])?["input"]
+                as? [String: Any]
+        )
+        let sourceTranscription = try XCTUnwrap(sourceInput["transcription"] as? [String: Any])
+        XCTAssertEqual(sourceTranscription["prompt"] as? String, tuning.transcriptionPrompt)
+        XCTAssertEqual(
+            sourceTranscription["keywords"] as? [String],
+            tuning.transcriptionKeywords
+        )
+        XCTAssertEqual(
+            (sourceInput["noise_reduction"] as? [String: Any])?["type"] as? String,
+            "near_field"
+        )
+        XCTAssertEqual(
+            (englishInput["noise_reduction"] as? [String: Any])?["type"] as? String,
+            "near_field"
+        )
+        XCTAssertEqual(
+            (japaneseInput["noise_reduction"] as? [String: Any])?["type"] as? String,
+            "near_field"
+        )
+        await dual.forceClose()
+    }
+
+    func testRollingPrerollKeepsAtMostFortyFrames() async throws {
+        // Given: readyなdual
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+
+        // When: 45 frame送ったあと英語判定する
+        var frames: [Data] = []
+        for index in 0..<45 {
+            let frame = Data(repeating: UInt8(index % 250), count: PCM16FramePacketizer.bytesPerFrame)
+            frames.append(frame)
+            try await dual.appendAudioFrame(frame)
+        }
+        try await dual.setSpokenLanguage(.japanese)
+        try await waitUntilAppendCount(englishTransport, minimum: 40)
+
+        // Then: 直近40 frameだけが英語targetへflushされる
+        let englishAppends = try decodeAppendPayloads(await englishTransport.sent)
+        let expected = frames.suffix(40).map { $0.base64EncodedString() }
+        XCTAssertEqual(englishAppends, Array(expected))
+        await dual.forceClose()
     }
 
     func testOneSidedFailureForceClosesPair() async throws {
@@ -344,14 +440,15 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         _ dual: DualRealtimeTranslationClient,
         sourceTransport: FakeRealtimeWebSocketTransport,
         englishTransport: FakeRealtimeWebSocketTransport,
-        japaneseTransport: FakeRealtimeWebSocketTransport
+        japaneseTransport: FakeRealtimeWebSocketTransport,
+        tuning: RealtimeSessionTuning = .default
     ) async throws {
         try await sourceTransport.enqueueJSON(["type": "session.created"])
         try await englishTransport.enqueueJSON(["type": "session.created"])
         try await japaneseTransport.enqueueJSON(["type": "session.created"])
 
         let startTask = Task {
-            try await dual.start(apiKey: "sk-test")
+            try await dual.start(apiKey: "sk-test", tuning: tuning)
         }
 
         try await waitUntilSent(sourceTransport, minimum: 1)

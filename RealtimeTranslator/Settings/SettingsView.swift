@@ -83,6 +83,32 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
             }
 
+            Section("音声認識") {
+                Picker("ノイズ低減", selection: $settings.noiseReductionMode) {
+                    Text("近距離マイク").tag(
+                        RealtimeTranslationNoiseReduction.nearField.rawValue
+                    )
+                    Text("会議・遠距離").tag(
+                        RealtimeTranslationNoiseReduction.farField.rawValue
+                    )
+                }
+
+                TextField("認識プロンプト", text: $settings.transcriptionPrompt)
+                    .textFieldStyle(.roundedBorder)
+
+                Text("キーワード (1行1語)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextEditor(text: $settings.transcriptionKeywordsText)
+                    .font(.body)
+                    .frame(minHeight: 88, maxHeight: 120)
+                    .border(Color.secondary.opacity(0.3))
+
+                Text("変更は次回の録音開始から反映されます。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("字幕") {
                 Stepper(value: $settings.fontSize, in: 18...48, step: 2) {
                     Text("フォントサイズ: \(Int(settings.fontSize))pt")
@@ -95,7 +121,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 560, height: 520)
+        .frame(width: 560, height: 640)
         .onAppear {
             refreshStoredKeyState()
         }

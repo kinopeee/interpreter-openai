@@ -12,7 +12,10 @@ final class AppCoordinator: NSObject {
     private var menuBarController: MenuBarController!
     private lazy var subtitleWindow = SubtitleWindowController()
     private lazy var interpretationSession = InterpretationSession(
-        apiKeyStore: apiKeyStore
+        apiKeyStore: apiKeyStore,
+        tuningProvider: { [settings] in
+            settings.sessionTuning()
+        }
     )
     private let hotKeys = HotKeyManager()
     private var settingsWindow: NSWindow?
@@ -115,7 +118,7 @@ final class AppCoordinator: NSObject {
         let window = NSWindow(contentViewController: hosting)
         window.title = "Realtime Translator 設定"
         window.styleMask = [.titled, .closable]
-        window.setContentSize(NSSize(width: 560, height: 520))
+        window.setContentSize(NSSize(width: 560, height: 640))
         window.center()
         window.isReleasedWhenClosed = false
         settingsWindow = window

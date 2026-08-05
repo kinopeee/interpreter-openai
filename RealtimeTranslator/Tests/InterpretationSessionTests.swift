@@ -275,6 +275,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     private(set) var forceCloseCallCount = 0
     private(set) var spokenLanguages: [SpokenLanguage] = []
     private(set) var resetAudioRoutingCallCount = 0
+    private(set) var lastTuning: RealtimeSessionTuning?
     var startGate: CheckedContinuationBox?
     var startFailuresRemaining = 0
     var startError: Error?
@@ -291,8 +292,9 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
     }
 
-    func start(apiKey: String) async throws {
+    func start(apiKey: String, tuning: RealtimeSessionTuning) async throws {
         startCallCount += 1
+        lastTuning = tuning
         if let startGate {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 startGate.continuation = continuation

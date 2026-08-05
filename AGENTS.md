@@ -5,7 +5,7 @@
 - macOS 26以降向けの、OpenAI Realtime Translationによるリアルタイム日英字幕アプリである。
 - 外部通信先は `api.openai.com/v1/realtime` と `api.openai.com/v1/realtime/translations` に限定する。それ以外の外部翻訳APIは追加しない。
 - 利用者自身のOpenAI APIキー（BYOK）をmacOS Keychainへ保存する。事業者キーは同梱しない。
-- 原文音声は専用 `gpt-live-transcribe` へ常時送信する。直近2秒のrolling prerollを常時保持し、判定前は原文のみ送信、判定後は日本語なら `target=en`、英語なら `target=ja` へ送る。言語切替時は新targetへprerollをflushする。
+- 原文音声は専用 `gpt-live-transcribe` へ常時送信する。直近4秒のrolling prerollを常時保持し、判定前は原文のみ送信、判定後は日本語なら `target=en`、英語なら `target=ja` へ送る。言語切替時は新targetへprerollをflushする。
 - 原文文字種の反転（末尾ウィンドウ判定）をセグメント境界として扱い、確定・ルーティング・prerollを切り替える。
 - Translationセッション付属のtranscriptionを原文authorityにしない。専用transcriptionの低遅延deltaを使い、原文と訳文を常にペア表示する。
 - APIキー、Authorization、音声、原文、訳文をログ・status file・アラートへ出さない。

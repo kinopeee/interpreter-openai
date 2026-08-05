@@ -21,6 +21,9 @@ final class AppSettings {
         static let hasCustomPanelOrigin = "hasCustomPanelOrigin"
         /// 同意文言が変わったらバージョンを上げ、再同意を求める。
         static let openAIConsentVersion = "openAIConsentVersion"
+        static let transcriptionPrompt = "transcriptionPrompt"
+        static let transcriptionKeywordsText = "transcriptionKeywordsText"
+        static let noiseReductionMode = "noiseReductionMode"
     }
 
     /// 現在有効な同意バージョン。文言変更時にインクリメントする。
@@ -51,8 +54,40 @@ final class AppSettings {
         }
     }
 
+    var transcriptionPrompt: String {
+        didSet { UserDefaults.standard.set(transcriptionPrompt, forKey: Keys.transcriptionPrompt) }
+    }
+
+    /// 1行1語のキーワードテキスト。
+    var transcriptionKeywordsText: String {
+        didSet {
+            UserDefaults.standard.set(
+                transcriptionKeywordsText,
+                forKey: Keys.transcriptionKeywordsText
+            )
+        }
+    }
+
+    /// `RealtimeTranslationNoiseReduction.rawValue` を保存する。
+    var noiseReductionMode: String {
+        didSet { UserDefaults.standard.set(noiseReductionMode, forKey: Keys.noiseReductionMode) }
+    }
+
     var hasAcceptedCurrentOpenAIConsent: Bool {
         acceptedOpenAIConsentVersion >= Self.currentOpenAIConsentVersion
+    }
+
+    var transcriptionKeywords: [String] {
+        RealtimeSessionTuning.parseKeywords(from: transcriptionKeywordsText)
+    }
+
+    var noiseReduction: RealtimeTranslationNoiseReduction {
+        get {
+            RealtimeTranslationNoiseReduction(rawValue: noiseReductionMode) ?? .farField
+        }
+        set {
+            noiseReductionMode = newValue.rawValue
+        }
     }
 
     init() {
@@ -63,6 +98,30 @@ final class AppSettings {
         panelOriginX = defaults.double(forKey: Keys.panelOriginX)
         panelOriginY = defaults.double(forKey: Keys.panelOriginY)
         acceptedOpenAIConsentVersion = defaults.integer(forKey: Keys.openAIConsentVersion)
+
+        if let storedPrompt = defaults.string(forKey: Keys.transcriptionPrompt),
+           !storedPrompt.isEmpty
+        {
+            transcriptionPrompt = storedPrompt
+        } else {
+            transcriptionPrompt = RealtimeSessionTuning.defaultPrompt
+        }
+
+        if let storedKeywords = defaults.string(forKey: Keys.transcriptionKeywordsText) {
+            transcriptionKeywordsText = storedKeywords
+        } else {
+            transcriptionKeywordsText = RealtimeSessionTuning.keywordsText(
+                from: RealtimeSessionTuning.defaultKeywords
+            )
+        }
+
+        if let storedNoise = defaults.string(forKey: Keys.noiseReductionMode),
+           RealtimeTranslationNoiseReduction(rawValue: storedNoise) != nil
+        {
+            noiseReductionMode = storedNoise
+        } else {
+            noiseReductionMode = RealtimeTranslationNoiseReduction.farField.rawValue
+        }
     }
 
     func acceptOpenAIConsent() {
@@ -78,5 +137,13 @@ final class AppSettings {
         panelOriginX = origin.x
         panelOriginY = origin.y
         hasCustomPanelOrigin = true
+    }
+
+    func sessionTuning() -> RealtimeSessionTuning {
+        RealtimeSessionTuning(
+            noiseReduction: noiseReduction,
+            transcriptionPrompt: transcriptionPrompt,
+            transcriptionKeywords: transcriptionKeywords
+        )
     }
 }

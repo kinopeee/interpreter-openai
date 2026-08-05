@@ -37,9 +37,6 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     private static let tapBufferSize: AVAudioFrameCount = 4096
     private static let bufferPoolCapacity = 64
     private static let targetSampleRate = 24_000.0
-    /// Built-in microphone input can be around -24 dB even at a usable system level.
-    /// Raise it to the range expected by streaming speech recognition and clip safely.
-    nonisolated private static let microphoneGain: Float = 4
 
     private let audioEngine = AVAudioEngine()
     private var captureContinuation: AsyncStream<CapturedAudioBuffer>.Continuation?
@@ -130,13 +127,17 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
 
         feederTask = Task.detached(priority: .userInitiated) { [weak self] in
             var packetizer = PCM16FramePacketizer()
+            var adaptiveGain = AdaptiveMicrophoneGain()
             var emittedFrameCount = 0
             do {
                 for await captured in captureStream {
                     defer { captured.release() }
                     try Task.checkCancellation()
                     let converted = try converter.convert(captured.buffer)
-                    let pcm16 = try Self.encodePCM16(from: converted)
+                    let pcm16 = try Self.encodePCM16(
+                        from: converted,
+                        adaptiveGain: &adaptiveGain
+                    )
                     let frames = packetizer.append(pcm16)
                     for frame in frames {
                         emittedFrameCount += 1
@@ -234,7 +235,10 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         }
     }
 
-    nonisolated private static func encodePCM16(from buffer: AVAudioPCMBuffer) throws -> Data {
+    nonisolated private static func encodePCM16(
+        from buffer: AVAudioPCMBuffer,
+        adaptiveGain: inout AdaptiveMicrophoneGain
+    ) throws -> Data {
         let frameLength = Int(buffer.frameLength)
         guard frameLength > 0 else { return Data() }
 
@@ -250,10 +254,11 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         guard let channel = buffer.floatChannelData?[0] else {
             throw RealtimeAudioCaptureError.audioFormatUnavailable
         }
+        let gain = adaptiveGain.observe(floatSamples: channel, frameCount: frameLength)
         return PCM16LittleEndianEncoder.encode(
             floatSamples: channel,
             frameCount: frameLength,
-            gain: microphoneGain
+            gain: gain
         )
     }
 

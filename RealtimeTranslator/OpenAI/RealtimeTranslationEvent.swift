@@ -15,27 +15,33 @@ struct RealtimeTranslationSessionConfig: Sendable, Equatable {
     var inputTranscriptionModel: String?
     var noiseReduction: RealtimeTranslationNoiseReduction?
 
-    static func englishTargetWithSourceTranscription() -> RealtimeTranslationSessionConfig {
+    static func englishTargetWithSourceTranscription(
+        noiseReduction: RealtimeTranslationNoiseReduction = .farField
+    ) -> RealtimeTranslationSessionConfig {
         RealtimeTranslationSessionConfig(
             outputLanguage: .english,
             inputTranscriptionModel: "gpt-realtime-whisper",
-            noiseReduction: .farField
+            noiseReduction: noiseReduction
         )
     }
 
-    static func englishTargetWithoutSourceTranscription() -> RealtimeTranslationSessionConfig {
+    static func englishTargetWithoutSourceTranscription(
+        noiseReduction: RealtimeTranslationNoiseReduction = .farField
+    ) -> RealtimeTranslationSessionConfig {
         RealtimeTranslationSessionConfig(
             outputLanguage: .english,
             inputTranscriptionModel: nil,
-            noiseReduction: .farField
+            noiseReduction: noiseReduction
         )
     }
 
-    static func japaneseTargetWithoutSourceTranscription() -> RealtimeTranslationSessionConfig {
+    static func japaneseTargetWithoutSourceTranscription(
+        noiseReduction: RealtimeTranslationNoiseReduction = .farField
+    ) -> RealtimeTranslationSessionConfig {
         RealtimeTranslationSessionConfig(
             outputLanguage: .japanese,
             inputTranscriptionModel: nil,
-            noiseReduction: .farField
+            noiseReduction: noiseReduction
         )
     }
 }

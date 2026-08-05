@@ -29,6 +29,7 @@ final class InterpretationSession {
     private let dualClient: any DualRealtimeTranslationClienting
     private let aggregator: SubtitleAggregator
     private let activeTickerIntervalNanoseconds: UInt64
+    private let tuningProvider: @MainActor () -> RealtimeSessionTuning
 
     private(set) var state: TranslationState = .idle {
         didSet {
@@ -58,13 +59,15 @@ final class InterpretationSession {
         audioCapture: any RealtimeAudioCaptureServicing = RealtimeAudioCaptureService(),
         dualClient: any DualRealtimeTranslationClienting = DualRealtimeTranslationClient(),
         aggregator: SubtitleAggregator = SubtitleAggregator(),
-        activeTickerIntervalNanoseconds: UInt64 = 200_000_000
+        activeTickerIntervalNanoseconds: UInt64 = 200_000_000,
+        tuningProvider: @escaping @MainActor () -> RealtimeSessionTuning = { .default }
     ) {
         self.apiKeyStore = apiKeyStore
         self.audioCapture = audioCapture
         self.dualClient = dualClient
         self.aggregator = aggregator
         self.activeTickerIntervalNanoseconds = activeTickerIntervalNanoseconds
+        self.tuningProvider = tuningProvider
     }
 
     func start() async {
@@ -146,7 +149,8 @@ final class InterpretationSession {
         aggregator.setStatusBanner("OpenAI Realtimeへ接続中…")
         publishSubtitles()
 
-        try await dualClient.start(apiKey: apiKey)
+        let tuning = tuningProvider()
+        try await dualClient.start(apiKey: apiKey, tuning: tuning)
         guard generation == lifecycleGeneration else {
             await dualClient.forceClose()
             return
