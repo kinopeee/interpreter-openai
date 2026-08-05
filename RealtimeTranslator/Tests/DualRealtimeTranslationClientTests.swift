@@ -285,6 +285,7 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         )
         let tuning = RealtimeSessionTuning(
             noiseReduction: .nearField,
+            transcriptionDelay: .high,
             transcriptionPrompt: "Custom domain glossary hints",
             transcriptionKeywords: ["固有名詞", "Acme"]
         )
@@ -320,6 +321,7 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
             sourceTranscription["keywords"] as? [String],
             tuning.transcriptionKeywords
         )
+        XCTAssertEqual(sourceTranscription["delay"] as? String, "high")
         XCTAssertEqual(
             (sourceInput["noise_reduction"] as? [String: Any])?["type"] as? String,
             "near_field"
@@ -390,6 +392,7 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         // When: 録音中に新しいprompt/keywordsでupdateする
         let updated = RealtimeSessionTuning(
             noiseReduction: .farField,
+            transcriptionDelay: .medium,
             transcriptionPrompt: "Live glossary update",
             transcriptionKeywords: ["Acme", "ロードマップ"]
         )
@@ -407,6 +410,7 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         let body = try XCTUnwrap(transcription)
         XCTAssertEqual(body["prompt"] as? String, "Live glossary update")
         XCTAssertEqual(body["keywords"] as? [String], ["Acme", "ロードマップ"])
+        XCTAssertEqual(body["delay"] as? String, "medium")
         await dual.forceClose()
     }
 

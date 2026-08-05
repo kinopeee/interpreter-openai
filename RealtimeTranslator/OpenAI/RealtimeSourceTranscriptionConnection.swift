@@ -196,7 +196,7 @@ actor RealtimeSourceTranscriptionConnection {
                         "transcription": [
                             "model": "gpt-live-transcribe",
                             "languages": ["ja", "en"],
-                            "delay": "low",
+                            "delay": tuning.transcriptionDelay.rawValue,
                             "prompt": tuning.transcriptionPrompt,
                             "keywords": tuning.transcriptionKeywords,
                         ],

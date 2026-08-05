@@ -57,7 +57,7 @@ final class AppCoordinator: NSObject {
     private var idleSnapshot: SubtitleSnapshot {
         SubtitleSnapshot(
             current: .empty,
-            statusBanner: "待機中 — 「録音開始」を押してください"
+            statusBanner: "待機中 — Control + Option + Space で録音開始"
         )
     }
 
@@ -123,7 +123,12 @@ final class AppCoordinator: NSObject {
         let window = NSWindow(contentViewController: hosting)
         window.title = "Realtime Translator 設定"
         window.styleMask = [.titled, .closable]
-        window.setContentSize(NSSize(width: 560, height: 720))
+        window.setContentSize(
+            NSSize(
+                width: SettingsWindowMetrics.contentWidth,
+                height: SettingsWindowMetrics.contentHeight
+            )
+        )
         window.center()
         window.isReleasedWhenClosed = false
         settingsWindow = window

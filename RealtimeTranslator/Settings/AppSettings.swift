@@ -24,6 +24,7 @@ final class AppSettings {
         static let transcriptionPrompt = "transcriptionPrompt"
         static let transcriptionKeywordsText = "transcriptionKeywordsText"
         static let noiseReductionMode = "noiseReductionMode"
+        static let transcriptionDelayMode = "transcriptionDelayMode"
     }
 
     /// 現在有効な同意バージョン。文言変更時にインクリメントする。
@@ -73,6 +74,13 @@ final class AppSettings {
         didSet { UserDefaults.standard.set(noiseReductionMode, forKey: Keys.noiseReductionMode) }
     }
 
+    /// `RealtimeTranscriptionDelay.rawValue` を保存する。
+    var transcriptionDelayMode: String {
+        didSet {
+            UserDefaults.standard.set(transcriptionDelayMode, forKey: Keys.transcriptionDelayMode)
+        }
+    }
+
     var hasAcceptedCurrentOpenAIConsent: Bool {
         acceptedOpenAIConsentVersion >= Self.currentOpenAIConsentVersion
     }
@@ -87,6 +95,15 @@ final class AppSettings {
         }
         set {
             noiseReductionMode = newValue.rawValue
+        }
+    }
+
+    var transcriptionDelay: RealtimeTranscriptionDelay {
+        get {
+            RealtimeTranscriptionDelay(rawValue: transcriptionDelayMode) ?? .low
+        }
+        set {
+            transcriptionDelayMode = newValue.rawValue
         }
     }
 
@@ -122,6 +139,14 @@ final class AppSettings {
         } else {
             noiseReductionMode = RealtimeTranslationNoiseReduction.farField.rawValue
         }
+
+        if let storedDelay = defaults.string(forKey: Keys.transcriptionDelayMode),
+           RealtimeTranscriptionDelay(rawValue: storedDelay) != nil
+        {
+            transcriptionDelayMode = storedDelay
+        } else {
+            transcriptionDelayMode = RealtimeTranscriptionDelay.low.rawValue
+        }
     }
 
     func acceptOpenAIConsent() {
@@ -142,6 +167,7 @@ final class AppSettings {
     func sessionTuning() -> RealtimeSessionTuning {
         RealtimeSessionTuning.make(
             noiseReduction: noiseReduction,
+            transcriptionDelay: transcriptionDelay,
             prompt: transcriptionPrompt,
             keywordsText: transcriptionKeywordsText
         )

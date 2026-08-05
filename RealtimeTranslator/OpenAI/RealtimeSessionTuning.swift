@@ -9,6 +9,7 @@ struct RealtimeSessionTuning: Sendable, Equatable {
     static let promptCharacterLimit = 1_000
 
     var noiseReduction: RealtimeTranslationNoiseReduction
+    var transcriptionDelay: RealtimeTranscriptionDelay
     var transcriptionPrompt: String
     var transcriptionKeywords: [String]
 
@@ -26,6 +27,7 @@ struct RealtimeSessionTuning: Sendable, Equatable {
 
     static let `default` = RealtimeSessionTuning(
         noiseReduction: .farField,
+        transcriptionDelay: .low,
         transcriptionPrompt: defaultPrompt,
         transcriptionKeywords: defaultKeywords
     )
@@ -134,11 +136,13 @@ struct RealtimeSessionTuning: Sendable, Equatable {
     /// 生の設定値から送信用tuningを組み立てる。
     static func make(
         noiseReduction: RealtimeTranslationNoiseReduction,
+        transcriptionDelay: RealtimeTranscriptionDelay,
         prompt: String,
         keywordsText: String
     ) -> RealtimeSessionTuning {
         RealtimeSessionTuning(
             noiseReduction: noiseReduction,
+            transcriptionDelay: transcriptionDelay,
             transcriptionPrompt: sanitizedPrompt(prompt),
             transcriptionKeywords: parseKeywords(from: keywordsText)
         )

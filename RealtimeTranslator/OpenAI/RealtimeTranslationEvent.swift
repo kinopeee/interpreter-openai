@@ -5,9 +5,42 @@ enum RealtimeTranslationOutputLanguage: String, Sendable, Equatable {
     case japanese = "ja"
 }
 
-enum RealtimeTranslationNoiseReduction: String, Sendable, Equatable {
+enum RealtimeTranslationNoiseReduction: String, Sendable, Equatable, CaseIterable {
     case nearField = "near_field"
     case farField = "far_field"
+
+    var displayName: String {
+        switch self {
+        case .nearField:
+            return "近距離マイク"
+        case .farField:
+            return "会議・遠距離"
+        }
+    }
+}
+
+/// gpt-live-transcribe の遅延/精度トレードオフ。
+enum RealtimeTranscriptionDelay: String, Sendable, Equatable, CaseIterable {
+    case minimal
+    case low
+    case medium
+    case high
+    case xhigh
+
+    var displayName: String {
+        switch self {
+        case .minimal:
+            return "最速（精度低め）"
+        case .low:
+            return "低遅延（既定）"
+        case .medium:
+            return "バランス"
+        case .high:
+            return "高精度"
+        case .xhigh:
+            return "最高精度"
+        }
+    }
 }
 
 struct RealtimeTranslationSessionConfig: Sendable, Equatable {

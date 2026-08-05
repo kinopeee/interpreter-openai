@@ -1,5 +1,10 @@
 import SwiftUI
 
+enum SettingsWindowMetrics {
+    static let contentWidth: CGFloat = 560
+    static let contentHeight: CGFloat = 520
+}
+
 struct SettingsView: View {
     @Bindable var settings: AppSettings
     let apiKeyStore: any APIKeyStore
@@ -12,19 +17,104 @@ struct SettingsView: View {
     @State private var statusIsError = false
     @State private var tuningDebounceTask: Task<Void, Never>?
 
-    private var keywordCount: Int {
-        RealtimeSessionTuning.parseKeywords(from: settings.transcriptionKeywordsText).count
-    }
+    var body: some View {
+        TabView {
+            SettingsGeneralTab(
+                settings: settings,
+                apiKeyDraft: $apiKeyDraft,
+                hasStoredKey: hasStoredKey,
+                statusMessage: statusMessage,
+                statusIsError: statusIsError,
+                onSaveAPIKey: saveAPIKey,
+                onDeleteAPIKey: deleteAPIKey
+            )
+            .tabItem {
+                Label("一般", systemImage: "gearshape")
+            }
 
-    private var promptCharacterCount: Int {
-        RealtimeSessionTuning.sanitizedPrompt(settings.transcriptionPrompt).count
-    }
+            SettingsSpeechRecognitionTab(settings: settings)
+                .tabItem {
+                    Label("音声認識", systemImage: "waveform")
+                }
 
-    private var keywordsContainForbiddenCharacters: Bool {
-        settings.transcriptionKeywordsText.unicodeScalars.contains {
-            RealtimeSessionTuning.forbiddenKeywordCharacters.contains($0)
+            SettingsSubtitleAndControlsTab(settings: settings)
+                .tabItem {
+                    Label("字幕・操作", systemImage: "captions.bubble")
+                }
+        }
+        .frame(
+            width: SettingsWindowMetrics.contentWidth,
+            height: SettingsWindowMetrics.contentHeight
+        )
+        .onAppear {
+            refreshStoredKeyState()
+        }
+        .onDisappear {
+            tuningDebounceTask?.cancel()
+            tuningDebounceTask = nil
+            onSave?()
+        }
+        .onChange(of: settings.transcriptionPrompt) { _, _ in
+            scheduleTuningChangeNotification()
+        }
+        .onChange(of: settings.transcriptionKeywordsText) { _, _ in
+            scheduleTuningChangeNotification()
+        }
+        .onChange(of: settings.transcriptionDelayMode) { _, _ in
+            scheduleTuningChangeNotification()
         }
     }
+
+    private func scheduleTuningChangeNotification() {
+        tuningDebounceTask?.cancel()
+        tuningDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            guard !Task.isCancelled else { return }
+            onTuningChanged?()
+        }
+    }
+
+    private func refreshStoredKeyState() {
+        hasStoredKey = (try? apiKeyStore.load()?.isEmpty == false) == true
+    }
+
+    private func saveAPIKey() {
+        do {
+            try apiKeyStore.save(apiKeyDraft)
+            apiKeyDraft = ""
+            hasStoredKey = true
+            statusIsError = false
+            statusMessage = "APIキーをKeychainへ保存しました"
+        } catch {
+            statusIsError = true
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    private func deleteAPIKey() {
+        do {
+            try apiKeyStore.delete()
+            apiKeyDraft = ""
+            hasStoredKey = false
+            statusIsError = false
+            statusMessage = "APIキーを削除しました"
+        } catch {
+            statusIsError = true
+            statusMessage = error.localizedDescription
+        }
+    }
+}
+
+// MARK: - Tabs
+
+private struct SettingsGeneralTab: View {
+    @Bindable var settings: AppSettings
+    @Binding var apiKeyDraft: String
+    let hasStoredKey: Bool
+    let statusMessage: String?
+    let statusIsError: Bool
+    let onSaveAPIKey: () -> Void
+    let onDeleteAPIKey: () -> Void
 
     var body: some View {
         Form {
@@ -70,12 +160,12 @@ struct SettingsView: View {
 
                 HStack {
                     Button("保存") {
-                        saveAPIKey()
+                        onSaveAPIKey()
                     }
                     .disabled(apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                     Button("削除", role: .destructive) {
-                        deleteAPIKey()
+                        onDeleteAPIKey()
                     }
                     .disabled(!hasStoredKey)
 
@@ -98,16 +188,57 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
+        }
+        .formStyle(.grouped)
+    }
+}
 
-            Section("音声認識") {
+private struct SettingsSpeechRecognitionTab: View {
+    @Bindable var settings: AppSettings
+
+    private var keywordCount: Int {
+        RealtimeSessionTuning.parseKeywords(from: settings.transcriptionKeywordsText).count
+    }
+
+    private var promptCharacterCount: Int {
+        RealtimeSessionTuning.sanitizedPrompt(settings.transcriptionPrompt).count
+    }
+
+    private var keywordsContainForbiddenCharacters: Bool {
+        settings.transcriptionKeywordsText.unicodeScalars.contains {
+            RealtimeSessionTuning.forbiddenKeywordCharacters.contains($0)
+        }
+    }
+
+    private var isPromptOverLimit: Bool {
+        settings.transcriptionPrompt.count > RealtimeSessionTuning.promptCharacterLimit
+    }
+
+    private var isKeywordLineCountOverLimit: Bool {
+        settings.transcriptionKeywordsText
+            .split(whereSeparator: \.isNewline)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .count > RealtimeSessionTuning.keywordLimit
+    }
+
+    var body: some View {
+        Form {
+            Section("認識設定") {
                 Picker("ノイズ低減", selection: $settings.noiseReductionMode) {
-                    Text("近距離マイク").tag(
-                        RealtimeTranslationNoiseReduction.nearField.rawValue
-                    )
-                    Text("会議・遠距離").tag(
-                        RealtimeTranslationNoiseReduction.farField.rawValue
-                    )
+                    ForEach(RealtimeTranslationNoiseReduction.allCases, id: \.rawValue) { mode in
+                        Text(mode.displayName).tag(mode.rawValue)
+                    }
                 }
+
+                Picker("認識遅延", selection: $settings.transcriptionDelayMode) {
+                    ForEach(RealtimeTranscriptionDelay.allCases, id: \.rawValue) { delay in
+                        Text(delay.displayName).tag(delay.rawValue)
+                    }
+                }
+
+                Text("値を上げると短い発話の認識精度が上がり、字幕表示は遅くなります。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 HStack {
                     Menu("プリセットを適用") {
@@ -121,17 +252,14 @@ struct SettingsView: View {
                         settings.restoreDefaultTranscriptionHints()
                     }
                 }
+            }
 
+            Section("認識ヒント") {
                 TextField("認識プロンプト", text: $settings.transcriptionPrompt)
                     .textFieldStyle(.roundedBorder)
                 Text(
                     "\(promptCharacterCount)/\(RealtimeSessionTuning.promptCharacterLimit) 文字"
-                        + (
-                            settings.transcriptionPrompt.count
-                                > RealtimeSessionTuning.promptCharacterLimit
-                                ? "（超過分は切り詰められます）"
-                                : ""
-                        )
+                        + (isPromptOverLimit ? "（超過分は切り詰められます）" : "")
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -145,16 +273,7 @@ struct SettingsView: View {
                     .border(Color.secondary.opacity(0.3))
                 Text(
                     "\(keywordCount)/\(RealtimeSessionTuning.keywordLimit) 語"
-                        + (
-                            settings.transcriptionKeywordsText
-                                .split(whereSeparator: \.isNewline)
-                                .filter {
-                                    !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                }
-                                .count > RealtimeSessionTuning.keywordLimit
-                                ? "（超過分は送信されません）"
-                                : ""
-                        )
+                        + (isKeywordLineCountOverLimit ? "（超過分は送信されません）" : "")
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -164,12 +283,25 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
-
-                Text("プロンプトとキーワードの変更は録音中でも数秒で反映されます。ノイズ低減は次回の録音開始から反映されます。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
+            Section {
+                Text(
+                    "プロンプト・キーワード・認識遅延の変更は録音中でも数秒で反映されます。ノイズ低減は次回の録音開始から反映されます。"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+private struct SettingsSubtitleAndControlsTab: View {
+    @Bindable var settings: AppSettings
+
+    var body: some View {
+        Form {
             Section("字幕") {
                 Stepper(value: $settings.fontSize, in: 18...48, step: 2) {
                     Text("フォントサイズ: \(Int(settings.fontSize))pt")
@@ -177,64 +309,10 @@ struct SettingsView: View {
             }
 
             Section("操作") {
-                Text("字幕上の「録音開始」「録音終了」ボタン、または Control + Option + Space を使用します。")
+                Text("メニューバーの開始/停止、または Control + Option + Space を使用します。")
                     .font(.callout)
             }
         }
-        .padding(20)
-        .frame(width: 560, height: 720)
-        .onAppear {
-            refreshStoredKeyState()
-        }
-        .onDisappear {
-            tuningDebounceTask?.cancel()
-            tuningDebounceTask = nil
-            onSave?()
-        }
-        .onChange(of: settings.transcriptionPrompt) { _, _ in
-            scheduleTuningChangeNotification()
-        }
-        .onChange(of: settings.transcriptionKeywordsText) { _, _ in
-            scheduleTuningChangeNotification()
-        }
-    }
-
-    private func scheduleTuningChangeNotification() {
-        tuningDebounceTask?.cancel()
-        tuningDebounceTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            guard !Task.isCancelled else { return }
-            onTuningChanged?()
-        }
-    }
-
-    private func refreshStoredKeyState() {
-        hasStoredKey = (try? apiKeyStore.load()?.isEmpty == false) == true
-    }
-
-    private func saveAPIKey() {
-        do {
-            try apiKeyStore.save(apiKeyDraft)
-            apiKeyDraft = ""
-            hasStoredKey = true
-            statusIsError = false
-            statusMessage = "APIキーをKeychainへ保存しました"
-        } catch {
-            statusIsError = true
-            statusMessage = error.localizedDescription
-        }
-    }
-
-    private func deleteAPIKey() {
-        do {
-            try apiKeyStore.delete()
-            apiKeyDraft = ""
-            hasStoredKey = false
-            statusIsError = false
-            statusMessage = "APIキーを削除しました"
-        } catch {
-            statusIsError = true
-            statusMessage = error.localizedDescription
-        }
+        .formStyle(.grouped)
     }
 }

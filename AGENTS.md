@@ -38,7 +38,7 @@
 
 ## Realtime Translationの制約
 
-- 原文は `wss://api.openai.com/v1/realtime?intent=transcription` と `gpt-live-transcribe` の `delay=low`、`far_field` noise reductionを使う。
+- 原文は `wss://api.openai.com/v1/realtime?intent=transcription` と `gpt-live-transcribe` を使う。`delay` は既定 `low`（設定で `minimal`〜`xhigh` に変更可）、noise reduction は既定 `far_field`。
 - 専用エンドポイント `wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate` を使う。
 - `response.create`、会話turn、tool callは使わない。連続音声ストリームとして扱う。
 - WebSocket入力は base64-encoded 24 kHz PCM16 mono little-endian。字幕開始を早めるため100 ms frameを使う。

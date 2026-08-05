@@ -327,6 +327,7 @@ final class InterpretationSessionTests: XCTestCase {
         // When: tuningを変えてapplyTuningChangeする
         currentTuning = RealtimeSessionTuning(
             noiseReduction: .nearField,
+            transcriptionDelay: .high,
             transcriptionPrompt: "Updated glossary",
             transcriptionKeywords: ["Acme"]
         )

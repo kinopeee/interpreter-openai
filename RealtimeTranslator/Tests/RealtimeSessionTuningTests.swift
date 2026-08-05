@@ -65,14 +65,17 @@ final class RealtimeSessionTuningTests: XCTestCase {
         let previousPrompt = settings.transcriptionPrompt
         let previousKeywords = settings.transcriptionKeywordsText
         let previousNoise = settings.noiseReductionMode
+        let previousDelay = settings.transcriptionDelayMode
         defer {
             settings.transcriptionPrompt = previousPrompt
             settings.transcriptionKeywordsText = previousKeywords
             settings.noiseReductionMode = previousNoise
+            settings.transcriptionDelayMode = previousDelay
         }
         settings.transcriptionPrompt = "Product launch glossary"
         settings.transcriptionKeywordsText = "Acme\nロードマップ"
         settings.noiseReduction = .nearField
+        settings.transcriptionDelay = .high
 
         // When: sessionTuningを作る
         let tuning = settings.sessionTuning()
@@ -81,6 +84,24 @@ final class RealtimeSessionTuningTests: XCTestCase {
         XCTAssertEqual(tuning.transcriptionPrompt, "Product launch glossary")
         XCTAssertEqual(tuning.transcriptionKeywords, ["Acme", "ロードマップ"])
         XCTAssertEqual(tuning.noiseReduction, .nearField)
+        XCTAssertEqual(tuning.transcriptionDelay, .high)
+    }
+
+    @MainActor
+    func testAppSettingsTranscriptionDelayFallsBackToLowOnInvalidValue() {
+        // Given: 不正なdelay rawValueを持つAppSettings
+        let settings = AppSettings()
+        let previousDelay = settings.transcriptionDelayMode
+        defer { settings.transcriptionDelayMode = previousDelay }
+        settings.transcriptionDelayMode = "not-a-valid-delay"
+
+        // When: computed propertyとsessionTuningを読む
+        let delay = settings.transcriptionDelay
+        let tuning = settings.sessionTuning()
+
+        // Then: lowへフォールバックする
+        XCTAssertEqual(delay, .low)
+        XCTAssertEqual(tuning.transcriptionDelay, .low)
     }
 
     @MainActor
