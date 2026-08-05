@@ -242,13 +242,7 @@ actor RealtimeTranslationConnection {
     }
 
     private func classifyServerError(message: String, code: String?) -> RealtimeTranslationError {
-        let lowered = (code ?? message).lowercased()
-        if lowered.contains("auth")
-            || lowered.contains("unauthorized")
-            || lowered.contains("invalid_api_key")
-            || lowered.contains("401")
-            || lowered.contains("403")
-        {
+        if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
             return .authenticationFailed
         }
         return .fatalServerError(message)

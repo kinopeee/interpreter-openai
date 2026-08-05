@@ -139,4 +139,55 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
             return false
         }
     }
+
+    /// ランタイム / handshake の認証失敗判定。
+    /// bare `auth` / `401` / `403` 部分一致は `authority` や `4010` に誤爆するため使わない。
+    static func isAuthenticationFailure(code: String?, message: String) -> Bool {
+        let codeLowered = (code ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let messageLowered = message.lowercased()
+
+        if knownAuthenticationFailureCodes.contains(codeLowered) {
+            return true
+        }
+        if codeLowered.contains("invalid_api_key")
+            || codeLowered.contains("authentication")
+            || codeLowered.contains("unauthorized")
+        {
+            return true
+        }
+
+        let authPhrases = [
+            "unauthorized",
+            "unauthenticated",
+            "invalid_api_key",
+            "incorrect api key",
+            "invalid api key",
+            "authentication failed",
+            "authentication error",
+            "not authenticated",
+            "api key is invalid",
+        ]
+        if authPhrases.contains(where: { messageLowered.contains($0) }) {
+            return true
+        }
+
+        // HTTP 401/403 をトークン単位で検出（4010 等の部分一致を避ける）
+        return containsHTTPAuthStatus(messageLowered)
+    }
+
+    private static let knownAuthenticationFailureCodes: Set<String> = [
+        "invalid_api_key",
+        "invalid_auth",
+        "authentication_error",
+        "unauthorized",
+        "unauthenticated",
+        "401",
+        "403",
+    ]
+
+    private static func containsHTTPAuthStatus(_ text: String) -> Bool {
+        text.range(of: #"(?<![0-9])(401|403)(?![0-9])"#, options: .regularExpression) != nil
+    }
 }

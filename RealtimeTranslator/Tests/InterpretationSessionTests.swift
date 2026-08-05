@@ -495,6 +495,41 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertFalse(delegate.messages.contains(where: { $0.contains("sk-") }))
         await session.stop()
     }
+
+    func testAuthorityLikeServerErrorIsNotTreatedAsInvalidAPIKey() async throws {
+        // Given: listening中のセッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        // When: auth部分文字列を含むが非認証のエラーが届く
+        dual.emit(
+            target: .english,
+            event: .error(
+                message: "certificate authority rejected the peer (code 4010)",
+                code: "authority_mismatch"
+            )
+        )
+        await waitUntil { session.state == .error }
+
+        // Then: 無効APIキー扱いではなく、サーバー文言（またはサニタイズ結果）経路になる
+        XCTAssertNotEqual(delegate.messages.first, "OpenAI APIキーが無効です")
+        XCTAssertEqual(
+            delegate.messages.first,
+            "certificate authority rejected the peer (code 4010)"
+        )
+        await session.stop()
+    }
 }
 
 // MARK: - Fakes

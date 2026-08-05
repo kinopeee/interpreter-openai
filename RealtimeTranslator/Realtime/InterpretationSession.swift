@@ -269,7 +269,7 @@ final class InterpretationSession {
                 if code == "transport" {
                     throw RealtimeTranslationError.recoverableTransportFailure(message)
                 }
-                if Self.isAuthenticationFailure(code: code, message: message) {
+                if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
                     throw RealtimeTranslationError.authenticationFailed
                 }
                 // サーバー文言にキー断片が含まれる場合があるため、ユーザー向け文言はサニタイズする。
@@ -531,17 +531,6 @@ final class InterpretationSession {
         aggregator.setStatusBanner(error.localizedDescription)
         publishSubtitles()
         delegate?.interpretationSession(self, didEncounterMessage: error.localizedDescription)
-    }
-
-    /// ランタイムerrorイベントの認証判定。handshake側のclassifyと揃える。
-    private static func isAuthenticationFailure(code: String?, message: String) -> Bool {
-        let lowered = "\(code ?? "") \(message)".lowercased()
-        return lowered.contains("auth")
-            || lowered.contains("unauthorized")
-            || lowered.contains("invalid_api_key")
-            || lowered.contains("incorrect api key")
-            || lowered.contains("401")
-            || lowered.contains("403")
     }
 
     /// アラート・バナー・ログへ出してよいサーバー文言へ正規化する。
