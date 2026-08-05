@@ -107,7 +107,13 @@ actor RealtimeSourceTranscriptionConnection {
                 await forceClose()
                 return
             }
-            try? await Task.sleep(nanoseconds: 50_000_000)
+            do {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            } catch is CancellationError {
+                // DualClientの並行closeでキャンセルされたとき、期限まで待たない。
+                await forceClose()
+                throw CancellationError()
+            }
         }
         await forceClose()
         throw RealtimeTranslationError.closeTimeout

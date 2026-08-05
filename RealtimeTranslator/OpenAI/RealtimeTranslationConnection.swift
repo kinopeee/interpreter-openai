@@ -123,7 +123,13 @@ actor RealtimeTranslationConnection {
                 await tearDownTransport()
                 return
             }
-            try? await Task.sleep(nanoseconds: 50_000_000)
+            do {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            } catch is CancellationError {
+                // async let の片方が失敗してキャンセルされたとき、期限まで待たない。
+                await tearDownTransport()
+                throw CancellationError()
+            }
         }
         await tearDownTransport()
         throw RealtimeTranslationError.closeTimeout
