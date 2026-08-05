@@ -155,11 +155,106 @@ final class InterpretationSessionTests: XCTestCase {
         }
         await session.stop()
 
-        // Then: 完全ペアが最終スナップショットに残る
+        // Then: 停止直後は完全ペアがcurrentに残り、すぐには消えない
         let finalSnapshot = try XCTUnwrap(delegate.latestSnapshot)
         XCTAssertFalse(finalSnapshot.current.sourceText.isEmpty)
         XCTAssertFalse(finalSnapshot.current.translatedText.isEmpty)
         XCTAssertEqual(session.state, .idle)
+    }
+
+    func testPostStopSubtitleClearsAfterRetention() async throws {
+        // Given: 短い保持時間と、原文・訳文が揃ったlisteningセッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000,
+            postStopSubtitleRetentionNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "こんにちは", eventID: "s1", elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Hello", eventID: "t1", elapsedMs: 20)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText.contains("こんにちは") == true
+        }
+
+        // When: 録音を止め、保持時間を超えるまで待つ
+        await session.stop()
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertFalse(delegate.latestSnapshot?.current.isEmpty == true)
+        await waitUntil(timeout: 2) {
+            delegate.latestSnapshot?.current.isEmpty == true
+        }
+
+        // Then: 一定時間後に字幕ブロックが空になる
+        let cleared = try XCTUnwrap(delegate.latestSnapshot)
+        XCTAssertTrue(cleared.current.isEmpty)
+        XCTAssertNil(cleared.statusBanner)
+    }
+
+    func testRestartCancelsPendingPostStopSubtitleClear() async throws {
+        // Given: 停止直後に字幕が残っているセッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000,
+            postStopSubtitleRetentionNanoseconds: 120_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "残す文", eventID: "s1", elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Keep this", eventID: "t1", elapsedMs: 20)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText.contains("残す文") == true
+        }
+        await session.stop()
+        XCTAssertFalse(delegate.latestSnapshot?.current.isEmpty == true)
+
+        // When: 保持時間前に再録音し、新しい字幕を出す
+        await session.start()
+        await waitUntil { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "新しい文", eventID: "s2", elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "New sentence", eventID: "t2", elapsedMs: 20)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText.contains("新しい文") == true
+        }
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        // Then: 前回停止の遅延消去が新セッションの字幕を消さない
+        XCTAssertEqual(session.state, .listening)
+        XCTAssertTrue(delegate.latestSnapshot?.current.sourceText.contains("新しい文") == true)
+        await session.stop()
     }
 
     func testLanguageFlipFinalizesAndReroutes() async throws {

@@ -21,6 +21,8 @@ final class InterpretationSession {
     private static let transcriptionRenderInterval: TimeInterval = 0.16
     private static let maxReconnectAttempts = 5
     private static let initialReconnectDelayNanoseconds: UInt64 = 500_000_000
+    /// 録音停止後、最後の字幕ペアを読み取れるよう残す時間。
+    static let defaultPostStopSubtitleRetentionNanoseconds: UInt64 = 5_000_000_000
 
     weak var delegate: InterpretationSessionDelegate?
 
@@ -29,6 +31,7 @@ final class InterpretationSession {
     private let dualClient: any DualRealtimeTranslationClienting
     private let aggregator: SubtitleAggregator
     private let activeTickerIntervalNanoseconds: UInt64
+    private let postStopSubtitleRetentionNanoseconds: UInt64
     private let tuningProvider: @MainActor () -> RealtimeSessionTuning
 
     private(set) var state: TranslationState = .idle {
@@ -46,6 +49,7 @@ final class InterpretationSession {
     private var stopTask: Task<Void, Never>?
     private var sessionTask: Task<Void, Never>?
     private var renderTask: Task<Void, Never>?
+    private var postStopClearTask: Task<Void, Never>?
     private var pendingUpdate: RealtimeSubtitleUpdate?
     private var lastRenderedAt = Date.distantPast
     private var lifecycleGeneration = 0
@@ -60,6 +64,8 @@ final class InterpretationSession {
         dualClient: any DualRealtimeTranslationClienting = DualRealtimeTranslationClient(),
         aggregator: SubtitleAggregator = SubtitleAggregator(),
         activeTickerIntervalNanoseconds: UInt64 = 200_000_000,
+        postStopSubtitleRetentionNanoseconds: UInt64 = InterpretationSession
+            .defaultPostStopSubtitleRetentionNanoseconds,
         tuningProvider: @escaping @MainActor () -> RealtimeSessionTuning = { .default }
     ) {
         self.apiKeyStore = apiKeyStore
@@ -67,11 +73,13 @@ final class InterpretationSession {
         self.dualClient = dualClient
         self.aggregator = aggregator
         self.activeTickerIntervalNanoseconds = activeTickerIntervalNanoseconds
+        self.postStopSubtitleRetentionNanoseconds = postStopSubtitleRetentionNanoseconds
         self.tuningProvider = tuningProvider
     }
 
     func start() async {
         guard state == .idle || state == .error else { return }
+        cancelPostStopSubtitleClear()
         lifecycleGeneration += 1
         let generation = lifecycleGeneration
         reconnectAttempt = 0
@@ -295,6 +303,28 @@ final class InterpretationSession {
         state = .idle
         publishSubtitles()
         stopTicker()
+        schedulePostStopSubtitleClearIfNeeded()
+    }
+
+    private func schedulePostStopSubtitleClearIfNeeded() {
+        cancelPostStopSubtitleClear()
+        guard !aggregator.snapshot().current.isEmpty else { return }
+        let generation = lifecycleGeneration
+        let retention = postStopSubtitleRetentionNanoseconds
+        postStopClearTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: retention)
+            guard let self, !Task.isCancelled else { return }
+            guard self.lifecycleGeneration == generation else { return }
+            guard self.state == .idle else { return }
+            self.aggregator.reset()
+            self.publishSubtitles()
+            self.postStopClearTask = nil
+        }
+    }
+
+    private func cancelPostStopSubtitleClear() {
+        postStopClearTask?.cancel()
+        postStopClearTask = nil
     }
 
     private func tearDownStreaming(keepSubtitles: Bool = false) async {
