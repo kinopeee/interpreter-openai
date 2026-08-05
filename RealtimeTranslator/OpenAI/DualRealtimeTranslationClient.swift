@@ -235,6 +235,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     }
 
     private func pumpTranslationFrames() async {
+        var stoppedForTransportFailure = false
         while isRunning, !Task.isCancelled {
             guard !pendingTranslationFrames.isEmpty else { break }
             let (frame, target) = pendingTranslationFrames.removeFirst()
@@ -265,13 +266,17 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                             epoch: epoch
                         )
                     )
+                    // 再接続待ち中にdying socketへ送り続けない。
+                    stoppedForTransportFailure = true
+                    pendingTranslationFrames.removeAll(keepingCapacity: true)
                     break
                 }
             }
         }
         translationPumpTask = nil
         // ポンプ停止中に積まれたframeがあれば再開する。
-        if isRunning, !pendingTranslationFrames.isEmpty {
+        // transport failure後はInterpretationSession側の再接続に任せ、ここでは再開しない。
+        if !stoppedForTransportFailure, isRunning, !pendingTranslationFrames.isEmpty {
             translationPumpTask = Task {
                 await self.pumpTranslationFrames()
             }

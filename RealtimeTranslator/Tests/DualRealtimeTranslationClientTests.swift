@@ -466,6 +466,57 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         await dual.forceClose()
     }
 
+    func testTranslationAppendFailuresEmitSingleTransportErrorWithoutPumpRestart() async throws {
+        // Given: 翻訳laneだけ送信失敗するdual
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await dual.setSpokenLanguage(.japanese)
+
+        let stream = await dual.events
+        let collector = Task {
+            var transportErrors = 0
+            for await event in stream {
+                if case .error(_, let code) = event.event, code == "transport" {
+                    transportErrors += 1
+                    if transportErrors >= 2 {
+                        return transportErrors
+                    }
+                }
+            }
+            return transportErrors
+        }
+
+        // When: 翻訳appendが連続失敗するframeを複数積む
+        await englishTransport.setSendError(
+            RealtimeTranslationError.recoverableTransportFailure("translation send failed")
+        )
+        let frame = Data(repeating: 0x55, count: PCM16FramePacketizer.bytesPerFrame)
+        for _ in 0..<6 {
+            try await dual.appendAudioFrame(frame)
+        }
+
+        // Then: transport errorは1回だけ。ポンプ再起動による追加errorは出ない
+        try await Task.sleep(nanoseconds: 200_000_000)
+        collector.cancel()
+        let transportErrors = await collector.value
+        let englishAppends = try decodeAppendPayloads(await englishTransport.sent)
+        XCTAssertEqual(transportErrors, 1)
+        XCTAssertEqual(englishAppends.count, 0)
+        await dual.forceClose()
+    }
+
     func testOneSidedFailureForceClosesPair() async throws {
         // Given: readyなdual
         let sourceTransport = FakeRealtimeWebSocketTransport()
