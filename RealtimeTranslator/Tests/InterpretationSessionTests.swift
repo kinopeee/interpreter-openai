@@ -125,6 +125,39 @@ final class InterpretationSessionTests: XCTestCase {
         await session.stop()
     }
 
+    func testRuntimeTransportErrorCancelsAudioFeedAndReconnects() async {
+        // Given: listening中で、audio feedは次frame待ちのまま
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let startCountAtListening = dual.startCallCount
+        let forceCloseAtListening = dual.forceCloseCallCount
+
+        // When: ストリーミング中にtransport errorが届く
+        dual.emit(
+            target: .english,
+            event: .error(message: "socket closed", code: "transport")
+        )
+
+        // Then: feed側のframe待ちでraceが固まらず、再接続してlisteningへ戻る
+        await waitUntil(timeout: 3) {
+            dual.forceCloseCallCount > forceCloseAtListening
+        }
+        await waitUntil(timeout: 3) {
+            session.state == .listening && dual.startCallCount > startCountAtListening
+        }
+        XCTAssertGreaterThan(dual.startCallCount, startCountAtListening)
+        await session.stop()
+    }
+
     func testStopDrainsPendingSubtitleUpdate() async throws {
         // Given: 原文と訳文が揃ったlisteningセッション
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
