@@ -32,6 +32,32 @@ final class RealtimeSessionTuningTests: XCTestCase {
         XCTAssertEqual(keywords.last, "word64")
     }
 
+    func testParseKeywordsStripsForbiddenCharacters() {
+        // Given: OpenAIが拒否する < > を含む行
+        let text = "Acme<Corp>\n<>\nロードマップ"
+
+        // When: 正規化する
+        let keywords = RealtimeSessionTuning.parseKeywords(from: text)
+
+        // Then: 禁止文字は除去され、空になった行は捨てられる
+        XCTAssertEqual(keywords, ["AcmeCorp", "ロードマップ"])
+    }
+
+    func testSanitizedPromptCollapsesNewlinesAndTruncates() {
+        // Given: 改行と上限超えのprompt
+        let longTail = String(repeating: "a", count: 1_200)
+        let text = "Hello\nworld\r\n" + longTail
+
+        // When: sanitizeする
+        let prompt = RealtimeSessionTuning.sanitizedPrompt(text)
+
+        // Then: 改行は空白になり、1,000文字へ切り詰められる
+        XCTAssertTrue(prompt.hasPrefix("Hello world "))
+        XCTAssertFalse(prompt.contains("\n"))
+        XCTAssertFalse(prompt.contains("\r"))
+        XCTAssertEqual(prompt.count, RealtimeSessionTuning.promptCharacterLimit)
+    }
+
     @MainActor
     func testAppSettingsSessionTuningUsesStoredValues() {
         // Given: カスタム設定を持つAppSettings (終了時に既定値へ戻す)
@@ -51,9 +77,48 @@ final class RealtimeSessionTuningTests: XCTestCase {
         // When: sessionTuningを作る
         let tuning = settings.sessionTuning()
 
-        // Then: 設定値がそのまま渡る
+        // Then: sanitize済みの設定値が渡る
         XCTAssertEqual(tuning.transcriptionPrompt, "Product launch glossary")
         XCTAssertEqual(tuning.transcriptionKeywords, ["Acme", "ロードマップ"])
         XCTAssertEqual(tuning.noiseReduction, .nearField)
+    }
+
+    @MainActor
+    func testAppSettingsApplyPresetUpdatesPromptAndKeywords() {
+        // Given: 別内容の設定
+        let settings = AppSettings()
+        let previousPrompt = settings.transcriptionPrompt
+        let previousKeywords = settings.transcriptionKeywordsText
+        defer {
+            settings.transcriptionPrompt = previousPrompt
+            settings.transcriptionKeywordsText = previousKeywords
+        }
+        settings.transcriptionPrompt = "custom"
+        settings.transcriptionKeywordsText = "custom-word"
+
+        // When: ビジネス会議プリセットを適用する
+        settings.applyPreset(.businessMeeting)
+
+        // Then: promptとkeywordsがプリセット内容になる
+        XCTAssertEqual(settings.transcriptionPrompt, RealtimeSessionTuning.Preset.businessMeeting.prompt)
+        XCTAssertEqual(
+            settings.transcriptionKeywords,
+            RealtimeSessionTuning.Preset.businessMeeting.keywords
+        )
+    }
+
+    @MainActor
+    func testAppSettingsSessionTuningSanitizesForbiddenKeywordCharacters() {
+        // Given: 禁止文字を含むキーワード
+        let settings = AppSettings()
+        let previousKeywords = settings.transcriptionKeywordsText
+        defer { settings.transcriptionKeywordsText = previousKeywords }
+        settings.transcriptionKeywordsText = "Foo<Bar>\n<>"
+
+        // When: sessionTuningを作る
+        let tuning = settings.sessionTuning()
+
+        // Then: 送信値からは禁止文字が消える
+        XCTAssertEqual(tuning.transcriptionKeywords, ["FooBar"])
     }
 }

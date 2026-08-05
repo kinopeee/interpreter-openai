@@ -4,11 +4,27 @@ struct SettingsView: View {
     @Bindable var settings: AppSettings
     let apiKeyStore: any APIKeyStore
     var onSave: (() -> Void)?
+    var onTuningChanged: (() -> Void)?
 
     @State private var apiKeyDraft = ""
     @State private var hasStoredKey = false
     @State private var statusMessage: String?
     @State private var statusIsError = false
+    @State private var tuningDebounceTask: Task<Void, Never>?
+
+    private var keywordCount: Int {
+        RealtimeSessionTuning.parseKeywords(from: settings.transcriptionKeywordsText).count
+    }
+
+    private var promptCharacterCount: Int {
+        RealtimeSessionTuning.sanitizedPrompt(settings.transcriptionPrompt).count
+    }
+
+    private var keywordsContainForbiddenCharacters: Bool {
+        settings.transcriptionKeywordsText.unicodeScalars.contains {
+            RealtimeSessionTuning.forbiddenKeywordCharacters.contains($0)
+        }
+    }
 
     var body: some View {
         Form {
@@ -93,8 +109,32 @@ struct SettingsView: View {
                     )
                 }
 
+                HStack {
+                    Menu("プリセットを適用") {
+                        ForEach(RealtimeSessionTuning.Preset.all) { preset in
+                            Button(preset.displayName) {
+                                settings.applyPreset(preset)
+                            }
+                        }
+                    }
+                    Button("デフォルトに戻す") {
+                        settings.restoreDefaultTranscriptionHints()
+                    }
+                }
+
                 TextField("認識プロンプト", text: $settings.transcriptionPrompt)
                     .textFieldStyle(.roundedBorder)
+                Text(
+                    "\(promptCharacterCount)/\(RealtimeSessionTuning.promptCharacterLimit) 文字"
+                        + (
+                            settings.transcriptionPrompt.count
+                                > RealtimeSessionTuning.promptCharacterLimit
+                                ? "（超過分は切り詰められます）"
+                                : ""
+                        )
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
                 Text("キーワード (1行1語)")
                     .font(.caption)
@@ -103,8 +143,29 @@ struct SettingsView: View {
                     .font(.body)
                     .frame(minHeight: 88, maxHeight: 120)
                     .border(Color.secondary.opacity(0.3))
+                Text(
+                    "\(keywordCount)/\(RealtimeSessionTuning.keywordLimit) 語"
+                        + (
+                            settings.transcriptionKeywordsText
+                                .split(whereSeparator: \.isNewline)
+                                .filter {
+                                    !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                }
+                                .count > RealtimeSessionTuning.keywordLimit
+                                ? "（超過分は送信されません）"
+                                : ""
+                        )
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
-                Text("変更は次回の録音開始から反映されます。")
+                if keywordsContainForbiddenCharacters {
+                    Text("「<」「>」は送信時に自動除去されます。")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+
+                Text("プロンプトとキーワードの変更は録音中でも数秒で反映されます。ノイズ低減は次回の録音開始から反映されます。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -121,12 +182,29 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 560, height: 640)
+        .frame(width: 560, height: 720)
         .onAppear {
             refreshStoredKeyState()
         }
         .onDisappear {
+            tuningDebounceTask?.cancel()
+            tuningDebounceTask = nil
             onSave?()
+        }
+        .onChange(of: settings.transcriptionPrompt) { _, _ in
+            scheduleTuningChangeNotification()
+        }
+        .onChange(of: settings.transcriptionKeywordsText) { _, _ in
+            scheduleTuningChangeNotification()
+        }
+    }
+
+    private func scheduleTuningChangeNotification() {
+        tuningDebounceTask?.cancel()
+        tuningDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            guard !Task.isCancelled else { return }
+            onTuningChanged?()
         }
     }
 

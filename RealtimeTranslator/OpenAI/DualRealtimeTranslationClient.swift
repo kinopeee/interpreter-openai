@@ -5,6 +5,7 @@ protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
     func start(apiKey: String, tuning: RealtimeSessionTuning) async throws
     func appendAudioFrame(_ pcm16LE: Data) async throws
     func setSpokenLanguage(_ language: SpokenLanguage) async throws
+    func updateTranscriptionTuning(_ tuning: RealtimeSessionTuning) async throws
     func resetAudioRouting() async
     func closeGracefully() async throws
     func forceClose() async
@@ -155,6 +156,13 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         for frame in preroll {
             enqueueTranslationFrame(frame, target: target)
         }
+    }
+
+    func updateTranscriptionTuning(_ tuning: RealtimeSessionTuning) async throws {
+        guard isRunning else {
+            throw RealtimeTranslationError.notConnected
+        }
+        try await sourceConnection.updateTuning(tuning)
     }
 
     func resetAudioRouting() {

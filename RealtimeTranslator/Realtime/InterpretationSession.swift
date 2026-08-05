@@ -102,6 +102,19 @@ final class InterpretationSession {
         stopTask = nil
     }
 
+    /// 録音中に設定画面から変更されたprompt/keywordsを原文セッションへ反映する。
+    func applyTuningChange() async {
+        guard state == .listening else { return }
+        let tuning = tuningProvider()
+        do {
+            try await dualClient.updateTranscriptionTuning(tuning)
+        } catch {
+            AppLogger.session.error(
+                "Failed to update transcription tuning: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
     private func runSessionLoop(generation: Int) async {
         while generation == lifecycleGeneration {
             do {

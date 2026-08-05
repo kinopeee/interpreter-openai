@@ -369,6 +369,47 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         await dual.forceClose()
     }
 
+    func testUpdateTranscriptionTuningSendsSecondSessionUpdate() async throws {
+        // Given: readyなdual
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        let sentBefore = await sourceTransport.sent.count
+
+        // When: 録音中に新しいprompt/keywordsでupdateする
+        let updated = RealtimeSessionTuning(
+            noiseReduction: .farField,
+            transcriptionPrompt: "Live glossary update",
+            transcriptionKeywords: ["Acme", "ロードマップ"]
+        )
+        try await dual.updateTranscriptionTuning(updated)
+        try await waitUntilSent(sourceTransport, minimum: sentBefore + 1)
+
+        // Then: 2通目のsession.updateに新値が載る
+        let updates = try await sessionUpdates(from: sourceTransport)
+        XCTAssertGreaterThanOrEqual(updates.count, 2)
+        let second = try XCTUnwrap(updates.last)
+        let transcription = try XCTUnwrap(
+            ((second["session"] as? [String: Any])?["audio"] as? [String: Any])?["input"]
+                as? [String: Any]
+        )["transcription"] as? [String: Any]
+        let body = try XCTUnwrap(transcription)
+        XCTAssertEqual(body["prompt"] as? String, "Live glossary update")
+        XCTAssertEqual(body["keywords"] as? [String], ["Acme", "ロードマップ"])
+        await dual.forceClose()
+    }
+
     func testOneSidedFailureForceClosesPair() async throws {
         // Given: readyなdual
         let sourceTransport = FakeRealtimeWebSocketTransport()
@@ -478,17 +519,22 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
     private func firstSessionUpdate(
         _ transport: FakeRealtimeWebSocketTransport
     ) async throws -> [String: Any] {
+        let updates = try await sessionUpdates(from: transport)
+        let first = try XCTUnwrap(updates.first)
+        return first
+    }
+
+    private func sessionUpdates(
+        from transport: FakeRealtimeWebSocketTransport
+    ) async throws -> [[String: Any]] {
         let sent = await transport.sent
-        for data in sent {
+        return try sent.compactMap { data in
             let object = try XCTUnwrap(
                 JSONSerialization.jsonObject(with: data) as? [String: Any]
             )
-            if object["type"] as? String == "session.update" {
-                return object
-            }
+            guard object["type"] as? String == "session.update" else { return nil }
+            return object
         }
-        XCTFail("session.update not found")
-        return [:]
     }
 
     private func waitUntilSent(

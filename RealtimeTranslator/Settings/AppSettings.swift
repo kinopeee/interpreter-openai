@@ -140,10 +140,19 @@ final class AppSettings {
     }
 
     func sessionTuning() -> RealtimeSessionTuning {
-        RealtimeSessionTuning(
+        RealtimeSessionTuning.make(
             noiseReduction: noiseReduction,
-            transcriptionPrompt: transcriptionPrompt,
-            transcriptionKeywords: transcriptionKeywords
+            prompt: transcriptionPrompt,
+            keywordsText: transcriptionKeywordsText
         )
+    }
+
+    func applyPreset(_ preset: RealtimeSessionTuning.Preset) {
+        transcriptionPrompt = preset.prompt
+        transcriptionKeywordsText = RealtimeSessionTuning.keywordsText(from: preset.keywords)
+    }
+
+    func restoreDefaultTranscriptionHints() {
+        applyPreset(.softwareDevelopment)
     }
 }

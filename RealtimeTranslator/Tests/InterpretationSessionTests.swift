@@ -211,6 +211,56 @@ final class InterpretationSessionTests: XCTestCase {
         }
         await session.stop()
     }
+
+    func testApplyTuningChangeForwardsWhileListening() async throws {
+        // Given: listening中のセッションとカスタムtuningProvider
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        var currentTuning = RealtimeSessionTuning.default
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000,
+            tuningProvider: { currentTuning }
+        )
+        await session.start()
+        await waitUntil { session.state == .listening }
+        XCTAssertEqual(dual.updateTranscriptionTuningCallCount, 0)
+
+        // When: tuningを変えてapplyTuningChangeする
+        currentTuning = RealtimeSessionTuning(
+            noiseReduction: .nearField,
+            transcriptionPrompt: "Updated glossary",
+            transcriptionKeywords: ["Acme"]
+        )
+        await session.applyTuningChange()
+
+        // Then: dualへ最新tuningが転送される
+        XCTAssertEqual(dual.updateTranscriptionTuningCallCount, 1)
+        XCTAssertEqual(dual.lastTuning?.transcriptionPrompt, "Updated glossary")
+        XCTAssertEqual(dual.lastTuning?.transcriptionKeywords, ["Acme"])
+        await session.stop()
+    }
+
+    func testApplyTuningChangeIsNoOpWhenIdle() async throws {
+        // Given: idleのセッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual
+        )
+
+        // When: idleでapplyTuningChangeする
+        await session.applyTuningChange()
+
+        // Then: 転送されない
+        XCTAssertEqual(dual.updateTranscriptionTuningCallCount, 0)
+    }
 }
 
 // MARK: - Fakes
@@ -275,6 +325,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     private(set) var forceCloseCallCount = 0
     private(set) var spokenLanguages: [SpokenLanguage] = []
     private(set) var resetAudioRoutingCallCount = 0
+    private(set) var updateTranscriptionTuningCallCount = 0
     private(set) var lastTuning: RealtimeSessionTuning?
     var startGate: CheckedContinuationBox?
     var startFailuresRemaining = 0
@@ -325,6 +376,11 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
 
     func setSpokenLanguage(_ language: SpokenLanguage) async throws {
         spokenLanguages.append(language)
+    }
+
+    func updateTranscriptionTuning(_ tuning: RealtimeSessionTuning) async throws {
+        updateTranscriptionTuningCallCount += 1
+        lastTuning = tuning
     }
 
     func resetAudioRouting() async {

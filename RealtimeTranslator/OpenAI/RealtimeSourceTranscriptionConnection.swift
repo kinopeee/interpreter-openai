@@ -53,31 +53,7 @@ actor RealtimeSourceTranscriptionConnection {
                 throw classifyError(created)
             }
 
-            try await sendJSON([
-                "type": "session.update",
-                "session": [
-                    "type": "transcription",
-                    "audio": [
-                        "input": [
-                            "format": [
-                                "type": "audio/pcm",
-                                "rate": 24_000,
-                            ],
-                            "transcription": [
-                                "model": "gpt-live-transcribe",
-                                "languages": ["ja", "en"],
-                                "delay": "low",
-                                "prompt": tuning.transcriptionPrompt,
-                                "keywords": tuning.transcriptionKeywords,
-                            ],
-                            "noise_reduction": [
-                                "type": tuning.noiseReduction.rawValue,
-                            ],
-                            "turn_detection": NSNull(),
-                        ],
-                    ],
-                ],
-            ])
+            try await sendJSON(makeSessionUpdatePayload(tuning: tuning))
 
             let updated = try await receiveJSON(timeoutNanoseconds: handshakeTimeoutNanoseconds)
             guard updated["type"] as? String == "session.updated" else {
@@ -92,6 +68,14 @@ actor RealtimeSourceTranscriptionConnection {
             await forceClose()
             throw error
         }
+    }
+
+    /// 録音中にprompt/keywordsを更新する。noise_reductionも同payloadで送るが接続時値を維持する。
+    func updateTuning(_ tuning: RealtimeSessionTuning) async throws {
+        guard isReady else {
+            throw RealtimeTranslationError.notConnected
+        }
+        try await sendJSON(makeSessionUpdatePayload(tuning: tuning))
     }
 
     func appendAudioFrame(_ pcm16LE: Data) async throws {
@@ -196,6 +180,34 @@ actor RealtimeSourceTranscriptionConnection {
                 }
             }
         }
+    }
+
+    private func makeSessionUpdatePayload(tuning: RealtimeSessionTuning) -> [String: Any] {
+        [
+            "type": "session.update",
+            "session": [
+                "type": "transcription",
+                "audio": [
+                    "input": [
+                        "format": [
+                            "type": "audio/pcm",
+                            "rate": 24_000,
+                        ],
+                        "transcription": [
+                            "model": "gpt-live-transcribe",
+                            "languages": ["ja", "en"],
+                            "delay": "low",
+                            "prompt": tuning.transcriptionPrompt,
+                            "keywords": tuning.transcriptionKeywords,
+                        ],
+                        "noise_reduction": [
+                            "type": tuning.noiseReduction.rawValue,
+                        ],
+                        "turn_detection": NSNull(),
+                    ],
+                ],
+            ],
+        ]
     }
 
     private func sendJSON(_ object: [String: Any]) async throws {

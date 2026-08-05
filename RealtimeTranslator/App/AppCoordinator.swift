@@ -110,15 +110,20 @@ final class AppCoordinator: NSObject {
 
         let view = SettingsView(
             settings: settings,
-            apiKeyStore: apiKeyStore
-        ) { [weak self] in
-            self?.menuBarController.refresh()
-        }
+            apiKeyStore: apiKeyStore,
+            onSave: { [weak self] in
+                self?.menuBarController.refresh()
+            },
+            onTuningChanged: { [weak self] in
+                guard let self else { return }
+                Task { await self.interpretationSession.applyTuningChange() }
+            }
+        )
         let hosting = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: hosting)
         window.title = "Realtime Translator 設定"
         window.styleMask = [.titled, .closable]
-        window.setContentSize(NSSize(width: 560, height: 640))
+        window.setContentSize(NSSize(width: 560, height: 720))
         window.center()
         window.isReleasedWhenClosed = false
         settingsWindow = window
