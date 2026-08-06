@@ -140,6 +140,16 @@ powershell -ExecutionPolicy Bypass -File scripts/publish-windows.ps1
 
 `windows` ワークフローは同じ手順を `windows-latest` で実行し、`RealtimeTranslator-win-x64` artifactを添付します。
 
+### ダウンロード（リリース）
+
+ビルド済みの配布物は [Releases](https://github.com/kinopeee/interpreter-openai/releases) から取得できます。`RealtimeTranslator-<tag>-win-x64.zip` を展開し、`RealtimeTranslator.App.exe` を実行してください（自己完結ビルドなので .NET のインストールは不要）。同梱の `.sha256` でSHA-256を検証できます。
+
+リリースは `windows-v*` のタグを push すると `release` ワークフローがテスト→publish→zip化→Release作成まで行います。
+
+```powershell
+git tag windows-v0.1.0; git push origin windows-v0.1.0
+```
+
 ### 使い方
 
 1. `RealtimeTranslator.App.exe` を起動します。ウィンドウはタスクバーに出ず、通知領域アイコンと字幕オーバーレイだけが表示されます。多重起動はできません。

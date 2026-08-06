@@ -1,0 +1,71 @@
+name: release
+
+on:
+  push:
+    tags: ['windows-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'リリースするタグ名 (例: windows-v0.1.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: publish and release (win-x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: windows/global.json
+
+      - name: Resolve release tag
+        id: release
+        shell: pwsh
+        run: |
+          $tag = if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $env:GITHUB_REF -replace '^refs/tags/', ''
+          } else {
+            '${{ inputs.tag }}'
+          }
+          if ([string]::IsNullOrWhiteSpace($tag)) { throw 'release tag is empty' }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Test
+        shell: pwsh
+        run: dotnet test windows/RealtimeTranslator.slnx --configuration Release
+
+      - name: Restore for publish
+        shell: pwsh
+        run: dotnet restore windows/RealtimeTranslator.slnx --runtime win-x64
+
+      - name: Publish self-contained app
+        shell: pwsh
+        run: ./scripts/publish-windows.ps1 -Runtime win-x64 -NoRestore
+
+      - name: Package
+        id: package
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          $zip = "artifacts/RealtimeTranslator-$env:RELEASE_TAG-win-x64.zip"
+          Compress-Archive -Path 'artifacts/RealtimeTranslator-win-x64/*' -DestinationPath $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $([System.IO.Path]::GetFileName($zip))" | Out-File "$zip.sha256" -Encoding ascii
+          "zip=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Create release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          ZIP_PATH: ${{ steps.package.outputs.zip }}
+        run: |
+          gh release create $env:RELEASE_TAG "$env:ZIP_PATH" "$env:ZIP_PATH.sha256" --title "Realtime Translator for Windows $env:RELEASE_TAG" --notes-file .github/release-notes-windows.md
