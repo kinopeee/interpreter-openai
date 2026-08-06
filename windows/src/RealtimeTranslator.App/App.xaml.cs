@@ -22,6 +22,10 @@ public partial class App : Application, IDisposable
     private readonly SubtitleOverlayViewModel _overlayViewModel = new();
     private readonly AppSettingsStore _settingsStore = new();
     private readonly DispatcherTimer _subtitleClear = new() { Interval = SubtitleClearDelay };
+    private readonly DispatcherTimer _settingsSaveDebounce = new()
+    {
+        Interval = SettingsWindow.TuningDebounceInterval,
+    };
 
     private SingleInstanceLease? _lease;
     private CredentialManagerApiKeyStore? _apiKeyStore;
@@ -35,6 +39,7 @@ public partial class App : Application, IDisposable
     private HwndSource? _overlaySource;
 
     private AppSettingsData _settings = AppSettingsData.Default;
+    private AppSettingsData? _pendingSettingsSave;
     private TranslationState _state = TranslationState.Idle;
     private bool _isEditingPosition;
     private bool _shuttingDown;
@@ -85,6 +90,7 @@ public partial class App : Application, IDisposable
         _overlay.ApplyPlacement(_settings.HasCustomOverlayOrigin, _settings.OverlayOriginX, _settings.OverlayOriginY);
 
         _subtitleClear.Tick += OnSubtitleClearElapsed;
+        _settingsSaveDebounce.Tick += OnSettingsSaveDebounceElapsed;
 
         RegisterHotkey();
         AppLogger.Info(LogCategory.General, "app started");
@@ -92,6 +98,7 @@ public partial class App : Application, IDisposable
 
     protected override void OnExit(ExitEventArgs e)
     {
+        FlushSettingsSave();
         DisposeResources();
         base.OnExit(e);
     }
@@ -223,7 +230,12 @@ public partial class App : Application, IDisposable
                 _ = RunGuarded(_session.ApplyTuningChangeAsync);
             }
         };
-        window.Closed += (_, _) => _settingsWindow = null;
+        window.Closed += (_, _) =>
+        {
+            // 入力直後に閉じても debounce 待ちの保存を取りこぼさない。
+            FlushSettingsSave();
+            _settingsWindow = null;
+        };
         _settingsWindow = window;
         window.Show();
         window.Activate();
@@ -231,8 +243,25 @@ public partial class App : Application, IDisposable
 
     private void UpdateSettings(AppSettingsData settings)
     {
+        // メモリ上の設定とフォントは即時反映し、ディスク書き込みだけ debounce する。
         _settings = settings;
         _overlayViewModel.FontSize = settings.FontSize;
+        _pendingSettingsSave = settings;
+        _settingsSaveDebounce.Stop();
+        _settingsSaveDebounce.Start();
+    }
+
+    private void OnSettingsSaveDebounceElapsed(object? sender, EventArgs e) => FlushSettingsSave();
+
+    private void FlushSettingsSave()
+    {
+        _settingsSaveDebounce.Stop();
+        if (_pendingSettingsSave is not { } settings)
+        {
+            return;
+        }
+
+        _pendingSettingsSave = null;
         _settingsStore.Save(settings);
     }
 
@@ -272,7 +301,8 @@ public partial class App : Application, IDisposable
         Dispatcher.InvokeAsync(() =>
         {
             // 本文 (原文・訳文) は通知に載せないので、セッション側の要約メッセージだけを出す。
-            if (_state == TranslationState.Error)
+            // ShowMessage は空文字を拒否するため、Dispatcher 内例外で落とさないよう先に弾く。
+            if (_state == TranslationState.Error && !string.IsNullOrWhiteSpace(message))
             {
                 _tray?.ShowMessage(message);
             }
@@ -323,8 +353,11 @@ public partial class App : Application, IDisposable
 
     private void DisposeResources()
     {
+        FlushSettingsSave();
         _subtitleClear.Stop();
         _subtitleClear.Tick -= OnSubtitleClearElapsed;
+        _settingsSaveDebounce.Stop();
+        _settingsSaveDebounce.Tick -= OnSettingsSaveDebounceElapsed;
         _hotkey?.Unregister();
         if (_overlaySource is not null)
         {

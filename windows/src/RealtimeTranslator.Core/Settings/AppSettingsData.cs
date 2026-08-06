@@ -57,10 +57,11 @@ public static class AppSettingsCodec
         using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
         {
             writer.WriteStartObject();
-            writer.WriteNumber("fontSize", settings.FontSize);
+            // Utf8JsonWriter は NaN/Infinity を拒否するため、書き出し前に正規化する。
+            writer.WriteNumber("fontSize", ClampFontSize(settings.FontSize));
             writer.WriteBoolean("hasCustomOverlayOrigin", settings.HasCustomOverlayOrigin);
-            writer.WriteNumber("overlayOriginX", settings.OverlayOriginX);
-            writer.WriteNumber("overlayOriginY", settings.OverlayOriginY);
+            writer.WriteNumber("overlayOriginX", FiniteOrZero(settings.OverlayOriginX));
+            writer.WriteNumber("overlayOriginY", FiniteOrZero(settings.OverlayOriginY));
             writer.WriteNumber("acceptedConsentVersion", settings.AcceptedConsentVersion);
             writer.WriteString("transcriptionPrompt", settings.TranscriptionPrompt);
             writer.WriteString("transcriptionKeywordsText", settings.TranscriptionKeywordsText);
@@ -108,6 +109,8 @@ public static class AppSettingsCodec
         double.IsFinite(value)
             ? Math.Clamp(value, AppSettingsData.MinimumFontSize, AppSettingsData.MaximumFontSize)
             : AppSettingsData.DefaultFontSize;
+
+    private static double FiniteOrZero(double value) => double.IsFinite(value) ? value : 0;
 
     private static double? Number(JsonObject dictionary, string name) =>
         dictionary[name] is JsonValue value && value.TryGetValue<double>(out var number) ? number : null;

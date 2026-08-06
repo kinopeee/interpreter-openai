@@ -5,6 +5,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using RealtimeTranslator.App.Interop;
 using RealtimeTranslator.Core.Subtitles;
+using FormsScreen = System.Windows.Forms.Screen;
 
 namespace RealtimeTranslator.App;
 
@@ -28,7 +29,7 @@ public partial class SubtitleOverlayWindow : Window
     public bool IsEditingPosition { get; private set; }
 
     /// <summary>WM_HOTKEY を拾うためのハンドル。オーバーレイは常駐なので hotkey の受け皿を兼ねる。</summary>
-    public IntPtr Handle => new WindowInteropHelper(this).Handle;
+    public IntPtr Handle => new WindowInteropHelper(this).EnsureHandle();
 
     public void SetEditingPosition(bool isEditing)
     {
@@ -89,8 +90,27 @@ public partial class SubtitleOverlayWindow : Window
         ClampIntoWorkArea();
     }
 
-    private static OverlayRect CurrentWorkArea()
+    /// <summary>
+    /// オーバーレイが載っているモニターの作業領域を DIP で返す。
+    /// プライマリ固定の <see cref="SystemParameters.WorkArea"/> だと副モニター配置が毎回吸い寄せられる。
+    /// </summary>
+    private OverlayRect CurrentWorkArea()
     {
+        var handle = Handle;
+        var workingArea = FormsScreen.FromHandle(handle).WorkingArea;
+        if (PresentationSource.FromVisual(this)?.CompositionTarget is { } target)
+        {
+            var topLeft = target.TransformFromDevice.Transform(new Point(workingArea.Left, workingArea.Top));
+            var bottomRight = target.TransformFromDevice.Transform(new Point(workingArea.Right, workingArea.Bottom));
+            var width = bottomRight.X - topLeft.X;
+            var height = bottomRight.Y - topLeft.Y;
+            if (width > 0 && height > 0)
+            {
+                return new OverlayRect(topLeft.X, topLeft.Y, width, height);
+            }
+        }
+
+        // Source 未初期化時のフォールバック (起動直後など)。
         var workArea = SystemParameters.WorkArea;
         return workArea.Width <= 0 || workArea.Height <= 0
             ? new OverlayRect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight)

@@ -70,6 +70,26 @@ public sealed class AppSettingsCodecTests
         Assert.Equal(AppSettingsData.MinimumFontSize, AppSettingsCodec.Decode("{\"fontSize\":1}").FontSize);
     }
 
+    // Given: NaN / Infinity を含む設定レコード
+    // When: JSON へ書き出す
+    // Then: Utf8JsonWriter 例外にならず有限値へ正規化される
+    [Fact]
+    public void EncodeNormalizesNonFiniteNumbers()
+    {
+        var settings = AppSettingsData.Default with
+        {
+            FontSize = double.NaN,
+            OverlayOriginX = double.PositiveInfinity,
+            OverlayOriginY = double.NegativeInfinity,
+        };
+
+        var restored = AppSettingsCodec.Decode(AppSettingsCodec.Encode(settings));
+
+        Assert.Equal(AppSettingsData.DefaultFontSize, restored.FontSize);
+        Assert.Equal(0, restored.OverlayOriginX);
+        Assert.Equal(0, restored.OverlayOriginY);
+    }
+
     // Given: 同意バージョンが古い設定
     // When: 現在の同意状態を見る
     // Then: 未同意として扱う

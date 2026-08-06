@@ -8,7 +8,6 @@
     <!-- tray アイコンは WinForms の NotifyIcon を使う (WPF に等価物が無い)。 -->
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <!-- WPF の XmlLanguage は具体カルチャを解決するため invariant globalization では起動できない。 -->
     <InvariantGlobalization>false</InvariantGlobalization>
