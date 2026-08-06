@@ -42,7 +42,7 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
     private MMDevice? _ownedDevice;
     private CancellationTokenSource? _pumpCts;
     private Task? _pumpTask;
-    private int _stopping = 1;
+    private bool _stopRequested = true;
 
     public WasapiAudioCaptureService(Func<MMDevice>? deviceFactory = null)
     {
@@ -93,36 +93,13 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         var pipeline = new CapturedAudioFramePipeline(capture.WaveFormat);
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
-        var writer = frames.Writer;
 
-        void OnDataAvailable(object? sender, WaveInEventArgs args) =>
-            pipeline.Push(args.Buffer, args.BytesRecorded);
-
-        void OnRecordingStopped(object? sender, StoppedEventArgs args)
-        {
-            // 意図停止以外（デバイス抜去など）は frame stream を閉じてセッション側へ再接続を促す。
-            if (Volatile.Read(ref _stopping) != 0)
-            {
-                return;
-            }
-
-            writer.TryComplete();
-            try
-            {
-                cts.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-                // Stop と交差した場合は無視する。
-            }
-        }
-
-        capture.DataAvailable += OnDataAvailable;
-        capture.RecordingStopped += OnRecordingStopped;
+        capture.DataAvailable += (_, args) => pipeline.Push(args.Buffer, args.BytesRecorded);
+        capture.RecordingStopped += (_, _) => OnRecordingStopped(capture);
 
         lock (_sync)
         {
-            Volatile.Write(ref _stopping, 0);
+            _stopRequested = false;
             _ownedDevice = ownedDevice;
             _capture = capture;
             _pumpCts = cts;
@@ -140,18 +117,23 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         }
 
         // StartRecording 成功後に pump を登録し、StopAsync と交差しても await 対象を失わない。
-        var pumpTask = Task.Run(() => PumpAsync(pipeline, writer, cts.Token), CancellationToken.None);
+        var pumpTask = Task.Run(() => PumpAsync(pipeline, frames.Writer, cts.Token), CancellationToken.None);
+        bool shouldAwaitOrphan;
         lock (_sync)
         {
             if (ReferenceEquals(_capture, capture) && ReferenceEquals(_pumpCts, cts))
             {
                 _pumpTask = pumpTask;
+                shouldAwaitOrphan = false;
+            }
+            else
+            {
+                shouldAwaitOrphan = true;
             }
         }
 
-        if (Volatile.Read(ref _stopping) != 0)
+        if (shouldAwaitOrphan)
         {
-            // Start 直後に Stop された場合は、登録できなかった pump も回収する。
             try
             {
                 await pumpTask.ConfigureAwait(false);
@@ -168,7 +150,6 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         Task? pump;
         lock (_sync)
         {
-            Volatile.Write(ref _stopping, 1);
             pump = _pumpTask;
             _pumpTask = null;
         }
@@ -223,6 +204,29 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         }
     }
 
+    /// <summary>
+    /// デバイス取り外しや障害で録音が止まった場合、pump を終わらせて frame stream を閉じる。
+    /// 無音を流し続けるとセッション側が異常に気付けないため、再接続経路へ倒す。
+    /// </summary>
+    private void OnRecordingStopped(WasapiCapture capture)
+    {
+        CancellationTokenSource? cts;
+        lock (_sync)
+        {
+            if (_stopRequested || !ReferenceEquals(_capture, capture))
+            {
+                return;
+            }
+
+            // capture 自体は StopAsync/Dispose 側で解放する。ここでは pump だけ畳む。
+            cts = _pumpCts;
+            _pumpCts = null;
+        }
+
+        cts?.Cancel();
+        cts?.Dispose();
+    }
+
     private void StopCore()
     {
         WasapiCapture? capture;
@@ -230,7 +234,7 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         CancellationTokenSource? cts;
         lock (_sync)
         {
-            Volatile.Write(ref _stopping, 1);
+            _stopRequested = true;
             capture = _capture;
             _capture = null;
             ownedDevice = _ownedDevice;
