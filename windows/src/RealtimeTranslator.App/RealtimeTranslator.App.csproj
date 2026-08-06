@@ -8,6 +8,8 @@
     <!-- tray アイコンは WinForms の NotifyIcon を使う (WPF に等価物が無い)。 -->
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- UseWindowsForms=true のため DPI はマニフェスト不可 (WFO0003)。プロジェクトプロパティで宣言する。 -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <!-- WPF の XmlLanguage は具体カルチャを解決するため invariant globalization では起動できない。 -->
     <InvariantGlobalization>false</InvariantGlobalization>
