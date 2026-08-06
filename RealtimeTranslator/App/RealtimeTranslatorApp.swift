@@ -75,6 +75,7 @@ enum AppRuntime {
         }
 
         AppStatusFile.write("boot")
+        AppMainMenu.install()
         installKeepAliveWindow()
         let coordinator = AppCoordinator()
         self.coordinator = coordinator
