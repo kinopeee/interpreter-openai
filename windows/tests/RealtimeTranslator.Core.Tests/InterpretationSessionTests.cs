@@ -148,6 +148,23 @@ public sealed class InterpretationSessionTests
         Assert.Equal(1, client.StartCount);
     }
 
+    // Given: 翻訳とは無関係な想定外の失敗 (音声デバイス障害など)
+    // When: セッション中にその例外が投げられる
+    // Then: session task を落とさず再接続して録音を継続する
+    [Fact]
+    public async Task UnexpectedFailureIsTreatedAsRecoverable()
+    {
+        var client = new FakeDualClient { ThrowOnNextStart = true };
+        using var session = NewSession(client);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        Assert.True(client.StartCount >= 2);
+        await session.StopAsync();
+        Assert.Equal(TranslationState.Idle, session.State);
+    }
+
     private static InterpretationSession NewSession(FakeDualClient client, string? apiKey = "sk-test") =>
         new(
             new FakeApiKeyStore(apiKey),
@@ -222,6 +239,8 @@ public sealed class InterpretationSessionTests
 
         public int StartCount { get; private set; }
 
+        public bool ThrowOnNextStart { get; set; }
+
         public IReadOnlyList<SpokenLanguage> SpokenLanguages
         {
             get
@@ -241,6 +260,12 @@ public sealed class InterpretationSessionTests
             lock (_sync)
             {
                 StartCount += 1;
+                if (ThrowOnNextStart)
+                {
+                    ThrowOnNextStart = false;
+                    throw new InvalidOperationException("unexpected device failure");
+                }
+
                 _epoch += 1;
                 _spokenLanguages.Clear();
                 _events = Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();

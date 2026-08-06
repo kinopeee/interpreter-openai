@@ -253,13 +253,21 @@ public sealed class InterpretationSession : IDisposable
             }
             catch (RealtimeTranslationException error) when (!error.IsRecoverable)
             {
+                if (!IsCurrentGeneration(generation))
+                {
+                    // stop 中の teardown が起こした失敗を、ユーザー向けエラーに昇格させない。
+                    return;
+                }
+
                 await TearDownStreamingAsync().ConfigureAwait(false);
                 EnterError(error.Message);
                 return;
             }
-            catch (RealtimeTranslationException)
+#pragma warning disable CA1031 // 想定外の失敗でも session task を落とさず再接続へ倒す。
+            catch (Exception)
+#pragma warning restore CA1031
             {
-                // recoverable transport failure。下の再接続へ進む。
+                // recoverable transport failure / 音声デバイス失敗。下の再接続へ進む。
             }
 
             if (!IsCurrentGeneration(generation) || cancellationToken.IsCancellationRequested)
