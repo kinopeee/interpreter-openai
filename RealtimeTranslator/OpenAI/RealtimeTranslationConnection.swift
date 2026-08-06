@@ -112,6 +112,12 @@ actor RealtimeTranslationConnection {
 
     func closeGracefully() async throws {
         guard !isClosing else { return }
+        // handshake未完了では receive loop が無いため session.closed を待てない。
+        // 原文接続と同様に即 force-close し、停止が closeTimeout まで固まらないようにする。
+        guard isReady else {
+            await forceClose()
+            return
+        }
         isClosing = true
         isReady = false
 
