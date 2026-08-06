@@ -61,12 +61,6 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
             // CredRead 失敗はすべて「キーなし」相当。以前は ErrorNotFound 以外で
             // Win32Exception を投げており、Settings 構築・録音開始ゲートが落ちていた。
             // 文書化済み失敗は ErrorNotFound / ErrorNoSuchLogonSession。それ以外も throw しない。
-            _ = Marshal.GetLastWin32Error() switch
-            {
-                ErrorNotFound => true,
-                ErrorNoSuchLogonSession => true,
-                _ => false,
-            };
             return null;
         }
 
