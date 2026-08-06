@@ -14,6 +14,14 @@ Windows版の手順は [Windows版](#windows版) を参照してください。�
 - インターネット接続（録音中は必須）
 - OpenAI APIキー（BYOK）と利用可能な課金設定
 
+## ダウンロード（リリース）
+
+ビルド済みの `RealtimeTranslator-<tag>-macos-arm64.zip` を [Releases](https://github.com/kinopeee/interpreter-openai/releases) から取得できます。Developer ID署名・公証を行っていないad-hoc署名ビルドなので、展開後に隔離属性を外してから起動してください。
+
+```bash
+xattr -dr com.apple.quarantine /Applications/RealtimeTranslator.app
+```
+
 ## セットアップ
 
 ```bash
@@ -144,10 +152,10 @@ powershell -ExecutionPolicy Bypass -File scripts/publish-windows.ps1
 
 ビルド済みの配布物は [Releases](https://github.com/kinopeee/interpreter-openai/releases) から取得できます。`RealtimeTranslator-<tag>-win-x64.zip` を展開し、`RealtimeTranslator.App.exe` を実行してください（自己完結ビルドなので .NET のインストールは不要）。同梱の `.sha256` でSHA-256を検証できます。
 
-リリースは `windows-v*` のタグを push すると `release` ワークフローがテスト→publish→zip化→Release作成まで行います。
+`v*` のタグを push すると `release` ワークフローがWindows（win-x64）とmacOS（arm64）の両方をテスト→ビルド→zip化し、同じReleaseへ添付します。macOS版はDeveloper ID署名・公証を行っていないad-hoc署名ビルドのため、初回は隔離属性を外す必要があります（`xattr -dr com.apple.quarantine RealtimeTranslator.app`）。
 
 ```powershell
-git tag windows-v0.1.0; git push origin windows-v0.1.0
+git tag v0.1.0; git push origin v0.1.0
 ```
 
 ### 使い方

@@ -2,40 +2,59 @@ name: release
 
 on:
   push:
-    tags: ['windows-v*']
+    tags: ['v*']
+  pull_request:
+    # 配布物の作成経路が壊れていないことをタグを打つ前に確認する（Releaseは作らない）。
+    paths:
+      - '.github/workflows/release.yml'
+      - '.github/release-notes.md'
+      - 'scripts/publish-windows.ps1'
+      - 'project.yml'
   workflow_dispatch:
     inputs:
       tag:
-        description: '既存の windows-v* タグ名 (例: windows-v0.1.0)。タグは事前に push 済みであること'
+        description: 'リリースするタグ名 (例: v0.1.0)。事前にタグを push しておくこと'
         required: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  version:
+    name: resolve release tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Resolve release tag
+        id: resolve
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="${GITHUB_REF#refs/tags/}"
+          elif [[ -n "$INPUT_TAG" ]]; then
+            tag="$INPUT_TAG"
+          else
+            echo "tag=pr${{ github.event.number }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$tag" != v* ]]; then
+            echo "release tag must start with 'v': $tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
   windows:
-    name: publish and release (win-x64)
+    name: package (win-x64)
+    needs: version
     runs-on: windows-latest
     steps:
-      # 手動実行でもビルド対象と公開タグを一致させるため、checkout 前にタグを確定する。
-      - name: Resolve release tag
-        id: release
-        shell: pwsh
-        run: |
-          $tag = if ($env:GITHUB_REF -like 'refs/tags/*') {
-            $env:GITHUB_REF -replace '^refs/tags/', ''
-          } else {
-            '${{ inputs.tag }}'
-          }
-          if ([string]::IsNullOrWhiteSpace($tag)) { throw 'release tag is empty' }
-          if ($tag -notmatch '^windows-v') {
-            throw "release tag must start with 'windows-v': $tag"
-          }
-          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.release.outputs.tag }}
+          # 手動実行では起動元ブランチでなく、リリースするタグのコードをビルドする。
+          ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
 
       - uses: actions/setup-dotnet@v4
@@ -55,27 +74,107 @@ jobs:
         run: ./scripts/publish-windows.ps1 -Runtime win-x64 -NoRestore
 
       - name: Package
-        id: package
         shell: pwsh
         env:
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
         run: |
           $zip = "artifacts/RealtimeTranslator-$env:RELEASE_TAG-win-x64.zip"
           Compress-Archive -Path 'artifacts/RealtimeTranslator-win-x64/*' -DestinationPath $zip
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $([System.IO.Path]::GetFileName($zip))" | Out-File "$zip.sha256" -Encoding ascii
-          "zip=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-win-x64
+          path: |
+            artifacts/*.zip
+            artifacts/*.zip.sha256
+          if-no-files-found: error
+
+  macos:
+    name: package (macOS arm64)
+    needs: version
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+
+      - name: Generate the Xcode project
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Test
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -scheme RealtimeTranslator \
+            -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          # 配布用の署名証明書はCIに無いためad-hoc署名 (`-`) でビルドする。
+          xcodebuild build \
+            -scheme RealtimeTranslator \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- \
+            DEVELOPMENT_TEAM=
+
+      - name: Package
+        env:
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          app="build/DerivedData/Build/Products/Release/RealtimeTranslator.app"
+          zip="artifacts/RealtimeTranslator-${RELEASE_TAG}-macos-arm64.zip"
+          # ditto はbundleの拡張属性と署名を保ったままzip化できる（Compress-Archive相当のzipでは壊れる）。
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
+          shasum -a 256 "$zip" | sed "s|artifacts/||" > "$zip.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-arm64
+          path: |
+            artifacts/*.zip
+            artifacts/*.zip.sha256
+          if-no-files-found: error
+
+  release:
+    name: create release
+    needs: [version, windows, macos]
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
 
       - name: Create release
-        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
-          ZIP_PATH: ${{ steps.package.outputs.zip }}
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
         run: |
-          # --verify-tag: 未作成タグを default branch tip に勝手に作らない。
-          # checkout 済みのタグとバイナリが一致していることを前提にする。
-          gh release create $env:RELEASE_TAG "$env:ZIP_PATH" "$env:ZIP_PATH.sha256" `
-            --verify-tag `
-            --title "Realtime Translator for Windows $env:RELEASE_TAG" `
-            --notes-file .github/release-notes-windows.md
+          set -euo pipefail
+          # --verify-tag: 存在しないタグ名で既定ブランチにタグが新規作成されるのを防ぐ。
+          gh release create "$RELEASE_TAG" artifacts/* \
+            --verify-tag \
+            --title "Realtime Translator $RELEASE_TAG" \
+            --notes-file .github/release-notes.md
