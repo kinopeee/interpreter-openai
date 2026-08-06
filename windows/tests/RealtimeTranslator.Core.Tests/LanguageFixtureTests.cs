@@ -10,6 +10,9 @@ public sealed class LanguageFixtureTests
 
     public static TheoryData<string> RecentEvidenceCases => SharedFixtures.CaseNames("language", "recentEvidence");
 
+    // Given: shared fixture の直近証拠ウィンドウ定数
+    // When: 検出器の定数と照合する
+    // Then: 非空白 scalar 数の上限が一致する
     [Fact]
     public void WindowSizeMatchesFixture()
     {
@@ -18,6 +21,9 @@ public sealed class LanguageFixtureTests
             SpokenLanguageDetector.RecentEvidenceWindow);
     }
 
+    // Given: fixture の日英混在・曖昧・不明テキスト
+    // When: 言語証拠を集計し言語を判定する
+    // Then: 期待する証拠と検出結果になる
     [Theory]
     [MemberData(nameof(EvidenceCases))]
     public void EvidenceAndDetectMatchFixture(string name)
@@ -29,6 +35,9 @@ public sealed class LanguageFixtureTests
         Assert.Equal(ParseLanguage(SharedFixtures.Text(fixture["detect"])), SpokenLanguageDetector.Detect(input));
     }
 
+    // Given: ウィンドウを超える長さのテキスト
+    // When: 末尾から Unicode scalar 単位で直近証拠を切り出す
+    // Then: fixture の期待証拠と全体証拠の両方に一致する
     [Theory]
     [MemberData(nameof(RecentEvidenceCases))]
     public void RecentEvidenceMatchesFixture(string name)
@@ -44,6 +53,9 @@ public sealed class LanguageFixtureTests
             SpokenLanguageDetector.Evidence(input));
     }
 
+    // Given: fixture の言語→翻訳先対応表
+    // When: 各言語の翻訳先を求める
+    // Then: 日本語は英語へ、英語は日本語へ向かう
     [Fact]
     public void TranslationTargetsMatchFixture()
     {

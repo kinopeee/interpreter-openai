@@ -14,6 +14,9 @@ public sealed class AudioFixtureTests
 
     public static TheoryData<string> GainCases => GainCaseNames();
 
+    // Given: shared fixture の音声フォーマット定義
+    // When: packetizer の定数と照合する
+    // Then: 24 kHz / 100 ms / 2,400 sample / 4,800 byte が一致する
     [Fact]
     public void FormatMatchesFixture()
     {
@@ -28,6 +31,9 @@ public sealed class AudioFixtureTests
         Assert.Equal(SharedFixtures.Number(format["bytesPerFrame"]), Pcm16FramePacketizer.BytesPerFrame);
     }
 
+    // Given: fixture の PCM16 入力バイト列
+    // When: packetizer へ流し込む
+    // Then: 期待するフレーム分割と残バイトになる
     [Theory]
     [MemberData(nameof(PacketizerCases))]
     public void PacketizerMatchesFixture(string name)
@@ -67,6 +73,9 @@ public sealed class AudioFixtureTests
     }
 
     /// <summary>フレーム境界でサンプルを落とさない・並べ替えないことを連結して確認する。</summary>
+    // Given: フレーム境界と無関係な長さで分割した連続入力
+    // When: 順に packetizer へ流し込む
+    // Then: 出力フレームを連結すると入力バイト列が欠落なく復元される
     [Fact]
     public void PacketizerPreservesTheInputStream()
     {
@@ -100,6 +109,9 @@ public sealed class AudioFixtureTests
         Assert.All(emitted.Skip(input.Count), padding => Assert.Equal(0, padding));
     }
 
+    // Given: fixture の float32 サンプル
+    // When: PCM16 へ変換する
+    // Then: クリップと丸めを含めて期待値と一致する
     [Theory]
     [MemberData(nameof(Float32Cases))]
     public void Float32ToPcm16MatchesFixture(string name)
@@ -113,6 +125,9 @@ public sealed class AudioFixtureTests
                 (float)SharedFixtures.Real(fixture["gain"])));
     }
 
+    // Given: shared fixture の適応ゲイン定数
+    // When: C# 実装の定数と照合する
+    // Then: 最小/最大ゲイン、目標ピーク、無音/クリップ閾値が一致する
     [Fact]
     public void GainConstantsMatchFixture()
     {
@@ -128,6 +143,9 @@ public sealed class AudioFixtureTests
             AdaptiveMicrophoneGain.DefaultInitialGain);
     }
 
+    // Given: fixture のピーク推移シナリオ
+    // When: 順に適応ゲインを更新する
+    // Then: 各ステップのゲイン値が期待値と一致する
     [Theory]
     [MemberData(nameof(GainCases))]
     public void GainMatchesFixture(string name)

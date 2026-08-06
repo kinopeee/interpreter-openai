@@ -13,6 +13,9 @@ public sealed class CodecFixtureTests
 
     public static TheoryData<string> DecodeFailureCases => SharedFixtures.CaseNames("codec", "decodeFailures");
 
+    // Given: fixture の翻訳クライアントイベント
+    // When: 翻訳 codec でエンコードする
+    // Then: 期待する JSON ペイロードと一致する
     [Theory]
     [MemberData(nameof(EncodeCases))]
     public void EncodeMatchesFixture(string name)
@@ -27,6 +30,9 @@ public sealed class CodecFixtureTests
             $"expected {SharedFixtures.Canonical(expected)} but encoded {SharedFixtures.Canonical(actual)}");
     }
 
+    // Given: fixture の翻訳サーバーメッセージ
+    // When: 翻訳 codec でデコードする
+    // Then: 期待するサーバーイベント種別と値になる
     [Theory]
     [MemberData(nameof(DecodeCases))]
     public void DecodeMatchesFixture(string name)
@@ -90,6 +96,9 @@ public sealed class CodecFixtureTests
         }
     }
 
+    // Given: 不正または欠損したサーバーメッセージ
+    // When: 翻訳 codec でデコードする
+    // Then: fixture が指定するエラー種別へ正規化される
     [Theory]
     [MemberData(nameof(DecodeFailureCases))]
     public void DecodeFailureMatchesFixture(string name)

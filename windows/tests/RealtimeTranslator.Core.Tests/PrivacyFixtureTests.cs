@@ -10,6 +10,9 @@ public sealed class PrivacyFixtureTests
     public static TheoryData<string> AuthenticationCases =>
         SharedFixtures.CaseNames("privacy", "isAuthenticationFailure");
 
+    // Given: shared fixture の汎用サーバーエラー文言
+    // When: 実装定数と照合する
+    // Then: 利用者へ見せる文言が完全に一致する
     [Fact]
     public void GenericMessageMatchesFixture()
     {
@@ -18,6 +21,9 @@ public sealed class PrivacyFixtureTests
             RealtimeTranslationException.GenericServerMessage);
     }
 
+    // Given: 資格情報や内部情報を含みうるサーバーメッセージ
+    // When: プライバシー安全な正規化を行う
+    // Then: fixture が許容する文言だけが残る
     [Theory]
     [MemberData(nameof(SanitizeCases))]
     public void SanitizeMatchesFixture(string name)
@@ -29,6 +35,9 @@ public sealed class PrivacyFixtureTests
             RealtimeTranslationException.SanitizeServerMessage(SharedFixtures.Text(fixture["input"])));
     }
 
+    // Given: fixture の認証失敗・非認証エラー
+    // When: 認証失敗判定を行う
+    // Then: 期待どおりに認証失敗だけを検出する
     [Theory]
     [MemberData(nameof(AuthenticationCases))]
     public void AuthenticationDetectionMatchesFixture(string name)
@@ -42,6 +51,9 @@ public sealed class PrivacyFixtureTests
                 SharedFixtures.Text(fixture["message"])));
     }
 
+    // Given: fixture のエラー種別と回復可否対応表
+    // When: 各エラーの回復可否を求める
+    // Then: 再接続対象と致命エラーの区別が一致する
     [Fact]
     public void RecoverabilityMatchesFixture()
     {
@@ -57,6 +69,9 @@ public sealed class PrivacyFixtureTests
     }
 
     /// <summary>server message を持つ例外でも、生の資格情報が Message に載らないこと。</summary>
+    // Given: API キーらしき文字列を含む致命的サーバーエラー
+    // When: 例外メッセージを取得する
+    // Then: 汎用文言に置換され資格情報が表に出ない
     [Fact]
     public void FatalServerErrorNeverLeaksCredentials()
     {

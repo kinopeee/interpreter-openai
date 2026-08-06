@@ -16,6 +16,9 @@ public sealed class SubtitleFixtureTests
 
     public static TheoryData<string> AssemblerCases => AssemblerCaseNames();
 
+    // Given: shared fixture の字幕文字数上限
+    // When: clipper の定数と照合する
+    // Then: 日本語 60 / 英語 120 / 省略記号が一致する
     [Fact]
     public void LimitsMatchFixture()
     {
@@ -26,6 +29,9 @@ public sealed class SubtitleFixtureTests
         Assert.Equal(SharedFixtures.Text(limits["ellipsis"]), SubtitleTailClipper.Ellipsis);
     }
 
+    // Given: fixture の長文・短文・空白のみの字幕候補
+    // When: 末尾優先でクリップする
+    // Then: 期待する表示文字列になる
     [Theory]
     [MemberData(nameof(ClipCases))]
     public void ClipMatchesFixture(string name)
@@ -37,6 +43,9 @@ public sealed class SubtitleFixtureTests
             SubtitleTailClipper.Clip(Expand(fixture["input"]!)));
     }
 
+    // Given: shared fixture の無採取 finalize 間隔
+    // When: assembler の定数と照合する
+    // Then: 8 秒の idle finalize 間隔が一致する
     [Fact]
     public void IdleIntervalMatchesFixture()
     {
@@ -47,6 +56,9 @@ public sealed class SubtitleFixtureTests
             RealtimeSubtitleAssembler.IdleFinalizeInterval);
     }
 
+    // Given: fixture の原文・翻訳 delta シナリオ（epoch / 重複 ID / lane 期待値を含む）
+    // When: assembler へ順に投入し時間を進める
+    // Then: finalize タイミングと字幕内容が期待どおりになる
     [Theory]
     [MemberData(nameof(AssemblerCases))]
     public void AssemblerMatchesFixture(string name)

@@ -1,6 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Text;
 
 namespace RealtimeTranslator.Core.OpenAI;
@@ -129,9 +130,27 @@ public sealed record RealtimeSessionTuning(
             .Replace("\r", " ", StringComparison.Ordinal)
             .Trim();
 
-        return collapsed.Length <= PromptCharacterLimit
-            ? collapsed
-            : collapsed[..PromptCharacterLimit];
+        // 上限は Swift の Character 数、つまり書記素クラスタ数で数える。
+        // UTF-16 code unit で切ると絵文字などでサロゲートペアを割り、 lone surrogate が送信される。
+        return TruncateToTextElements(collapsed, PromptCharacterLimit);
+    }
+
+    private static string TruncateToTextElements(string text, int limit)
+    {
+        var offset = 0;
+        var count = 0;
+        while (offset < text.Length)
+        {
+            if (count == limit)
+            {
+                return text[..offset];
+            }
+
+            offset += StringInfo.GetNextTextElementLength(text.AsSpan(offset));
+            count += 1;
+        }
+
+        return text;
     }
 
     public static string KeywordsText(IEnumerable<string> keywords) => string.Join("\n", keywords);

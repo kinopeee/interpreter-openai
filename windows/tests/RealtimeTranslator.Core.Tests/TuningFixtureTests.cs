@@ -12,6 +12,9 @@ public sealed class TuningFixtureTests
 
     public static TheoryData<string> SanitizedPromptCases => SharedFixtures.CaseNames("tuning", "sanitizedPrompt");
 
+    // Given: shared fixture の tuning 上限値
+    // When: C# 実装の定数と照合する
+    // Then: keyword 上限・prompt 上限・禁止文字が一致する
     [Fact]
     public void LimitsMatchFixture()
     {
@@ -26,6 +29,9 @@ public sealed class TuningFixtureTests
             RealtimeSessionTuning.ForbiddenKeywordCharacters);
     }
 
+    // Given: 1 行 1 語のキーワードテキスト
+    // When: ParseKeywords で正規化する
+    // Then: fixture の期待配列と一致する
     [Theory]
     [MemberData(nameof(ParseKeywordsCases))]
     public void ParseKeywordsMatchesFixture(string name)
@@ -36,6 +42,9 @@ public sealed class TuningFixtureTests
         Assert.Equal(expected, RealtimeSessionTuning.ParseKeywords(SharedFixtures.Text(fixture["input"])));
     }
 
+    // Given: 上限を超える行数のキーワードテキスト
+    // When: ParseKeywords で正規化する
+    // Then: 上限件数で打ち切られ、先頭と末尾が入力順を保つ
     [Fact]
     public void ParseKeywordsStopsAtTheLimit()
     {
@@ -57,6 +66,9 @@ public sealed class TuningFixtureTests
         Assert.Equal(SharedFixtures.Text(fixture["expectedLast"]), keywords[^1]);
     }
 
+    // Given: 改行や前後空白を含む prompt
+    // When: SanitizedPrompt で正規化する
+    // Then: fixture の期待文字列と一致する
     [Theory]
     [MemberData(nameof(SanitizedPromptCases))]
     public void SanitizedPromptMatchesFixture(string name)
@@ -68,6 +80,9 @@ public sealed class TuningFixtureTests
             RealtimeSessionTuning.SanitizedPrompt(SharedFixtures.Text(fixture["input"])));
     }
 
+    // Given: 上限を超える長さの ASCII prompt
+    // When: SanitizedPrompt で正規化する
+    // Then: fixture の期待長へ切り詰められる
     [Fact]
     public void SanitizedPromptTruncatesAtTheLimit()
     {
@@ -79,5 +94,19 @@ public sealed class TuningFixtureTests
         Assert.Equal(
             SharedFixtures.Number(fixture["expectedLength"]),
             RealtimeSessionTuning.SanitizedPrompt(input).Length);
+    }
+
+    // Given: サロゲートペアで表される絵文字だけで上限を超える prompt
+    // When: SanitizedPrompt で正規化する
+    // Then: Swift の Character 数と同じ上限文字数で切り、lone surrogate を残さない
+    [Fact]
+    public void SanitizedPromptTruncatesByTextElementNotCodeUnit()
+    {
+        const string emoji = "\U0001F600";
+        var limit = RealtimeSessionTuning.PromptCharacterLimit;
+
+        var truncated = RealtimeSessionTuning.SanitizedPrompt(string.Concat(Enumerable.Repeat(emoji, limit + 100)));
+
+        Assert.Equal(string.Concat(Enumerable.Repeat(emoji, limit)), truncated);
     }
 }

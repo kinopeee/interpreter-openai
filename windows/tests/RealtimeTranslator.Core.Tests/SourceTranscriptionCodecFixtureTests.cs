@@ -12,6 +12,9 @@ public sealed class SourceTranscriptionCodecFixtureTests
 
     public static TheoryData<string> DecodeCases => SharedFixtures.CaseNames("codec", "transcriptionDecode");
 
+    // Given: fixture のソース文字起こしクライアントイベント
+    // When: 文字起こし専用 codec でエンコードする
+    // Then: 翻訳接続とは別形式の期待ペイロードになる
     [Theory]
     [MemberData(nameof(EncodeCases))]
     public void EncodeMatchesFixture(string name)
@@ -26,6 +29,9 @@ public sealed class SourceTranscriptionCodecFixtureTests
             $"expected {SharedFixtures.Canonical(expected)} but encoded {SharedFixtures.Canonical(actual)}");
     }
 
+    // Given: fixture の文字起こし接続からのサーバーメッセージ
+    // When: 文字起こし専用 codec でデコードする
+    // Then: 期待イベントになり、翻訳側イベントは無視される
     [Theory]
     [MemberData(nameof(DecodeCases))]
     public void DecodeMatchesFixture(string name)
@@ -79,6 +85,9 @@ public sealed class SourceTranscriptionCodecFixtureTests
         }
     }
 
+    // Given: JSON として不正なペイロード
+    // When: 文字起こし専用 codec でデコードする
+    // Then: InvalidMessage へ正規化される
     [Fact]
     public void MalformedPayloadIsNormalizedToInvalidMessage()
     {
