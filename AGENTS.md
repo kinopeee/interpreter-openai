@@ -66,7 +66,8 @@ macOS版（Swift / `RealtimeTranslator/`）とWindows版（.NET / `windows/`）�
 - `RealtimeTranslator.xcodeproj`と`Info.plist`はXcodeGen生成物として扱う。
 - 永続的なInfo.plist変更は`project.yml`の`targets.RealtimeTranslator.info.properties`へ追加する。
 - `NSMicrophoneUsageDescription`を削除しない。用途説明はOpenAI送信を明示する。
-- 現在はApp Sandboxが無効のため、entitlementsは空でよい。将来Sandboxを有効化する場合だけ`network.client`を追加する。
+- Hardened Runtime (`ENABLE_HARDENED_RUNTIME: YES`) を有効にしているため、entitlementsの`com.apple.security.device.audio-input`を削除しない。削除するとマイク許可済みでも`AVCaptureDevice.requestAccess(for: .audio)`が拒否される。
+- App Sandboxは無効。将来Sandboxを有効化する場合だけ`network.client`を追加する。
 - 同一Bundle IDの多重起動を許さない。Xcode実行と`run.sh`を同時に残さない。
 
 ## ビルドと検証
