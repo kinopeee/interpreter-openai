@@ -191,19 +191,39 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     }
 
     /// 翻訳ポンプが現在の待ち行列を処理し終えるまで待つ。決定的なテストのために使う。
+    /// 送信が停滞しても `timeoutNanoseconds` で打ち切る（`pump.value` を無期限待ちしない）。
     func waitForTranslationDrain(timeoutNanoseconds: UInt64 = 5_000_000_000) async throws {
         let deadline = ContinuousClock.now + .nanoseconds(Int64(timeoutNanoseconds))
         while true {
             if translationPumpTask == nil, pendingTranslationFrames.isEmpty {
                 return
             }
-            if let pump = translationPumpTask {
-                await pump.value
-                continue
-            }
-            if ContinuousClock.now >= deadline {
+
+            let remaining = deadline - ContinuousClock.now
+            guard remaining > .zero else {
                 throw RealtimeTranslationError.recoverableTransportFailure("translation pump drain timeout")
             }
+
+            if let pump = translationPumpTask {
+                let timedOut = try await withThrowingTaskGroup(of: Bool.self) { group in
+                    group.addTask {
+                        await pump.value
+                        return false
+                    }
+                    group.addTask {
+                        try await Task.sleep(for: remaining)
+                        return true
+                    }
+                    let result = try await group.next()!
+                    group.cancelAll()
+                    return result
+                }
+                if timedOut {
+                    throw RealtimeTranslationError.recoverableTransportFailure("translation pump drain timeout")
+                }
+                continue
+            }
+
             try await Task.sleep(nanoseconds: 5_000_000)
         }
     }

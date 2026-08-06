@@ -424,9 +424,13 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     }
 
     /// <summary>翻訳ポンプが現在の待ち行列を処理し終えるまで待つ。決定的なテストのために使う。</summary>
-    internal async Task WaitForTranslationDrainAsync(CancellationToken cancellationToken = default)
+    /// <remarks>送信が停滞しても timeout（既定5秒）で打ち切る（ポンプTaskを無期限待ちしない）。</remarks>
+    internal async Task WaitForTranslationDrainAsync(
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
     {
-        var deadline = Environment.TickCount64 + (long)TimeSpan.FromSeconds(5).TotalMilliseconds;
+        var deadline = Environment.TickCount64
+            + (long)(timeout ?? TimeSpan.FromSeconds(5)).TotalMilliseconds;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -442,18 +446,28 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                 pump = _translationPumpTask;
             }
 
+            var remainingMs = deadline - Environment.TickCount64;
+            if (remainingMs <= 0)
+            {
+                throw new TimeoutException("translation pump did not drain");
+            }
+
             if (pump is null)
             {
-                if (Environment.TickCount64 >= deadline)
-                {
-                    throw new TimeoutException("translation pump did not drain");
-                }
-
                 await Task.Yield();
                 continue;
             }
 
-            await pump.WaitAsync(cancellationToken).ConfigureAwait(false);
+            // ポンプ完了とdeadlineを競わせ、停滞したsendで無期限待ちにしない。
+            var delay = Task.Delay((int)Math.Min(remainingMs, int.MaxValue), cancellationToken);
+            var completed = await Task.WhenAny(pump, delay).ConfigureAwait(false);
+            if (completed != pump)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new TimeoutException("translation pump did not drain");
+            }
+
+            await pump.ConfigureAwait(false);
         }
     }
 
