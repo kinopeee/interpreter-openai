@@ -30,6 +30,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     private var sourceSentFrameCount = 0
     private var sourceDeltaCount = 0
     private var consecutiveTranslationFailures = 0
+    /// transport failure後、再接続まで翻訳ポンプを再開しない。
+    private var translationPumpHaltedForTransportFailure = false
     private var selectedTranslationTarget: RealtimeTranslationOutputLanguage?
     private var translationPrerollFrames: [Data] = []
     private var pendingTranslationFrames: [(Data, RealtimeTranslationOutputLanguage)] = []
@@ -69,6 +71,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         sourceSentFrameCount = 0
         sourceDeltaCount = 0
         consecutiveTranslationFailures = 0
+        translationPumpHaltedForTransportFailure = false
         selectedTranslationTarget = nil
         translationPrerollFrames.removeAll(keepingCapacity: true)
         pendingTranslationFrames.removeAll(keepingCapacity: true)
@@ -211,6 +214,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         translationPrerollFrames.removeAll(keepingCapacity: true)
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         consecutiveTranslationFailures = 0
+        translationPumpHaltedForTransportFailure = false
         connectionEpoch += 1
         translationPumpTask?.cancel()
         translationPumpTask = nil
@@ -227,6 +231,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         _ pcm16LE: Data,
         target: RealtimeTranslationOutputLanguage
     ) {
+        // transport failure後はenqueue自体を止め、ポンプ再起動の隙を残さない。
+        guard !translationPumpHaltedForTransportFailure else { return }
         pendingTranslationFrames.append((pcm16LE, target))
         guard translationPumpTask == nil else { return }
         translationPumpTask = Task {
@@ -235,7 +241,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     }
 
     private func pumpTranslationFrames() async {
-        while isRunning, !Task.isCancelled {
+        while isRunning, !Task.isCancelled, !translationPumpHaltedForTransportFailure {
             guard !pendingTranslationFrames.isEmpty else { break }
             let (frame, target) = pendingTranslationFrames.removeFirst()
             do {
@@ -265,13 +271,17 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                             epoch: epoch
                         )
                     )
+                    // 再接続待ち中にdying socketへ送り続けない。
+                    translationPumpHaltedForTransportFailure = true
+                    pendingTranslationFrames.removeAll(keepingCapacity: true)
                     break
                 }
             }
         }
         translationPumpTask = nil
         // ポンプ停止中に積まれたframeがあれば再開する。
-        if isRunning, !pendingTranslationFrames.isEmpty {
+        // transport failure後はInterpretationSession側の再接続に任せ、ここでは再開しない。
+        if !translationPumpHaltedForTransportFailure, isRunning, !pendingTranslationFrames.isEmpty {
             translationPumpTask = Task {
                 await self.pumpTranslationFrames()
             }

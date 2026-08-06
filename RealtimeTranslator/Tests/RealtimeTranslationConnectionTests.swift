@@ -137,6 +137,74 @@ final class RealtimeTranslationConnectionTests: XCTestCase {
         }
     }
 
+    func testAuthorizationThemedHandshakeErrorIsAuthenticationFailure() async {
+        // Given: Authorization 文言を含むhandshake error（codeは非auth）
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeTranslationConnection(
+            target: .english,
+            transport: transport,
+            safetyIdentifier: "safety",
+            sessionUpdateTimeoutNanoseconds: 1_000_000_000
+        )
+        try? await transport.enqueueJSON([
+            "type": "error",
+            "error": [
+                "message": "Invalid Authorization header: Bearer sk-leak-example",
+                "code": "invalid_request_error",
+            ],
+        ])
+
+        // When/Then: 認証失敗として扱い、localizedDescriptionにもsk-を出さない
+        do {
+            try await connection.start(
+                apiKey: "sk-bad",
+                config: .englishTargetWithSourceTranscription()
+            )
+            XCTFail("Expected authenticationFailed")
+        } catch let error as RealtimeTranslationError {
+            XCTAssertEqual(error, .authenticationFailed)
+            XCTAssertEqual(error.localizedDescription, "OpenAI APIキーが無効です")
+            XCTAssertFalse(error.localizedDescription.contains("sk-"))
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
+    }
+
+    func testHandshakeFatalServerErrorRedactsKeyMaterial() async {
+        // Given: 非認証だがキー断片を含むhandshake error
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeTranslationConnection(
+            target: .english,
+            transport: transport,
+            safetyIdentifier: "safety",
+            sessionUpdateTimeoutNanoseconds: 1_000_000_000
+        )
+        try? await transport.enqueueJSON([
+            "type": "error",
+            "error": [
+                "message": "upstream echo sk-should-not-appear",
+                "code": "server_error",
+            ],
+        ])
+
+        // When/Then: fatalServerErrorでもユーザー向け文言から秘密情報を除去する
+        do {
+            try await connection.start(
+                apiKey: "sk-bad",
+                config: .englishTargetWithSourceTranscription()
+            )
+            XCTFail("Expected fatalServerError")
+        } catch let error as RealtimeTranslationError {
+            XCTAssertEqual(
+                error,
+                .fatalServerError("翻訳サーバーでエラーが発生しました")
+            )
+            XCTAssertFalse(error.localizedDescription.contains("sk-"))
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
+    }
+
     func testCloseWaitsForSessionClosed() async throws {
         // Given: handshake済み接続
         let transport = FakeRealtimeWebSocketTransport()

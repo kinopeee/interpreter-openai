@@ -123,7 +123,13 @@ actor RealtimeTranslationConnection {
                 await tearDownTransport()
                 return
             }
-            try? await Task.sleep(nanoseconds: 50_000_000)
+            do {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            } catch is CancellationError {
+                // async let の片方が失敗してキャンセルされたとき、期限まで待たない。
+                await tearDownTransport()
+                throw CancellationError()
+            }
         }
         await tearDownTransport()
         throw RealtimeTranslationError.closeTimeout
@@ -236,16 +242,10 @@ actor RealtimeTranslationConnection {
     }
 
     private func classifyServerError(message: String, code: String?) -> RealtimeTranslationError {
-        let lowered = (code ?? message).lowercased()
-        if lowered.contains("auth")
-            || lowered.contains("unauthorized")
-            || lowered.contains("invalid_api_key")
-            || lowered.contains("401")
-            || lowered.contains("403")
-        {
+        if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
             return .authenticationFailed
         }
-        return .fatalServerError(message)
+        return .fatalServerError(RealtimeTranslationError.sanitizedServerMessage(message))
     }
 
     private func tearDownTransport() async {

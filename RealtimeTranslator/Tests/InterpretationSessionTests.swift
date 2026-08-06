@@ -43,17 +43,55 @@ final class InterpretationSessionTests: XCTestCase {
             dualClient: dual
         )
 
-        // When: start直後にstopする
+        // When: start直後にstopする（stopはsessionTask排水を待つのでgateを先に解放）
         let startTask = Task { await session.start() }
         await waitUntil { dual.startCallCount == 1 }
-        await session.stop()
+        let stopTask = Task { await session.stop() }
+        await waitUntil { session.state == .closing || session.state == .idle }
         dual.startGate?.resume()
         dual.startGate = nil
+        await stopTask.value
         await startTask.value
 
         // Then: idleに戻りcaptureは開始されないか、開始後でも停止済み
         XCTAssertEqual(session.state, .idle)
         XCTAssertFalse(audio.isRunning)
+    }
+
+    func testStopDrainsSessionTaskBeforeReturningSoRestartIsStable() async {
+        // Given: dual.start待ちで止まっているセッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let gate = CheckedContinuationBox()
+        dual.startGate = gate
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+
+        let firstStart = Task { await session.start() }
+        await waitUntil { dual.startCallCount == 1 }
+
+        // When: stop中に旧startを進め、排水後に再startする
+        let stopTask = Task { await session.stop() }
+        await waitUntil { session.state == .closing || session.state == .idle }
+        dual.startGate = nil
+        gate.resume()
+        await stopTask.value
+        await firstStart.value
+        XCTAssertEqual(session.state, .idle)
+
+        let forceCloseAfterStop = dual.forceCloseCallCount
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        // Then: 旧sessionTaskの世代不一致forceCloseが新セッションへ飛ばない
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(session.state, .listening)
+        XCTAssertEqual(dual.forceCloseCallCount, forceCloseAfterStop)
     }
 
     func testDoubleStopIsIdempotent() async {
@@ -390,6 +428,108 @@ final class InterpretationSessionTests: XCTestCase {
         // Then: 転送されない
         XCTAssertEqual(dual.updateTranscriptionTuningCallCount, 0)
     }
+
+    func testInvalidAPIKeyRuntimeErrorDoesNotLeakKeyMaterial() async throws {
+        // Given: listening中のセッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        // When: キー断片を含むinvalid_api_keyエラーが届く
+        dual.emit(
+            target: .english,
+            event: .error(
+                message: "Incorrect API key provided: sk-leak-example",
+                code: "invalid_api_key"
+            )
+        )
+        await waitUntil { session.state == .error }
+
+        // Then: 認証エラーになり、sk-や原文メッセージはdelegateへ出ない
+        XCTAssertEqual(delegate.messages.first, "OpenAI APIキーが無効です")
+        XCTAssertFalse(delegate.messages.contains(where: { $0.contains("sk-") }))
+        XCTAssertFalse(
+            delegate.latestSnapshot?.statusBanner?.contains("sk-") == true
+        )
+        await session.stop()
+    }
+
+    func testNonAuthServerErrorRedactsAPIKeyLikePayload() async throws {
+        // Given: listening中のセッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        // When: codeは非認証だが文言にAPIキー断片が含まれる
+        dual.emit(
+            target: .english,
+            event: .error(
+                message: "Provider echo included sk-should-not-appear",
+                code: "server_error"
+            )
+        )
+        await waitUntil { session.state == .error }
+
+        // Then: 汎用エラー文言に置換され秘密情報は出ない
+        XCTAssertEqual(delegate.messages.first, "翻訳サーバーでエラーが発生しました")
+        XCTAssertFalse(delegate.messages.contains(where: { $0.contains("sk-") }))
+        await session.stop()
+    }
+
+    func testAuthorityLikeServerErrorIsNotTreatedAsInvalidAPIKey() async throws {
+        // Given: listening中のセッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        // When: auth部分文字列を含むが非認証のエラーが届く
+        dual.emit(
+            target: .english,
+            event: .error(
+                message: "certificate authority rejected the peer (code 4010)",
+                code: "authority_mismatch"
+            )
+        )
+        await waitUntil { session.state == .error }
+
+        // Then: 無効APIキー扱いではなく、サーバー文言（またはサニタイズ結果）経路になる
+        XCTAssertNotEqual(delegate.messages.first, "OpenAI APIキーが無効です")
+        XCTAssertEqual(
+            delegate.messages.first,
+            "certificate authority rejected the peer (code 4010)"
+        )
+        await session.stop()
+    }
 }
 
 // MARK: - Fakes
@@ -476,10 +616,20 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         startCallCount += 1
         lastTuning = tuning
         if let startGate {
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                startGate.continuation = continuation
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation {
+                    (continuation: CheckedContinuation<Void, Error>) in
+                    if Task.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+                    startGate.throwingContinuation = continuation
+                }
+            } onCancel: {
+                startGate.resumeThrowing(CancellationError())
             }
         }
+        try Task.checkCancellation()
         if let startError {
             throw startError
         }
@@ -556,8 +706,24 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
 
 final class CheckedContinuationBox: @unchecked Sendable {
     var continuation: CheckedContinuation<Void, Never>?
+    var throwingContinuation: CheckedContinuation<Void, Error>?
 
     func resume() {
+        if let throwingContinuation {
+            self.throwingContinuation = nil
+            throwingContinuation.resume()
+            return
+        }
+        continuation?.resume()
+        continuation = nil
+    }
+
+    func resumeThrowing(_ error: Error) {
+        if let throwingContinuation {
+            self.throwingContinuation = nil
+            throwingContinuation.resume(throwing: error)
+            return
+        }
         continuation?.resume()
         continuation = nil
     }

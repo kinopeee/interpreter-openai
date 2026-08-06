@@ -414,6 +414,120 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         await dual.forceClose()
     }
 
+    func testUpdateTranscriptionTuningPreservesConnectedNoiseReduction() async throws {
+        // Given: far_fieldで開始したdual
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport,
+            tuning: RealtimeSessionTuning(
+                noiseReduction: .farField,
+                transcriptionDelay: .low,
+                transcriptionPrompt: RealtimeSessionTuning.defaultPrompt,
+                transcriptionKeywords: RealtimeSessionTuning.defaultKeywords
+            )
+        )
+        let sentBefore = await sourceTransport.sent.count
+
+        // When: 設定側がnear_fieldに変わったtuningでlive updateする
+        try await dual.updateTranscriptionTuning(
+            RealtimeSessionTuning(
+                noiseReduction: .nearField,
+                transcriptionDelay: .high,
+                transcriptionPrompt: "Keep noise reduction pinned",
+                transcriptionKeywords: ["Acme"]
+            )
+        )
+        try await waitUntilSent(sourceTransport, minimum: sentBefore + 1)
+
+        // Then: prompt/delayは更新され、noise_reductionは接続時のfar_fieldのまま
+        let updates = try await sessionUpdates(from: sourceTransport)
+        let second = try XCTUnwrap(updates.last)
+        let input = try XCTUnwrap(
+            ((second["session"] as? [String: Any])?["audio"] as? [String: Any])?["input"]
+                as? [String: Any]
+        )
+        let transcription = try XCTUnwrap(input["transcription"] as? [String: Any])
+        XCTAssertEqual(transcription["prompt"] as? String, "Keep noise reduction pinned")
+        XCTAssertEqual(transcription["delay"] as? String, "high")
+        XCTAssertEqual(
+            (input["noise_reduction"] as? [String: Any])?["type"] as? String,
+            "far_field"
+        )
+        await dual.forceClose()
+    }
+
+    func testTranslationAppendFailuresEmitSingleTransportErrorWithoutPumpRestart() async throws {
+        // Given: 翻訳laneだけ送信失敗するdual
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await dual.setSpokenLanguage(.japanese)
+
+        let stream = await dual.events
+        let firstError = expectation(description: "first transport error")
+        let secondError = expectation(description: "unexpected second transport error")
+        secondError.isInverted = true
+        let collector = Task {
+            var transportErrors = 0
+            for await event in stream {
+                if case .error(_, let code) = event.event, code == "transport" {
+                    transportErrors += 1
+                    if transportErrors == 1 {
+                        firstError.fulfill()
+                    } else if transportErrors == 2 {
+                        secondError.fulfill()
+                    }
+                }
+            }
+            return transportErrors
+        }
+
+        // When: 連続失敗でtransport errorを出し、その後もfeedが続く
+        await englishTransport.setSendError(
+            RealtimeTranslationError.recoverableTransportFailure("translation send failed")
+        )
+        let frame = Data(repeating: 0x55, count: PCM16FramePacketizer.bytesPerFrame)
+        for _ in 0..<3 {
+            try await dual.appendAudioFrame(frame)
+        }
+        await fulfillment(of: [firstError], timeout: 1.0)
+
+        // ポンプ停止後の追加appendでもenqueue経由の再起動が起きないこと
+        for _ in 0..<4 {
+            try await dual.appendAudioFrame(frame)
+        }
+
+        // Then: transport errorは1回だけ。dying socketへの追加送信もない
+        await fulfillment(of: [secondError], timeout: 0.3)
+        collector.cancel()
+        let transportErrors = await collector.value
+        let englishAppends = try decodeAppendPayloads(await englishTransport.sent)
+        XCTAssertEqual(transportErrors, 1)
+        XCTAssertEqual(englishAppends.count, 0)
+        await dual.forceClose()
+    }
+
     func testOneSidedFailureForceClosesPair() async throws {
         // Given: readyなdual
         let sourceTransport = FakeRealtimeWebSocketTransport()

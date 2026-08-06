@@ -2,6 +2,25 @@
 import Foundation
 import os
 
+/// `AsyncStream` の yield 結果を録音継続可否へ写す。
+///
+/// `.bufferingNewest` は満杯時に古い要素を捨てて新規を enqueue したうえで
+/// `.dropped(古い要素)` を返す。これを失敗扱いすると送信遅延で再接続嵐になる。
+enum RealtimeAudioFrameYieldOutcome {
+    static func didAccept(
+        _ result: AsyncStream<Data>.Continuation.YieldResult
+    ) -> Bool {
+        switch result {
+        case .enqueued, .dropped:
+            return true
+        case .terminated:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+}
+
 enum RealtimeAudioCaptureError: Error, LocalizedError, Sendable {
     case microphoneDenied
     case audioFormatUnavailable
@@ -170,8 +189,14 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
             }
         }
 
-        audioEngine.prepare()
-        try audioEngine.start()
+        do {
+            audioEngine.prepare()
+            try audioEngine.start()
+        } catch {
+            // tap / feeder を残したまま返すと、後続startが early-return して録音不能になる。
+            await stop()
+            throw error
+        }
         guard generation == lifecycleGeneration else {
             await stop()
             throw CancellationError()
@@ -197,16 +222,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
 
     private func yieldFrame(_ frame: Data) -> Bool {
         guard let frameContinuation else { return false }
-        switch frameContinuation.yield(frame) {
-        case .enqueued:
-            return true
-        case .dropped:
-            return false
-        case .terminated:
-            return false
-        @unknown default:
-            return false
-        }
+        return RealtimeAudioFrameYieldOutcome.didAccept(frameContinuation.yield(frame))
     }
 
     private func reportFailure(_ error: Error, generation: Int) {
