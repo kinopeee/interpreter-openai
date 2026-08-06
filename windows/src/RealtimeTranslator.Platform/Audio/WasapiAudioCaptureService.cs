@@ -39,9 +39,14 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
 
     private Channel<ReadOnlyMemory<byte>> _frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
     private WasapiCapture? _capture;
+    private MMDevice? _ownedDevice;
     private CancellationTokenSource? _pumpCts;
     private Task? _pumpTask;
+<<<<<<< HEAD
     private bool _stopRequested;
+=======
+    private int _stopping = 1;
+>>>>>>> 290004f (Fix WASAPI capture lifecycle races and guarantee silence frames)
 
     public WasapiAudioCaptureService(Func<MMDevice>? deviceFactory = null)
     {
@@ -59,33 +64,76 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         }
     }
 
-    public Task StartAsync(CancellationToken cancellationToken = default)
+    public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        StopCore();
+        // 前回の pump を必ず待ち、二重 pump / 古い writer 完了の競合を避ける。
+        await StopAsync().ConfigureAwait(false);
 
+        MMDevice? ownedDevice = null;
         MMDevice device;
         WasapiCapture capture;
         try
         {
-            device = _deviceFactory is not null
-                ? _deviceFactory()
-                : new MMDeviceEnumerator().GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
+            if (_deviceFactory is not null)
+            {
+                device = _deviceFactory();
+            }
+            else
+            {
+                ownedDevice = new MMDeviceEnumerator().GetDefaultAudioEndpoint(
+                    DataFlow.Capture,
+                    Role.Communications);
+                device = ownedDevice;
+            }
+
             capture = new WasapiCapture(device);
         }
         catch (Exception error) when (error is COMException or InvalidOperationException or ArgumentException)
         {
+            ownedDevice?.Dispose();
             throw new AudioCaptureException("マイクが見つかりません", error);
         }
 
         var pipeline = new CapturedAudioFramePipeline(capture.WaveFormat);
+<<<<<<< HEAD
         capture.DataAvailable += (_, args) => pipeline.Push(args.Buffer, args.BytesRecorded);
         capture.RecordingStopped += (_, _) => OnRecordingStopped(capture);
 
+=======
+>>>>>>> 290004f (Fix WASAPI capture lifecycle races and guarantee silence frames)
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var token = cts.Token;
-        Channel<ReadOnlyMemory<byte>> frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+        var frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+        var writer = frames.Writer;
+
+        void OnDataAvailable(object? sender, WaveInEventArgs args) =>
+            pipeline.Push(args.Buffer, args.BytesRecorded);
+
+        void OnRecordingStopped(object? sender, StoppedEventArgs args)
+        {
+            // 意図停止以外（デバイス抜去など）は frame stream を閉じてセッション側へ再接続を促す。
+            if (Volatile.Read(ref _stopping) != 0)
+            {
+                return;
+            }
+
+            writer.TryComplete();
+            try
+            {
+                cts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Stop と交差した場合は無視する。
+            }
+        }
+
+        capture.DataAvailable += OnDataAvailable;
+        capture.RecordingStopped += OnRecordingStopped;
+
         lock (_sync)
         {
+            Volatile.Write(ref _stopping, 0);
+            _ownedDevice = ownedDevice;
             _capture = capture;
             _pumpCts = cts;
             _frames = frames;
@@ -98,12 +146,32 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         }
         catch (Exception error) when (error is COMException or InvalidOperationException)
         {
-            StopCore();
+            await StopAsync().ConfigureAwait(false);
             throw new AudioCaptureException("マイクを開始できませんでした", error);
         }
 
-        _pumpTask = Task.Run(() => PumpAsync(pipeline, frames.Writer, token), CancellationToken.None);
-        return Task.CompletedTask;
+        // StartRecording 成功後に pump を登録し、StopAsync と交差しても await 対象を失わない。
+        var pumpTask = Task.Run(() => PumpAsync(pipeline, writer, cts.Token), CancellationToken.None);
+        lock (_sync)
+        {
+            if (ReferenceEquals(_capture, capture) && ReferenceEquals(_pumpCts, cts))
+            {
+                _pumpTask = pumpTask;
+            }
+        }
+
+        if (Volatile.Read(ref _stopping) != 0)
+        {
+            // Start 直後に Stop された場合は、登録できなかった pump も回収する。
+            try
+            {
+                await pumpTask.ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // 停止経路の例外は呼び出し側へ伝播しない。
+            }
+        }
     }
 
     public async Task StopAsync()
@@ -111,6 +179,7 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         Task? pump;
         lock (_sync)
         {
+            Volatile.Write(ref _stopping, 1);
             pump = _pumpTask;
             _pumpTask = null;
         }
@@ -118,11 +187,18 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         StopCore();
         if (pump is not null)
         {
-            await pump.ConfigureAwait(false);
+            try
+            {
+                await pump.ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // 停止時の pump 例外は握り潰し、呼び出しを完了させる。
+            }
         }
     }
 
-    public void Dispose() => StopCore();
+    public void Dispose() => StopAsync().GetAwaiter().GetResult();
 
     private static async Task PumpAsync(
         CapturedAudioFramePipeline pipeline,
@@ -134,7 +210,15 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         {
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
-                foreach (var frame in pipeline.ReadFrames(Pcm16FramePacketizer.SamplesPerFrame))
+                var frames = pipeline.ReadFrames(Pcm16FramePacketizer.SamplesPerFrame);
+                if (frames.Count == 0)
+                {
+                    // 契約: 録音中は無音 frame も 100ms ごとに送り続ける。
+                    writer.TryWrite(new byte[Pcm16FramePacketizer.BytesPerFrame]);
+                    continue;
+                }
+
+                foreach (var frame in frames)
                 {
                     writer.TryWrite(frame);
                 }
@@ -176,12 +260,19 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
     private void StopCore()
     {
         WasapiCapture? capture;
+        MMDevice? ownedDevice;
         CancellationTokenSource? cts;
         lock (_sync)
         {
+<<<<<<< HEAD
             _stopRequested = true;
+=======
+            Volatile.Write(ref _stopping, 1);
+>>>>>>> 290004f (Fix WASAPI capture lifecycle races and guarantee silence frames)
             capture = _capture;
             _capture = null;
+            ownedDevice = _ownedDevice;
+            _ownedDevice = null;
             cts = _pumpCts;
             _pumpCts = null;
         }
@@ -189,20 +280,20 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         cts?.Cancel();
         cts?.Dispose();
 
-        if (capture is null)
+        if (capture is not null)
         {
-            return;
+            try
+            {
+                capture.StopRecording();
+            }
+            catch (Exception error) when (error is COMException or InvalidOperationException)
+            {
+                // 既に停止済みのデバイスは無視してよい。
+            }
+
+            capture.Dispose();
         }
 
-        try
-        {
-            capture.StopRecording();
-        }
-        catch (Exception error) when (error is COMException or InvalidOperationException)
-        {
-            // 既に停止済みのデバイスは無視してよい。
-        }
-
-        capture.Dispose();
+        ownedDevice?.Dispose();
     }
 }

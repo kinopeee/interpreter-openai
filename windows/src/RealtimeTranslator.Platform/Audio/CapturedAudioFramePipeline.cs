@@ -45,7 +45,12 @@ public sealed class CapturedAudioFramePipeline
     {
         ArgumentNullException.ThrowIfNull(deviceBytes);
 
-        if (count > 0)
+        if (count <= 0)
+        {
+            return;
+        }
+
+        lock (_sync)
         {
             _buffered.AddSamples(deviceBytes, 0, count);
         }
@@ -64,14 +69,24 @@ public sealed class CapturedAudioFramePipeline
             }
 
             var read = _resampled.Read(_readBuffer, 0, sampleCount);
-            if (read <= 0)
+            // リサンプラの短尺や起動レイテンシでも、要求サンプル数を無音で埋め、100ms frame を欠かさない。
+            if (read < sampleCount)
             {
-                return [];
+                Array.Clear(_readBuffer, Math.Max(read, 0), sampleCount - Math.Max(read, 0));
             }
 
-            var samples = _readBuffer.AsSpan(0, read);
+            var samples = _readBuffer.AsSpan(0, sampleCount);
             var gain = _gain.Observe(samples);
-            return _packetizer.Append(Pcm16LittleEndianEncoder.Encode(samples, gain));
+            var frames = _packetizer.Append(Pcm16LittleEndianEncoder.Encode(samples, gain));
+            if (frames.Count > 0)
+            {
+                return frames;
+            }
+
+            // 端数だけ残った場合は無音 padding で 1 frame にし、それでも無ければ完全無音 frame。
+            return _packetizer.FlushWithSilencePadding() is { } padded
+                ? [padded]
+                : [new byte[Pcm16FramePacketizer.BytesPerFrame]];
         }
     }
 

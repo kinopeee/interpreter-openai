@@ -54,6 +54,23 @@ public sealed class CapturedAudioFramePipelineTests
         Assert.All(frames[0], value => Assert.Equal(0, value));
     }
 
+    // Given: 48kHz ステレオでデバイス供給が無い状態
+    // When: 100ms tick 相当を連続で読み出す
+    // Then: リサンプラ短尺があっても毎回ちょうど 1 frame が返り、欠番しない
+    [Fact]
+    public void EmitsSilenceFramesEveryTickWhenResampledDeviceStarves()
+    {
+        var pipeline = new CapturedAudioFramePipeline(new WaveFormat(48_000, 16, 2));
+
+        for (var tick = 0; tick < 5; tick++)
+        {
+            var frames = pipeline.ReadFrames(Pcm16FramePacketizer.SamplesPerFrame);
+
+            Assert.Single(frames);
+            Assert.Equal(Pcm16FramePacketizer.BytesPerFrame, frames[0].Length);
+        }
+    }
+
     // Given: 小音量の入力
     // When: 連続して観測する
     // Then: 適応ゲインが契約の範囲内に収まる
