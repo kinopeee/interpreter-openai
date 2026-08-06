@@ -50,6 +50,8 @@ enum RealtimeAudioCaptureError: Error, LocalizedError, Sendable {
 @MainActor
 protocol RealtimeAudioCaptureServicing: AnyObject {
     var frames: AsyncStream<Data> { get }
+    /// `frames` が終端した理由。正常停止時は nil。
+    var terminationError: Error? { get }
     func start() async throws
     func stop() async
 }
@@ -67,7 +69,9 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     private var configurationObserver: (any NSObjectProtocol)?
     private var isTapInstalled = false
     private var lifecycleGeneration = 0
+    private var activeInputFormatSignature: String?
     private(set) var frames: AsyncStream<Data>
+    private(set) var terminationError: Error?
 
     init() {
         var continuation: AsyncStream<Data>.Continuation!
@@ -81,6 +85,8 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         guard feederTask == nil else { return }
         lifecycleGeneration += 1
         let generation = lifecycleGeneration
+        terminationError = nil
+        activeInputFormatSignature = nil
         recreateFrameStream()
 
         let microphoneGranted = await requestMicrophonePermission()
@@ -197,22 +203,6 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
             }
         }
 
-        removeConfigurationObserver()
-        // 既定デバイス変更・切断。無音を流し続けず、上位の再接続判断へ委ねる。
-        // コールバックは MainActor を仮定しない。
-        configurationObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: audioEngine,
-            queue: nil
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.reportFailure(
-                    RealtimeAudioCaptureError.inputDeviceChanged,
-                    generation: generation
-                )
-            }
-        }
-
         do {
             audioEngine.prepare()
             try audioEngine.start()
@@ -224,6 +214,19 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         guard generation == lifecycleGeneration else {
             await stop()
             throw CancellationError()
+        }
+
+        // prepare/start 周辺の I/O 更新通知を誤検知しないよう、起動成功後にだけ監視する。
+        // 形式が変わらない通知は無視し、切断や実デバイス切替だけを失敗へ倒す。
+        activeInputFormatSignature = Self.formatSignature(of: inputFormat)
+        removeConfigurationObserver()
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: audioEngine,
+            queue: nil
+        ) { [weak self] _ in
+            // コールバックは MainActor を仮定しない。境界は @Sendable ヘルパーへ集約する。
+            Self.enqueueConfigurationChange(service: self, generation: generation)
         }
     }
 
@@ -252,6 +255,38 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         }
     }
 
+    /// NotificationCenter コールバックから MainActor 上の判定へ渡す境界。
+    nonisolated private static func enqueueConfigurationChange(
+        service: RealtimeAudioCaptureService?,
+        generation: Int
+    ) {
+        Task { @MainActor in
+            service?.handleConfigurationChange(generation: generation)
+        }
+    }
+
+    private func handleConfigurationChange(generation: Int) {
+        guard generation == lifecycleGeneration else { return }
+        guard audioEngine.isRunning else { return }
+
+        let inputFormat = audioEngine.inputNode.outputFormat(forBus: 0)
+        let signature = Self.formatSignature(of: inputFormat)
+        let formatUsable = inputFormat.sampleRate > 0 && inputFormat.channelCount > 0
+        // 同一形式のままの I/O 更新は無視する（起動直後の誤再接続を防ぐ）。
+        if formatUsable, signature == activeInputFormatSignature {
+            return
+        }
+
+        reportFailure(
+            RealtimeAudioCaptureError.inputDeviceChanged,
+            generation: generation
+        )
+    }
+
+    nonisolated private static func formatSignature(of format: AVAudioFormat) -> String {
+        "\(format.sampleRate)|\(format.channelCount)|\(format.commonFormat.rawValue)|\(format.isInterleaved)"
+    }
+
     private func yieldFrame(_ frame: Data) -> Bool {
         guard let frameContinuation else { return false }
         return RealtimeAudioFrameYieldOutcome.didAccept(frameContinuation.yield(frame))
@@ -259,6 +294,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
 
     private func reportFailure(_ error: Error, generation: Int) {
         guard generation == lifecycleGeneration else { return }
+        terminationError = error
         AppLogger.audio.error(
             "Realtime audio capture failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
         )

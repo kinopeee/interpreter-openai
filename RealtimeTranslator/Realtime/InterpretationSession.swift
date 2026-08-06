@@ -134,6 +134,7 @@ final class InterpretationSession {
 
     private func runSessionLoop(generation: Int) async {
         while generation == lifecycleGeneration {
+            var reconnectDetail: String?
             do {
                 try await connectAndStream(generation: generation)
                 return
@@ -141,8 +142,15 @@ final class InterpretationSession {
                 return
             } catch let error as RealtimeTranslationError where error.isRecoverable {
                 // recoverable: fall through to reconnect
-            } catch let error as URLError {
-                // WebSocket transport 由来: fall through to reconnect
+                if case .recoverableTransportFailure(let detail) = error {
+                    reconnectDetail = detail
+                }
+            } catch is URLError {
+                // URLSession WebSocket 由来: fall through to reconnect
+            } catch is URLSessionWebSocketTransportError {
+                // transport 境界の未接続/未対応メッセージ: fall through to reconnect
+            } catch let error as NSError where Self.isTransientTransportNSError(error) {
+                // POSIX / NSURL の低レベル切断は URLError にbridged されないことがある
                 _ = error
             } catch let error as RealtimeTranslationError {
                 guard generation == lifecycleGeneration else { return }
@@ -150,12 +158,18 @@ final class InterpretationSession {
                 enterError(error)
                 return
             } catch let error as RealtimeAudioCaptureError {
-                guard generation == lifecycleGeneration else { return }
-                await tearDownStreaming()
-                enterError(error)
-                return
+                switch error {
+                case .inputDeviceChanged:
+                    // マイク切断/切替は再接続。バナーに理由を残す。
+                    reconnectDetail = error.localizedDescription
+                default:
+                    guard generation == lifecycleGeneration else { return }
+                    await tearDownStreaming()
+                    enterError(error)
+                    return
+                }
             } catch {
-                // 未知エラーは再接続せず即 error（予測可能性を優先）。
+                // 未知のアプリエラーは再接続せず即 error（予測可能性を優先）。
                 guard generation == lifecycleGeneration else { return }
                 await tearDownStreaming()
                 enterError(error)
@@ -171,7 +185,16 @@ final class InterpretationSession {
 
             reconnectAttempt += 1
             state = .reconnecting
-            aggregator.setStatusBanner("再接続中… (\(reconnectAttempt)/\(Self.maxReconnectAttempts))")
+            let micMessage = RealtimeAudioCaptureError.inputDeviceChanged.errorDescription
+            if let reconnectDetail, let micMessage, reconnectDetail == micMessage {
+                aggregator.setStatusBanner(
+                    "\(reconnectDetail) 再接続中… (\(reconnectAttempt)/\(Self.maxReconnectAttempts))"
+                )
+            } else {
+                aggregator.setStatusBanner(
+                    "再接続中… (\(reconnectAttempt)/\(Self.maxReconnectAttempts))"
+                )
+            }
             publishSubtitles()
             await tearDownStreaming(keepSubtitles: true)
 
@@ -180,6 +203,11 @@ final class InterpretationSession {
             let jitter = UInt64.random(in: 0...250_000_000)
             try? await Task.sleep(nanoseconds: delay + jitter)
         }
+    }
+
+    /// WebSocket 切断が NSError(NSPOSIXErrorDomain / NSURLErrorDomain) で上がる経路向け。
+    private static func isTransientTransportNSError(_ error: NSError) -> Bool {
+        error.domain == NSPOSIXErrorDomain || error.domain == NSURLErrorDomain
     }
 
     private func connectAndStream(generation: Int) async throws {
@@ -265,6 +293,9 @@ final class InterpretationSession {
             try await dualClient.appendAudioFrame(frame)
         }
         guard generation == lifecycleGeneration, state == .listening else { return }
+        if let captureError = audioCapture.terminationError as? RealtimeAudioCaptureError {
+            throw captureError
+        }
         throw RealtimeTranslationError.recoverableTransportFailure("audio stream ended")
     }
 

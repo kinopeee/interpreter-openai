@@ -46,10 +46,10 @@ cd /Users/yoo/dev/interpreter-openai
 - [ ] 字幕本文上のクリックが背後アプリへ届く
 - [ ] 1語、固有名詞、数字、早口、長文、日英混在で誤lane・重複表示がない
 - [ ] 無効キー、ネット切断、片側socket切断、再接続上限を正しく表示する
-- [ ] ログ、status file（DEBUGのみ）、クラッシュ情報にAPIキー・音声・字幕本文がない
-- [ ] Releaseビルドで`/tmp/realtimetranslator.status`が作られない
-- [ ] エラー時にモーダルではなく字幕バナーへ表示される
-- [ ] 入力デバイス切断/切替で listening のまま固まらず再接続へ倒れる
+- [ ] ログ、status file（DEBUGのみ）、字幕バナー、クラッシュ情報にAPIキー・Authorization/Bearer・音声・原文・訳文がない
+- [ ] `/tmp/realtimetranslator.status`を削除してからReleaseビルドを起動し、起動・録音開始・停止・終了後も作成されない
+- [ ] エラー時にモーダルではなく字幕バナーへ表示され、秘密情報を含まない
+- [ ] 入力デバイス切断/切替で listening のまま固まらず、transcription と Translation 両セッションを再接続し、言語判定をリセットし、旧接続epochのdeltaを表示しない
 - [ ] 通常の録音開始/停止で不要な再接続が起きない（AVAudioEngineConfigurationChangeの誤発火確認）
 - [ ] 1時間連続でqueue増大、buffer leak、再接続loopがなく、OpenAI usageが想定範囲である
 

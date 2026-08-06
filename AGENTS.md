@@ -93,7 +93,7 @@ xcodebuild test -scheme RealtimeTranslator \
 - クラッシュ時は最新のDiagnosticReportsと該当スレッドを確認し、推測だけで修正しない。
 - ログへ認識した発話内容、APIキー、Authorizationを出力しない。
 - `shared/fixtures/v1` は両実装の契約正本。Swiftテストからも読み、Windows版と同値性を保つ。
-- PRでは `.github/workflows/macos.yml` が `xcodebuild test` を実行する。
+- PR CI は Windows / shared-contracts を実行する。macOS の `xcodebuild test` はローカルおよび `.github/workflows/release.yml` の package (macOS) ジョブで検証する。
 
 ## テスト方針
 

@@ -188,15 +188,11 @@ final class InterpretationSessionTests: XCTestCase {
     }
 
     func testURLErrorTriggersReconnectThenListening() async {
-        // Given: 1回目の dual.start だけ URLError を投げる
+        // Given: 1回目の dual.start だけ URLError を投げる（startError は one-shot）
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
         let audio = FakeRealtimeAudioCaptureService()
         let dual = FakeDualRealtimeTranslationClient()
         dual.startError = URLError(.timedOut)
-        dual.startFailuresRemaining = 0
-        // startError は常設なので、1回投げたあと消す仕組みが必要。
-        // Fake の startError は毎回投げるため、startFailuresRemaining 相当の
-        // one-shot として startError を使い、別途クリアするヘルパを使う。
         let session = InterpretationSession(
             apiKeyStore: apiKeyStore,
             audioCapture: audio,
@@ -204,17 +200,91 @@ final class InterpretationSessionTests: XCTestCase {
             activeTickerIntervalNanoseconds: 20_000_000
         )
 
-        // When: startし、再接続前に startError を解除する
-        let startTask = Task { await session.start() }
-        await waitUntil { dual.startCallCount >= 1 }
-        await waitUntil { session.state == .reconnecting }
-        dual.startError = nil
+        // When: startする
+        await session.start()
         await waitUntil(timeout: 3) { session.state == .listening && dual.startCallCount >= 2 }
-        await startTask.value
 
         // Then: URLError でも再接続して listening へ戻る
         XCTAssertEqual(session.state, .listening)
         XCTAssertGreaterThanOrEqual(dual.startCallCount, 2)
+        await session.stop()
+    }
+
+    func testPOSIXTransportErrorTriggersReconnectThenListening() async {
+        // Given: 1回目の dual.start が NSPOSIXErrorDomain の切断を投げる
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        dual.startError = NSError(domain: NSPOSIXErrorDomain, code: Int(ECONNRESET))
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+
+        // When: startする
+        await session.start()
+        await waitUntil(timeout: 3) { session.state == .listening && dual.startCallCount >= 2 }
+
+        // Then: URLError 以外の低レベル切断でも再接続する
+        XCTAssertEqual(session.state, .listening)
+        XCTAssertGreaterThanOrEqual(dual.startCallCount, 2)
+        await session.stop()
+    }
+
+    func testWebSocketTransportErrorTriggersReconnectThenListening() async {
+        // Given: 1回目の dual.start が URLSessionWebSocketTransportError を投げる
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        dual.startError = URLSessionWebSocketTransportError.notConnected
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+
+        // When: startする
+        await session.start()
+        await waitUntil(timeout: 3) { session.state == .listening && dual.startCallCount >= 2 }
+
+        // Then: transport 境界エラーでも再接続する
+        XCTAssertEqual(session.state, .listening)
+        XCTAssertGreaterThanOrEqual(dual.startCallCount, 2)
+        await session.stop()
+    }
+
+    func testInputDeviceChangedReconnectsWithMicBanner() async {
+        // Given: listening 中のセッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let startCountAtListening = dual.startCallCount
+
+        // When: 入力デバイス変更で capture が終端する
+        audio.terminate(with: RealtimeAudioCaptureError.inputDeviceChanged)
+
+        // Then: マイク理由をバナーに載せたうえで再接続し listening へ戻る
+        await waitUntil(timeout: 3) {
+            session.state == .reconnecting
+                && delegate.latestSnapshot?.statusBanner?.contains("マイク") == true
+        }
+        await waitUntil(timeout: 3) {
+            session.state == .listening && dual.startCallCount > startCountAtListening
+        }
+        XCTAssertEqual(session.state, .listening)
         await session.stop()
     }
 
@@ -596,6 +666,7 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     private(set) var startCallCount = 0
     private(set) var stopCallCount = 0
     private(set) var isRunning = false
+    private(set) var terminationError: Error?
     var startError: Error?
 
     init() {
@@ -606,6 +677,7 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
 
     func start() async throws {
         startCallCount += 1
+        terminationError = nil
         if let startError {
             throw startError
         }
@@ -625,6 +697,12 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
 
     func emit(_ frame: Data) {
         _ = continuation?.yield(frame)
+    }
+
+    func terminate(with error: Error) {
+        terminationError = error
+        continuation?.finish()
+        continuation = nil
     }
 }
 
@@ -686,6 +764,8 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
         try Task.checkCancellation()
         if let startError {
+            // one-shot: 再接続後の start を成功させる
+            self.startError = nil
             throw startError
         }
         if startFailuresRemaining > 0 {
