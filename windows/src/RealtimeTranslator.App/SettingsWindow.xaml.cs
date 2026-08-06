@@ -276,7 +276,19 @@ public partial class SettingsWindow : Window
 
     private void RefreshStoredKeyState()
     {
-        var hasKey = _apiKeyStore.HasStoredKey;
+        // HasStoredKey は CredRead 失敗を false に畳むが、未知の Win32 失敗でも
+        // 設定ウィンドウ構築・保存後更新でプロセスを落とさない。
+        bool hasKey;
+        try
+        {
+            hasKey = _apiKeyStore.HasStoredKey;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            hasKey = false;
+            ShowApiKeyStatus("API キーの保存状態を確認できませんでした", isError: true);
+        }
+
         StoredKeyStateText.Text = hasKey ? "資格情報マネージャーに保存済み" : "未保存";
         DeleteApiKeyButton.IsEnabled = hasKey;
     }

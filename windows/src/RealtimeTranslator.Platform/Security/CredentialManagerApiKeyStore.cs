@@ -16,7 +16,15 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
 
     private const uint CredTypeGeneric = 1;
     private const uint CredPersistLocalMachine = 2;
-    private const int ErrorNotFound = 1168;
+
+    /// <summary>ERROR_NOT_FOUND: 指定ターゲットの資格情報がない。</summary>
+    internal const int ErrorNotFound = 1168;
+
+    /// <summary>
+    /// ERROR_NO_SUCH_LOGON_SESSION: ログオンセッションに資格情報セットがない
+    /// （ネットワークログオン等）。CredRead の文書化済み失敗。
+    /// </summary>
+    internal const int ErrorNoSuchLogonSession = 1312;
 
     private readonly string _targetName;
 
@@ -27,14 +35,39 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
         _targetName = targetName;
     }
 
-    public bool HasStoredKey => !string.IsNullOrWhiteSpace(Load());
+    /// <summary>
+    /// 保存済みキーがあるか。CredRead の一時的/環境的失敗では例外を投げず false を返す
+    /// （Settings 開閉・録音開始ゲートを落とさない）。
+    /// </summary>
+    public bool HasStoredKey
+    {
+        get
+        {
+            try
+            {
+                return !string.IsNullOrWhiteSpace(Load());
+            }
+            catch (Win32Exception)
+            {
+                return false;
+            }
+        }
+    }
 
     public string? Load()
     {
         if (!NativeMethods.CredReadW(_targetName, CredTypeGeneric, 0, out var handle))
         {
-            var error = Marshal.GetLastWin32Error();
-            return error == ErrorNotFound ? null : throw new Win32Exception(error);
+            // CredRead 失敗はすべて「キーなし」相当。以前は ErrorNotFound 以外で
+            // Win32Exception を投げており、Settings 構築・録音開始ゲートが落ちていた。
+            // 文書化済み失敗は ErrorNotFound / ErrorNoSuchLogonSession。それ以外も throw しない。
+            _ = Marshal.GetLastWin32Error() switch
+            {
+                ErrorNotFound => true,
+                ErrorNoSuchLogonSession => true,
+                _ => false,
+            };
+            return null;
         }
 
         try
