@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v1/schema/subtitle.schema.json",
+  "title": "Subtitle clipping and assembly fixtures",
+  "type": "object",
+  "required": ["version", "limits", "clip", "assembler"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "limits": {
+      "type": "object",
+      "required": ["japaneseCharacterLimit", "englishCharacterLimit", "ellipsis"],
+      "additionalProperties": false,
+      "properties": {
+        "japaneseCharacterLimit": { "const": 60 },
+        "englishCharacterLimit": { "const": 120 },
+        "ellipsis": { "const": "…" }
+      }
+    },
+    "clip": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "input", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "input": { "$ref": "#/$defs/textExpression" },
+          "expected": { "$ref": "#/$defs/textExpression" }
+        }
+      }
+    },
+    "assembler": {
+      "type": "object",
+      "required": ["idleFinalizeSeconds", "cases"],
+      "additionalProperties": false,
+      "properties": {
+        "idleFinalizeSeconds": { "const": 8 },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "epoch", "steps", "expectedFinal"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "epoch": { "type": "integer" },
+              "expectLane": { "enum": ["en", "ja", null] },
+              "steps": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/step" }
+              },
+              "expectedFinal": {
+                "type": "object",
+                "required": [
+                  "sourceText",
+                  "translatedText",
+                  "isTranslationCurrent",
+                  "shouldFinalize"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "sourceText": { "type": "string" },
+                  "translatedText": { "type": "string" },
+                  "isTranslationCurrent": { "type": "boolean" },
+                  "shouldFinalize": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "textExpression": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "literal": { "type": "string" },
+        "repeat": { "type": "string", "minLength": 1 },
+        "count": { "type": "integer", "minimum": 0 },
+        "concat": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/textExpression" }
+        }
+      },
+      "dependentRequired": { "repeat": ["count"], "count": ["repeat"] }
+    },
+    "step": {
+      "type": "object",
+      "required": ["at", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "at": { "type": "number", "minimum": 0 },
+        "kind": { "enum": ["sourceDelta", "translationDelta", "tick", "finalizeForLanguageSwitch"] },
+        "lane": { "enum": ["en", "ja"] },
+        "text": { "type": "string" },
+        "eventId": { "type": ["string", "null"] },
+        "elapsedMs": { "type": ["integer", "null"] },
+        "epoch": { "type": "integer" }
+      }
+    }
+  }
+}

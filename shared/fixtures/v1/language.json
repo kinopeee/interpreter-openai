@@ -1,0 +1,99 @@
+{
+  "$schema": "./schema/language.schema.json",
+  "version": 1,
+  "description": "SpokenLanguageDetector の期待値。evidence は japanese/english/ambiguousLatin/none、detect は japanese/english/unknown。",
+  "recentEvidenceWindow": 16,
+  "evidence": [
+    { "name": "hiragana", "input": "こんにちは", "evidence": "japanese", "detect": "japanese" },
+    { "name": "katakana", "input": "カタカナ", "evidence": "japanese", "detect": "japanese" },
+    { "name": "kanji", "input": "東京", "evidence": "japanese", "detect": "japanese" },
+    {
+      "name": "japanese wins over latin words",
+      "input": "こんにちは world today",
+      "evidence": "japanese",
+      "detect": "japanese"
+    },
+    {
+      "name": "two latin words are english",
+      "input": "Hello world",
+      "evidence": "english",
+      "detect": "english"
+    },
+    {
+      "name": "single latin word is ambiguous",
+      "input": "Hello",
+      "evidence": "ambiguousLatin",
+      "detect": "unknown"
+    },
+    {
+      "name": "single latin word with punctuation stays ambiguous",
+      "input": "Hello!!!",
+      "evidence": "ambiguousLatin",
+      "detect": "unknown"
+    },
+    {
+      "name": "hyphen splits latin words",
+      "input": "well-known",
+      "evidence": "english",
+      "detect": "english"
+    },
+    { "name": "digits only", "input": "123 456", "evidence": "none", "detect": "unknown" },
+    { "name": "empty", "input": "", "evidence": "none", "detect": "unknown" },
+    { "name": "whitespace only", "input": "   ", "evidence": "none", "detect": "unknown" },
+    {
+      "name": "fullwidth punctuation only",
+      "input": "、。！",
+      "evidence": "none",
+      "detect": "unknown"
+    }
+  ],
+  "recentEvidence": [
+    {
+      "name": "japanese scrolled out of the window yields english",
+      "input": "こんにちは。 This is an English sentence now",
+      "window": 16,
+      "expected": "english",
+      "fullEvidence": "japanese"
+    },
+    {
+      "name": "recent japanese inside the window",
+      "input": "Hello world こんにちは",
+      "window": 16,
+      "expected": "japanese",
+      "fullEvidence": "japanese"
+    },
+    {
+      "name": "whitespace only input has no evidence",
+      "input": "     ",
+      "window": 16,
+      "expected": "none",
+      "fullEvidence": "none"
+    },
+    {
+      "name": "short input falls back to full evidence",
+      "input": "Hi there",
+      "window": 16,
+      "expected": "english",
+      "fullEvidence": "english"
+    },
+    {
+      "name": "window zero falls back to full evidence",
+      "input": "こんにちは world today",
+      "window": 0,
+      "expected": "japanese",
+      "fullEvidence": "japanese"
+    },
+    {
+      "name": "whitespace is preserved so word boundaries survive",
+      "input": "aaaaaaaaaaaaaaaaaaaa bb cc",
+      "window": 16,
+      "expected": "english",
+      "fullEvidence": "english"
+    }
+  ],
+  "targets": [
+    { "language": "japanese", "translationTarget": "en", "counterpart": "english" },
+    { "language": "english", "translationTarget": "ja", "counterpart": "japanese" },
+    { "language": "unknown", "translationTarget": null, "counterpart": "unknown" }
+  ]
+}

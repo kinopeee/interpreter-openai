@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v1/schema/codec.schema.json",
+  "title": "Realtime translation codec fixtures",
+  "type": "object",
+  "required": ["version", "encode", "decode", "decodeFailures"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "encode": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "event", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "event": { "$ref": "#/$defs/clientEvent" },
+          "expected": { "type": "object" }
+        }
+      }
+    },
+    "decode": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "json", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "json": { "type": "string" },
+          "expected": { "$ref": "#/$defs/serverEvent" }
+        }
+      }
+    },
+    "decodeFailures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "json", "expectedError"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "json": { "type": "string" },
+          "expectedError": { "const": "invalidMessage" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "clientEvent": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": ["sessionUpdate", "inputAudioBufferAppend", "sessionClose"]
+        },
+        "outputLanguage": { "enum": ["en", "ja"] },
+        "inputTranscriptionModel": { "type": ["string", "null"] },
+        "noiseReduction": { "enum": ["near_field", "far_field", null] },
+        "base64Audio": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "serverEvent": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "sessionCreated",
+            "sessionUpdated",
+            "inputTranscriptDelta",
+            "outputTranscriptDelta",
+            "outputAudioDelta",
+            "sessionClosed",
+            "error",
+            "unknown"
+          ]
+        },
+        "delta": { "type": "string" },
+        "eventId": { "type": ["string", "null"] },
+        "elapsedMs": { "type": ["integer", "null"] },
+        "message": { "type": "string" },
+        "code": { "type": ["string", "null"] },
+        "type": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

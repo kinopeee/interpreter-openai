@@ -1,0 +1,47 @@
+name: windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: build and test (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Locate solution
+        id: locate
+        shell: pwsh
+        run: |
+          $solution = Get-ChildItem -Path 'windows' -Filter '*.sln' -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if ($null -eq $solution) {
+            Write-Host 'No windows solution yet; skipping build.'
+            "found=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            "found=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            "path=$($solution.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+      - uses: actions/setup-dotnet@v4
+        if: steps.locate.outputs.found == 'true'
+        with:
+          global-json-file: windows/global.json
+
+      - name: Restore
+        if: steps.locate.outputs.found == 'true'
+        run: dotnet restore "${{ steps.locate.outputs.path }}"
+
+      - name: Build
+        if: steps.locate.outputs.found == 'true'
+        run: dotnet build "${{ steps.locate.outputs.path }}" --configuration Release --no-restore
+
+      - name: Test
+        if: steps.locate.outputs.found == 'true'
+        run: dotnet test "${{ steps.locate.outputs.path }}" --configuration Release --no-build

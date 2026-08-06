@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v1/schema/tuning.schema.json",
+  "title": "Realtime session tuning fixtures",
+  "type": "object",
+  "required": [
+    "version",
+    "limits",
+    "parseKeywords",
+    "parseKeywordsLimit",
+    "sanitizedPrompt",
+    "sanitizedPromptLimit"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "limits": {
+      "type": "object",
+      "required": ["keywordLimit", "promptCharacterLimit", "forbiddenKeywordCharacters"],
+      "additionalProperties": false,
+      "properties": {
+        "keywordLimit": { "const": 64 },
+        "promptCharacterLimit": { "const": 1000 },
+        "forbiddenKeywordCharacters": { "const": "<>" }
+      }
+    },
+    "parseKeywords": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "input", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "input": { "type": "string" },
+          "expected": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "parseKeywordsLimit": {
+      "type": "object",
+      "required": [
+        "name",
+        "lineTemplate",
+        "lineCount",
+        "limit",
+        "expectedCount",
+        "expectedFirst",
+        "expectedLast"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "lineTemplate": { "type": "string" },
+        "lineCount": { "type": "integer", "minimum": 1 },
+        "limit": { "type": "integer", "minimum": 1 },
+        "expectedCount": { "type": "integer", "minimum": 0 },
+        "expectedFirst": { "type": "string" },
+        "expectedLast": { "type": "string" }
+      }
+    },
+    "sanitizedPrompt": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "input", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "input": { "type": "string" },
+          "expected": { "type": "string" }
+        }
+      }
+    },
+    "sanitizedPromptLimit": {
+      "type": "object",
+      "required": ["name", "repeatedCharacter", "inputLength", "expectedLength"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "repeatedCharacter": { "type": "string", "minLength": 1, "maxLength": 1 },
+        "inputLength": { "type": "integer", "minimum": 1 },
+        "expectedLength": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

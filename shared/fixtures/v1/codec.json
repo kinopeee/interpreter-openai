@@ -1,0 +1,202 @@
+{
+  "$schema": "./schema/codec.schema.json",
+  "version": 1,
+  "description": "RealtimeTranslationMessageCodec の言語中立な期待値。encode は JSON を意味比較（キー順は問わない）する。",
+  "encode": [
+    {
+      "name": "session.update english target with source transcription",
+      "event": {
+        "kind": "sessionUpdate",
+        "outputLanguage": "en",
+        "inputTranscriptionModel": "gpt-realtime-whisper",
+        "noiseReduction": "far_field"
+      },
+      "expected": {
+        "type": "session.update",
+        "session": {
+          "audio": {
+            "output": { "language": "en" },
+            "input": {
+              "transcription": { "model": "gpt-realtime-whisper" },
+              "noise_reduction": { "type": "far_field" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "session.update japanese target without source transcription",
+      "event": {
+        "kind": "sessionUpdate",
+        "outputLanguage": "ja",
+        "inputTranscriptionModel": null,
+        "noiseReduction": "near_field"
+      },
+      "expected": {
+        "type": "session.update",
+        "session": {
+          "audio": {
+            "output": { "language": "ja" },
+            "input": {
+              "noise_reduction": { "type": "near_field" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "session.update noise reduction disabled emits explicit null",
+      "event": {
+        "kind": "sessionUpdate",
+        "outputLanguage": "en",
+        "inputTranscriptionModel": null,
+        "noiseReduction": null
+      },
+      "expected": {
+        "type": "session.update",
+        "session": {
+          "audio": {
+            "output": { "language": "en" },
+            "input": {
+              "noise_reduction": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "input audio buffer append",
+      "event": {
+        "kind": "inputAudioBufferAppend",
+        "base64Audio": "AAECAwQF"
+      },
+      "expected": {
+        "type": "session.input_audio_buffer.append",
+        "audio": "AAECAwQF"
+      }
+    },
+    {
+      "name": "session close",
+      "event": { "kind": "sessionClose" },
+      "expected": { "type": "session.close" }
+    }
+  ],
+  "decode": [
+    {
+      "name": "session.created",
+      "json": "{\"type\":\"session.created\"}",
+      "expected": { "kind": "sessionCreated" }
+    },
+    {
+      "name": "session.updated",
+      "json": "{\"type\":\"session.updated\"}",
+      "expected": { "kind": "sessionUpdated" }
+    },
+    {
+      "name": "input transcript delta with metadata",
+      "json": "{\"type\":\"session.input_transcript.delta\",\"delta\":\"こんにちは\",\"event_id\":\"evt_1\",\"elapsed_ms\":1200}",
+      "expected": {
+        "kind": "inputTranscriptDelta",
+        "delta": "こんにちは",
+        "eventId": "evt_1",
+        "elapsedMs": 1200
+      }
+    },
+    {
+      "name": "input transcript delta missing delta becomes empty string",
+      "json": "{\"type\":\"session.input_transcript.delta\"}",
+      "expected": {
+        "kind": "inputTranscriptDelta",
+        "delta": "",
+        "eventId": null,
+        "elapsedMs": null
+      }
+    },
+    {
+      "name": "output transcript delta with floating elapsed_ms truncates",
+      "json": "{\"type\":\"session.output_transcript.delta\",\"delta\":\"Hello\",\"event_id\":\"evt_2\",\"elapsed_ms\":1999.9}",
+      "expected": {
+        "kind": "outputTranscriptDelta",
+        "delta": "Hello",
+        "eventId": "evt_2",
+        "elapsedMs": 1999
+      }
+    },
+    {
+      "name": "output transcript delta with non numeric elapsed_ms is ignored",
+      "json": "{\"type\":\"session.output_transcript.delta\",\"delta\":\"Hi\",\"elapsed_ms\":\"soon\"}",
+      "expected": {
+        "kind": "outputTranscriptDelta",
+        "delta": "Hi",
+        "eventId": null,
+        "elapsedMs": null
+      }
+    },
+    {
+      "name": "output audio delta is a marker only",
+      "json": "{\"type\":\"session.output_audio.delta\",\"audio\":\"AAECAwQF\"}",
+      "expected": { "kind": "outputAudioDelta" }
+    },
+    {
+      "name": "session.closed",
+      "json": "{\"type\":\"session.closed\"}",
+      "expected": { "kind": "sessionClosed" }
+    },
+    {
+      "name": "error with nested error object",
+      "json": "{\"type\":\"error\",\"error\":{\"message\":\"boom\",\"code\":\"server_error\"}}",
+      "expected": { "kind": "error", "message": "boom", "code": "server_error" }
+    },
+    {
+      "name": "error falls back to error.type when code is absent",
+      "json": "{\"type\":\"error\",\"error\":{\"message\":\"boom\",\"type\":\"invalid_request_error\"}}",
+      "expected": { "kind": "error", "message": "boom", "code": "invalid_request_error" }
+    },
+    {
+      "name": "error falls back to top level message",
+      "json": "{\"type\":\"error\",\"message\":\"top level\"}",
+      "expected": { "kind": "error", "message": "top level", "code": null }
+    },
+    {
+      "name": "error without any message uses default text",
+      "json": "{\"type\":\"error\"}",
+      "expected": {
+        "kind": "error",
+        "message": "翻訳サーバーでエラーが発生しました",
+        "code": null
+      }
+    },
+    {
+      "name": "unknown event keeps its type",
+      "json": "{\"type\":\"session.something_new\",\"foo\":1}",
+      "expected": { "kind": "unknown", "type": "session.something_new" }
+    }
+  ],
+  "decodeFailures": [
+    {
+      "name": "broken json",
+      "json": "{\"type\":",
+      "expectedError": "invalidMessage"
+    },
+    {
+      "name": "json array instead of object",
+      "json": "[1,2,3]",
+      "expectedError": "invalidMessage"
+    },
+    {
+      "name": "object without type",
+      "json": "{\"delta\":\"x\"}",
+      "expectedError": "invalidMessage"
+    },
+    {
+      "name": "type is not a string",
+      "json": "{\"type\":42}",
+      "expectedError": "invalidMessage"
+    },
+    {
+      "name": "empty payload",
+      "json": "",
+      "expectedError": "invalidMessage"
+    }
+  ]
+}

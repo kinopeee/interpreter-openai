@@ -1,0 +1,114 @@
+{
+  "$schema": "./schema/routing.schema.json",
+  "version": 1,
+  "description": "DualRealtimeTranslationClient の音声ルーティング期待値。frame は識別用のラベルで、実バイト列は任意。sourceFrames/englishFrames/japaneseFrames は各接続へ append された順序付きラベル列。",
+  "prerollFrameLimit": 40,
+  "consecutiveTranslationFailureLimit": 3,
+  "cases": [
+    {
+      "name": "before detection only the source connection receives audio",
+      "steps": [
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "appendFrame", "frame": "f2" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2"],
+        "englishFrames": [],
+        "japaneseFrames": []
+      }
+    },
+    {
+      "name": "japanese detection flushes preroll to the english target only",
+      "steps": [
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "appendFrame", "frame": "f2" },
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "f3" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2", "f3"],
+        "englishFrames": ["f1", "f2", "f3"],
+        "japaneseFrames": []
+      }
+    },
+    {
+      "name": "english detection flushes preroll to the japanese target only",
+      "steps": [
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "setSpokenLanguage", "language": "english" },
+        { "kind": "appendFrame", "frame": "f2" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2"],
+        "englishFrames": [],
+        "japaneseFrames": ["f1", "f2"]
+      }
+    },
+    {
+      "name": "unknown language does not change routing",
+      "steps": [
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "setSpokenLanguage", "language": "unknown" },
+        { "kind": "appendFrame", "frame": "f2" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2"],
+        "englishFrames": [],
+        "japaneseFrames": []
+      }
+    },
+    {
+      "name": "language switch flushes the rolling preroll to the new target",
+      "steps": [
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "appendFrame", "frame": "f2" },
+        { "kind": "setSpokenLanguage", "language": "english" },
+        { "kind": "appendFrame", "frame": "f3" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2", "f3"],
+        "englishFrames": ["f1", "f2"],
+        "japaneseFrames": ["f1", "f2", "f3"]
+      }
+    },
+    {
+      "name": "setting the same language twice is a no-op",
+      "steps": [
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "f2" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2"],
+        "englishFrames": ["f1", "f2"],
+        "japaneseFrames": []
+      }
+    },
+    {
+      "name": "resetAudioRouting keeps the rolling preroll for the next detection",
+      "steps": [
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "resetAudioRouting" },
+        { "kind": "appendFrame", "frame": "f2" },
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "f3" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2", "f3"],
+        "englishFrames": ["f1", "f1", "f2", "f3"],
+        "japaneseFrames": []
+      }
+    }
+  ],
+  "prerollWindow": {
+    "name": "the rolling preroll keeps at most 40 frames",
+    "appendFrameCount": 60,
+    "thenSetSpokenLanguage": "japanese",
+    "expectedFlushedFrameCount": 40,
+    "expectedFirstFlushedFrameIndex": 20,
+    "expectedLastFlushedFrameIndex": 59
+  }
+}

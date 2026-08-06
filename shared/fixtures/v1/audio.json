@@ -1,0 +1,162 @@
+{
+  "$schema": "./schema/audio.schema.json",
+  "version": 1,
+  "description": "PCM16 パケット化・Float32→PCM16 変換・適応ゲインの期待値。",
+  "format": {
+    "sampleRate": 24000,
+    "bytesPerSample": 2,
+    "frameDurationMilliseconds": 100,
+    "samplesPerFrame": 2400,
+    "bytesPerFrame": 4800,
+    "channels": 1,
+    "endianness": "little"
+  },
+  "packetizer": [
+    {
+      "name": "exactly one frame",
+      "steps": [{ "kind": "append", "byteCount": 4800, "expectedFrameCount": 1 }],
+      "expectedPendingBytes": 0,
+      "flush": { "expectedFrameBytes": null }
+    },
+    {
+      "name": "partial input produces no frame",
+      "steps": [{ "kind": "append", "byteCount": 4799, "expectedFrameCount": 0 }],
+      "expectedPendingBytes": 4799,
+      "flush": { "expectedFrameBytes": 4800, "expectedTrailingZeroBytes": 1 }
+    },
+    {
+      "name": "empty input is ignored",
+      "steps": [{ "kind": "append", "byteCount": 0, "expectedFrameCount": 0 }],
+      "expectedPendingBytes": 0,
+      "flush": { "expectedFrameBytes": null }
+    },
+    {
+      "name": "multiple frames and a remainder",
+      "steps": [{ "kind": "append", "byteCount": 12000, "expectedFrameCount": 2 }],
+      "expectedPendingBytes": 2400,
+      "flush": { "expectedFrameBytes": 4800, "expectedTrailingZeroBytes": 2400 }
+    },
+    {
+      "name": "remainders accumulate across appends",
+      "steps": [
+        { "kind": "append", "byteCount": 3000, "expectedFrameCount": 0 },
+        { "kind": "append", "byteCount": 3000, "expectedFrameCount": 1 }
+      ],
+      "expectedPendingBytes": 1200,
+      "flush": { "expectedFrameBytes": 4800, "expectedTrailingZeroBytes": 3600 }
+    },
+    {
+      "name": "reset drops the remainder",
+      "steps": [
+        { "kind": "append", "byteCount": 1000, "expectedFrameCount": 0 },
+        { "kind": "reset" }
+      ],
+      "expectedPendingBytes": 0,
+      "flush": { "expectedFrameBytes": null }
+    }
+  ],
+  "packetizerContinuity": {
+    "name": "concatenating all emitted frames plus the padded flush reproduces the input followed by silence",
+    "appendByteCounts": [1234, 5678, 9012],
+    "totalInputBytes": 15924,
+    "expectedEmittedFrameCount": 3,
+    "expectedFlushFrameBytes": 4800,
+    "expectedTrailingZeroBytes": 3276
+  },
+  "float32ToPcm16": [
+    { "name": "zero", "sample": 0.0, "gain": 1.0, "expected": 0 },
+    { "name": "full scale positive", "sample": 1.0, "gain": 1.0, "expected": 32767 },
+    { "name": "full scale negative", "sample": -1.0, "gain": 1.0, "expected": -32767 },
+    { "name": "clips above one", "sample": 2.5, "gain": 1.0, "expected": 32767 },
+    { "name": "clips below minus one", "sample": -2.5, "gain": 1.0, "expected": -32767 },
+    { "name": "gain is applied before clipping", "sample": 0.5, "gain": 4.0, "expected": 32767 },
+    { "name": "gain scales a quiet sample", "sample": 0.1, "gain": 2.0, "expected": 6553 },
+    { "name": "rounds half away from zero", "sample": 0.5, "gain": 1.0, "expected": 16384 }
+  ],
+  "gain": {
+    "constants": {
+      "minimumGain": 1.0,
+      "maximumGain": 8.0,
+      "targetPeak": 0.5,
+      "silenceFloor": 0.005,
+      "clipThreshold": 0.95,
+      "defaultInitialGain": 4.0
+    },
+    "tolerance": 0.0005,
+    "cases": [
+      {
+        "name": "initial gain is clamped to the maximum",
+        "initialGain": 100.0,
+        "peaks": [],
+        "expectedGain": 8.0
+      },
+      {
+        "name": "initial gain is clamped to the minimum",
+        "initialGain": 0.1,
+        "peaks": [],
+        "expectedGain": 1.0
+      },
+      {
+        "name": "clipping input drops the gain immediately",
+        "initialGain": 4.0,
+        "peaks": [0.3],
+        "expectedGain": 1.6666667
+      },
+      {
+        "name": "loud input snaps to the target peak",
+        "initialGain": 4.0,
+        "peaks": [0.5],
+        "expectedGain": 1.0
+      },
+      {
+        "name": "silence never inflates the gain",
+        "initialGain": 4.0,
+        "peaks": [0.0, 0.0, 0.0, 0.0, 0.0],
+        "expectedGain": 4.0
+      },
+      {
+        "name": "below the silence floor the gain is frozen",
+        "initialGain": 4.0,
+        "peaks": [0.004],
+        "expectedGain": 4.0
+      },
+      {
+        "name": "quiet input rises by at most five percent per step",
+        "initialGain": 1.0,
+        "peaks": [0.01],
+        "expectedGain": 1.05
+      },
+      {
+        "name": "two quiet steps compound",
+        "initialGain": 1.0,
+        "peaks": [0.01, 0.01],
+        "expectedGain": 1.1025
+      },
+      {
+        "name": "sustained quiet input saturates at the maximum",
+        "initialGain": 1.0,
+        "repeatPeak": 0.01,
+        "repeatCount": 100,
+        "expectedGain": 8.0
+      },
+      {
+        "name": "over amplified input falls by at most fifteen percent per step",
+        "initialGain": 8.0,
+        "peaks": [0.1],
+        "expectedGain": 6.8
+      },
+      {
+        "name": "peak decay lets the gain recover after a transient",
+        "initialGain": 4.0,
+        "peaks": [0.5, 0.0],
+        "expectedGain": 1.05
+      },
+      {
+        "name": "negative peaks are treated as zero",
+        "initialGain": 4.0,
+        "peaks": [-1.0],
+        "expectedGain": 4.0
+      }
+    ]
+  }
+}

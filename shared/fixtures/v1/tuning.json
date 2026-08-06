@@ -1,0 +1,84 @@
+{
+  "$schema": "./schema/tuning.schema.json",
+  "version": 1,
+  "description": "RealtimeSessionTuning の keyword / prompt 正規化の期待値。",
+  "limits": {
+    "keywordLimit": 64,
+    "promptCharacterLimit": 1000,
+    "forbiddenKeywordCharacters": "<>"
+  },
+  "parseKeywords": [
+    {
+      "name": "one keyword per line",
+      "input": "ハッカソン\nhackathon\nエンジニア",
+      "expected": ["ハッカソン", "hackathon", "エンジニア"]
+    },
+    {
+      "name": "trims surrounding whitespace",
+      "input": "  hackathon  \n\tdemo\t",
+      "expected": ["hackathon", "demo"]
+    },
+    {
+      "name": "drops empty and whitespace only lines",
+      "input": "a\n\n   \nb",
+      "expected": ["a", "b"]
+    },
+    {
+      "name": "strips angle brackets",
+      "input": "<script>\na<b>c",
+      "expected": ["script", "abc"]
+    },
+    {
+      "name": "line that becomes empty after stripping is dropped",
+      "input": "<>\nkeep",
+      "expected": ["keep"]
+    },
+    {
+      "name": "crlf is treated as a line break",
+      "input": "one\r\ntwo",
+      "expected": ["one", "two"]
+    },
+    {
+      "name": "empty input",
+      "input": "",
+      "expected": []
+    }
+  ],
+  "parseKeywordsLimit": {
+    "name": "stops at the keyword limit",
+    "lineTemplate": "kw{index}",
+    "lineCount": 100,
+    "limit": 64,
+    "expectedCount": 64,
+    "expectedFirst": "kw0",
+    "expectedLast": "kw63"
+  },
+  "sanitizedPrompt": [
+    {
+      "name": "keeps a short prompt as is",
+      "input": "Japanese and English conversation.",
+      "expected": "Japanese and English conversation."
+    },
+    {
+      "name": "collapses newlines into spaces",
+      "input": "line one\nline two\r\nline three\rline four",
+      "expected": "line one line two line three line four"
+    },
+    {
+      "name": "trims after collapsing",
+      "input": "\n  hello  \n",
+      "expected": "hello"
+    },
+    {
+      "name": "empty input",
+      "input": "",
+      "expected": ""
+    }
+  ],
+  "sanitizedPromptLimit": {
+    "name": "truncates to the prompt character limit",
+    "repeatedCharacter": "a",
+    "inputLength": 1500,
+    "expectedLength": 1000
+  }
+}

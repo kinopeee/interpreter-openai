@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v1/schema/language.schema.json",
+  "title": "Spoken language detection fixtures",
+  "type": "object",
+  "required": ["version", "recentEvidenceWindow", "evidence", "recentEvidence", "targets"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "recentEvidenceWindow": { "const": 16 },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "input", "evidence", "detect"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "input": { "type": "string" },
+          "evidence": { "$ref": "#/$defs/evidence" },
+          "detect": { "$ref": "#/$defs/language" }
+        }
+      }
+    },
+    "recentEvidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "input", "window", "expected", "fullEvidence"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "input": { "type": "string" },
+          "window": { "type": "integer", "minimum": 0 },
+          "expected": { "$ref": "#/$defs/evidence" },
+          "fullEvidence": { "$ref": "#/$defs/evidence" }
+        }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["language", "translationTarget", "counterpart"],
+        "additionalProperties": false,
+        "properties": {
+          "language": { "$ref": "#/$defs/language" },
+          "translationTarget": { "enum": ["en", "ja", null] },
+          "counterpart": { "$ref": "#/$defs/language" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "evidence": { "enum": ["japanese", "english", "ambiguousLatin", "none"] },
+    "language": { "enum": ["japanese", "english", "unknown"] }
+  }
+}
