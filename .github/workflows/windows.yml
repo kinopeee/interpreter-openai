@@ -21,7 +21,7 @@ jobs:
         id: locate
         shell: pwsh
         run: |
-          $solution = Get-ChildItem -Path 'windows' -Filter '*.sln' -Recurse -ErrorAction SilentlyContinue |
+          $solution = Get-ChildItem -Path 'windows' -Include '*.sln', '*.slnx' -Recurse -ErrorAction SilentlyContinue |
             Select-Object -First 1
           if ($null -eq $solution) {
             Write-Host 'No windows solution yet; skipping build.'
