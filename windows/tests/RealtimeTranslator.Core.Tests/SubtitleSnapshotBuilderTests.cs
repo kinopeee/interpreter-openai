@@ -101,4 +101,21 @@ public sealed class SubtitleSnapshotBuilderTests
         Assert.True(snapshot.Current.IsEmpty);
         Assert.Equal(SubtitleSnapshotBuilder.IdleBanner, snapshot.StatusBanner);
     }
+
+    // Given: エラー状態で字幕クリアタイマーが発火する
+    // When: Reset する
+    // Then: 待機バナーを出さず、エラートレイ表示と矛盾しない
+    [Fact]
+    public void ResetInErrorDoesNotShowIdleBanner()
+    {
+        var builder = new SubtitleSnapshotBuilder();
+        builder.Apply(
+            new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
+            TranslationState.Listening);
+
+        var snapshot = builder.Reset(TranslationState.Error);
+
+        Assert.True(snapshot.Current.IsEmpty);
+        Assert.Null(snapshot.StatusBanner);
+    }
 }

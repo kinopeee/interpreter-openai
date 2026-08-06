@@ -69,7 +69,9 @@ public sealed class SubtitleSnapshotBuilder
         TranslationState.Connecting => ConnectingBanner,
         TranslationState.Reconnecting => ReconnectingBanner,
         // 表示中の字幕があるうちはバナーで覆わない。
-        TranslationState.Idle or TranslationState.Error => current.IsEmpty ? IdleBanner : null,
+        TranslationState.Idle => current.IsEmpty ? IdleBanner : null,
+        // Error はトレイ側が状態を示す。空スロットで待機バナーを出すと失敗と矛盾する。
+        TranslationState.Error => null,
         _ => null,
     };
 }
