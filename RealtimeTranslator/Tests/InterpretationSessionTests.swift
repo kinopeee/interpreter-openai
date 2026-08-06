@@ -163,6 +163,180 @@ final class InterpretationSessionTests: XCTestCase {
         await session.stop()
     }
 
+    func testUnknownErrorEntersErrorWithoutReconnect() async {
+        // Given: capture start が未知エラーを投げる
+        struct UnknownCaptureError: Error {}
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        audio.startError = UnknownCaptureError()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+
+        // When: startする
+        await session.start()
+        await waitUntil { session.state == .error }
+
+        // Then: 再接続せず即 error。dual.start は1回だけ
+        XCTAssertEqual(session.state, .error)
+        XCTAssertEqual(dual.startCallCount, 1)
+        XCTAssertEqual(audio.startCallCount, 1)
+    }
+
+    func testURLErrorTriggersReconnectThenListening() async {
+        // Given: 1回目の dual.start だけ URLError を投げる（startError は one-shot）
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        dual.startError = URLError(.timedOut)
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+
+        // When: startする
+        await session.start()
+        await waitUntil(timeout: 3) { session.state == .listening && dual.startCallCount >= 2 }
+
+        // Then: URLError でも再接続して listening へ戻る
+        XCTAssertEqual(session.state, .listening)
+        XCTAssertGreaterThanOrEqual(dual.startCallCount, 2)
+        await session.stop()
+    }
+
+    func testPOSIXTransportErrorTriggersReconnectThenListening() async {
+        // Given: 1回目の dual.start が NSPOSIXErrorDomain の切断を投げる
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        // ENOTCONN (57): URLSession WebSocket 切断でよく見える POSIX コード
+        dual.startError = NSError(domain: NSPOSIXErrorDomain, code: 57)
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+
+        // When: startする
+        await session.start()
+        await waitUntil(timeout: 3) { session.state == .listening && dual.startCallCount >= 2 }
+
+        // Then: URLError 以外の低レベル切断でも再接続する
+        XCTAssertEqual(session.state, .listening)
+        XCTAssertGreaterThanOrEqual(dual.startCallCount, 2)
+        await session.stop()
+    }
+
+    func testWebSocketTransportErrorTriggersReconnectThenListening() async {
+        // Given: 1回目の dual.start が URLSessionWebSocketTransportError を投げる
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        dual.startError = URLSessionWebSocketTransportError.notConnected
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+
+        // When: startする
+        await session.start()
+        await waitUntil(timeout: 3) { session.state == .listening && dual.startCallCount >= 2 }
+
+        // Then: transport 境界エラーでも再接続する
+        XCTAssertEqual(session.state, .listening)
+        XCTAssertGreaterThanOrEqual(dual.startCallCount, 2)
+        await session.stop()
+    }
+
+    func testInputDeviceChangedReconnectsWithMicBanner() async {
+        // Given: listening 中のセッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let startCountAtListening = dual.startCallCount
+
+        // When: 入力デバイス変更で capture が終端する
+        audio.terminate(with: RealtimeAudioCaptureError.inputDeviceChanged)
+
+        // Then: マイク理由をバナーに載せたうえで再接続し listening へ戻る
+        await waitUntil(timeout: 3) {
+            session.state == .reconnecting
+                && delegate.latestSnapshot?.statusBanner?.contains("マイク") == true
+        }
+        await waitUntil(timeout: 3) {
+            session.state == .listening && dual.startCallCount > startCountAtListening
+        }
+        XCTAssertEqual(session.state, .listening)
+        await session.stop()
+    }
+
+    func testUnknownCaptureTerminationEntersErrorWithoutReconnect() async {
+        // Given: listening 中のセッション
+        struct UnknownFeederError: Error {}
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let startCountAtListening = dual.startCallCount
+
+        // When: feeder が未知エラーで終端する
+        audio.terminate(with: UnknownFeederError())
+        await waitUntil { session.state == .error }
+
+        // Then: 再接続せず即 error
+        XCTAssertEqual(session.state, .error)
+        XCTAssertEqual(dual.startCallCount, startCountAtListening)
+    }
+
+    func testNonTransientURLErrorEntersErrorWithoutReconnect() async {
+        // Given: 証明書系 URLError は再接続対象外
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        dual.startError = URLError(.serverCertificateUntrusted)
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+
+        // When: startする
+        await session.start()
+        await waitUntil { session.state == .error }
+
+        // Then: 再接続せず即 error
+        XCTAssertEqual(session.state, .error)
+        XCTAssertEqual(dual.startCallCount, 1)
+        XCTAssertEqual(audio.startCallCount, 0)
+    }
+
     func testRuntimeTransportErrorCancelsAudioFeedAndReconnects() async {
         // Given: listening中で、audio feedは次frame待ちのまま
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
@@ -541,6 +715,7 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     private(set) var startCallCount = 0
     private(set) var stopCallCount = 0
     private(set) var isRunning = false
+    private(set) var terminationError: Error?
     var startError: Error?
 
     init() {
@@ -551,6 +726,7 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
 
     func start() async throws {
         startCallCount += 1
+        terminationError = nil
         if let startError {
             throw startError
         }
@@ -570,6 +746,12 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
 
     func emit(_ frame: Data) {
         _ = continuation?.yield(frame)
+    }
+
+    func terminate(with error: Error) {
+        terminationError = error
+        continuation?.finish()
+        continuation = nil
     }
 }
 
@@ -631,6 +813,8 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
         try Task.checkCancellation()
         if let startError {
+            // one-shot: 再接続後の start を成功させる
+            self.startError = nil
             throw startError
         }
         if startFailuresRemaining > 0 {

@@ -86,12 +86,14 @@ xcodebuild test -scheme RealtimeTranslator \
 ```
 
 - 実行は`./scripts/run.sh`を使い、バイナリを直接起動しない。LaunchServices経由でTCC権限を認識させる。
-- APIキーはKeychainへ保存する。初回は環境変数`OPENAI_API_KEY`または設定画面から取り込む。
+- APIキーはKeychainへ保存する。設定画面から取り込む。DEBUGビルドでは環境変数`OPENAI_API_KEY`からも自動取り込みできる。
 - 権限、実API、実マイク、オンライン動作はユニットテストだけでは検証できない。
 - 手動検証項目は`VALIDATION.md`も参照する。
-- 実行状態は`/tmp/realtimetranslator.status`で確認する。
+- 実行状態はDEBUGビルドのみ`/tmp/realtimetranslator.status`へ書き出す（Releaseでは作らない）。
 - クラッシュ時は最新のDiagnosticReportsと該当スレッドを確認し、推測だけで修正しない。
 - ログへ認識した発話内容、APIキー、Authorizationを出力しない。
+- `shared/fixtures/v1` は両実装の契約正本。Swiftテストからも読み、Windows版と同値性を保つ。
+- PR CI は Windows / shared-contracts を実行する。macOS の `xcodebuild test` はローカルおよび `.github/workflows/release.yml` の package (macOS) ジョブで検証する。
 
 ## テスト方針
 

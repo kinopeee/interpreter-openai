@@ -127,30 +127,56 @@ final class InterpretationSession {
             try await dualClient.updateTranscriptionTuning(tuning)
         } catch {
             AppLogger.session.error(
-                "Failed to update transcription tuning: \(error.localizedDescription, privacy: .public)"
+                "Failed to update transcription tuning: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
             )
         }
     }
 
     private func runSessionLoop(generation: Int) async {
         while generation == lifecycleGeneration {
+            var reconnectDetail: String?
             do {
                 try await connectAndStream(generation: generation)
                 return
             } catch is CancellationError {
                 return
-            } catch let error as RealtimeTranslationError where !error.isRecoverable {
+            } catch let error as RealtimeTranslationError where error.isRecoverable {
+                // recoverable: fall through to reconnect
+                if case .recoverableTransportFailure(let detail) = error {
+                    reconnectDetail = detail
+                }
+            } catch let error as URLError where Self.isTransientURLError(error) {
+                // 一時的な URLSession 切断のみ再接続
+            } catch is URLSessionWebSocketTransportError {
+                // transport 境界の未接続など: fall through to reconnect
+            } catch let error as NSError where Self.isTransientPOSIXError(error) {
+                // URLError に bridge されない POSIX 切断
+                _ = error
+            } catch let error as RealtimeTranslationError {
                 guard generation == lifecycleGeneration else { return }
                 await tearDownStreaming()
                 enterError(error)
                 return
             } catch let error as RealtimeAudioCaptureError {
+                switch error {
+                case .inputDeviceChanged:
+                    // マイク切断/切替は再接続。バナーに理由を残す。
+                    reconnectDetail = error.localizedDescription
+                case .pipelineOverloaded:
+                    // フレーム経路の背圧は再接続で立て直す
+                    break
+                default:
+                    guard generation == lifecycleGeneration else { return }
+                    await tearDownStreaming()
+                    enterError(error)
+                    return
+                }
+            } catch {
+                // 未知のアプリエラーは再接続せず即 error（予測可能性を優先）。
                 guard generation == lifecycleGeneration else { return }
                 await tearDownStreaming()
                 enterError(error)
                 return
-            } catch {
-                // recoverable transport / stream end
             }
 
             guard generation == lifecycleGeneration else { return }
@@ -162,7 +188,16 @@ final class InterpretationSession {
 
             reconnectAttempt += 1
             state = .reconnecting
-            aggregator.setStatusBanner("再接続中… (\(reconnectAttempt)/\(Self.maxReconnectAttempts))")
+            let micMessage = RealtimeAudioCaptureError.inputDeviceChanged.errorDescription
+            if let reconnectDetail, let micMessage, reconnectDetail == micMessage {
+                aggregator.setStatusBanner(
+                    "\(reconnectDetail) 再接続中… (\(reconnectAttempt)/\(Self.maxReconnectAttempts))"
+                )
+            } else {
+                aggregator.setStatusBanner(
+                    "再接続中… (\(reconnectAttempt)/\(Self.maxReconnectAttempts))"
+                )
+            }
             publishSubtitles()
             await tearDownStreaming(keepSubtitles: true)
 
@@ -171,6 +206,41 @@ final class InterpretationSession {
             let jitter = UInt64.random(in: 0...250_000_000)
             try? await Task.sleep(nanoseconds: delay + jitter)
         }
+    }
+
+    /// 再接続対象の一時的な URLError のみ許可する（証明書/ATS/不正 URL は即 error）。
+    private static func isTransientURLError(_ error: URLError) -> Bool {
+        switch error.code {
+        case .timedOut,
+            .cannotFindHost,
+            .cannotConnectToHost,
+            .networkConnectionLost,
+            .dnsLookupFailed,
+            .notConnectedToInternet,
+            .cannotLoadFromNetwork,
+            .internationalRoamingOff,
+            .callIsActive,
+            .dataNotAllowed:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// URLError に bridge されない POSIX 切断コード（Darwin 値）。
+    private static let transientPOSIXCodes: Set<Int> = [
+        32, // EPIPE
+        50, // ENETDOWN
+        51, // ENETUNREACH
+        53, // ECONNABORTED
+        54, // ECONNRESET
+        57, // ENOTCONN
+        60, // ETIMEDOUT
+        65, // EHOSTUNREACH
+    ]
+
+    private static func isTransientPOSIXError(_ error: NSError) -> Bool {
+        error.domain == NSPOSIXErrorDomain && transientPOSIXCodes.contains(error.code)
     }
 
     private func connectAndStream(generation: Int) async throws {
@@ -256,6 +326,9 @@ final class InterpretationSession {
             try await dualClient.appendAudioFrame(frame)
         }
         guard generation == lifecycleGeneration, state == .listening else { return }
+        if let terminationError = audioCapture.terminationError {
+            throw terminationError
+        }
         throw RealtimeTranslationError.recoverableTransportFailure("audio stream ended")
     }
 
@@ -283,9 +356,11 @@ final class InterpretationSession {
             }
 
             if let update = assembler.ingest(streamEvent) {
+                #if DEBUG
                 AppLogger.session.notice(
                     "DBG_ASSEMBLER_UPDATE epoch=\(streamEvent.epoch, privacy: .public) generation=\(update.segmentGeneration, privacy: .public) sourceEmpty=\(update.sourceText.isEmpty, privacy: .public) translationEmpty=\(update.translatedText.isEmpty, privacy: .public)"
                 )
+                #endif
                 enqueueRender(update)
                 if update.shouldFinalize {
                     await resetAudioRoutingForNextSegment()
@@ -317,7 +392,7 @@ final class InterpretationSession {
             try await dualClient.closeGracefully()
         } catch {
             AppLogger.realtime.error(
-                "Graceful close failed: \(error.localizedDescription, privacy: .public)"
+                "Graceful close failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
             )
             await dualClient.forceClose()
         }

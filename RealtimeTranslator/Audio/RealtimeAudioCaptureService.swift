@@ -27,6 +27,7 @@ enum RealtimeAudioCaptureError: Error, LocalizedError, Sendable {
     case audioConverterUnavailable
     case audioBufferPoolUnavailable
     case pipelineOverloaded
+    case inputDeviceChanged
 
     var errorDescription: String? {
         switch self {
@@ -40,6 +41,8 @@ enum RealtimeAudioCaptureError: Error, LocalizedError, Sendable {
             return "音声バッファを準備できません"
         case .pipelineOverloaded:
             return "音声処理が遅延しています"
+        case .inputDeviceChanged:
+            return "マイク入力デバイスが変更されました"
         }
     }
 }
@@ -47,6 +50,8 @@ enum RealtimeAudioCaptureError: Error, LocalizedError, Sendable {
 @MainActor
 protocol RealtimeAudioCaptureServicing: AnyObject {
     var frames: AsyncStream<Data> { get }
+    /// `frames` が終端した理由。正常停止時は nil。
+    var terminationError: Error? { get }
     func start() async throws
     func stop() async
 }
@@ -61,9 +66,11 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     private var captureContinuation: AsyncStream<CapturedAudioBuffer>.Continuation?
     private var frameContinuation: AsyncStream<Data>.Continuation?
     private var feederTask: Task<Void, Never>?
+    private var configurationObserver: (any NSObjectProtocol)?
     private var isTapInstalled = false
     private var lifecycleGeneration = 0
     private(set) var frames: AsyncStream<Data>
+    private(set) var terminationError: Error?
 
     init() {
         var continuation: AsyncStream<Data>.Continuation!
@@ -77,6 +84,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         guard feederTask == nil else { return }
         lifecycleGeneration += 1
         let generation = lifecycleGeneration
+        terminationError = nil
         recreateFrameStream()
 
         let microphoneGranted = await requestMicrophonePermission()
@@ -90,9 +98,11 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             throw RealtimeAudioCaptureError.audioFormatUnavailable
         }
+        #if DEBUG
         AppLogger.audio.notice(
             "DBG_CAPTURE_START rate=\(inputFormat.sampleRate, privacy: .public) channels=\(inputFormat.channelCount, privacy: .public)"
         )
+        #endif
 
         guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -160,12 +170,14 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
                     let frames = packetizer.append(pcm16)
                     for frame in frames {
                         emittedFrameCount += 1
+                        #if DEBUG
                         if emittedFrameCount == 1 || emittedFrameCount.isMultiple(of: 25) {
                             let peak = Self.peakAmplitude(inPCM16LE: frame)
                             AppLogger.audio.notice(
                                 "DBG_CAPTURE_FRAME count=\(emittedFrameCount, privacy: .public) bytes=\(frame.count, privacy: .public) peak=\(peak, privacy: .public)"
                             )
                         }
+                        #endif
                         let result = await self?.yieldFrame(frame)
                         if result == false {
                             await self?.reportFailure(
@@ -183,7 +195,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
                 return
             } catch {
                 AppLogger.audio.error(
-                    "Audio feeder failed: \(error.localizedDescription, privacy: .public)"
+                    "Audio feeder failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
                 )
                 await self?.reportFailure(error, generation: generation)
             }
@@ -201,10 +213,22 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
             await stop()
             throw CancellationError()
         }
+
+        // prepare/start 周辺の誤検知を避けるため、起動成功後にだけ監視する。
+        removeConfigurationObserver()
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: audioEngine,
+            queue: nil
+        ) { [weak self] _ in
+            // コールバックは MainActor を仮定しない。境界は @Sendable ヘルパーへ集約する。
+            Self.enqueueConfigurationChange(service: self, generation: generation)
+        }
     }
 
     func stop() async {
         lifecycleGeneration += 1
+        removeConfigurationObserver()
         if isTapInstalled {
             audioEngine.inputNode.removeTap(onBus: 0)
             isTapInstalled = false
@@ -220,6 +244,34 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         frameContinuation = nil
     }
 
+    private func removeConfigurationObserver() {
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+            self.configurationObserver = nil
+        }
+    }
+
+    /// NotificationCenter コールバックから MainActor 上の判定へ渡す境界。
+    nonisolated private static func enqueueConfigurationChange(
+        service: RealtimeAudioCaptureService?,
+        generation: Int
+    ) {
+        Task { @MainActor in
+            service?.handleConfigurationChange(generation: generation)
+        }
+    }
+
+    private func handleConfigurationChange(generation: Int) {
+        guard generation == lifecycleGeneration else { return }
+
+        // Apple はハードウェア変更時に engine を停止してから本通知を出す。
+        // 監視は start 成功後にだけ付け、stop 前に外すため、ここへ来たら切断/切替として扱う。
+        reportFailure(
+            RealtimeAudioCaptureError.inputDeviceChanged,
+            generation: generation
+        )
+    }
+
     private func yieldFrame(_ frame: Data) -> Bool {
         guard let frameContinuation else { return false }
         return RealtimeAudioFrameYieldOutcome.didAccept(frameContinuation.yield(frame))
@@ -227,11 +279,19 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
 
     private func reportFailure(_ error: Error, generation: Int) {
         guard generation == lifecycleGeneration else { return }
+        // 先に付いた理由（例: マイク切断）を pipelineOverloaded で上書きしない。
+        if terminationError == nil {
+            terminationError = error
+        }
         AppLogger.audio.error(
-            "Realtime audio capture failed: \(error.localizedDescription, privacy: .public)"
+            "Realtime audio capture failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
         )
+        // feeder の for-await を終わらせ、追加 yield → pipelineOverloaded を防ぐ。
+        captureContinuation?.finish()
+        captureContinuation = nil
         frameContinuation?.finish()
         frameContinuation = nil
+        removeConfigurationObserver()
     }
 
     private func recreateFrameStream() {

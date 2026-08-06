@@ -183,7 +183,7 @@ private struct SettingsGeneralTab: View {
                 }
 
                 Text(
-                    "APIキーはKeychainへ保存します。初回は環境変数 OPENAI_API_KEY からも自動取り込みできます。"
+                    "APIキーはKeychainへ保存します。開発ビルドでは環境変数 OPENAI_API_KEY からも自動取り込みできます。"
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
