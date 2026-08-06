@@ -13,6 +13,12 @@ DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=1
 
+# floating な https://dot.net/v1/dotnet-install.sh ではなく、レビュー可能な
+# commit 固定 URL + SHA-256 検証でインストーラを取得する。
+DOTNET_INSTALL_COMMIT="5147e32300a8e908f5d737c8cff63a76b4b63531"
+DOTNET_INSTALL_URL="https://raw.githubusercontent.com/dotnet/install-scripts/${DOTNET_INSTALL_COMMIT}/src/dotnet-install.sh"
+DOTNET_INSTALL_SHA256="082f7685e156738a1b2e2ed8381a621870d4ce8e8c59278034556f05c186eb2e"
+
 # windows/global.json は 10.0.100 + rollForward:latestFeature を要求する。
 # PATH 上に古い SDK があるだけでは不足なので、10.0.1xx 帯の有無を確認する。
 has_required_sdk() {
@@ -24,18 +30,42 @@ has_required_sdk() {
   fi
 }
 
+persist_dotnet_path() {
+  local marker="# RealtimeTranslator Cloud Agent DOTNET_ROOT"
+  local bashrc="${HOME}/.bashrc"
+  touch "$bashrc"
+  if ! grep -qF "$marker" "$bashrc"; then
+    {
+      echo ""
+      echo "$marker"
+      echo "export DOTNET_ROOT=\"${DOTNET_ROOT}\""
+      echo "export PATH=\"\${DOTNET_ROOT}:\${PATH}\""
+    } >>"$bashrc"
+  fi
+}
+
 # .NET SDK は本来スナップショット側に焼き込むが、スナップショット無しで
 # install が走った場合にも復旧できるよう、存在チェック付きで冪等に導入する。
 if ! has_required_sdk dotnet && ! has_required_sdk "$DOTNET_ROOT/dotnet"; then
   installer="$(mktemp)"
-  curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$installer"
+  curl -fsSL \
+    --connect-timeout 10 \
+    --max-time 120 \
+    --retry 3 \
+    --retry-delay 2 \
+    "$DOTNET_INSTALL_URL" -o "$installer"
+  actual_sha="$(sha256sum "$installer" | awk '{print $1}')"
+  if [ "$actual_sha" != "$DOTNET_INSTALL_SHA256" ]; then
+    echo "install.sh: dotnet-install.sh の SHA-256 が一致しません (got ${actual_sha})." >&2
+    rm -f "$installer"
+    exit 1
+  fi
   bash "$installer" --version "$DOTNET_VERSION" --install-dir "$DOTNET_ROOT"
   rm -f "$installer"
-  if [ ! -e /usr/local/bin/dotnet ] && command -v sudo >/dev/null 2>&1; then
-    sudo ln -sf "$DOTNET_ROOT/dotnet" /usr/local/bin/dotnet || true
-  fi
 fi
+
 export PATH="$DOTNET_ROOT:$PATH"
+persist_dotnet_path
 
 if ! has_required_sdk dotnet; then
   echo "install.sh: .NET SDK 10.0.1xx が見つかりません。" >&2
