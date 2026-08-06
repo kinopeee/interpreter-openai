@@ -1,0 +1,45 @@
+name: shared-contracts
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-fixtures:
+    name: validate shared fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate fixtures against JSON Schema
+        working-directory: shared/fixtures/v1
+        run: |
+          set -euo pipefail
+          status=0
+          for schema in schema/*.schema.json; do
+            name="$(basename "$schema" .schema.json)"
+            if [ ! -f "$name.json" ]; then
+              echo "::error::missing fixture $name.json for $schema"
+              status=1
+              continue
+            fi
+            npx --yes ajv-cli@5.0.0 validate --spec=draft2020 -s "$schema" -d "$name.json" || status=1
+          done
+          for fixture in *.json; do
+            name="$(basename "$fixture" .json)"
+            if [ ! -f "schema/$name.schema.json" ]; then
+              echo "::error::missing schema for $fixture"
+              status=1
+            fi
+          done
+          exit "$status"

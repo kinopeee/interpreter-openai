@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v1/schema/routing.schema.json",
+  "title": "Dual realtime audio routing fixtures",
+  "type": "object",
+  "required": [
+    "version",
+    "prerollFrameLimit",
+    "consecutiveTranslationFailureLimit",
+    "cases",
+    "prerollWindow"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "prerollFrameLimit": { "const": 40 },
+    "consecutiveTranslationFailureLimit": { "const": 3 },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "steps", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["kind", "frame"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "const": "appendFrame" },
+                    "frame": { "type": "string", "minLength": 1 }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "language"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "const": "setSpokenLanguage" },
+                    "language": { "enum": ["japanese", "english", "unknown"] }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "const": "resetAudioRouting" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "const": "translationSendFailure" }
+                  }
+                }
+              ]
+            }
+          },
+          "expected": {
+            "type": "object",
+            "required": ["sourceFrames", "englishFrames", "japaneseFrames"],
+            "additionalProperties": false,
+            "properties": {
+              "sourceFrames": { "$ref": "#/$defs/frameList" },
+              "englishFrames": { "$ref": "#/$defs/frameList" },
+              "japaneseFrames": { "$ref": "#/$defs/frameList" },
+              "transportErrorCount": { "type": "integer", "minimum": 0 },
+              "translationPumpHalted": { "type": "boolean" },
+              "signalsSessionReconnect": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "prerollWindow": {
+      "type": "object",
+      "required": [
+        "name",
+        "appendFrameCount",
+        "thenSetSpokenLanguage",
+        "expectedFlushedFrameCount",
+        "expectedFirstFlushedFrameIndex",
+        "expectedLastFlushedFrameIndex"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "appendFrameCount": { "type": "integer", "minimum": 1 },
+        "thenSetSpokenLanguage": { "enum": ["japanese", "english"] },
+        "expectedFlushedFrameCount": { "type": "integer", "minimum": 0 },
+        "expectedFirstFlushedFrameIndex": { "type": "integer", "minimum": 0 },
+        "expectedLastFlushedFrameIndex": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "frameList": { "type": "array", "items": { "type": "string" } }
+  }
+}

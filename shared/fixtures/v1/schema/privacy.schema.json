@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v1/schema/privacy.schema.json",
+  "title": "Privacy and authentication failure fixtures",
+  "type": "object",
+  "required": [
+    "version",
+    "genericErrorMessage",
+    "sanitizedServerMessage",
+    "isAuthenticationFailure",
+    "recoverability",
+    "forbiddenInLogs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "genericErrorMessage": { "const": "翻訳サーバーでエラーが発生しました" },
+    "sanitizedServerMessage": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "input", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "input": { "type": "string" },
+          "expected": { "type": "string" }
+        }
+      }
+    },
+    "isAuthenticationFailure": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "code", "message", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "code": { "type": ["string", "null"] },
+          "message": { "type": "string" },
+          "expected": { "type": "boolean" }
+        }
+      }
+    },
+    "recoverability": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["error", "isRecoverable"],
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "enum": [
+              "missingAPIKey",
+              "notConnected",
+              "invalidMessage",
+              "authenticationFailed",
+              "fatalServerError",
+              "recoverableTransportFailure",
+              "sessionUpdateTimeout",
+              "closeTimeout",
+              "cancelled"
+            ]
+          },
+          "isRecoverable": { "type": "boolean" }
+        }
+      }
+    },
+    "forbiddenInLogs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    }
+  }
+}

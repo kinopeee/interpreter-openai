@@ -1,0 +1,133 @@
+{
+  "$schema": "./schema/privacy.schema.json",
+  "version": 1,
+  "description": "サーバー文言の正規化と認証失敗判定の期待値。",
+  "genericErrorMessage": "翻訳サーバーでエラーが発生しました",
+  "sanitizedServerMessage": [
+    {
+      "name": "plain message passes through",
+      "input": "rate limit exceeded",
+      "expected": "rate limit exceeded"
+    },
+    {
+      "name": "empty message becomes the generic text",
+      "input": "",
+      "expected": "翻訳サーバーでエラーが発生しました"
+    },
+    {
+      "name": "message containing a key prefix is redacted",
+      "input": "invalid key sk-abcdef",
+      "expected": "翻訳サーバーでエラーが発生しました"
+    },
+    {
+      "name": "message mentioning an api key is redacted",
+      "input": "Incorrect API key provided",
+      "expected": "翻訳サーバーでエラーが発生しました"
+    },
+    {
+      "name": "message mentioning authorization is redacted",
+      "input": "Missing Authorization header",
+      "expected": "翻訳サーバーでエラーが発生しました"
+    },
+    {
+      "name": "message mentioning a bearer token is redacted",
+      "input": "Bearer abc123 is not valid",
+      "expected": "翻訳サーバーでエラーが発生しました"
+    },
+    {
+      "name": "the word bearer without a trailing space is not redacted",
+      "input": "bearerless request",
+      "expected": "bearerless request"
+    }
+  ],
+  "isAuthenticationFailure": [
+    { "name": "invalid_api_key code", "code": "invalid_api_key", "message": "", "expected": true },
+    { "name": "invalid_auth code", "code": "invalid_auth", "message": "", "expected": true },
+    {
+      "name": "authentication_error code",
+      "code": "authentication_error",
+      "message": "",
+      "expected": true
+    },
+    { "name": "unauthorized code", "code": "unauthorized", "message": "", "expected": true },
+    { "name": "unauthenticated code", "code": "unauthenticated", "message": "", "expected": true },
+    { "name": "401 code", "code": "401", "message": "", "expected": true },
+    { "name": "403 code", "code": "403", "message": "", "expected": true },
+    {
+      "name": "code is trimmed and lowercased",
+      "code": "  INVALID_API_KEY  ",
+      "message": "",
+      "expected": true
+    },
+    {
+      "name": "code containing authorization",
+      "code": "missing_authorization",
+      "message": "",
+      "expected": true
+    },
+    {
+      "name": "message phrase incorrect api key",
+      "code": null,
+      "message": "Incorrect API key provided",
+      "expected": true
+    },
+    {
+      "name": "message phrase authentication failed",
+      "code": "server_error",
+      "message": "Authentication failed",
+      "expected": true
+    },
+    {
+      "name": "message with http 401",
+      "code": null,
+      "message": "server responded 401",
+      "expected": true
+    },
+    {
+      "name": "message with http 403",
+      "code": null,
+      "message": "HTTP 403 Forbidden",
+      "expected": true
+    },
+    {
+      "name": "4010 must not match 401",
+      "code": null,
+      "message": "error 4010 occurred",
+      "expected": false
+    },
+    {
+      "name": "14012 must not match 401",
+      "code": null,
+      "message": "code 14012",
+      "expected": false
+    },
+    {
+      "name": "the word authority must not match",
+      "code": "authority_error",
+      "message": "authority mismatch",
+      "expected": false
+    },
+    { "name": "unrelated failure", "code": "server_error", "message": "boom", "expected": false },
+    { "name": "no code and empty message", "code": null, "message": "", "expected": false }
+  ],
+  "recoverability": [
+    { "error": "recoverableTransportFailure", "isRecoverable": true },
+    { "error": "sessionUpdateTimeout", "isRecoverable": true },
+    { "error": "missingAPIKey", "isRecoverable": false },
+    { "error": "notConnected", "isRecoverable": false },
+    { "error": "invalidMessage", "isRecoverable": false },
+    { "error": "authenticationFailed", "isRecoverable": false },
+    { "error": "fatalServerError", "isRecoverable": false },
+    { "error": "closeTimeout", "isRecoverable": false },
+    { "error": "cancelled", "isRecoverable": false }
+  ],
+  "forbiddenInLogs": [
+    "apiKey",
+    "authorizationHeader",
+    "bearerToken",
+    "audioBytes",
+    "audioBase64",
+    "sourceTranscript",
+    "translatedTranscript"
+  ]
+}

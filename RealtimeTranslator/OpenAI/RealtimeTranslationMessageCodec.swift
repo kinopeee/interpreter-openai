@@ -42,7 +42,13 @@ enum RealtimeTranslationMessageCodec {
     }
 
     static func decodeServerEvent(from data: Data) throws -> RealtimeTranslationServerEvent {
-        let object = try JSONSerialization.jsonObject(with: data, options: [])
+        let object: Any
+        do {
+            object = try JSONSerialization.jsonObject(with: data, options: [])
+        } catch {
+            // shared/fixtures の decodeFailures 契約: parser 例外は invalidMessage へ正規化する。
+            throw RealtimeTranslationError.invalidMessage
+        }
         guard let dictionary = object as? [String: Any],
               let type = dictionary["type"] as? String
         else {

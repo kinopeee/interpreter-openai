@@ -1,0 +1,159 @@
+{
+  "$schema": "./schema/routing.schema.json",
+  "version": 1,
+  "description": "DualRealtimeTranslationClient の音声ルーティング期待値。frame は識別用のラベルで、実バイト列は任意。sourceFrames/englishFrames/japaneseFrames は各接続へ成功 append された順序付きラベル列。translationSendFailure は直後の appendFrame の翻訳送信を失敗させる（原文送信は成功する）。3 連続失敗で transport error を 1 回 emit し翻訳ポンプを停止、セッション再接続を合図する。",
+  "prerollFrameLimit": 40,
+  "consecutiveTranslationFailureLimit": 3,
+  "cases": [
+    {
+      "name": "before detection only the source connection receives audio",
+      "steps": [
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "appendFrame", "frame": "f2" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2"],
+        "englishFrames": [],
+        "japaneseFrames": []
+      }
+    },
+    {
+      "name": "japanese detection flushes preroll to the english target only",
+      "steps": [
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "appendFrame", "frame": "f2" },
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "f3" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2", "f3"],
+        "englishFrames": ["f1", "f2", "f3"],
+        "japaneseFrames": []
+      }
+    },
+    {
+      "name": "english detection flushes preroll to the japanese target only",
+      "steps": [
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "setSpokenLanguage", "language": "english" },
+        { "kind": "appendFrame", "frame": "f2" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2"],
+        "englishFrames": [],
+        "japaneseFrames": ["f1", "f2"]
+      }
+    },
+    {
+      "name": "unknown language does not change routing",
+      "steps": [
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "setSpokenLanguage", "language": "unknown" },
+        { "kind": "appendFrame", "frame": "f2" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2"],
+        "englishFrames": [],
+        "japaneseFrames": []
+      }
+    },
+    {
+      "name": "language switch flushes the rolling preroll to the new target",
+      "steps": [
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "appendFrame", "frame": "f2" },
+        { "kind": "setSpokenLanguage", "language": "english" },
+        { "kind": "appendFrame", "frame": "f3" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2", "f3"],
+        "englishFrames": ["f1", "f2"],
+        "japaneseFrames": ["f1", "f2", "f3"]
+      }
+    },
+    {
+      "name": "setting the same language twice is a no-op",
+      "steps": [
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "f2" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2"],
+        "englishFrames": ["f1", "f2"],
+        "japaneseFrames": []
+      }
+    },
+    {
+      "name": "resetAudioRouting keeps the rolling preroll for the next detection",
+      "steps": [
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "resetAudioRouting" },
+        { "kind": "appendFrame", "frame": "f2" },
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "f3" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2", "f3"],
+        "englishFrames": ["f1", "f1", "f2", "f3"],
+        "japaneseFrames": []
+      }
+    },
+    {
+      "name": "three consecutive translation send failures emit one transport error and halt translation",
+      "steps": [
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "ok1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail2" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail3" },
+        { "kind": "appendFrame", "frame": "afterHalt" }
+      ],
+      "expected": {
+        "sourceFrames": ["ok1", "fail1", "fail2", "fail3", "afterHalt"],
+        "englishFrames": ["ok1"],
+        "japaneseFrames": [],
+        "transportErrorCount": 1,
+        "translationPumpHalted": true,
+        "signalsSessionReconnect": true
+      }
+    },
+    {
+      "name": "a successful translation send resets the consecutive failure counter",
+      "steps": [
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "ok1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail2" },
+        { "kind": "appendFrame", "frame": "ok2" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail3" },
+        { "kind": "appendFrame", "frame": "ok3" }
+      ],
+      "expected": {
+        "sourceFrames": ["ok1", "fail1", "fail2", "ok2", "fail3", "ok3"],
+        "englishFrames": ["ok1", "ok2", "ok3"],
+        "japaneseFrames": [],
+        "transportErrorCount": 0,
+        "translationPumpHalted": false,
+        "signalsSessionReconnect": false
+      }
+    }
+  ],
+  "prerollWindow": {
+    "name": "the rolling preroll keeps at most 40 frames",
+    "appendFrameCount": 60,
+    "thenSetSpokenLanguage": "japanese",
+    "expectedFlushedFrameCount": 40,
+    "expectedFirstFlushedFrameIndex": 20,
+    "expectedLastFlushedFrameIndex": 59
+  }
+}

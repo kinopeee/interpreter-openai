@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v1/schema/audio.schema.json",
+  "title": "Audio pipeline fixtures",
+  "type": "object",
+  "required": [
+    "version",
+    "format",
+    "packetizer",
+    "packetizerContinuity",
+    "float32ToPcm16",
+    "gain"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "format": {
+      "type": "object",
+      "required": [
+        "sampleRate",
+        "bytesPerSample",
+        "frameDurationMilliseconds",
+        "samplesPerFrame",
+        "bytesPerFrame",
+        "channels",
+        "endianness"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sampleRate": { "const": 24000 },
+        "bytesPerSample": { "const": 2 },
+        "frameDurationMilliseconds": { "const": 100 },
+        "samplesPerFrame": { "const": 2400 },
+        "bytesPerFrame": { "const": 4800 },
+        "channels": { "const": 1 },
+        "endianness": { "const": "little" }
+      }
+    },
+    "packetizer": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "steps", "expectedPendingBytes", "flush"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["kind", "byteCount", "expectedFrameCount"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "const": "append" },
+                    "byteCount": { "type": "integer", "minimum": 0 },
+                    "expectedFrameCount": { "type": "integer", "minimum": 0 }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "const": "reset" }
+                  }
+                }
+              ]
+            }
+          },
+          "expectedPendingBytes": { "type": "integer", "minimum": 0 },
+          "flush": {
+            "type": "object",
+            "required": ["expectedFrameBytes"],
+            "additionalProperties": false,
+            "properties": {
+              "expectedFrameBytes": { "type": ["integer", "null"] },
+              "expectedTrailingZeroBytes": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "packetizerContinuity": {
+      "type": "object",
+      "required": [
+        "name",
+        "appendByteCounts",
+        "totalInputBytes",
+        "expectedEmittedFrameCount",
+        "expectedFlushFrameBytes",
+        "expectedTrailingZeroBytes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "appendByteCounts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "totalInputBytes": { "type": "integer", "minimum": 0 },
+        "expectedEmittedFrameCount": { "type": "integer", "minimum": 0 },
+        "expectedFlushFrameBytes": { "type": ["integer", "null"] },
+        "expectedTrailingZeroBytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "float32ToPcm16": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "sample", "gain", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "sample": { "type": "number" },
+          "gain": { "type": "number" },
+          "expected": { "type": "integer", "minimum": -32768, "maximum": 32767 }
+        }
+      }
+    },
+    "gain": {
+      "type": "object",
+      "required": ["constants", "tolerance", "cases"],
+      "additionalProperties": false,
+      "properties": {
+        "constants": {
+          "type": "object",
+          "required": [
+            "minimumGain",
+            "maximumGain",
+            "targetPeak",
+            "silenceFloor",
+            "clipThreshold",
+            "defaultInitialGain"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "minimumGain": { "const": 1.0 },
+            "maximumGain": { "const": 8.0 },
+            "targetPeak": { "const": 0.5 },
+            "silenceFloor": { "const": 0.005 },
+            "clipThreshold": { "const": 0.95 },
+            "defaultInitialGain": { "const": 4.0 }
+          }
+        },
+        "tolerance": { "type": "number", "exclusiveMinimum": 0 },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["name", "initialGain", "peaks", "expectedGain"],
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string" },
+                  "initialGain": { "type": "number" },
+                  "peaks": { "type": "array", "items": { "type": "number" } },
+                  "expectedGain": { "type": "number" }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "name",
+                  "initialGain",
+                  "repeatPeak",
+                  "repeatCount",
+                  "expectedGain"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string" },
+                  "initialGain": { "type": "number" },
+                  "repeatPeak": { "type": "number" },
+                  "repeatCount": { "type": "integer", "minimum": 1 },
+                  "expectedGain": { "type": "number" }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

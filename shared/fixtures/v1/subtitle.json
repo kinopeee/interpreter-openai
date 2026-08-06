@@ -1,0 +1,150 @@
+{
+  "$schema": "./schema/subtitle.schema.json",
+  "version": 1,
+  "description": "SubtitleTailClipper と字幕整列の期待値。長い文字列は literal / repeat / concat 記法で表現する。assembler.cases の expectedFinal は「最後に返された非 null の update」の内容を表す（step が null を返した場合はそれ以前の update を保持）。at は秒。",
+  "limits": {
+    "japaneseCharacterLimit": 60,
+    "englishCharacterLimit": 120,
+    "ellipsis": "…"
+  },
+  "clip": [
+    {
+      "name": "short japanese is unchanged",
+      "input": { "literal": "こんにちは、世界。" },
+      "expected": { "literal": "こんにちは、世界。" }
+    },
+    {
+      "name": "short english is unchanged",
+      "input": { "literal": "Hello world" },
+      "expected": { "literal": "Hello world" }
+    },
+    {
+      "name": "surrounding whitespace is trimmed",
+      "input": { "literal": "  Hello world \n" },
+      "expected": { "literal": "Hello world" }
+    },
+    {
+      "name": "whitespace only input is returned as is",
+      "input": { "literal": "   " },
+      "expected": { "literal": "   " }
+    },
+    {
+      "name": "empty input is returned as is",
+      "input": { "literal": "" },
+      "expected": { "literal": "" }
+    },
+    {
+      "name": "japanese exactly at the limit is unchanged",
+      "input": { "repeat": "あ", "count": 60 },
+      "expected": { "repeat": "あ", "count": 60 }
+    },
+    {
+      "name": "japanese over the limit keeps the tail with an ellipsis",
+      "input": { "repeat": "あ", "count": 70 },
+      "expected": { "concat": [{ "literal": "…" }, { "repeat": "あ", "count": 60 }] }
+    },
+    {
+      "name": "mixed text containing cjk uses the japanese limit",
+      "input": { "concat": [{ "literal": "あ" }, { "repeat": "a", "count": 100 }] },
+      "expected": { "concat": [{ "literal": "…" }, { "repeat": "a", "count": 60 }] }
+    },
+    {
+      "name": "english over the limit drops the leading partial word",
+      "input": { "repeat": "abcdefghij ", "count": 15 },
+      "expected": {
+        "concat": [
+          { "literal": "…" },
+          { "repeat": "abcdefghij ", "count": 9 },
+          { "literal": "abcdefghij" }
+        ]
+      }
+    },
+    {
+      "name": "english single long token has no space to drop",
+      "input": { "repeat": "a", "count": 130 },
+      "expected": { "concat": [{ "literal": "…" }, { "repeat": "a", "count": 120 }] }
+    }
+  ],
+  "assembler": {
+    "idleFinalizeSeconds": 8,
+    "cases": [
+      {
+        "name": "source only does not finalize without a translation",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 9, "kind": "tick" }
+        ],
+        "expectedFinal": {
+          "sourceText": "こんにちは",
+          "translatedText": "",
+          "isTranslationCurrent": false,
+          "shouldFinalize": false
+        }
+      },
+      {
+        "name": "complete pair finalizes after the idle interval",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 9, "kind": "tick" }
+        ],
+        "expectedFinal": {
+          "sourceText": "こんにちは",
+          "translatedText": "Hello",
+          "isTranslationCurrent": true,
+          "shouldFinalize": true
+        }
+      },
+      {
+        "name": "expected lane wins over the echo lane",
+        "epoch": 1,
+        "expectLane": "ja",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "Hello there", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "Hello there", "eventId": "t-echo", "elapsedMs": 150 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "ja", "text": "こんにちは", "eventId": "t1", "elapsedMs": 200 }
+        ],
+        "expectedFinal": {
+          "sourceText": "Hello there",
+          "translatedText": "こんにちは",
+          "isTranslationCurrent": true,
+          "shouldFinalize": false
+        }
+      },
+      {
+        "name": "events from another epoch are ignored",
+        "epoch": 2,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "stale", "eventId": "s0", "elapsedMs": 10, "epoch": 1 },
+          { "at": 0.1, "kind": "sourceDelta", "lane": "en", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 }
+        ],
+        "expectedFinal": {
+          "sourceText": "こんにちは",
+          "translatedText": "",
+          "isTranslationCurrent": false,
+          "shouldFinalize": false
+        }
+      },
+      {
+        "name": "duplicate event ids are ignored",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "あい", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "sourceDelta", "lane": "en", "text": "あい", "eventId": "s1", "elapsedMs": 100 }
+        ],
+        "expectedFinal": {
+          "sourceText": "あい",
+          "translatedText": "",
+          "isTranslationCurrent": false,
+          "shouldFinalize": false
+        }
+      }
+    ]
+  }
+}

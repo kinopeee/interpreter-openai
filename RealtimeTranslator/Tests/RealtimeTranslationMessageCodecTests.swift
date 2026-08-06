@@ -105,18 +105,26 @@ final class RealtimeTranslationMessageCodecTests: XCTestCase {
     }
 
     func testDecodeUnknownAndBrokenJSON() {
-        // Given: 未知typeと壊れたJSON
+        // Given: 未知typeと壊れたJSON/空payload
         let unknownJSON = Data(#"{"type":"session.future_event"}"#.utf8)
         let broken = Data("not-json".utf8)
+        let empty = Data()
 
-        // When/Then: 未知は型名だけ保持、壊れたJSONはinvalidMessage
+        // When/Then: 未知は型名だけ保持、壊れたJSONと空payloadはinvalidMessageへ正規化する
         XCTAssertEqual(
             try? RealtimeTranslationMessageCodec.decodeServerEvent(from: unknownJSON),
             .unknown(type: "session.future_event")
         )
         XCTAssertThrowsError(
             try RealtimeTranslationMessageCodec.decodeServerEvent(from: broken)
-        )
+        ) { error in
+            XCTAssertEqual(error as? RealtimeTranslationError, .invalidMessage)
+        }
+        XCTAssertThrowsError(
+            try RealtimeTranslationMessageCodec.decodeServerEvent(from: empty)
+        ) { error in
+            XCTAssertEqual(error as? RealtimeTranslationError, .invalidMessage)
+        }
     }
 
     func testDecodeCreatedUpdatedClosedError() throws {
