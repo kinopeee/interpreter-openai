@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/RealtimeTranslator.Core/RealtimeTranslator.Core.csproj" />
+    <Project Path="src/RealtimeTranslator.Platform/RealtimeTranslator.Platform.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RealtimeTranslator.Core.Tests/RealtimeTranslator.Core.Tests.csproj" />
+    <Project Path="tests/RealtimeTranslator.Platform.Tests/RealtimeTranslator.Platform.Tests.csproj" />
   </Folder>
 </Solution>
