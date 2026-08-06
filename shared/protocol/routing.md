@@ -16,7 +16,16 @@
 
 ### 末尾ウィンドウ判定
 
-言語切替検出には**末尾 16 文字（空白を数えない、ただし空白は残す）**の範囲で `Evidence` を評価する。
+言語切替検出には**末尾 16 個の Unicode scalar（Unicode code point）**の範囲で `Evidence` を評価する。
+単位は Swift の `Character`（grapheme cluster）でも C# の UTF-16 `char` でもない。
+
+手順:
+
+1. 文字列を Unicode scalar 列として末尾から走査する。
+2. 空白・改行でない scalar を最大 16 個数える（空白 scalar 自体はカウントしない）。
+3. その 16 個の非空白 scalar のあいだ／前後に挟まる空白 scalar は**残したまま**切り出す。
+4. 切り出した部分文字列に対して `Evidence` を評価する。
+
 空白を残すのは語境界を保つため（残さないとラテン語が 1 語に潰れ `AmbiguousLatin` に落ちる）。
 
 ## ルーティング
@@ -25,7 +34,9 @@
 - 直近 **4 秒（40 フレーム）** の rolling preroll を常時保持する。
 - 判定前は原文接続のみへ送る。判定後は日本語なら `target=en`、英語なら `target=ja` の 1 本だけへ送る。
 - 言語切替時は旧 target の pending を破棄し、**新 target へ preroll を flush** する。
-- 翻訳送信が 3 連続失敗したら epoch を更新する。
+- 翻訳送信が 3 連続失敗したら、transport error を 1 回だけ emit し翻訳ポンプを停止する。
+  セッション側が再接続して epoch を進める（Dual 自体は失敗時点の epoch を維持したまま停止する）。
+  成功した翻訳送信は連続失敗カウンタを 0 に戻す。
 
 ## 字幕 lane 選択
 
