@@ -201,6 +201,9 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
 
             let remaining = deadline - ContinuousClock.now
             guard remaining > .zero else {
+                if translationPumpTask == nil, pendingTranslationFrames.isEmpty {
+                    return
+                }
                 throw RealtimeTranslationError.recoverableTransportFailure("translation pump drain timeout")
             }
 
@@ -219,6 +222,10 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                     return result
                 }
                 if timedOut {
+                    // timeout と完了が競合したとき、すでに空なら成功扱いにする。
+                    if translationPumpTask == nil, pendingTranslationFrames.isEmpty {
+                        return
+                    }
                     throw RealtimeTranslationError.recoverableTransportFailure("translation pump drain timeout")
                 }
                 continue

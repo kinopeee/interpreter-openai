@@ -449,6 +449,14 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             var remainingMs = deadline - Environment.TickCount64;
             if (remainingMs <= 0)
             {
+                lock (_sync)
+                {
+                    if (_translationPumpTask is null && _pendingTranslationFrames.Count == 0)
+                    {
+                        return;
+                    }
+                }
+
                 throw new TimeoutException("translation pump did not drain");
             }
 
@@ -464,6 +472,15 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             if (completed != pump)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                // timeout と完了が競合したとき、すでに空なら成功扱いにする。
+                lock (_sync)
+                {
+                    if (_translationPumpTask is null && _pendingTranslationFrames.Count == 0)
+                    {
+                        return;
+                    }
+                }
+
                 throw new TimeoutException("translation pump did not drain");
             }
 
