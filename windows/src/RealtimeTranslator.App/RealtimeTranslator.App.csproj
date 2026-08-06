@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>RealtimeTranslator.App</RootNamespace>
+    <UseWPF>true</UseWPF>
+    <!-- tray アイコンは WinForms の NotifyIcon を使う (WPF に等価物が無い)。 -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- UseWindowsForms=true のため DPI はマニフェスト不可 (WFO0003)。DpiBootstrap で Initialize する。 -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <!-- WPF の XmlLanguage は具体カルチャを解決するため invariant globalization では起動できない。 -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RealtimeTranslator.Core\RealtimeTranslator.Core.csproj" />
+    <ProjectReference Include="..\RealtimeTranslator.Platform\RealtimeTranslator.Platform.csproj" />
+  </ItemGroup>
+
+</Project>

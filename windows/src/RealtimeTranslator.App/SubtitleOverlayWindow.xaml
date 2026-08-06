@@ -1,0 +1,71 @@
+<Window x:Class="RealtimeTranslator.App.SubtitleOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Realtime Translator 字幕"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        SizeToContent="Height"
+        Focusable="False"
+        SnapsToDevicePixels="True">
+  <Window.Resources>
+    <BooleanToVisibilityConverter x:Key="BooleanToVisibility" />
+  </Window.Resources>
+
+  <Border x:Name="EditingFrame"
+          CornerRadius="16"
+          BorderThickness="1.5"
+          Padding="4"
+          BorderBrush="Transparent"
+          Background="Transparent">
+    <StackPanel Margin="16,8,16,12">
+      <Border CornerRadius="12" Background="#4D000000" Padding="18,8">
+        <StackPanel>
+          <TextBlock x:Name="SourceTextBlock"
+                     Text="{Binding SourceText}"
+                     FontSize="{Binding SourceFontSize}"
+                     FontWeight="Medium"
+                     Foreground="White"
+                     Opacity="0.7"
+                     TextWrapping="Wrap"
+                     MaxHeight="120"
+                     Visibility="{Binding HasSourceText, Converter={StaticResource BooleanToVisibility}}">
+            <TextBlock.Effect>
+              <DropShadowEffect BlurRadius="6" ShadowDepth="1" Color="Black" Opacity="0.95" />
+            </TextBlock.Effect>
+          </TextBlock>
+
+          <TextBlock x:Name="TranslatedTextBlock"
+                     Text="{Binding TranslatedText}"
+                     FontSize="{Binding FontSize}"
+                     FontWeight="SemiBold"
+                     Foreground="White"
+                     Margin="0,4,0,0"
+                     TextWrapping="Wrap"
+                     MaxHeight="160"
+                     Visibility="{Binding HasTranslatedText, Converter={StaticResource BooleanToVisibility}}">
+            <TextBlock.Effect>
+              <DropShadowEffect BlurRadius="6" ShadowDepth="1" Color="Black" Opacity="0.95" />
+            </TextBlock.Effect>
+          </TextBlock>
+        </StackPanel>
+      </Border>
+
+      <Border CornerRadius="14"
+              Background="#75000000"
+              Padding="14,7"
+              Margin="0,8,0,0"
+              HorizontalAlignment="Left"
+              Visibility="{Binding HasStatusBanner, Converter={StaticResource BooleanToVisibility}}">
+        <TextBlock x:Name="StatusBannerTextBlock"
+                   Text="{Binding StatusBanner}"
+                   FontSize="{Binding BannerFontSize}"
+                   FontWeight="SemiBold"
+                   Foreground="#F2E9A0" />
+      </Border>
+    </StackPanel>
+  </Border>
+</Window>
