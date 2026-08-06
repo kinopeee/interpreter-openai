@@ -138,6 +138,18 @@ jobs:
             CODE_SIGN_IDENTITY=- \
             DEVELOPMENT_TEAM=
 
+      - name: Verify the audio input entitlement
+        run: |
+          set -euo pipefail
+          app="build/DerivedData/Build/Products/Release/RealtimeTranslator.app"
+          # entitlementsが欠けるとマイク許可済みでもrequestAccessが拒否されるため、配布前に必ず確認する。
+          codesign -d --entitlements :- --xml "$app" > entitlements.xml
+          value=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' entitlements.xml)
+          if [[ "$value" != "true" ]]; then
+            echo "com.apple.security.device.audio-input must be true, got: $value" >&2
+            exit 1
+          fi
+
       - name: Package
         env:
           RELEASE_TAG: ${{ needs.version.outputs.tag }}

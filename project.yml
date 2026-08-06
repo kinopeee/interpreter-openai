@@ -40,6 +40,8 @@ targets:
           - "Carbon"
     entitlements:
       path: RealtimeTranslator/RealtimeTranslator.entitlements
+      properties:
+        com.apple.security.device.audio-input: true
     info:
       path: RealtimeTranslator/Info.plist
       properties:
