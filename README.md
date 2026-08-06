@@ -1,8 +1,10 @@
 # Realtime Translator
 
-macOSメニューバー常駐の、OpenAI Realtime Translationによるリアルタイム日英字幕アプリです。
+常駐型の、OpenAI Realtime Translationによるリアルタイム日英字幕アプリです。macOS版（メニューバー常駐）とWindows版（タスクトレイ常駐）があります。
 
 マイク音声をOpenAIの `gpt-live-transcribe` と `gpt-realtime-translate` へストリーミングし、原文と翻訳字幕をペア表示します。初回MVPでは翻訳音声の再生は行いません。
+
+Windows版の手順は [Windows版](#windows版) を参照してください。以下はmacOS版の説明です。
 
 ## 要件
 
@@ -109,3 +111,71 @@ xcodebuild test \
 - オフラインでは翻訳できません。
 - APIキーはKeychainへ保存し、ログへ出力しません。
 - MVPでは翻訳音声の読み上げは行いません。
+
+## Windows版
+
+タスクトレイ常駐のWPFアプリです。エンドポイント、モデル、音声フォーマット、ルーティング、字幕semanticsはmacOS版と同一で、共有契約（`shared/`）のfixtureで同値性を検証しています。
+
+### 要件
+
+- Windows 10 / Windows 11（x64）。開発時の検証はWindows Server 2022（x64）で実施しています。
+- マイク
+- インターネット接続（録音中は必須）
+- OpenAI APIキー（BYOK）と利用可能な課金設定
+- ソースからビルドする場合は .NET 10 SDK
+
+配布用の成果物は自己完結（self-contained）でpublishするため、実行側に .NET のインストールは不要です。`scripts/publish-windows.ps1 -Runtime win-arm64` で ARM64 成果物も出せますが、正式検証対象は x64 のみです（ARM64 は実験的）。
+
+### ビルドと配布物の作成
+
+```powershell
+dotnet build windows/RealtimeTranslator.slnx -c Release
+dotnet test  windows/RealtimeTranslator.slnx -c Release
+
+# 自己完結の配布物を artifacts/RealtimeTranslator-win-x64 へ出力する
+pwsh -File scripts/publish-windows.ps1
+# PowerShell 7がない場合は Windows PowerShell でも実行できます（スクリプトは UTF-8 BOM）
+powershell -ExecutionPolicy Bypass -File scripts/publish-windows.ps1
+```
+
+`windows` ワークフローは同じ手順を `windows-latest` で実行し、`RealtimeTranslator-win-x64` artifactを添付します。
+
+### 使い方
+
+1. `RealtimeTranslator.App.exe` を起動します。ウィンドウはタスクバーに出ず、通知領域アイコンと字幕オーバーレイだけが表示されます。多重起動はできません。
+2. トレイアイコンを右クリックして「設定…」を開き、OpenAI送信への同意とAPIキーの保存を済ませます。
+3. トレイの「翻訳を開始」、または `Control + Alt + Space` で録音を開始します。
+4. 日本語音声は英語へ、英語音声は日本語へ自動翻訳されます。
+5. 同じ操作で停止します。停止後、約5秒で字幕が消えます。
+
+字幕オーバーレイは通常クリック透過で、背後のアプリ操作を妨げません。位置を変えるときはトレイの「字幕位置を編集」をONにし、字幕をドラッグして再度OFFにします（位置は保存され、作業領域内へクランプされます）。
+
+### 設定
+
+タブ構成と項目はmacOS版と同じ（一般 / 音声認識 / 字幕・操作）で、次の点だけWindows固有です。
+
+| 項目 | Windowsでの扱い |
+| --- | --- |
+| APIキー | Windows資格情報マネージャー（汎用資格情報 `RealtimeTranslator:openai-api-key`）へ保存・削除します。設定ファイルには書きません。 |
+| 開始/停止 | トレイメニュー、または `Control + Alt + Space`。 |
+| 字幕位置 | トレイの「字幕位置を編集」でドラッグ移動して保存します。 |
+| 設定の保存先 | `%LOCALAPPDATA%\RealtimeTranslator\settings.json`（フォントサイズ、字幕位置、同意状態、認識プロンプト・キーワード・遅延・ノイズ低減）。 |
+
+プロンプト・キーワード・認識遅延の変更は録音中でも数秒でセッションへ反映されます。ノイズ低減の変更は次回の録音開始から反映されます。
+
+### アーキテクチャ（Windows）
+
+```text
+マイク
+  → WASAPI (NAudio)
+  → 24 kHz PCM16 mono / 100 ms frames
+  → RealtimeTranslator.Core（codec / packetizer / gain / 言語判定 / 字幕整列。macOS版と共有契約で同値）
+  → RealtimeTranslator.Platform（WASAPI・資格情報マネージャー・多重起動防止・グローバルホットキー・秘匿ログ）
+  → RealtimeTranslator.App（WPF: トレイ・設定・クリック透過オーバーレイ）
+```
+
+### 注意（Windows）
+
+- マイク音声、原文、訳文はOpenAI APIへ送信されます。
+- APIキーは資格情報マネージャーへ保存し、ログ・設定ファイルへ出力しません。
+- 実機での確認項目は `VALIDATION.md` の「Windows版」を参照してください。

@@ -12,3 +12,4 @@ xcuserdata/
 bin/
 obj/
 *.user
+artifacts/
