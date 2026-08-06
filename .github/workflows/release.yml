@@ -144,7 +144,11 @@ jobs:
           app="build/DerivedData/Build/Products/Release/RealtimeTranslator.app"
           # entitlementsが欠けるとマイク許可済みでもrequestAccessが拒否されるため、配布前に必ず確認する。
           codesign -d --entitlements :- --xml "$app" > entitlements.xml
-          /usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' entitlements.xml
+          value=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' entitlements.xml)
+          if [[ "$value" != "true" ]]; then
+            echo "com.apple.security.device.audio-input must be true, got: $value" >&2
+            exit 1
+          fi
 
       - name: Package
         env:
