@@ -192,26 +192,28 @@ public sealed class AudioFixtureTests
         Assert.Equal(last, gain.Gain);
     }
 
+    // Given: 非有限の初期ゲイン
+    // When: AdaptiveMicrophoneGain を生成する
+    // Then: ArgumentOutOfRangeException になる
     [Fact]
     public void NonFiniteInitialGainIsRejected()
     {
-        // Given/When/Then: NaN / Infinity の初期ゲインは拒否する
         Assert.Throws<ArgumentOutOfRangeException>(() => new AdaptiveMicrophoneGain(float.NaN));
         Assert.Throws<ArgumentOutOfRangeException>(() => new AdaptiveMicrophoneGain(float.PositiveInfinity));
     }
 
+    // Given: 有限な初期ゲイン
+    // When: 非有限ピークのあと有効ピークを観測する
+    // Then: 状態は壊れず通常のクリップ減衰が動く
     [Fact]
     public void NonFinitePeaksDoNotCorruptGainState()
     {
-        // Given: 有限な初期ゲイン
         var gain = new AdaptiveMicrophoneGain(4.0f);
 
-        // When: 非有限ピークのあと有効ピークを観測する
         Assert.Equal(4.0f, gain.ObservePeak(float.NaN));
         Assert.Equal(4.0f, gain.ObservePeak(float.PositiveInfinity));
         var recovered = gain.ObservePeak(0.3f);
 
-        // Then: 状態は壊れず、通常のクリップ減衰が動く
         Assert.True(float.IsFinite(recovered));
         Assert.InRange(recovered, AdaptiveMicrophoneGain.MinimumGain, AdaptiveMicrophoneGain.MaximumGain);
         Assert.Equal(0.5f / 0.3f, recovered, 0.01f);
