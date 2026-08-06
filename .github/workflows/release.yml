@@ -182,8 +182,19 @@ jobs:
           RELEASE_TAG: ${{ needs.version.outputs.tag }}
         run: |
           set -euo pipefail
-          # --verify-tag: 存在しないタグ名で既定ブランチにタグが新規作成されるのを防ぐ。
-          gh release create "$RELEASE_TAG" artifacts/* \
-            --verify-tag \
-            --title "Realtime Translator $RELEASE_TAG" \
-            --notes-file .github/release-notes.md
+          shopt -s nullglob
+          assets=(artifacts/*)
+          if (( ${#assets[@]} == 0 )); then
+            echo 'no release assets under artifacts/' >&2
+            exit 1
+          fi
+          # 部分失敗後の再実行でもアセットを置き換えられるようにする。
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          else
+            # --verify-tag: 存在しないタグ名で既定ブランチにタグが新規作成されるのを防ぐ。
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --verify-tag \
+              --title "Realtime Translator $RELEASE_TAG" \
+              --notes-file .github/release-notes.md
+          fi

@@ -10,10 +10,13 @@ Realtime Translator の配布物です。OpenAI API キーはご自身のもの�
 ## macOS (`RealtimeTranslator-<tag>-macos-arm64.zip`)
 
 - macOS 26 以降 / Apple Silicon。
-- Developer ID 署名・公証を行っていない ad-hoc 署名ビルドです。初回はGatekeeperにブロックされるため、展開後に隔離属性を外してから起動してください。
+- Developer ID 署名・公証を行っていない ad-hoc 署名ビルドです。初回は Gatekeeper にブロックされるため、展開した `.app` を `/Applications` へ移してから隔離属性を外してください。
 
 ```bash
+# zip を展開したディレクトリで
+ditto RealtimeTranslator.app /Applications/RealtimeTranslator.app
 xattr -dr com.apple.quarantine /Applications/RealtimeTranslator.app
+open /Applications/RealtimeTranslator.app
 ```
 
 - 起動するとメニューバーに常駐します。初回起動時にマイク使用許可を求められます。
@@ -21,4 +24,17 @@ xattr -dr com.apple.quarantine /Applications/RealtimeTranslator.app
 ## 共通
 
 - 日本語音声は英語へ、英語音声は日本語へ自動翻訳し、字幕として重ねて表示します。
-- 同梱の `.sha256` で zip の SHA-256 を検証できます。
+- SHA-256 は zip 内ではなく、Release アセットとして並ぶ sidecar です。
+  - `RealtimeTranslator-<tag>-win-x64.zip.sha256`
+  - `RealtimeTranslator-<tag>-macos-arm64.zip.sha256`
+
+```bash
+# macOS / Linux（zip と .sha256 を同じディレクトリに置いて）
+shasum -a 256 -c RealtimeTranslator-<tag>-macos-arm64.zip.sha256
+```
+
+```powershell
+# Windows（zip と .sha256 を同じディレクトリに置いて）
+(Get-FileHash .\RealtimeTranslator-<tag>-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+Get-Content .\RealtimeTranslator-<tag>-win-x64.zip.sha256
+```
