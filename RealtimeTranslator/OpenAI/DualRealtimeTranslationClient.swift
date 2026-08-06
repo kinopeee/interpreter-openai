@@ -191,7 +191,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     }
 
     /// 翻訳ポンプが現在の待ち行列を処理し終えるまで待つ。決定的なテストのために使う。
-    /// 送信が停滞しても `timeoutNanoseconds` で打ち切る（ポンプ Task を無期限待ちしない）。
+    /// 送信が停滞しても `timeoutNanoseconds` で待機だけを打ち切り、送信ポンプ自体は停止しない。
     func waitForTranslationDrain(timeoutNanoseconds: UInt64 = 5_000_000_000) async throws {
         let deadline = ContinuousClock.now + .nanoseconds(Int64(timeoutNanoseconds))
         while true {
