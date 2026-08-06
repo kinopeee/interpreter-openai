@@ -1,0 +1,284 @@
+using System;
+using System.Text;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
+using RealtimeTranslator.Core.OpenAI;
+using RealtimeTranslator.Core.Realtime;
+using Xunit;
+
+namespace RealtimeTranslator.Core.Tests;
+
+/// <summary>3 本の Realtime 接続の handshake / 送受信 / close 契約。</summary>
+public sealed class RealtimeConnectionTests
+{
+    private static readonly TimeSpan ShortTimeout = TimeSpan.FromMilliseconds(300);
+
+    // Given: handshake を自動応答する fake サーバー
+    // When: 翻訳接続を開始して音声 frame を送る
+    // Then: session.update の後に base64 音声が append される
+    [Fact]
+    public async Task TranslationConnectionHandshakesThenAppendsAudio()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety");
+
+        await connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+        await connection.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("frame"));
+
+        Assert.Equal("session.update", TypeOf(transport.Sent[0]));
+        Assert.Equal(["frame"], transport.AppendedFrameTexts());
+        await connection.ForceCloseAsync();
+    }
+
+    // Given: 翻訳接続と原文接続
+    // When: それぞれ接続する
+    // Then: 規定の endpoint と Authorization / Safety-Identifier のみを送り、OpenAI-Beta は送らない
+    [Fact]
+    public async Task ConnectionsUseTheContractedEndpointsAndHeaders()
+    {
+        var translationTransport = new FakeRealtimeServerTransport();
+        var translation = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.Japanese,
+            translationTransport,
+            "safety-id");
+        var sourceTransport = new FakeRealtimeServerTransport();
+        var source = new RealtimeSourceTranscriptionConnection(sourceTransport, "safety-id");
+
+        await translation.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.JapaneseTargetWithoutSourceTranscription());
+        await source.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        Assert.Equal(
+            new Uri("wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate"),
+            translationTransport.ConnectedUrl);
+        Assert.Equal(
+            new Uri("wss://api.openai.com/v1/realtime?intent=transcription"),
+            sourceTransport.ConnectedUrl);
+
+        foreach (var headers in new[] { translationTransport.ConnectedHeaders, sourceTransport.ConnectedHeaders })
+        {
+            Assert.Equal("Bearer sk-test", headers["Authorization"]);
+            Assert.Equal("safety-id", headers["OpenAI-Safety-Identifier"]);
+            Assert.DoesNotContain("OpenAI-Beta", headers.Keys, StringComparer.OrdinalIgnoreCase);
+        }
+
+        await translation.ForceCloseAsync();
+        await source.ForceCloseAsync();
+    }
+
+    // Given: session.created を返さない fake サーバー
+    // When: handshake timeout まで待つ
+    // Then: SessionUpdateTimeout で失敗し transport は解放される
+    [Fact]
+    public async Task TranslationConnectionTimesOutWhenHandshakeStalls()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety",
+            sessionUpdateTimeout: ShortTimeout);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+
+        Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, error.Kind);
+        Assert.True(transport.CloseCount >= 1);
+    }
+
+    // Given: handshake 中に認証エラーを返す fake サーバー
+    // When: 接続を開始する
+    // Then: AuthenticationFailed へ分類され、鍵断片を含む文言は使わない
+    [Fact]
+    public async Task TranslationConnectionClassifiesAuthenticationFailure()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        transport.EnqueueJson("""{"type":"error","error":{"message":"Incorrect API key sk-live-xyz","code":"invalid_api_key"}}""");
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety",
+            sessionUpdateTimeout: ShortTimeout);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+
+        Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
+        Assert.DoesNotContain("sk-live-xyz", error.Message, StringComparison.Ordinal);
+    }
+
+    // Given: 空の API キー
+    // When: 接続を開始する
+    // Then: 送信前に MissingApiKey で失敗する
+    [Fact]
+    public async Task TranslationConnectionRejectsBlankApiKey()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety");
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
+            "   ",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+
+        Assert.Equal(RealtimeTranslationErrorKind.MissingApiKey, error.Kind);
+        Assert.Equal(0, transport.ConnectCount);
+    }
+
+    // Given: ready 状態の翻訳接続
+    // When: 訳文 delta が届く
+    // Then: target と epoch を付けて下流へ流す
+    [Fact]
+    public async Task TranslationConnectionPublishesDecodedEvents()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.Japanese,
+            transport,
+            "test-safety");
+        await connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.JapaneseTargetWithoutSourceTranscription());
+
+        transport.EnqueueJson("""{"type":"session.output_transcript.delta","delta":"こんにちは","event_id":"e1"}""");
+        var streamEvent = await ReadOneAsync(connection.Events);
+
+        Assert.Equal(RealtimeTranslationOutputLanguage.Japanese, streamEvent.Target);
+        var delta = Assert.IsType<RealtimeTranslationServerEvent.OutputTranscriptDelta>(streamEvent.Event);
+        Assert.Equal("こんにちは", delta.Delta);
+        Assert.Equal(connection.Epoch, streamEvent.Epoch);
+        await connection.ForceCloseAsync();
+    }
+
+    // Given: ready 状態の翻訳接続
+    // When: 復号できないメッセージが届く
+    // Then: transport error として 1 度だけ通知しイベント流を閉じる
+    [Fact]
+    public async Task TranslationConnectionReportsTransportErrorOnBrokenMessage()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety");
+        await connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+
+        transport.EnqueueRaw(Encoding.UTF8.GetBytes("{not json"));
+        var streamEvent = await ReadOneAsync(connection.Events);
+
+        var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(streamEvent.Event);
+        Assert.Equal("transport", error.Code);
+        await connection.ForceCloseAsync();
+    }
+
+    // Given: session.closed を返さない fake サーバー
+    // When: graceful close を試みる
+    // Then: session.close を送った上で CloseTimeout になる
+    [Fact]
+    public async Task TranslationConnectionCloseTimesOutWithoutSessionClosed()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety",
+            closeTimeout: ShortTimeout);
+        await connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => connection.CloseGracefullyAsync());
+
+        Assert.Equal(RealtimeTranslationErrorKind.CloseTimeout, error.Kind);
+        Assert.Equal("session.close", TypeOf(transport.Sent[^1]));
+    }
+
+    // Given: 原文 transcription 接続
+    // When: delta と completed が届く
+    // Then: delta だけを英語 lane 相当のイベントとして流し、commit 応答で graceful close できる
+    [Fact]
+    public async Task SourceConnectionPublishesDeltasAndClosesOnCompleted()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            closeTimeout: TimeSpan.FromSeconds(2));
+        await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        transport.EnqueueJson(
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"hello","event_id":"e1"}""");
+        var streamEvent = await ReadOneAsync(connection.Events);
+        var delta = Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptDelta>(streamEvent.Event);
+        Assert.Equal("hello", delta.Delta);
+        Assert.Null(delta.ElapsedMs);
+
+        transport.EnqueueJson("""{"type":"conversation.item.input_audio_transcription.completed"}""");
+        await connection.CloseGracefullyAsync();
+
+        Assert.Equal("input_audio_buffer.commit", TypeOf(transport.Sent[^1]));
+    }
+
+    // Given: 接続していない原文 transcription 接続
+    // When: tuning 更新や frame 送信を試みる
+    // Then: NotConnected で拒否する
+    [Fact]
+    public async Task SourceConnectionRejectsUseBeforeStart()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => connection.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("frame")));
+        var tuningError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => connection.UpdateTuningAsync(RealtimeSessionTuning.Default));
+
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, tuningError.Kind);
+    }
+
+    // Given: far_field で接続した原文 transcription 接続
+    // When: near_field を含む tuning を録音中に反映する
+    // Then: noise_reduction は接続時の値を維持する
+    [Fact]
+    public async Task SourceConnectionKeepsConnectedNoiseReductionOnLiveUpdate()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
+        await connection.StartAsync(
+            "sk-test",
+            RealtimeSessionTuning.Default with { NoiseReduction = RealtimeTranslationNoiseReduction.FarField });
+
+        await connection.UpdateTuningAsync(
+            RealtimeSessionTuning.Default with { NoiseReduction = RealtimeTranslationNoiseReduction.NearField });
+
+        var payload = JsonNode.Parse(transport.Sent[^1])!.AsObject();
+        var noiseReduction = payload["session"]!["audio"]!["input"]!["noise_reduction"]!["type"]!.GetValue<string>();
+        Assert.Equal("far_field", noiseReduction);
+        await connection.ForceCloseAsync();
+    }
+
+    private static async Task<RealtimeTranslationStreamEvent> ReadOneAsync(
+        System.Threading.Channels.ChannelReader<RealtimeTranslationStreamEvent> reader)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        return await reader.ReadAsync(timeout.Token);
+    }
+
+    private static string? TypeOf(byte[] payload) =>
+        JsonNode.Parse(payload)!.AsObject()["type"]?.GetValue<string>();
+}
