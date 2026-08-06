@@ -1,8 +1,10 @@
 # OpenAI Realtime版 検証記録
 
+## macOS版
+
 日付: 2026-08-05
 
-## 自動検証
+### 自動検証
 
 - `xcodegen generate`: 成功
 - `xcodebuild build`: 成功（`platform=macOS` / `./build/DerivedData`）
@@ -16,14 +18,14 @@
   - 字幕lane選択・句読点/idle確定
   - InterpretationSessionの開始ゲート・二重stop・再接続・秘密非漏洩
 
-## 実APIスモーク（マイクなし）
+### 実APIスモーク（マイクなし）
 
 同一APIキーで `gpt-live-transcribe`、`target=en`、`target=ja` を同時接続できることを確認済み。専用transcriptionはcommit前から最初の原文deltaを約0.34秒で返すことも確認した。
 
 - 結果: 専用transcription接続・継続delta受信に成功
 - 字幕本文・APIキーはログへ未出力
 
-## 実マイク検証（手動）
+### 実マイク検証（手動）
 
 ```bash
 cd /Users/yoo/dev/interpreter-openai
@@ -46,3 +48,62 @@ cd /Users/yoo/dev/interpreter-openai
 - [ ] 無効キー、ネット切断、片側socket切断、再接続上限を正しく表示する
 - [ ] ログ、status file、クラッシュ情報にAPIキー・音声・字幕本文がない
 - [ ] 1時間連続でqueue増大、buffer leak、再接続loopがなく、OpenAI usageが想定範囲である
+
+## Windows版
+
+日付: 2026-08-06 / 環境: Windows Server 2022 Standard（x64）、.NET 10 SDK
+
+### 自動検証
+
+```powershell
+dotnet build windows/RealtimeTranslator.slnx -c Release
+dotnet test  windows/RealtimeTranslator.slnx -c Release
+dotnet list  windows/RealtimeTranslator.slnx package --vulnerable --include-transitive
+pwsh -File scripts/publish-windows.ps1
+```
+
+- `dotnet build -c Release`: 成功（0 warning / 0 error、`TreatWarningsAsErrors` 有効）
+- `dotnet test -c Release`: 成功（Core 205 + Platform 18 = 223 tests、0 failures）
+- `dotnet list package --vulnerable --include-transitive`: 全5 projectで脆弱性なし
+- Snyk Code（`snyk code test windows`）: 0 件
+- `scripts/publish-windows.ps1`: 自己完結（win-x64）publish成功。出力された `RealtimeTranslator.App.exe` の起動と常駐（応答あり）を確認
+- カバーした単体テスト:
+  - shared fixture同値性（audio / codec / language / routing / subtitle / tuning / privacy）
+  - Realtimeイベントcodec、100 ms PCM16 packet化、adaptive gain
+  - 3接続handshake / auth失敗 / close drain / send timeout / 再接続
+  - 専用live transcription・原文送信分離・4秒rolling preroll・言語切替時のpreroll flush・翻訳停滞時の原文継続
+  - 字幕lane選択・句読点/idle確定・末尾切り詰め・旧epoch破棄・Error時のバナー抑止
+  - WASAPI frame pipeline（4,800 bytes固定・`DropOldest(32)`）、mono downmix
+  - 資格情報マネージャー往復、install identifierのhash化、多重起動防止、ログの秘密非出力
+
+### 実マイク検証（仮想オーディオケーブル）
+
+仮想オーディオケーブルを入力デバイスとして、本番と同じWASAPIキャプチャ経路で実音声を流し、100 msフレーム30個すべてが4,800 bytes（peak=16384）で流れることを確認済み。
+
+### GUI検証（手動・実施済み）
+
+1. トレイ常駐で起動し、通常のメインウィンドウが出ないことを確認します。
+2. トレイメニューから設定を開き、同意とAPIキー保存を行い、資格情報マネージャーに `RealtimeTranslator:openai-api-key` が作られることを確認します。
+3. APIキー削除で当該資格情報が消えることを確認します。
+4. フォントサイズsliderとチューニング項目を変更し、`%LOCALAPPDATA%\RealtimeTranslator\settings.json` へ反映されることを確認します。
+5. 位置編集モードでオーバーレイをドラッグし、作業領域内へクランプされた位置が保存されることを確認します。
+6. 通常モードで字幕上のクリックが背後アプリへ届くことを確認します。
+7. 再起動して設定・位置が復元されることを確認します。
+8. トレイから終了し、トレイアイコンが残らないことを確認します。
+9. 2個目のプロセスが案内のみで終了することを確認します。
+
+- 結果: 上記すべてパス（設定ウィンドウの古いsnapshot参照、閉じ際のdebounce flushの回帰も含む）
+- 記録: GUIテストの録画とレポートはセッション成果物として提出済み
+
+### 未検証（実OpenAI APIキー未登録のため）
+
+- [ ] ライブ字幕の日英ワークフロー（日本語→英訳、英語→和訳の無再起動切替）
+- [ ] 録音中に設定を閉じた際のdebounce flush（ライブ状態での確認）
+- [ ] 録音停止から約5秒後の字幕クリア（ライブ状態での確認）
+- [ ] 無効キー、ネット切断、片側socket切断、再接続上限の表示
+- [ ] 1時間連続でqueue増大、buffer leak、再接続loopがなく、OpenAI usageが想定範囲である
+
+### 検証対象外（合意済み）
+
+- Swiftのローカル実行（macOS環境のため本作業では対象外）
+- 複数モニタ / 高DPI環境でのGUI確認（検証環境がない）

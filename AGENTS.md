@@ -1,5 +1,7 @@
 # RealtimeTranslator 開発ガイド
 
+macOS版（Swift / `RealtimeTranslator/`）とWindows版（.NET / `windows/`）の2実装がある。以下はmacOS版の規約で、共通の不変条件はWindows版にも適用する。Windows固有の規約は「Windows版」を参照する。
+
 ## 目的と不変条件
 
 - macOS 26以降向けの、OpenAI Realtime Translationによるリアルタイム日英字幕アプリである。
@@ -95,3 +97,49 @@ xcodebuild test -scheme RealtimeTranslator \
 - 最低限、イベントcodec、100 ms packet化、専用原文transcription、原文送信分離とrolling preroll、言語切替セグメント分割、送信timeout、字幕lane選択、旧epoch破棄、停止時close drainを維持する。
 - 非同期境界、空文字、句読点、停止時finalize、多重起動、秘密情報非漏洩の回帰を優先する。
 - UIや音声経路を変更したら、ビルドと全テストに加えて実際に日英を1文ずつ話して確認する。
+
+## Windows版
+
+### 構成
+
+- `windows/RealtimeTranslator.slnx`: .NET 10 solution。プロジェクト追加はここへ登録する。
+- `windows/src/RealtimeTranslator.Core/`: OS非依存。codec、tuning、packetizer、gain、言語判定、字幕整列、接続、`InterpretationSession`、字幕snapshot・geometry・設定codec。Windows APIやWPF型を持ち込まない。
+- `windows/src/RealtimeTranslator.Platform/`: Windows固有。WASAPI capture、資格情報マネージャー、install identifier、多重起動防止、グローバルホットキー、ログ、設定ファイル。
+- `windows/src/RealtimeTranslator.App/`: WPFシェル（composition root、トレイ、設定ウィンドウ、字幕オーバーレイ）。ロジックは持たずCoreへ委譲する。
+- `windows/tests/`: `RealtimeTranslator.Core.Tests` と `RealtimeTranslator.Platform.Tests`（xUnit）。
+- `shared/`: 言語中立の契約とfixture。両実装の同値性はここを正本にする。
+
+### 不変条件（Windows固有）
+
+- APIキーはWindows資格情報マネージャー（汎用資格情報 `RealtimeTranslator:openai-api-key`）へ保存する。`settings.json` などの平文設定へ書かない。
+- 設定は `%LOCALAPPDATA%\RealtimeTranslator\settings.json` へ一時ファイル + 置換で保存する。書き込み中の破損ファイルを残さない。
+- install identifierは生成値そのものを送らず、小文字SHA-256 hexだけを `OpenAI-Safety-Identifier` に載せる。`OpenAI-Beta` は送らない。
+- 音声は 24 kHz / PCM16 / mono / little-endian / 100 msフレーム（2,400 samples・4,800 bytes）。フレームchannelは容量32の`DropOldest`で、遅延を溜めずに落とす。
+- 原文送信は翻訳送信と分離する。翻訳送信が3回連続で失敗したらtransport errorを1回通知して翻訳pumpを止め、再接続へ回す。
+- 字幕は単一currentスロット。日本語60文字・英語120文字で末尾を`…`へ切り詰める。停止後は約5秒でcurrentを消す。
+- オーバーレイは通常時 `WS_EX_TRANSPARENT` / `WS_EX_NOACTIVATE` / `WS_EX_TOOLWINDOW` でクリック透過。位置編集モードのみ透過を外してドラッグを受ける。位置は作業領域へクランプして保存する。
+- 多重起動は`SingleInstanceLease`でUI生成前に判定する。2個目は案内ダイアログのみで終了する。
+- ホットキーは既定 `Control + Alt + Space`（`NoRepeat`）。受け皿は常駐しているオーバーレイのHWNDにする。
+
+### WPF固有の注意
+
+- `UseWindowsForms=true` のためDPIはマニフェストで宣言できない（WFO0003）。`ApplicationHighDpiMode=PerMonitorV2` と `DpiBootstrap`（`ModuleInitializer` から `ApplicationConfiguration.Initialize()`）で適用する。
+- WPFの`XmlLanguage`は具体カルチャを解決するため、Appプロジェクトでは`InvariantGlobalization=false`を維持する。trueに戻すと起動時に落ちる。
+- `ShutdownMode=OnExplicitShutdown`で通常のメインウィンドウを持たない。トレイ常駐前提を崩さない。
+- セッションからのイベントは`Dispatcher`へ渡してからUIへ反映する。UI要素をワーカースレッドから触らない。
+- ComboBoxには`DisplayMemberPath`を指定する。指定漏れはrecordの`ToString()`がそのまま表示される。
+
+### ビルドと検証
+
+```powershell
+dotnet build windows/RealtimeTranslator.slnx -c Release
+dotnet test  windows/RealtimeTranslator.slnx -c Release
+dotnet list  windows/RealtimeTranslator.slnx package --vulnerable --include-transitive
+
+# 配布物（自己完結）。framework-dependentにするとランタイム要求ダイアログが出る。
+pwsh -File scripts/publish-windows.ps1
+```
+
+- 警告は`TreatWarningsAsErrors`で失敗する。抑制ではなく修正する。
+- 純粋ロジックはxUnitで検証し、各テストに日本語のGiven/When/Thenコメントを付ける。
+- 権限、実API、実マイク、複数モニタ、フルスクリーン前面表示はユニットテストで検証できない。`VALIDATION.md`の「Windows版」を使う。
