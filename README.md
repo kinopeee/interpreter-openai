@@ -14,6 +14,21 @@ Windows版の手順は [Windows版](#windows版) を参照してください。�
 - インターネット接続（録音中は必須）
 - OpenAI APIキー（BYOK）と利用可能な課金設定
 
+## ダウンロード（リリース）
+
+ビルド済みの `RealtimeTranslator-<tag>-macos-arm64.zip` を [Releases](https://github.com/kinopeee/interpreter-openai/releases) から取得できます。Developer ID署名・公証を行っていないad-hoc署名ビルドです。SHA-256 は zip 内ではなく、同名の Release アセット `RealtimeTranslator-<tag>-macos-arm64.zip.sha256` です。起動前に検証し、成功後に `/Applications` へ移して隔離属性を外してください。
+
+```bash
+# zip と .sha256 を同じディレクトリに置いて
+shasum -a 256 -c RealtimeTranslator-<tag>-macos-arm64.zip.sha256
+# Linux では: sha256sum -c RealtimeTranslator-<tag>-macos-arm64.zip.sha256
+
+ditto -x -k RealtimeTranslator-<tag>-macos-arm64.zip .
+ditto RealtimeTranslator.app /Applications/RealtimeTranslator.app
+xattr -dr com.apple.quarantine /Applications/RealtimeTranslator.app
+open /Applications/RealtimeTranslator.app
+```
+
 ## セットアップ
 
 ```bash
@@ -139,6 +154,24 @@ powershell -ExecutionPolicy Bypass -File scripts/publish-windows.ps1
 ```
 
 `windows` ワークフローは同じ手順を `windows-latest` で実行し、`RealtimeTranslator-win-x64` artifactを添付します。
+
+### ダウンロード（リリース）
+
+ビルド済みの配布物は [Releases](https://github.com/kinopeee/interpreter-openai/releases) から取得できます。SHA-256 は zip 内ではなく、同名の Release アセット `RealtimeTranslator-<tag>-win-x64.zip.sha256` です。展開・起動の前に検証してください。
+
+```powershell
+$expected = (Get-Content .\RealtimeTranslator-<tag>-win-x64.zip.sha256 -Raw).Trim().Split()[0].ToLowerInvariant()
+$actual = (Get-FileHash .\RealtimeTranslator-<tag>-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actual -ne $expected) { throw "SHA-256 mismatch: expected $expected, got $actual" }
+```
+
+検証後に zip を展開し、`RealtimeTranslator.App.exe` を実行してください（自己完結ビルドなので .NET のインストールは不要）。
+
+`v*` のタグを push すると `release` ワークフローがWindows（win-x64）とmacOS（arm64）の両方をテスト→ビルド→zip化し、同じReleaseへ添付します。macOS版はDeveloper ID署名・公証を行っていないad-hoc署名ビルドのため、ZIP 検証→`/Applications` 配置→隔離属性解除の順でインストールしてください（手順は上記「ダウンロード（リリース）」と同じ）。
+
+```powershell
+git tag v0.1.0; git push origin v0.1.0
+```
 
 ### 使い方
 
