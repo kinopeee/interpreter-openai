@@ -215,7 +215,8 @@ final class InterpretationSessionTests: XCTestCase {
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
         let audio = FakeRealtimeAudioCaptureService()
         let dual = FakeDualRealtimeTranslationClient()
-        dual.startError = NSError(domain: NSPOSIXErrorDomain, code: Int(ECONNRESET))
+        // ENOTCONN (57): URLSession WebSocket 切断でよく見える POSIX コード
+        dual.startError = NSError(domain: NSPOSIXErrorDomain, code: 57)
         let session = InterpretationSession(
             apiKeyStore: apiKeyStore,
             audioCapture: audio,
