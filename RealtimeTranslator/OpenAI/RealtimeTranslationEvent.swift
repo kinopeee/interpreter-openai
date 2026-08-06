@@ -118,7 +118,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
         case .authenticationFailed:
             return "OpenAI APIキーが無効です"
         case .fatalServerError(let message):
-            return sanitizedServerMessage(message)
+            return Self.sanitizedServerMessage(message)
         case .recoverableTransportFailure:
             return "翻訳サーバーとの接続が切れました"
         case .sessionUpdateTimeout:
