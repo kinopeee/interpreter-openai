@@ -41,6 +41,7 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
     private WasapiCapture? _capture;
     private CancellationTokenSource? _pumpCts;
     private Task? _pumpTask;
+    private bool _stopRequested;
 
     public WasapiAudioCaptureService(Func<MMDevice>? deviceFactory = null)
     {
@@ -78,6 +79,7 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
 
         var pipeline = new CapturedAudioFramePipeline(capture.WaveFormat);
         capture.DataAvailable += (_, args) => pipeline.Push(args.Buffer, args.BytesRecorded);
+        capture.RecordingStopped += (_, _) => OnRecordingStopped(capture);
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var token = cts.Token;
@@ -87,6 +89,7 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
             _capture = capture;
             _pumpCts = cts;
             _frames = frames;
+            _stopRequested = false;
         }
 
         try
@@ -147,12 +150,36 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         }
     }
 
+    /// <summary>
+    /// デバイス取り外しや障害で録音が止まった場合、pump を終わらせて frame stream を閉じる。
+    /// 無音を流し続けるとセッション側が異常に気付けないため、再接続経路へ倒す。
+    /// </summary>
+    private void OnRecordingStopped(WasapiCapture capture)
+    {
+        CancellationTokenSource? cts;
+        lock (_sync)
+        {
+            if (_stopRequested || !ReferenceEquals(_capture, capture))
+            {
+                return;
+            }
+
+            // capture 自体は StopAsync/Dispose 側で解放する。ここでは pump だけ畳む。
+            cts = _pumpCts;
+            _pumpCts = null;
+        }
+
+        cts?.Cancel();
+        cts?.Dispose();
+    }
+
     private void StopCore()
     {
         WasapiCapture? capture;
         CancellationTokenSource? cts;
         lock (_sync)
         {
+            _stopRequested = true;
             capture = _capture;
             _capture = null;
             cts = _pumpCts;
