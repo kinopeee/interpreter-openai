@@ -24,7 +24,15 @@ public sealed class AdaptiveMicrophoneGain
 
     private float _trackedPeak;
 
-    public AdaptiveMicrophoneGain(float initialGain = DefaultInitialGain) => Gain = Clamp(initialGain);
+    public AdaptiveMicrophoneGain(float initialGain = DefaultInitialGain)
+    {
+        if (!float.IsFinite(initialGain))
+        {
+            throw new ArgumentOutOfRangeException(nameof(initialGain), "initialGain must be finite.");
+        }
+
+        Gain = Clamp(initialGain);
+    }
 
     public float Gain { get; private set; }
 
@@ -37,16 +45,29 @@ public sealed class AdaptiveMicrophoneGain
         }
 
         var peak = 0f;
+        var sawFinite = false;
         foreach (var sample in floatSamples)
         {
+            if (!float.IsFinite(sample))
+            {
+                continue;
+            }
+
+            sawFinite = true;
             peak = MathF.Max(peak, MathF.Abs(sample));
         }
 
-        return ObservePeak(peak);
+        return sawFinite ? ObservePeak(peak) : Gain;
     }
 
     public float ObservePeak(float peak)
     {
+        if (!float.IsFinite(peak))
+        {
+            // 非有限値で追跡状態を壊さない。
+            return Gain;
+        }
+
         var nonNegativePeak = MathF.Max(0f, peak);
 
         // 減衰付きピーク追跡 (新しいピークは即反映、減衰は緩やか)。
@@ -81,5 +102,13 @@ public sealed class AdaptiveMicrophoneGain
         return Gain;
     }
 
-    private static float Clamp(float value) => MathF.Min(MaximumGain, MathF.Max(MinimumGain, value));
+    private static float Clamp(float value)
+    {
+        if (!float.IsFinite(value))
+        {
+            return MinimumGain;
+        }
+
+        return MathF.Min(MaximumGain, MathF.Max(MinimumGain, value));
+    }
 }

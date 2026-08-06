@@ -16,6 +16,8 @@ public sealed class PrivacyFixtureTests
     [Fact]
     public void GenericMessageMatchesFixture()
     {
+        // Given: privacy fixture の汎用メッセージ
+        // When/Then: GenericServerMessage が一致する
         Assert.Equal(
             SharedFixtures.Text(SharedFixtures.Load("privacy")["genericErrorMessage"]),
             RealtimeTranslationException.GenericServerMessage);
@@ -28,8 +30,10 @@ public sealed class PrivacyFixtureTests
     [MemberData(nameof(SanitizeCases))]
     public void SanitizeMatchesFixture(string name)
     {
+        // Given: サーバー文言 sanitize fixture
         var fixture = SharedFixtures.Case("privacy", "sanitizedServerMessage", name);
 
+        // When/Then: 資格情報を含む文言は汎用メッセージへ落ちる
         Assert.Equal(
             SharedFixtures.Text(fixture["expected"]),
             RealtimeTranslationException.SanitizeServerMessage(SharedFixtures.Text(fixture["input"])));
@@ -42,8 +46,10 @@ public sealed class PrivacyFixtureTests
     [MemberData(nameof(AuthenticationCases))]
     public void AuthenticationDetectionMatchesFixture(string name)
     {
+        // Given: 認証失敗判定 fixture
         var fixture = SharedFixtures.Case("privacy", "isAuthenticationFailure", name);
 
+        // When/Then: code/message から認証失敗を判定する
         Assert.Equal(
             SharedFixtures.Flag(fixture["expected"]),
             RealtimeTranslationException.IsAuthenticationFailure(
@@ -57,11 +63,13 @@ public sealed class PrivacyFixtureTests
     [Fact]
     public void RecoverabilityMatchesFixture()
     {
+        // Given: エラー種別ごとの recoverability 表
         foreach (var item in SharedFixtures.Section("privacy", "recoverability"))
         {
             var fixture = item!.AsObject();
             var kind = ParseKind(SharedFixtures.Text(fixture["error"]));
 
+            // When/Then: IsRecoverable が一致する
             Assert.Equal(
                 SharedFixtures.Flag(fixture["isRecoverable"]),
                 new RealtimeTranslationException(kind).IsRecoverable);
@@ -75,10 +83,13 @@ public sealed class PrivacyFixtureTests
     [Fact]
     public void FatalServerErrorNeverLeaksCredentials()
     {
+        // Given: 資格情報を含む server message
+        // When: FatalServerError を作る
         var error = new RealtimeTranslationException(
             RealtimeTranslationErrorKind.FatalServerError,
             "Bearer sk-should-never-surface");
 
+        // Then: 表示用 Message は汎用文言になる
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
     }
 

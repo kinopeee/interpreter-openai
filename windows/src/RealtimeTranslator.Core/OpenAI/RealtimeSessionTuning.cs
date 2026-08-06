@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Globalization;
@@ -93,6 +93,12 @@ public sealed record RealtimeSessionTuning(
     public static ImmutableArray<string> ParseKeywords(string text, int limit = KeywordLimit)
     {
         ArgumentNullException.ThrowIfNull(text);
+        ArgumentOutOfRangeException.ThrowIfNegative(limit);
+
+        if (limit == 0)
+        {
+            return [];
+        }
 
         var result = new List<string>(Math.Min(limit, 16));
         foreach (var line in text.Split(LineSeparators, StringSplitOptions.None))

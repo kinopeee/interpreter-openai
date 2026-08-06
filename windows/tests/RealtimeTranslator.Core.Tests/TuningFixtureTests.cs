@@ -66,6 +66,17 @@ public sealed class TuningFixtureTests
         Assert.Equal(SharedFixtures.Text(fixture["expectedLast"]), keywords[^1]);
     }
 
+    // Given: 非空キーワードと limit=0
+    // When: ParseKeywords で正規化する
+    // Then: 1 件も返さない
+    [Fact]
+    public void ParseKeywordsReturnsEmptyWhenLimitIsZero()
+    {
+        var keywords = RealtimeSessionTuning.ParseKeywords("hackathon\ndemo", limit: 0);
+
+        Assert.Empty(keywords);
+    }
+
     // Given: 改行や前後空白を含む prompt
     // When: SanitizedPrompt で正規化する
     // Then: fixture の期待文字列と一致する

@@ -16,6 +16,8 @@ public sealed class LanguageFixtureTests
     [Fact]
     public void WindowSizeMatchesFixture()
     {
+        // Given: recentEvidenceWindow fixture
+        // When/Then: detector の窓サイズが一致する
         Assert.Equal(
             SharedFixtures.Number(SharedFixtures.Load("language")["recentEvidenceWindow"]),
             SpokenLanguageDetector.RecentEvidenceWindow);
@@ -28,9 +30,11 @@ public sealed class LanguageFixtureTests
     [MemberData(nameof(EvidenceCases))]
     public void EvidenceAndDetectMatchFixture(string name)
     {
+        // Given: 文字種判定 fixture
         var fixture = SharedFixtures.Case("language", "evidence", name);
         var input = SharedFixtures.Text(fixture["input"]);
 
+        // When/Then: evidence と detect が一致する
         Assert.Equal(ParseEvidence(SharedFixtures.Text(fixture["evidence"])), SpokenLanguageDetector.Evidence(input));
         Assert.Equal(ParseLanguage(SharedFixtures.Text(fixture["detect"])), SpokenLanguageDetector.Detect(input));
     }
@@ -42,9 +46,11 @@ public sealed class LanguageFixtureTests
     [MemberData(nameof(RecentEvidenceCases))]
     public void RecentEvidenceMatchesFixture(string name)
     {
+        // Given: 末尾ウィンドウ判定 fixture
         var fixture = SharedFixtures.Case("language", "recentEvidence", name);
         var input = SharedFixtures.Text(fixture["input"]);
 
+        // When/Then: 末尾窓と全文 evidence が一致する
         Assert.Equal(
             ParseEvidence(SharedFixtures.Text(fixture["expected"])),
             SpokenLanguageDetector.RecentEvidence(input, SharedFixtures.Number(fixture["window"])));
@@ -59,12 +65,14 @@ public sealed class LanguageFixtureTests
     [Fact]
     public void TranslationTargetsMatchFixture()
     {
+        // Given: language → translationTarget 対応表
         foreach (var item in SharedFixtures.Section("language", "targets"))
         {
             var fixture = item!.AsObject();
             var language = ParseLanguage(SharedFixtures.Text(fixture["language"]));
             var expected = SharedFixtures.OptionalText(fixture["translationTarget"]);
 
+            // When/Then: TranslationTarget() が一致する
             Assert.Equal(
                 expected is null ? null : RealtimeTranslationWireValues.ParseOutputLanguage(expected),
                 language.TranslationTarget());

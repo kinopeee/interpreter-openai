@@ -22,8 +22,10 @@ public sealed class SubtitleFixtureTests
     [Fact]
     public void LimitsMatchFixture()
     {
+        // Given: subtitle clip limits fixture
         var limits = SharedFixtures.Load("subtitle")["limits"]!.AsObject();
 
+        // When/Then: clipper 定数が一致する
         Assert.Equal(SharedFixtures.Number(limits["japaneseCharacterLimit"]), SubtitleTailClipper.JapaneseCharacterLimit);
         Assert.Equal(SharedFixtures.Number(limits["englishCharacterLimit"]), SubtitleTailClipper.EnglishCharacterLimit);
         Assert.Equal(SharedFixtures.Text(limits["ellipsis"]), SubtitleTailClipper.Ellipsis);
@@ -36,8 +38,10 @@ public sealed class SubtitleFixtureTests
     [MemberData(nameof(ClipCases))]
     public void ClipMatchesFixture(string name)
     {
+        // Given: clip fixture
         var fixture = SharedFixtures.Case("subtitle", "clip", name);
 
+        // When/Then: 末尾クリップ結果が一致する
         Assert.Equal(
             Expand(fixture["expected"]!),
             SubtitleTailClipper.Clip(Expand(fixture["input"]!)));
@@ -49,8 +53,10 @@ public sealed class SubtitleFixtureTests
     [Fact]
     public void IdleIntervalMatchesFixture()
     {
+        // Given: assembler idle 設定
         var assembler = SharedFixtures.Load("subtitle")["assembler"]!.AsObject();
 
+        // When/Then: IdleFinalizeInterval が一致する
         Assert.Equal(
             TimeSpan.FromSeconds(SharedFixtures.Number(assembler["idleFinalizeSeconds"])),
             RealtimeSubtitleAssembler.IdleFinalizeInterval);
@@ -63,6 +69,7 @@ public sealed class SubtitleFixtureTests
     [MemberData(nameof(AssemblerCases))]
     public void AssemblerMatchesFixture(string name)
     {
+        // Given: assembler シナリオと初期 epoch/lane
         var fixture = FindAssemblerCase(name);
         var epoch = SharedFixtures.Number(fixture["epoch"]);
 
@@ -73,6 +80,7 @@ public sealed class SubtitleFixtureTests
                 ? RealtimeTranslationWireValues.ParseOutputLanguage(lane)
                 : null);
 
+        // When: tick / delta を順に適用する
         RealtimeSubtitleUpdate? last = null;
         foreach (var item in fixture["steps"]!.AsArray())
         {
@@ -95,6 +103,7 @@ public sealed class SubtitleFixtureTests
             last = update ?? last;
         }
 
+        // Then: 最終字幕更新が期待どおり
         var expected = fixture["expectedFinal"]!.AsObject();
         Assert.NotNull(last);
         Assert.Equal(SharedFixtures.Text(expected["sourceText"]), last.Value.SourceText);

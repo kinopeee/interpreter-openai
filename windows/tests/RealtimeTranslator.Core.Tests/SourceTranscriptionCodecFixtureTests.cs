@@ -19,9 +19,13 @@ public sealed class SourceTranscriptionCodecFixtureTests
     [MemberData(nameof(EncodeCases))]
     public void EncodeMatchesFixture(string name)
     {
+        // Given: transcription client encode fixture
         var fixture = SharedFixtures.Case("codec", "transcriptionEncode", name);
+
+        // When: JSON へ符号化
         var encoded = RealtimeSourceTranscriptionCodec.Encode(ClientEvent(fixture["event"]!.AsObject()));
 
+        // Then: 期待 JSON と一致する
         var actual = SharedFixtures.ParseUtf8(encoded);
         var expected = fixture["expected"];
         Assert.True(
@@ -36,12 +40,15 @@ public sealed class SourceTranscriptionCodecFixtureTests
     [MemberData(nameof(DecodeCases))]
     public void DecodeMatchesFixture(string name)
     {
+        // Given: transcription server decode fixture
         var fixture = SharedFixtures.Case("codec", "transcriptionDecode", name);
         var utf8 = Encoding.UTF8.GetBytes(SharedFixtures.Text(fixture["json"]));
 
+        // When: サーバーイベントを復号する
         var actual = RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8);
         var expected = fixture["expected"]!.AsObject();
 
+        // Then: kind ごとのフィールドが一致する
         switch (SharedFixtures.Text(expected["kind"]))
         {
             case "sessionCreated":
@@ -91,8 +98,12 @@ public sealed class SourceTranscriptionCodecFixtureTests
     [Fact]
     public void MalformedPayloadIsNormalizedToInvalidMessage()
     {
+        // Given: 壊れた JSON
+        // When: 復号を試みる
         var error = Assert.Throws<RealtimeTranslationException>(
             () => RealtimeSourceTranscriptionCodec.DecodeServerEvent(Encoding.UTF8.GetBytes("{\"type\":")));
+
+        // Then: InvalidMessage に正規化される
         Assert.Equal(RealtimeTranslationErrorKind.InvalidMessage, error.Kind);
     }
 
