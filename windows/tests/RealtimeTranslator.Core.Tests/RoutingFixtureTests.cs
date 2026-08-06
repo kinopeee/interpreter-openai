@@ -84,6 +84,24 @@ public sealed class RoutingFixtureTests
         Assert.Equal(DualRealtimeTranslationClient.TranslationPrerollFrameLimit, expectedCount);
     }
 
+    // Given: 呼び出し側が同じバッファを再利用する
+    // When: Append 後にバッファを上書きしてから言語を確定する
+    // Then: preroll flush は上書き前の内容を翻訳 lane へ届ける
+    [Fact]
+    public async Task PrerollRetainsOwnedCopiesWhenCallerReusesBuffer()
+    {
+        await using var harness = await RoutingHarness.StartAsync();
+        var buffer = Encoding.UTF8.GetBytes("frame-original");
+        await harness.Dual.AppendAudioFrameAsync(buffer);
+        Encoding.UTF8.GetBytes("frame-mutated!").CopyTo(buffer.AsSpan());
+
+        await harness.SetSpokenLanguageAsync("japanese");
+
+        var flushed = harness.English.AppendedFrameTexts();
+        Assert.Single(flushed);
+        Assert.Equal("frame-original", flushed[0]);
+    }
+
     // Given: fixture の preroll / 連続失敗上限
     // When: 実装定数と突き合わせる
     // Then: 契約値と一致する

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -181,11 +182,20 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 return;
             }
 
-            await SendAsync(new RealtimeSourceTranscriptionClientEvent.Commit(), cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                await SendAsync(new RealtimeSourceTranscriptionClientEvent.Commit(), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // commit 送信の失敗は握り潰し、completed 待ちと teardown へ進む。
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+                // 相手が既に落ちている場合も completed 待ちへ進む。
+            }
 
-            var deadline = DateTime.UtcNow + _closeTimeout;
-            while (DateTime.UtcNow < deadline)
+            var elapsed = Stopwatch.StartNew();
+            while (elapsed.Elapsed < _closeTimeout)
             {
                 lock (_sync)
                 {
@@ -244,10 +254,27 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
     public void Dispose()
     {
+        CancellationTokenSource? cts;
         lock (_sync)
         {
-            _receiveCts?.Dispose();
+            _isReady = false;
+            _epoch += 1;
+            cts = _receiveCts;
             _receiveCts = null;
+        }
+
+        if (cts is not null)
+        {
+            try
+            {
+                cts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 二重 Dispose は無視する。
+            }
+
+            cts.Dispose();
         }
 
         _lifecycleGate.Dispose();

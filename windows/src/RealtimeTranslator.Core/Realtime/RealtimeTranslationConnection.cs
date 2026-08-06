@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -181,8 +182,8 @@ public sealed class RealtimeTranslationConnection : IDisposable
                 // 相手が既に落ちている場合も close 待ちへ進む。
             }
 
-            var deadline = DateTime.UtcNow + _closeTimeout;
-            while (DateTime.UtcNow < deadline)
+            var elapsed = Stopwatch.StartNew();
+            while (elapsed.Elapsed < _closeTimeout)
             {
                 lock (_sync)
                 {
@@ -244,10 +245,28 @@ public sealed class RealtimeTranslationConnection : IDisposable
 
     public void Dispose()
     {
+        CancellationTokenSource? cts;
         lock (_sync)
         {
-            _receiveCts?.Dispose();
+            _isClosing = true;
+            _isReady = false;
+            _epoch += 1;
+            cts = _receiveCts;
             _receiveCts = null;
+        }
+
+        if (cts is not null)
+        {
+            try
+            {
+                cts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 二重 Dispose は無視する。
+            }
+
+            cts.Dispose();
         }
 
         _lifecycleGate.Dispose();

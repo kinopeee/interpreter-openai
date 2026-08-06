@@ -181,8 +181,17 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
         lock (_sync)
         {
+            // stop/force-close が await 中に走った場合、停止済みへは enqueue しない。
+            if (!_isRunning)
+            {
+                return;
+            }
+
+            // 呼び出し側バッファ再利用に備え、保持前に所有コピーを取る。
+            ReadOnlyMemory<byte> retained = pcm16LittleEndian.ToArray();
+
             // 言語切替検出の遅延を吸収するため、選択後も直近 4 秒を rolling 保持する。
-            _translationPrerollFrames.Enqueue(pcm16LittleEndian);
+            _translationPrerollFrames.Enqueue(retained);
             while (_translationPrerollFrames.Count > TranslationPrerollFrameLimit)
             {
                 _translationPrerollFrames.Dequeue();
@@ -190,7 +199,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
             if (_selectedTranslationTarget is { } target)
             {
-                EnqueueTranslationFrameLocked(pcm16LittleEndian, target);
+                EnqueueTranslationFrameLocked(retained, target);
             }
         }
     }
@@ -328,20 +337,68 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         await pumpCts.CancelAsync().ConfigureAwait(false);
         await AwaitPumpAsync(pump).ConfigureAwait(false);
 
-        await _sourceConnection.ForceCloseAsync().ConfigureAwait(false);
-        await _englishConnection.ForceCloseAsync().ConfigureAwait(false);
-        await _japaneseConnection.ForceCloseAsync().ConfigureAwait(false);
+        Exception? firstError = null;
+        foreach (var close in new Func<Task>[]
+                 {
+                     _sourceConnection.ForceCloseAsync,
+                     _englishConnection.ForceCloseAsync,
+                     _japaneseConnection.ForceCloseAsync,
+                 })
+        {
+            try
+            {
+                await close().ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // 最初の失敗だけを返し、残りの接続と merge は必ず解放する。
+            catch (Exception error)
+#pragma warning restore CA1031
+            {
+                firstError ??= error;
+            }
+        }
+
         await StopEventMergeAsync().ConfigureAwait(false);
+
+        if (firstError is not null)
+        {
+            throw firstError;
+        }
     }
 
     public void Dispose()
     {
+        CancellationTokenSource? mergeCts;
+        CancellationTokenSource pumpCts;
         lock (_sync)
         {
-            _mergeCts?.Dispose();
+            _isRunning = false;
+            mergeCts = _mergeCts;
             _mergeCts = null;
-            _translationPumpCts.Dispose();
+            pumpCts = _translationPumpCts;
         }
+
+        // Dispose 経路でも背景タスクを止める。Cancel せず Dispose だけだと loop が残る。
+        try
+        {
+            mergeCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 二重 Dispose は無視する。
+        }
+
+        mergeCts?.Dispose();
+
+        try
+        {
+            pumpCts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 二重 Dispose は無視する。
+        }
+
+        pumpCts.Dispose();
 
         _lifecycleGate.Dispose();
         _sourceConnection.Dispose();
@@ -367,10 +424,13 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     }
 
     /// <summary>翻訳ポンプが現在の待ち行列を処理し終えるまで待つ。決定的なテストのために使う。</summary>
-    public async Task WaitForTranslationDrainAsync()
+    internal async Task WaitForTranslationDrainAsync(CancellationToken cancellationToken = default)
     {
+        var deadline = Environment.TickCount64 + (long)TimeSpan.FromSeconds(5).TotalMilliseconds;
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             Task? pump;
             lock (_sync)
             {
@@ -384,11 +444,16 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
             if (pump is null)
             {
+                if (Environment.TickCount64 >= deadline)
+                {
+                    throw new TimeoutException("translation pump did not drain");
+                }
+
                 await Task.Yield();
                 continue;
             }
 
-            await pump.ConfigureAwait(false);
+            await pump.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -467,13 +532,18 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                         // 再接続待ちの間、死にかけの socket へ送り続けない。
                         _translationPumpHaltedForTransportFailure = true;
                         _pendingTranslationFrames.Clear();
-                        _translationPumpTask = null;
                     }
                 }
 
                 if (halted)
                 {
+                    // drain 待ちが復帰する前に transport error を確実に発行する。
                     PublishTransportError(pending.Target, epoch);
+                    lock (_sync)
+                    {
+                        _translationPumpTask = null;
+                    }
+
                     return;
                 }
             }

@@ -50,6 +50,7 @@ public sealed class InterpretationSession : IDisposable
     private readonly TimeSpan _tickInterval;
     private readonly RealtimeSubtitleAssembler _assembler = new();
     private readonly object _sync = new();
+    private readonly SemaphoreSlim _routingGate = new(1, 1);
 
     private CancellationTokenSource? _sessionCts;
     private Task? _sessionTask;
@@ -110,9 +111,13 @@ public sealed class InterpretationSession : IDisposable
                 return;
             }
 
+            // await をまたぐ再入を防ぐため、受理直後に Connecting へ進める。
+            _state = TranslationState.Connecting;
             previous = _sessionTask;
             previousCts = _sessionCts;
         }
+
+        StateChanged?.Invoke(this, TranslationState.Connecting);
 
         // 旧世代の teardown が新しい接続や録音を落とさないよう、先に排水する。
         if (previousCts is not null)
@@ -122,7 +127,16 @@ public sealed class InterpretationSession : IDisposable
 
         if (previous is not null)
         {
-            await previous.ConfigureAwait(false);
+            try
+            {
+                await previous.ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // 旧世代の失敗があっても新しいセッション開始を妨げない。
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+                // 旧 session task の例外はここで吸収する。
+            }
         }
 
         int generation;
@@ -181,13 +195,23 @@ public sealed class InterpretationSession : IDisposable
         if (cts is not null)
         {
             await cts.CancelAsync().ConfigureAwait(false);
-            cts.Dispose();
         }
 
         if (sessionTask is not null)
         {
-            await sessionTask.ConfigureAwait(false);
+            try
+            {
+                await sessionTask.ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // stop 中の旧世代失敗は Idle 遷移を妨げない。
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+                // session loop の例外は停止完了を阻まない。
+            }
         }
+
+        cts?.Dispose();
 
         // 停止時点で完全ペアが残っていれば確定して見せる。
         RealtimeSubtitleUpdate? pending;
@@ -224,11 +248,29 @@ public sealed class InterpretationSession : IDisposable
 
     public void Dispose()
     {
+        CancellationTokenSource? cts;
         lock (_sync)
         {
-            _sessionCts?.Dispose();
+            _lifecycleGeneration += 1;
+            cts = _sessionCts;
             _sessionCts = null;
         }
+
+        if (cts is not null)
+        {
+            try
+            {
+                cts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 二重 Dispose は無視する。
+            }
+
+            cts.Dispose();
+        }
+
+        _routingGate.Dispose();
     }
 
     private static RealtimeTranslationOutputLanguage? ExpectedTranslationLane(SpokenLanguage spoken) => spoken switch
@@ -491,79 +533,100 @@ public sealed class InterpretationSession : IDisposable
     /// <summary>原文 delta の文字種から発話言語を決め、逆側 target へ音声を切り替える。</summary>
     private async Task UpdateAudioRoutingAsync(string delta, CancellationToken cancellationToken)
     {
-        SpokenLanguage detected;
-        SpokenLanguage current;
-        SpokenLanguageEvidence evidence;
-        lock (_sync)
+        await _routingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            _routingSourceText += delta;
-            evidence = SpokenLanguageDetector.RecentEvidence(_routingSourceText);
-            current = _routedSpokenLanguage;
-        }
-
-        if (current == SpokenLanguage.Unknown)
-        {
-            detected = evidence switch
+            SpokenLanguage detected;
+            SpokenLanguage current;
+            SpokenLanguageEvidence evidence;
+            lock (_sync)
             {
-                SpokenLanguageEvidence.Japanese => SpokenLanguage.Japanese,
-                // 単語 1 個のラテン文字でも、原文が日本語でない以上は英語 lane を先に開く。
-                SpokenLanguageEvidence.English or SpokenLanguageEvidence.AmbiguousLatin => SpokenLanguage.English,
+                _routingSourceText += delta;
+                evidence = SpokenLanguageDetector.RecentEvidence(_routingSourceText);
+                current = _routedSpokenLanguage;
+            }
+
+            if (current == SpokenLanguage.Unknown)
+            {
+                detected = evidence switch
+                {
+                    SpokenLanguageEvidence.Japanese => SpokenLanguage.Japanese,
+                    // 単語 1 個のラテン文字でも、原文が日本語でない以上は英語 lane を先に開く。
+                    SpokenLanguageEvidence.English or SpokenLanguageEvidence.AmbiguousLatin => SpokenLanguage.English,
+                    _ => SpokenLanguage.Unknown,
+                };
+
+                if (detected == SpokenLanguage.Unknown)
+                {
+                    return;
+                }
+
+                lock (_sync)
+                {
+                    _routedSpokenLanguage = detected;
+                    _assembler.ExpectLane(ExpectedTranslationLane(detected));
+                }
+
+                await _dualClient.SetSpokenLanguageAsync(detected, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            // 確定的な文字種反転のみを segment 境界とする (ambiguousLatin は除外)。
+            var flipped = evidence switch
+            {
+                SpokenLanguageEvidence.Japanese when current == SpokenLanguage.English => SpokenLanguage.Japanese,
+                SpokenLanguageEvidence.English when current == SpokenLanguage.Japanese => SpokenLanguage.English,
                 _ => SpokenLanguage.Unknown,
             };
 
-            if (detected == SpokenLanguage.Unknown)
+            if (flipped == SpokenLanguage.Unknown)
             {
                 return;
             }
 
+            RealtimeSubtitleUpdate? finalized;
             lock (_sync)
             {
-                _routedSpokenLanguage = detected;
-                _assembler.ExpectLane(ExpectedTranslationLane(detected));
+                finalized = _assembler.FinalizeForLanguageSwitch(_timeProvider.GetUtcNow());
             }
 
-            await _dualClient.SetSpokenLanguageAsync(detected, cancellationToken).ConfigureAwait(false);
-            return;
+            if (finalized is { } value)
+            {
+                SubtitleUpdated?.Invoke(this, value);
+            }
+
+            await ResetAudioRoutingForNextSegmentCoreAsync().ConfigureAwait(false);
+
+            lock (_sync)
+            {
+                // 切替を起こした delta は新しい segment の先頭として持ち越す。
+                _routingSourceText = delta;
+                _routedSpokenLanguage = flipped;
+                _assembler.ExpectLane(ExpectedTranslationLane(flipped));
+            }
+
+            await _dualClient.SetSpokenLanguageAsync(flipped, cancellationToken).ConfigureAwait(false);
         }
-
-        // 確定的な文字種反転のみを segment 境界とする (ambiguousLatin は除外)。
-        var flipped = evidence switch
+        finally
         {
-            SpokenLanguageEvidence.Japanese when current == SpokenLanguage.English => SpokenLanguage.Japanese,
-            SpokenLanguageEvidence.English when current == SpokenLanguage.Japanese => SpokenLanguage.English,
-            _ => SpokenLanguage.Unknown,
-        };
-
-        if (flipped == SpokenLanguage.Unknown)
-        {
-            return;
+            _routingGate.Release();
         }
-
-        RealtimeSubtitleUpdate? finalized;
-        lock (_sync)
-        {
-            finalized = _assembler.FinalizeForLanguageSwitch(_timeProvider.GetUtcNow());
-        }
-
-        if (finalized is { } value)
-        {
-            SubtitleUpdated?.Invoke(this, value);
-        }
-
-        await ResetAudioRoutingForNextSegmentAsync().ConfigureAwait(false);
-
-        lock (_sync)
-        {
-            // 切替を起こした delta は新しい segment の先頭として持ち越す。
-            _routingSourceText = delta;
-            _routedSpokenLanguage = flipped;
-            _assembler.ExpectLane(ExpectedTranslationLane(flipped));
-        }
-
-        await _dualClient.SetSpokenLanguageAsync(flipped, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task ResetAudioRoutingForNextSegmentAsync()
+    {
+        await _routingGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await ResetAudioRoutingForNextSegmentCoreAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _routingGate.Release();
+        }
+    }
+
+    private async Task ResetAudioRoutingForNextSegmentCoreAsync()
     {
         lock (_sync)
         {
@@ -577,8 +640,14 @@ public sealed class InterpretationSession : IDisposable
 
     private async Task TearDownStreamingAsync()
     {
-        await _audioCapture.StopAsync().ConfigureAwait(false);
-        await _dualClient.ForceCloseAsync().ConfigureAwait(false);
+        try
+        {
+            await _audioCapture.StopAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            await _dualClient.ForceCloseAsync().ConfigureAwait(false);
+        }
     }
 
     private string RequireApiKey()

@@ -86,8 +86,9 @@ public sealed class ClientWebSocketTransport : IRealtimeWebSocketTransport, IDis
                 throw new RealtimeTranslationException(
                     RealtimeTranslationErrorKind.RecoverableTransportFailure);
             }
-            catch (WebSocketException)
+            catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException)
             {
+                // CloseAsync と並行すると Abort/Dispose 済み socket へ触り得る。
                 throw new RealtimeTranslationException(
                     RealtimeTranslationErrorKind.RecoverableTransportFailure);
             }
@@ -112,8 +113,9 @@ public sealed class ClientWebSocketTransport : IRealtimeWebSocketTransport, IDis
                 {
                     result = await socket.ReceiveAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
                 }
-                catch (WebSocketException)
+                catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException)
                 {
+                    // CloseAsync と並行すると Abort/Dispose 済み socket へ触り得る。
                     throw new RealtimeTranslationException(
                         RealtimeTranslationErrorKind.RecoverableTransportFailure);
                 }
