@@ -32,8 +32,14 @@ if ([string]::IsNullOrWhiteSpace($Output)) {
     $Output = "artifacts/RealtimeTranslator-$Runtime"
 }
 
-# 相対パスは呼び出し元の作業ディレクトリではなくリポジトリ直下へ解決する。
-if (-not [System.IO.Path]::IsPathRooted($Output)) {
+# Windows PowerShell 5.1 (.NET Framework) には IsPathFullyQualified がない。
+# IsPathRooted は C:dist や \dist も true にするので、完全修飾だけを絶対パスとして扱う。
+$isUnc = $Output.StartsWith('\\')
+$isDriveAbsolute = $Output -match '^[A-Za-z]:[\\/]'
+if (-not ($isUnc -or $isDriveAbsolute)) {
+    if ($Output -match '^[A-Za-z]:' -or $Output.StartsWith('\') -or $Output.StartsWith('/')) {
+        throw "-Output must be a fully qualified path (e.g. C:\dist\...) or a repository-relative path. Refusing: $Output"
+    }
     $Output = Join-Path $repositoryRoot $Output
 }
 
