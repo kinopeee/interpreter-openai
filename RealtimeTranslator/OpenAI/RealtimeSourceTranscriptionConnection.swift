@@ -257,7 +257,7 @@ actor RealtimeSourceTranscriptionConnection {
         if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
             return .authenticationFailed
         }
-        return .fatalServerError(message)
+        return .fatalServerError(RealtimeTranslationError.sanitizedServerMessage(message))
     }
 
     private func recreateEventStream() {

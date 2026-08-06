@@ -118,7 +118,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
         case .authenticationFailed:
             return "OpenAI APIキーが無効です"
         case .fatalServerError(let message):
-            return message.isEmpty ? "翻訳サーバーでエラーが発生しました" : message
+            return sanitizedServerMessage(message)
         case .recoverableTransportFailure:
             return "翻訳サーバーとの接続が切れました"
         case .sessionUpdateTimeout:
@@ -142,6 +142,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
 
     /// ランタイム / handshake の認証失敗判定。
     /// bare `auth` / `401` / `403` 部分一致は `authority` や `4010` に誤爆するため使わない。
+    /// `authorization` は単語として一致し、`authority` には一致しない。
     static func isAuthenticationFailure(code: String?, message: String) -> Bool {
         let codeLowered = (code ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -154,6 +155,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
         if codeLowered.contains("invalid_api_key")
             || codeLowered.contains("authentication")
             || codeLowered.contains("unauthorized")
+            || codeLowered.contains("authorization")
         {
             return true
         }
@@ -161,6 +163,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
         let authPhrases = [
             "unauthorized",
             "unauthenticated",
+            "authorization",
             "invalid_api_key",
             "incorrect api key",
             "invalid api key",
@@ -175,6 +178,19 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
 
         // HTTP 401/403 をトークン単位で検出（4010 等の部分一致を避ける）
         return containsHTTPAuthStatus(messageLowered)
+    }
+
+    /// アラート・バナー・ログへ出してよいサーバー文言へ正規化する。
+    static func sanitizedServerMessage(_ message: String) -> String {
+        let lowered = message.lowercased()
+        if lowered.contains("sk-")
+            || lowered.contains("api key")
+            || lowered.contains("authorization")
+            || lowered.contains("bearer ")
+        {
+            return "翻訳サーバーでエラーが発生しました"
+        }
+        return message.isEmpty ? "翻訳サーバーでエラーが発生しました" : message
     }
 
     private static let knownAuthenticationFailureCodes: Set<String> = [

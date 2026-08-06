@@ -34,6 +34,12 @@ final class RealtimeTranslationErrorTests: XCTestCase {
                 message: "authentication error while validating credentials"
             )
         )
+        XCTAssertTrue(
+            RealtimeTranslationError.isAuthenticationFailure(
+                code: nil,
+                message: "Invalid Authorization header provided"
+            )
+        )
     }
 
     func testAuthenticationFailureIgnoresUnrelatedSubstrings() {
@@ -61,6 +67,26 @@ final class RealtimeTranslationErrorTests: XCTestCase {
                 code: "rate_limit_exceeded",
                 message: "too many requests"
             )
+        )
+    }
+
+    func testSanitizedServerMessageRedactsKeyMaterial() {
+        // Given/When/Then: キー断片や Authorization を含む文言は汎用エラーになる
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage(
+                "Provider echo included sk-should-not-appear"
+            ),
+            "翻訳サーバーでエラーが発生しました"
+        )
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage(
+                "bearer token rejected"
+            ),
+            "翻訳サーバーでエラーが発生しました"
+        )
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage("timeout waiting for peer"),
+            "timeout waiting for peer"
         )
     }
 }

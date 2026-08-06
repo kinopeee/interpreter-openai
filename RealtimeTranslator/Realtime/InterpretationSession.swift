@@ -274,7 +274,7 @@ final class InterpretationSession {
                 }
                 // サーバー文言にキー断片が含まれる場合があるため、ユーザー向け文言はサニタイズする。
                 throw RealtimeTranslationError.fatalServerError(
-                    Self.userFacingServerMessage(message)
+                    RealtimeTranslationError.sanitizedServerMessage(message)
                 )
             }
 
@@ -533,16 +533,4 @@ final class InterpretationSession {
         delegate?.interpretationSession(self, didEncounterMessage: error.localizedDescription)
     }
 
-    /// アラート・バナー・ログへ出してよいサーバー文言へ正規化する。
-    private static func userFacingServerMessage(_ message: String) -> String {
-        let lowered = message.lowercased()
-        if lowered.contains("sk-")
-            || lowered.contains("api key")
-            || lowered.contains("authorization")
-            || lowered.contains("bearer ")
-        {
-            return "翻訳サーバーでエラーが発生しました"
-        }
-        return message.isEmpty ? "翻訳サーバーでエラーが発生しました" : message
-    }
 }
