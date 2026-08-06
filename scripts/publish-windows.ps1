@@ -8,12 +8,14 @@ framework-dependent にすると起動時に「.NET Desktop Runtime が必要」
 配布用の既定は自己完結とする。
 
 .EXAMPLE
+# 既定の出力先はリポジトリ直下の artifacts/RealtimeTranslator-<runtime>。
 pwsh -File scripts/publish-windows.ps1
+pwsh -File scripts/publish-windows.ps1 -Runtime win-arm64
 pwsh -File scripts/publish-windows.ps1 -Output C:\dist\RealtimeTranslator
 #>
 [CmdletBinding()]
 param(
-    [string]$Output = 'artifacts/RealtimeTranslator-win-x64',
+    [string]$Output,
     [ValidateSet('win-x64', 'win-arm64')]
     [string]$Runtime = 'win-x64',
     [string]$Configuration = 'Release'
@@ -23,6 +25,15 @@ $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $repositoryRoot 'windows/src/RealtimeTranslator.App/RealtimeTranslator.App.csproj'
+
+if ([string]::IsNullOrWhiteSpace($Output)) {
+    $Output = "artifacts/RealtimeTranslator-$Runtime"
+}
+
+# 相対パスは呼び出し元の作業ディレクトリではなくリポジトリ直下へ解決する。
+if (-not [System.IO.Path]::IsPathRooted($Output)) {
+    $Output = Join-Path $repositoryRoot $Output
+}
 
 dotnet publish $project `
     --configuration $Configuration `
