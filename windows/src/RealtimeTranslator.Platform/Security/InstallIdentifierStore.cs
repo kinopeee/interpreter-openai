@@ -25,7 +25,8 @@ public sealed class InstallIdentifierStore
     /// <summary>永続化済みの UUID を返す。無ければ生成して保存する。</summary>
     public string LoadOrCreate()
     {
-        using var key = Registry.CurrentUser.CreateSubKey(_keyPath, writable: true);
+        using var key = Registry.CurrentUser.CreateSubKey(_keyPath, writable: true)
+            ?? throw new InvalidOperationException("レジストリキーを作成できませんでした");
         if (key.GetValue(ValueName) is string existing && Guid.TryParse(existing, out _))
         {
             return existing;

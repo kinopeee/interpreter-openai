@@ -95,7 +95,7 @@ public sealed class GlobalHotkeyManager : IDisposable
     /// <summary>ウィンドウプロシージャから受け取ったメッセージを処理し、扱った場合 true を返す。</summary>
     public bool HandleMessage(int message, IntPtr wParam)
     {
-        if (message != WmHotkey || wParam.ToInt64() != _hotkeyId)
+        if (!_registered || message != WmHotkey || wParam.ToInt64() != _hotkeyId)
         {
             return false;
         }

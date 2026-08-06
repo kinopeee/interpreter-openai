@@ -56,7 +56,7 @@ public sealed class CapturedAudioFramePipelineTests
 
     // Given: 48kHz ステレオでデバイス供給が無い状態
     // When: 100ms tick 相当を連続で読み出す
-    // Then: リサンプラ短尺があっても毎回ちょうど 1 frame が返り、欠番しない
+    // Then: リサンプラ短尺があっても毎回ちょうど 1 無音 frame が返り、欠番しない
     [Fact]
     public void EmitsSilenceFramesEveryTickWhenResampledDeviceStarves()
     {
@@ -68,7 +68,37 @@ public sealed class CapturedAudioFramePipelineTests
 
             Assert.Single(frames);
             Assert.Equal(Pcm16FramePacketizer.BytesPerFrame, frames[0].Length);
+            Assert.All(frames[0], value => Assert.Equal(0, value));
         }
+    }
+
+    // Given: macOS bufferingNewest(32) 相当の frame channel
+    // When: 容量を超えて書き込む
+    // Then: 古い frame が捨てられ、最新が残る
+    [Fact]
+    public void FrameChannelDropsOldestWhenTheConsumerLags()
+    {
+        var channel = WasapiAudioCaptureService.CreateFrameChannel();
+        var capacity = WasapiAudioCaptureService.FrameChannelCapacity;
+
+        for (var index = 0; index < capacity + 3; index++)
+        {
+            var frame = new byte[Pcm16FramePacketizer.BytesPerFrame];
+            frame[0] = (byte)index;
+            Assert.True(channel.Writer.TryWrite(frame));
+        }
+
+        Assert.True(channel.Reader.TryRead(out var oldestKept));
+        Assert.Equal((byte)3, oldestKept.Span[0]);
+
+        var remaining = 1;
+        while (channel.Reader.TryRead(out var next))
+        {
+            remaining += 1;
+            Assert.Equal((byte)(remaining + 2), next.Span[0]);
+        }
+
+        Assert.Equal(capacity, remaining);
     }
 
     // Given: 小音量の入力

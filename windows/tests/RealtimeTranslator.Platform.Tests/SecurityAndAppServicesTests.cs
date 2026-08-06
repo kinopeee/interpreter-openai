@@ -116,6 +116,25 @@ public sealed class SecurityAndAppServicesTests
         Assert.Equal(1, registrar.UnregisterCount);
     }
 
+    // Given: 登録後に解除したホットキー
+    // When: 同じ ID の WM_HOTKEY を受け取る
+    // Then: 処理せず Pressed も増えない
+    [Fact]
+    public void HotkeyManagerIgnoresMessagesAfterUnregister()
+    {
+        using var manager = new GlobalHotkeyManager(new FakeHotkeyRegistrar(succeed: true));
+        var pressed = 0;
+        manager.Pressed += (_, _) => pressed += 1;
+
+        Assert.True(manager.Register(new IntPtr(1)));
+        manager.Unregister();
+
+        Assert.False(manager.HandleMessage(
+            GlobalHotkeyManager.WmHotkey,
+            new IntPtr(GlobalHotkeyManager.DefaultHotkeyId)));
+        Assert.Equal(0, pressed);
+    }
+
     // Given: 他アプリが同じ組み合わせを握っている状況
     // When: 登録する
     // Then: 例外ではなく false を返す
@@ -134,19 +153,27 @@ public sealed class SecurityAndAppServicesTests
     [Fact]
     public void LoggerRedactsSecretMaterial()
     {
+        var previous = new TraceLogSink();
         var sink = new RecordingSink();
         AppLogger.UseSink(sink);
-        var installId = Guid.NewGuid().ToString();
+        try
+        {
+            var installId = Guid.NewGuid().ToString();
 
-        AppLogger.Error(
-            LogCategory.Realtime,
-            $"connect failed key=sk-live-abcdef123456 Authorization: Bearer sk-live-abcdef123456 install={installId}");
+            AppLogger.Error(
+                LogCategory.Realtime,
+                $"connect failed key=sk-live-abcdef123456 Authorization: Bearer sk-live-abcdef123456 install={installId}");
 
-        var line = Assert.Single(sink.Lines);
-        Assert.DoesNotContain("sk-live-abcdef123456", line, StringComparison.Ordinal);
-        Assert.DoesNotContain(installId, line, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(AppLogger.RedactedPlaceholder, line, StringComparison.Ordinal);
-        Assert.Contains("connect failed", line, StringComparison.Ordinal);
+            var line = Assert.Single(sink.Lines);
+            Assert.DoesNotContain("sk-live-abcdef123456", line, StringComparison.Ordinal);
+            Assert.DoesNotContain(installId, line, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(AppLogger.RedactedPlaceholder, line, StringComparison.Ordinal);
+            Assert.Contains("connect failed", line, StringComparison.Ordinal);
+        }
+        finally
+        {
+            AppLogger.UseSink(previous);
+        }
     }
 
     private sealed class FakeHotkeyRegistrar(bool succeed) : IGlobalHotkeyRegistrar

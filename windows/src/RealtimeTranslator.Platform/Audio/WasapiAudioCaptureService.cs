@@ -31,13 +31,19 @@ public sealed class AudioCaptureException : Exception
 /// <summary>WASAPI 共有モードのマイク入力を 100 ms / 24 kHz / PCM16 mono frame として供給する。</summary>
 public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposable
 {
+    /// <summary>
+    /// macOS 版 <c>AsyncStream(bufferingNewest: 32)</c> と同じ上限。
+    /// 送信遅延時は古い frame を捨て、無制限にメモリを伸ばさない。
+    /// </summary>
+    internal const int FrameChannelCapacity = 32;
+
     private static readonly TimeSpan FrameInterval =
         TimeSpan.FromMilliseconds(Pcm16FramePacketizer.FrameDurationMilliseconds);
 
     private readonly Func<MMDevice>? _deviceFactory;
     private readonly object _sync = new();
 
-    private Channel<ReadOnlyMemory<byte>> _frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+    private Channel<ReadOnlyMemory<byte>> _frames = CreateFrameChannel();
     private WasapiCapture? _capture;
     private MMDevice? _ownedDevice;
     private CancellationTokenSource? _pumpCts;
@@ -92,7 +98,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
 
         var pipeline = new CapturedAudioFramePipeline(capture.WaveFormat);
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+        // Dispose 後の cts.Token 参照で ObjectDisposedException にならないよう、先に捕捉する。
+        var pumpToken = cts.Token;
+        var frames = CreateFrameChannel();
 
         capture.DataAvailable += (_, args) => pipeline.Push(args.Buffer, args.BytesRecorded);
         capture.RecordingStopped += (_, _) => OnRecordingStopped(capture);
@@ -112,12 +120,13 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         }
         catch (Exception error) when (error is COMException or InvalidOperationException)
         {
+            // pump 未起動のため StopAsync 側で writer を完了させる。
             await StopAsync().ConfigureAwait(false);
             throw new AudioCaptureException("マイクを開始できませんでした", error);
         }
 
         // StartRecording 成功後に pump を登録し、StopAsync と交差しても await 対象を失わない。
-        var pumpTask = Task.Run(() => PumpAsync(pipeline, frames.Writer, cts.Token), CancellationToken.None);
+        var pumpTask = Task.Run(() => PumpAsync(pipeline, frames.Writer, pumpToken), CancellationToken.None);
         bool shouldAwaitOrphan;
         lock (_sync)
         {
@@ -148,13 +157,18 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
     public async Task StopAsync()
     {
         Task? pump;
+        ChannelWriter<ReadOnlyMemory<byte>>? orphanWriter;
         lock (_sync)
         {
             pump = _pumpTask;
             _pumpTask = null;
+            // pump が一度も起動していない経路では Writer が未完了のまま残るため、ここで閉じる。
+            orphanWriter = pump is null ? _frames.Writer : null;
         }
 
         StopCore();
+        orphanWriter?.TryComplete();
+
         if (pump is not null)
         {
             try
@@ -169,6 +183,17 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
     }
 
     public void Dispose() => StopAsync().GetAwaiter().GetResult();
+
+    /// <summary>macOS の bufferingNewest(32) 相当。満杯時は oldest を捨てて最新を優先する。</summary>
+    internal static Channel<ReadOnlyMemory<byte>> CreateFrameChannel() =>
+        Channel.CreateBounded<ReadOnlyMemory<byte>>(
+            new BoundedChannelOptions(FrameChannelCapacity)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,
+                SingleWriter = true,
+                AllowSynchronousContinuations = false,
+            });
 
     private static async Task PumpAsync(
         CapturedAudioFramePipeline pipeline,
