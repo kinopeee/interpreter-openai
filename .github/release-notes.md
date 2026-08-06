@@ -24,9 +24,12 @@ if ($actual -ne $expected) { throw "SHA-256 mismatch: expected $expected, got $a
 SHA-256 は zip 内ではなく、Release アセット `RealtimeTranslator-<tag>-macos-arm64.zip.sha256` です。
 
 ```bash
-# zip と .sha256 を同じディレクトリに置いて（起動前に検証）
+# zip と .sha256 を置いた作業ディレクトリで実行する（/Applications 直下は書き込み保護されており
+# `ditto: .: Operation not permitted` になる）
+cd ~/Downloads
+
+# 起動前に検証
 shasum -a 256 -c RealtimeTranslator-<tag>-macos-arm64.zip.sha256
-# Linux では: sha256sum -c RealtimeTranslator-<tag>-macos-arm64.zip.sha256
 
 # 検証成功後に展開し、/Applications へ配置して起動
 ditto -x -k RealtimeTranslator-<tag>-macos-arm64.zip .

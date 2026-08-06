@@ -19,9 +19,11 @@ Windows版の手順は [Windows版](#windows版) を参照してください。�
 ビルド済みの `RealtimeTranslator-<tag>-macos-arm64.zip` を [Releases](https://github.com/kinopeee/interpreter-openai/releases) から取得できます。Developer ID署名・公証を行っていないad-hoc署名ビルドです。SHA-256 は zip 内ではなく、同名の Release アセット `RealtimeTranslator-<tag>-macos-arm64.zip.sha256` です。起動前に検証し、成功後に `/Applications` へ移して隔離属性を外してください。
 
 ```bash
-# zip と .sha256 を同じディレクトリに置いて
+# zip と .sha256 を置いた作業ディレクトリで実行する（/Applications 直下は書き込み保護されており
+# `ditto: .: Operation not permitted` になる）
+cd ~/Downloads
+
 shasum -a 256 -c RealtimeTranslator-<tag>-macos-arm64.zip.sha256
-# Linux では: sha256sum -c RealtimeTranslator-<tag>-macos-arm64.zip.sha256
 
 ditto -x -k RealtimeTranslator-<tag>-macos-arm64.zip .
 ditto RealtimeTranslator.app /Applications/RealtimeTranslator.app
