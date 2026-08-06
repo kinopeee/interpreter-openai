@@ -289,6 +289,54 @@ final class InterpretationSessionTests: XCTestCase {
         await session.stop()
     }
 
+    func testUnknownCaptureTerminationEntersErrorWithoutReconnect() async {
+        // Given: listening 中のセッション
+        struct UnknownFeederError: Error {}
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let startCountAtListening = dual.startCallCount
+
+        // When: feeder が未知エラーで終端する
+        audio.terminate(with: UnknownFeederError())
+        await waitUntil { session.state == .error }
+
+        // Then: 再接続せず即 error
+        XCTAssertEqual(session.state, .error)
+        XCTAssertEqual(dual.startCallCount, startCountAtListening)
+    }
+
+    func testNonTransientURLErrorEntersErrorWithoutReconnect() async {
+        // Given: 証明書系 URLError は再接続対象外
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        dual.startError = URLError(.serverCertificateUntrusted)
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+
+        // When: startする
+        await session.start()
+        await waitUntil { session.state == .error }
+
+        // Then: 再接続せず即 error
+        XCTAssertEqual(session.state, .error)
+        XCTAssertEqual(dual.startCallCount, 1)
+        XCTAssertEqual(audio.startCallCount, 0)
+    }
+
     func testRuntimeTransportErrorCancelsAudioFeedAndReconnects() async {
         // Given: listening中で、audio feedは次frame待ちのまま
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")

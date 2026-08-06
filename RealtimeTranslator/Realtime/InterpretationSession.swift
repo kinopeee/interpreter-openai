@@ -145,12 +145,12 @@ final class InterpretationSession {
                 if case .recoverableTransportFailure(let detail) = error {
                     reconnectDetail = detail
                 }
-            } catch is URLError {
-                // URLSession WebSocket 由来: fall through to reconnect
+            } catch let error as URLError where Self.isTransientURLError(error) {
+                // 一時的な URLSession 切断のみ再接続
             } catch is URLSessionWebSocketTransportError {
-                // transport 境界の未接続/未対応メッセージ: fall through to reconnect
-            } catch let error as NSError where Self.isTransientTransportNSError(error) {
-                // POSIX / NSURL の低レベル切断は URLError にbridged されないことがある
+                // transport 境界の未接続など: fall through to reconnect
+            } catch let error as NSError where Self.isTransientPOSIXError(error) {
+                // URLError に bridge されない POSIX 切断
                 _ = error
             } catch let error as RealtimeTranslationError {
                 guard generation == lifecycleGeneration else { return }
@@ -162,6 +162,9 @@ final class InterpretationSession {
                 case .inputDeviceChanged:
                     // マイク切断/切替は再接続。バナーに理由を残す。
                     reconnectDetail = error.localizedDescription
+                case .pipelineOverloaded:
+                    // フレーム経路の背圧は再接続で立て直す
+                    break
                 default:
                     guard generation == lifecycleGeneration else { return }
                     await tearDownStreaming()
@@ -205,9 +208,39 @@ final class InterpretationSession {
         }
     }
 
-    /// WebSocket 切断が NSError(NSPOSIXErrorDomain / NSURLErrorDomain) で上がる経路向け。
-    private static func isTransientTransportNSError(_ error: NSError) -> Bool {
-        error.domain == NSPOSIXErrorDomain || error.domain == NSURLErrorDomain
+    /// 再接続対象の一時的な URLError のみ許可する（証明書/ATS/不正 URL は即 error）。
+    private static func isTransientURLError(_ error: URLError) -> Bool {
+        switch error.code {
+        case .timedOut,
+            .cannotFindHost,
+            .cannotConnectToHost,
+            .networkConnectionLost,
+            .dnsLookupFailed,
+            .notConnectedToInternet,
+            .cannotLoadFromNetwork,
+            .internationalRoamingOff,
+            .callIsActive,
+            .dataNotAllowed:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// URLError に bridge されない POSIX 切断コード（Darwin 値）。
+    private static let transientPOSIXCodes: Set<Int> = [
+        32, // EPIPE
+        50, // ENETDOWN
+        51, // ENETUNREACH
+        53, // ECONNABORTED
+        54, // ECONNRESET
+        57, // ENOTCONN
+        60, // ETIMEDOUT
+        65, // EHOSTUNREACH
+    ]
+
+    private static func isTransientPOSIXError(_ error: NSError) -> Bool {
+        error.domain == NSPOSIXErrorDomain && transientPOSIXCodes.contains(error.code)
     }
 
     private func connectAndStream(generation: Int) async throws {
@@ -293,8 +326,8 @@ final class InterpretationSession {
             try await dualClient.appendAudioFrame(frame)
         }
         guard generation == lifecycleGeneration, state == .listening else { return }
-        if let captureError = audioCapture.terminationError as? RealtimeAudioCaptureError {
-            throw captureError
+        if let terminationError = audioCapture.terminationError {
+            throw terminationError
         }
         throw RealtimeTranslationError.recoverableTransportFailure("audio stream ended")
     }
