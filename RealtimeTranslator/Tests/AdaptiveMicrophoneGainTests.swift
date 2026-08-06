@@ -59,19 +59,37 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
         XCTAssertEqual(low.gain, AdaptiveMicrophoneGain.minimumGain)
     }
 
+    func testNonFiniteInitialGainFallsBackToMinimum() {
+        // Given: NaN / ±infinity の初期ゲイン
+        let values: [Float] = [.nan, .infinity, -.infinity]
+
+        // When/Then: clamp 経由で minimumGain に落ちる
+        for value in values {
+            XCTAssertEqual(
+                AdaptiveMicrophoneGain(initialGain: value).gain,
+                AdaptiveMicrophoneGain.minimumGain
+            )
+        }
+    }
+
     func testNonFinitePeakDoesNotCorruptTrackedState() {
-        // Given: 初期ゲイン4.0
+        // Given: 先に有限ピークを観測した対象と、同じ有限列だけの基準
         var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
-        let before = agc.gain
+        var baseline = AdaptiveMicrophoneGain(initialGain: 4.0)
+        let seedPeak: Float = 0.05
+        let followUpPeak: Float = 0.3
+        _ = agc.observePeak(seedPeak)
+        _ = baseline.observePeak(seedPeak)
 
-        // When: NaN / infinity のピークを観測する
-        let afterNan = agc.observePeak(.nan)
-        let afterInfinity = agc.observePeak(.infinity)
+        // When: 非有限ピークを挟んだあと、再度有限ピークを観測する
+        XCTAssertEqual(agc.observePeak(.nan), agc.gain)
+        XCTAssertEqual(agc.observePeak(.infinity), agc.gain)
+        let after = agc.observePeak(followUpPeak)
+        let expected = baseline.observePeak(followUpPeak)
 
-        // Then: 追跡状態を壊さず現ゲインを維持する
-        XCTAssertEqual(afterNan, before)
-        XCTAssertEqual(afterInfinity, before)
-        XCTAssertEqual(agc.gain, before)
+        // Then: trackedPeak が壊れていなければ基準と同じゲインになる
+        XCTAssertEqual(after, expected, accuracy: 0.0001)
+        XCTAssertEqual(agc.gain, baseline.gain, accuracy: 0.0001)
     }
 
     func testAllNonFiniteSamplesKeepCurrentGain() {
