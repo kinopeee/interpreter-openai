@@ -46,8 +46,10 @@ persist_dotnet_path() {
 
 # .NET SDK は本来スナップショット側に焼き込むが、スナップショット無しで
 # install が走った場合にも復旧できるよう、存在チェック付きで冪等に導入する。
-if ! has_required_sdk dotnet && ! has_required_sdk "$DOTNET_ROOT/dotnet"; then
+# 無効な DOTNET_ROOT が PATH 上の有効な SDK を隠さないよう、ROOT を先に評価する。
+if ! has_required_sdk "$DOTNET_ROOT/dotnet" && ! has_required_sdk dotnet; then
   installer="$(mktemp)"
+  trap 'rm -f "$installer"' EXIT
   curl -fsSL \
     --connect-timeout 10 \
     --max-time 120 \
@@ -57,17 +59,17 @@ if ! has_required_sdk dotnet && ! has_required_sdk "$DOTNET_ROOT/dotnet"; then
   actual_sha="$(sha256sum "$installer" | awk '{print $1}')"
   if [ "$actual_sha" != "$DOTNET_INSTALL_SHA256" ]; then
     echo "install.sh: dotnet-install.sh の SHA-256 が一致しません (got ${actual_sha})." >&2
-    rm -f "$installer"
     exit 1
   fi
   bash "$installer" --version "$DOTNET_VERSION" --install-dir "$DOTNET_ROOT"
+  trap - EXIT
   rm -f "$installer"
 fi
 
-export PATH="$DOTNET_ROOT:$PATH"
-persist_dotnet_path
-
-if ! has_required_sdk dotnet; then
+if has_required_sdk "$DOTNET_ROOT/dotnet"; then
+  export PATH="$DOTNET_ROOT:$PATH"
+  persist_dotnet_path
+elif ! has_required_sdk dotnet; then
   echo "install.sh: .NET SDK 10.0.1xx が見つかりません。" >&2
   exit 1
 fi
