@@ -12,7 +12,8 @@ struct RealtimeSubtitleUpdate: Equatable, Sendable {
 struct RealtimeSubtitleAssembler: Sendable {
     // Realtime Translation can pause output deltas for 5 seconds or more while
     // continuing the same sentence. A short idle cutoff truncates the translation.
-    private static let idleFinalizeInterval: TimeInterval = 8
+    /// shared/fixtures の assembler.idleFinalizeSeconds と一致させる。
+    static let idleFinalizeInterval: TimeInterval = 8
 
     private var epoch = 0
     private var segmentGeneration = 0

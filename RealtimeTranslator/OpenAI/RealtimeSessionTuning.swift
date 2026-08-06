@@ -98,6 +98,7 @@ struct RealtimeSessionTuning: Sendable, Equatable {
         from text: String,
         limit: Int = keywordLimit
     ) -> [String] {
+        guard limit > 0 else { return [] }
         var result: [String] = []
         result.reserveCapacity(min(limit, 16))
         for line in text.split(whereSeparator: \.isNewline) {

@@ -30,7 +30,7 @@ actor RealtimeTranslationConnection {
     init(
         target: RealtimeTranslationOutputLanguage,
         transport: any RealtimeWebSocketTransport = URLSessionWebSocketTransport(),
-        safetyIdentifier: String = OpenAISafetyIdentifier.hashedValue(),
+        safetyIdentifier: String,
         sessionUpdateTimeoutNanoseconds: UInt64 = 15_000_000_000,
         closeTimeoutNanoseconds: UInt64 = 15_000_000_000
     ) {
@@ -208,19 +208,25 @@ actor RealtimeTranslationConnection {
         switch event {
         case .outputAudioDelta:
             outputAudioEventCount += 1
+            #if DEBUG
             if outputAudioEventCount == 1 || outputAudioEventCount.isMultiple(of: 25) {
                 AppLogger.realtime.notice(
                     "DBG_OUTPUT_AUDIO_EVENT target=\(self.target.rawValue, privacy: .public) count=\(self.outputAudioEventCount, privacy: .public) epoch=\(currentEpoch, privacy: .public)"
                 )
             }
+            #endif
         case .inputTranscriptDelta:
+            #if DEBUG
             AppLogger.realtime.notice(
                 "DBG_TRANSCRIPT_EVENT target=\(self.target.rawValue, privacy: .public) kind=input epoch=\(currentEpoch, privacy: .public)"
             )
+            #endif
         case .outputTranscriptDelta:
+            #if DEBUG
             AppLogger.realtime.notice(
                 "DBG_TRANSCRIPT_EVENT target=\(self.target.rawValue, privacy: .public) kind=output epoch=\(currentEpoch, privacy: .public)"
             )
+            #endif
         case .error(_, let code):
             AppLogger.realtime.error(
                 "Realtime translation error code=\(code ?? "none", privacy: .public)"

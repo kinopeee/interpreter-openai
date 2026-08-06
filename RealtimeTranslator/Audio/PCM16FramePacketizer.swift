@@ -10,6 +10,8 @@ struct PCM16FramePacketizer: Sendable {
 
     private var pending = Data()
 
+    var pendingByteCount: Int { pending.count }
+
     mutating func append(_ pcm16LE: Data) -> [Data] {
         guard !pcm16LE.isEmpty else { return [] }
         pending.append(pcm16LE)
