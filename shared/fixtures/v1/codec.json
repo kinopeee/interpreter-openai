@@ -1,7 +1,7 @@
 {
   "$schema": "./schema/codec.schema.json",
   "version": 1,
-  "description": "RealtimeTranslationMessageCodec の言語中立な期待値。encode は JSON を意味比較（キー順は問わない）する。",
+  "description": "Realtime の codec 期待値。encode は JSON を意味比較（キー順は問わない）する。encode/decode/decodeFailures は翻訳接続（/v1/realtime/translations）、transcriptionEncode/transcriptionDecode は原文 transcription 接続（/v1/realtime?intent=transcription）。decodeFailures は「壊れた payload は必ず invalidMessage へ正規化する」ことを要求する正本であり、JSON parser 由来の例外をそのまま外へ出してはならない。",
   "encode": [
     {
       "name": "session.update english target with source transcription",
@@ -170,6 +170,83 @@
       "name": "unknown event keeps its type",
       "json": "{\"type\":\"session.something_new\",\"foo\":1}",
       "expected": { "kind": "unknown", "type": "session.something_new" }
+    }
+  ],
+  "transcriptionEncode": [
+    {
+      "name": "transcription session.update has its own session shape",
+      "event": {
+        "kind": "sessionUpdate",
+        "noiseReduction": "far_field",
+        "transcriptionDelay": "low",
+        "prompt": "Japanese and English conversation.",
+        "keywords": ["ハッカソン", "hackathon"]
+      },
+      "expected": {
+        "type": "session.update",
+        "session": {
+          "type": "transcription",
+          "audio": {
+            "input": {
+              "format": { "type": "audio/pcm", "rate": 24000 },
+              "transcription": {
+                "model": "gpt-live-transcribe",
+                "languages": ["ja", "en"],
+                "delay": "low",
+                "prompt": "Japanese and English conversation.",
+                "keywords": ["ハッカソン", "hackathon"]
+              },
+              "noise_reduction": { "type": "far_field" },
+              "turn_detection": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "transcription audio append has no session prefix",
+      "event": { "kind": "inputAudioBufferAppend", "base64Audio": "AAECAwQF" },
+      "expected": {
+        "type": "input_audio_buffer.append",
+        "audio": "AAECAwQF"
+      }
+    },
+    {
+      "name": "transcription stops with a commit instead of session.close",
+      "event": { "kind": "commit" },
+      "expected": { "type": "input_audio_buffer.commit" }
+    }
+  ],
+  "transcriptionDecode": [
+    {
+      "name": "source transcript delta",
+      "json": "{\"type\":\"conversation.item.input_audio_transcription.delta\",\"delta\":\"こんにちは\",\"event_id\":\"evt_1\",\"item_id\":\"item_1\"}",
+      "expected": {
+        "kind": "inputTranscriptDelta",
+        "delta": "こんにちは",
+        "eventId": "evt_1",
+        "elapsedMs": null
+      }
+    },
+    {
+      "name": "empty source delta is dropped",
+      "json": "{\"type\":\"conversation.item.input_audio_transcription.delta\",\"delta\":\"\",\"event_id\":\"evt_2\"}",
+      "expected": { "kind": "ignored" }
+    },
+    {
+      "name": "completed marks the commit as drained",
+      "json": "{\"type\":\"conversation.item.input_audio_transcription.completed\"}",
+      "expected": { "kind": "transcriptionCompleted" }
+    },
+    {
+      "name": "transcription errors are tagged with the transcription code",
+      "json": "{\"type\":\"error\",\"error\":{\"message\":\"boom\",\"code\":\"server_error\"}}",
+      "expected": { "kind": "error", "message": "boom", "code": "transcription" }
+    },
+    {
+      "name": "translation event names are not understood here",
+      "json": "{\"type\":\"session.input_transcript.delta\",\"delta\":\"x\"}",
+      "expected": { "kind": "ignored" }
     }
   ],
   "decodeFailures": [

@@ -3,7 +3,14 @@
   "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v1/schema/codec.schema.json",
   "title": "Realtime translation codec fixtures",
   "type": "object",
-  "required": ["version", "encode", "decode", "decodeFailures"],
+  "required": [
+    "version",
+    "encode",
+    "decode",
+    "decodeFailures",
+    "transcriptionEncode",
+    "transcriptionDecode"
+  ],
   "properties": {
     "$schema": { "type": "string" },
     "version": { "const": 1 },
@@ -36,6 +43,34 @@
         }
       }
     },
+    "transcriptionEncode": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "event", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "event": { "$ref": "#/$defs/transcriptionClientEvent" },
+          "expected": { "type": "object" }
+        }
+      }
+    },
+    "transcriptionDecode": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "json", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "json": { "type": "string" },
+          "expected": { "$ref": "#/$defs/transcriptionServerEvent" }
+        }
+      }
+    },
     "decodeFailures": {
       "type": "array",
       "minItems": 1,
@@ -64,6 +99,45 @@
         "inputTranscriptionModel": { "type": ["string", "null"] },
         "noiseReduction": { "enum": ["near_field", "far_field", null] },
         "base64Audio": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "transcriptionClientEvent": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": ["sessionUpdate", "inputAudioBufferAppend", "commit"]
+        },
+        "noiseReduction": { "enum": ["near_field", "far_field"] },
+        "transcriptionDelay": {
+          "enum": ["minimal", "low", "medium", "high", "xhigh"]
+        },
+        "prompt": { "type": "string" },
+        "keywords": { "type": "array", "items": { "type": "string" } },
+        "base64Audio": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "transcriptionServerEvent": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "sessionCreated",
+            "sessionUpdated",
+            "inputTranscriptDelta",
+            "transcriptionCompleted",
+            "error",
+            "ignored"
+          ]
+        },
+        "delta": { "type": "string" },
+        "eventId": { "type": ["string", "null"] },
+        "elapsedMs": { "type": ["integer", "null"] },
+        "message": { "type": "string" },
+        "code": { "type": ["string", "null"] }
       },
       "additionalProperties": false
     },

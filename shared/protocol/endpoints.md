@@ -14,13 +14,21 @@
 
 合計 3 本の WebSocket を同時に張る。翻訳側は `target=en` と `target=ja` の 2 セッション。
 
+**2 系統は別プロトコルである。** transcription 接続と translations 接続はイベント名も
+`session.update` の形状も異なる。以下の章はそれぞれ別に読むこと。
+
 ## 認証
 
 - 利用者自身の OpenAI API キー（BYOK）を使う。事業者キーを同梱しない。
 - macOS: Keychain / Windows: Credential Manager に保存する。設定ファイルへ平文保存しない。
-- ハンドシェイクヘッダは `Authorization: Bearer <key>` と `OpenAI-Beta: realtime=v1`。
+- ハンドシェイクヘッダは 3 本とも `Authorization: Bearer <key>` と
+  `OpenAI-Safety-Identifier: <安定 ID の SHA-256 hex>` の 2 つだけ。`OpenAI-Beta` は送らない。
+- safety identifier は初回起動時に生成した UUID を永続化し、その SHA-256 を毎回送る。
+  UUID 自体は送らない（非 PII の安定識別子）。
 
-## クライアント → サーバのイベント
+## 翻訳接続（`/v1/realtime/translations`、target ごとに 1 本）
+
+### クライアント → サーバ
 
 | 論理イベント | JSON `type` | payload |
 |---|---|---|
@@ -31,9 +39,9 @@
 `response.create`、会話 turn、tool call は使わない。連続音声ストリームとして扱う。
 
 `session.update` の正確な JSON 形状は `shared/fixtures/v1/codec.json` の `encode` ケースが正本。
-特に **`noise_reduction` を無効化する場合は キー省略ではなく `null` を送る**（fixture `session_update_english_no_noise` 参照）。
+特に **`noise_reduction` を無効化する場合は キー省略ではなく `null` を送る**。
 
-## サーバ → クライアントのイベント
+### サーバ → クライアント
 
 | JSON `type` | 論理イベント | 備考 |
 |---|---|---|
@@ -47,6 +55,61 @@
 | 上記以外 | Unknown(type) | 型名だけ保持して無視する |
 
 不正 JSON は `InvalidMessage` エラーとして扱う（接続は再接続対象）。
+
+翻訳接続の `session.input_transcript.delta` は原文 authority として使わない。
+字幕の原文は下の transcription 接続だけを正とする。
+
+## 原文 transcription 接続（`/v1/realtime?intent=transcription`、1 本）
+
+### クライアント → サーバ
+
+| 論理イベント | JSON `type` | payload |
+|---|---|---|
+| セッション設定 | `session.update` | 下記の transcription 形状 |
+| 音声追加 | `input_audio_buffer.append` | `audio`: base64 の 24kHz PCM16 mono LE |
+| 終了要求 | `input_audio_buffer.commit` | なし。`session.close` は送らない |
+
+`session.update` の `session` は翻訳側と別形状。
+
+```json
+{
+  "type": "session.update",
+  "session": {
+    "type": "transcription",
+    "audio": {
+      "input": {
+        "format": { "type": "audio/pcm", "rate": 24000 },
+        "transcription": {
+          "model": "gpt-live-transcribe",
+          "languages": ["ja", "en"],
+          "delay": "low",
+          "prompt": "<sanitized prompt>",
+          "keywords": ["<parsed keywords>"]
+        },
+        "noise_reduction": { "type": "far_field" },
+        "turn_detection": null
+      }
+    }
+  }
+}
+```
+
+- `languages` は `["ja", "en"]` 固定。サーバ側で言語を絞らせない。
+- `turn_detection` は明示的 `null`。VAD による無音破棄を避ける。
+- `noise_reduction` は接続時の値を維持する。録音中の live update では
+  `delay` / `prompt` / `keywords` だけを差し替える。
+
+### サーバ → クライアント
+
+| JSON `type` | 扱い |
+|---|---|
+| `session.created` / `session.updated` | handshake 判定 |
+| `conversation.item.input_audio_transcription.delta` | 原文 delta。`delta` が空なら捨てる。`event_id` を重複排除に使い、`item_id` は使わない（同一 turn で共通のため） |
+| `conversation.item.input_audio_transcription.completed` | commit 完了マーカー。close 待ちの解除に使う |
+| `error` | 認証判定後、正規化した文言を流す |
+| 上記以外 | 無視 |
+
+原文 delta には `elapsed_ms` が付かない。字幕整列側は `elapsedMs = null` として扱う。
 
 ## タイムアウトと再接続
 
