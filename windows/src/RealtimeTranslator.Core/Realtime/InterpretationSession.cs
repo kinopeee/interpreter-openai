@@ -270,7 +270,9 @@ public sealed class InterpretationSession : IDisposable
             cts.Dispose();
         }
 
-        _routingGate.Dispose();
+        // `_routingGate` は同期 Dispose では破棄しない。
+        // in-flight の Update/ResetAudioRouting が Wait/Release 中に ObjectDisposedException へ落ちないようにする。
+        // StopAsync 後は参照が切れ、SemaphoreSlim は GC で回収される (AvailableWaitHandle 未使用)。
     }
 
     private static RealtimeTranslationOutputLanguage? ExpectedTranslationLane(SpokenLanguage spoken) => spoken switch
