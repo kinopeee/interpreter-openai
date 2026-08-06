@@ -79,34 +79,64 @@
   },
   "$defs": {
     "textExpression": {
-      "type": "object",
-      "minProperties": 1,
-      "additionalProperties": false,
-      "properties": {
-        "literal": { "type": "string" },
-        "repeat": { "type": "string", "minLength": 1 },
-        "count": { "type": "integer", "minimum": 0 },
-        "concat": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/textExpression" }
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["literal"],
+          "additionalProperties": false,
+          "properties": {
+            "literal": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["repeat", "count"],
+          "additionalProperties": false,
+          "properties": {
+            "repeat": { "type": "string", "minLength": 1 },
+            "count": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["concat"],
+          "additionalProperties": false,
+          "properties": {
+            "concat": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/textExpression" }
+            }
+          }
         }
-      },
-      "dependentRequired": { "repeat": ["count"], "count": ["repeat"] }
+      ]
     },
     "step": {
-      "type": "object",
-      "required": ["at", "kind"],
-      "additionalProperties": false,
-      "properties": {
-        "at": { "type": "number", "minimum": 0 },
-        "kind": { "enum": ["sourceDelta", "translationDelta", "tick", "finalizeForLanguageSwitch"] },
-        "lane": { "enum": ["en", "ja"] },
-        "text": { "type": "string" },
-        "eventId": { "type": ["string", "null"] },
-        "elapsedMs": { "type": ["integer", "null"] },
-        "epoch": { "type": "integer" }
-      }
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["at", "kind", "lane", "text", "eventId", "elapsedMs"],
+          "additionalProperties": false,
+          "properties": {
+            "at": { "type": "number", "minimum": 0 },
+            "kind": { "enum": ["sourceDelta", "translationDelta"] },
+            "lane": { "enum": ["en", "ja"] },
+            "text": { "type": "string" },
+            "eventId": { "type": ["string", "null"] },
+            "elapsedMs": { "type": ["integer", "null"] },
+            "epoch": { "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["at", "kind"],
+          "additionalProperties": false,
+          "properties": {
+            "at": { "type": "number", "minimum": 0 },
+            "kind": { "enum": ["tick", "finalizeForLanguageSwitch"] }
+          }
+        }
+      ]
     }
   }
 }

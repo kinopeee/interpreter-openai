@@ -30,14 +30,42 @@
             "type": "array",
             "minItems": 1,
             "items": {
-              "type": "object",
-              "required": ["kind"],
-              "additionalProperties": false,
-              "properties": {
-                "kind": { "enum": ["appendFrame", "setSpokenLanguage", "resetAudioRouting"] },
-                "frame": { "type": "string" },
-                "language": { "enum": ["japanese", "english", "unknown"] }
-              }
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["kind", "frame"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "const": "appendFrame" },
+                    "frame": { "type": "string", "minLength": 1 }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind", "language"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "const": "setSpokenLanguage" },
+                    "language": { "enum": ["japanese", "english", "unknown"] }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "const": "resetAudioRouting" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "const": "translationSendFailure" }
+                  }
+                }
+              ]
             }
           },
           "expected": {
@@ -47,7 +75,10 @@
             "properties": {
               "sourceFrames": { "$ref": "#/$defs/frameList" },
               "englishFrames": { "$ref": "#/$defs/frameList" },
-              "japaneseFrames": { "$ref": "#/$defs/frameList" }
+              "japaneseFrames": { "$ref": "#/$defs/frameList" },
+              "transportErrorCount": { "type": "integer", "minimum": 0 },
+              "translationPumpHalted": { "type": "boolean" },
+              "signalsSessionReconnect": { "type": "boolean" }
             }
           }
         }

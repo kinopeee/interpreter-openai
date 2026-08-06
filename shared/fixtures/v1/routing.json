@@ -1,7 +1,7 @@
 {
   "$schema": "./schema/routing.schema.json",
   "version": 1,
-  "description": "DualRealtimeTranslationClient の音声ルーティング期待値。frame は識別用のラベルで、実バイト列は任意。sourceFrames/englishFrames/japaneseFrames は各接続へ append された順序付きラベル列。",
+  "description": "DualRealtimeTranslationClient の音声ルーティング期待値。frame は識別用のラベルで、実バイト列は任意。sourceFrames/englishFrames/japaneseFrames は各接続へ成功 append された順序付きラベル列。translationSendFailure は直後の appendFrame の翻訳送信を失敗させる（原文送信は成功する）。3 連続失敗で transport error を 1 回 emit し翻訳ポンプを停止、セッション再接続を合図する。",
   "prerollFrameLimit": 40,
   "consecutiveTranslationFailureLimit": 3,
   "cases": [
@@ -100,6 +100,51 @@
         "sourceFrames": ["f1", "f2", "f3"],
         "englishFrames": ["f1", "f1", "f2", "f3"],
         "japaneseFrames": []
+      }
+    },
+    {
+      "name": "three consecutive translation send failures emit one transport error and halt translation",
+      "steps": [
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "ok1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail2" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail3" },
+        { "kind": "appendFrame", "frame": "afterHalt" }
+      ],
+      "expected": {
+        "sourceFrames": ["ok1", "fail1", "fail2", "fail3", "afterHalt"],
+        "englishFrames": ["ok1"],
+        "japaneseFrames": [],
+        "transportErrorCount": 1,
+        "translationPumpHalted": true,
+        "signalsSessionReconnect": true
+      }
+    },
+    {
+      "name": "a successful translation send resets the consecutive failure counter",
+      "steps": [
+        { "kind": "setSpokenLanguage", "language": "japanese" },
+        { "kind": "appendFrame", "frame": "ok1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail2" },
+        { "kind": "appendFrame", "frame": "ok2" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail3" },
+        { "kind": "appendFrame", "frame": "ok3" }
+      ],
+      "expected": {
+        "sourceFrames": ["ok1", "fail1", "fail2", "ok2", "fail3", "ok3"],
+        "englishFrames": ["ok1", "ok2", "ok3"],
+        "japaneseFrames": [],
+        "transportErrorCount": 0,
+        "translationPumpHalted": false,
+        "signalsSessionReconnect": false
       }
     }
   ],

@@ -51,14 +51,26 @@
             "type": "array",
             "minItems": 1,
             "items": {
-              "type": "object",
-              "required": ["kind"],
-              "additionalProperties": false,
-              "properties": {
-                "kind": { "enum": ["append", "reset"] },
-                "byteCount": { "type": "integer", "minimum": 0 },
-                "expectedFrameCount": { "type": "integer", "minimum": 0 }
-              }
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["kind", "byteCount", "expectedFrameCount"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "const": "append" },
+                    "byteCount": { "type": "integer", "minimum": 0 },
+                    "expectedFrameCount": { "type": "integer", "minimum": 0 }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "const": "reset" }
+                  }
+                }
+              ]
             }
           },
           "expectedPendingBytes": { "type": "integer", "minimum": 0 },
@@ -143,21 +155,37 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "object",
-            "required": ["name", "initialGain", "expectedGain"],
-            "additionalProperties": false,
-            "properties": {
-              "name": { "type": "string" },
-              "initialGain": { "type": "number" },
-              "peaks": { "type": "array", "items": { "type": "number" } },
-              "repeatPeak": { "type": "number" },
-              "repeatCount": { "type": "integer", "minimum": 1 },
-              "expectedGain": { "type": "number" }
-            },
-            "dependentRequired": {
-              "repeatPeak": ["repeatCount"],
-              "repeatCount": ["repeatPeak"]
-            }
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["name", "initialGain", "peaks", "expectedGain"],
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string" },
+                  "initialGain": { "type": "number" },
+                  "peaks": { "type": "array", "items": { "type": "number" } },
+                  "expectedGain": { "type": "number" }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "name",
+                  "initialGain",
+                  "repeatPeak",
+                  "repeatCount",
+                  "expectedGain"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string" },
+                  "initialGain": { "type": "number" },
+                  "repeatPeak": { "type": "number" },
+                  "repeatCount": { "type": "integer", "minimum": 1 },
+                  "expectedGain": { "type": "number" }
+                }
+              }
+            ]
           }
         }
       }

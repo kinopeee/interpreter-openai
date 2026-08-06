@@ -89,82 +89,167 @@
   "additionalProperties": false,
   "$defs": {
     "clientEvent": {
-      "type": "object",
-      "required": ["kind"],
-      "properties": {
-        "kind": {
-          "enum": ["sessionUpdate", "inputAudioBufferAppend", "sessionClose"]
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "outputLanguage",
+            "inputTranscriptionModel",
+            "noiseReduction"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "sessionUpdate" },
+            "outputLanguage": { "enum": ["en", "ja"] },
+            "inputTranscriptionModel": { "type": ["string", "null"] },
+            "noiseReduction": { "enum": ["near_field", "far_field", null] }
+          }
         },
-        "outputLanguage": { "enum": ["en", "ja"] },
-        "inputTranscriptionModel": { "type": ["string", "null"] },
-        "noiseReduction": { "enum": ["near_field", "far_field", null] },
-        "base64Audio": { "type": "string" }
-      },
-      "additionalProperties": false
+        {
+          "type": "object",
+          "required": ["kind", "base64Audio"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "inputAudioBufferAppend" },
+            "base64Audio": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "sessionClose" }
+          }
+        }
+      ]
     },
     "transcriptionClientEvent": {
-      "type": "object",
-      "required": ["kind"],
-      "properties": {
-        "kind": {
-          "enum": ["sessionUpdate", "inputAudioBufferAppend", "commit"]
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "noiseReduction", "transcriptionDelay"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "sessionUpdate" },
+            "noiseReduction": { "enum": ["near_field", "far_field"] },
+            "transcriptionDelay": {
+              "enum": ["minimal", "low", "medium", "high", "xhigh"]
+            },
+            "prompt": { "type": "string" },
+            "keywords": { "type": "array", "items": { "type": "string" } }
+          }
         },
-        "noiseReduction": { "enum": ["near_field", "far_field"] },
-        "transcriptionDelay": {
-          "enum": ["minimal", "low", "medium", "high", "xhigh"]
+        {
+          "type": "object",
+          "required": ["kind", "base64Audio"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "inputAudioBufferAppend" },
+            "base64Audio": { "type": "string" }
+          }
         },
-        "prompt": { "type": "string" },
-        "keywords": { "type": "array", "items": { "type": "string" } },
-        "base64Audio": { "type": "string" }
-      },
-      "additionalProperties": false
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "commit" }
+          }
+        }
+      ]
     },
     "transcriptionServerEvent": {
-      "type": "object",
-      "required": ["kind"],
-      "properties": {
-        "kind": {
-          "enum": [
-            "sessionCreated",
-            "sessionUpdated",
-            "inputTranscriptDelta",
-            "transcriptionCompleted",
-            "error",
-            "ignored"
-          ]
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "sessionCreated",
+                "sessionUpdated",
+                "transcriptionCompleted",
+                "ignored"
+              ]
+            }
+          }
         },
-        "delta": { "type": "string" },
-        "eventId": { "type": ["string", "null"] },
-        "elapsedMs": { "type": ["integer", "null"] },
-        "message": { "type": "string" },
-        "code": { "type": ["string", "null"] }
-      },
-      "additionalProperties": false
+        {
+          "type": "object",
+          "required": ["kind", "delta", "eventId", "elapsedMs"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "inputTranscriptDelta" },
+            "delta": { "type": "string" },
+            "eventId": { "type": ["string", "null"] },
+            "elapsedMs": { "type": ["integer", "null"] }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "message", "code"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "error" },
+            "message": { "type": "string" },
+            "code": { "type": ["string", "null"] }
+          }
+        }
+      ]
     },
     "serverEvent": {
-      "type": "object",
-      "required": ["kind"],
-      "properties": {
-        "kind": {
-          "enum": [
-            "sessionCreated",
-            "sessionUpdated",
-            "inputTranscriptDelta",
-            "outputTranscriptDelta",
-            "outputAudioDelta",
-            "sessionClosed",
-            "error",
-            "unknown"
-          ]
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "sessionCreated",
+                "sessionUpdated",
+                "outputAudioDelta",
+                "sessionClosed"
+              ]
+            }
+          }
         },
-        "delta": { "type": "string" },
-        "eventId": { "type": ["string", "null"] },
-        "elapsedMs": { "type": ["integer", "null"] },
-        "message": { "type": "string" },
-        "code": { "type": ["string", "null"] },
-        "type": { "type": "string" }
-      },
-      "additionalProperties": false
+        {
+          "type": "object",
+          "required": ["kind", "delta", "eventId", "elapsedMs"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": ["inputTranscriptDelta", "outputTranscriptDelta"]
+            },
+            "delta": { "type": "string" },
+            "eventId": { "type": ["string", "null"] },
+            "elapsedMs": { "type": ["integer", "null"] }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "message", "code"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "error" },
+            "message": { "type": "string" },
+            "code": { "type": ["string", "null"] }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "type"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "unknown" },
+            "type": { "type": "string" }
+          }
+        }
+      ]
     }
   }
 }
