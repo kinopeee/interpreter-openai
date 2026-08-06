@@ -124,7 +124,7 @@ xcodebuild test \
 - OpenAI APIキー（BYOK）と利用可能な課金設定
 - ソースからビルドする場合は .NET 10 SDK
 
-配布用の成果物は自己完結（self-contained）でpublishするため、実行側に .NET のインストールは不要です。
+配布用の成果物は自己完結（self-contained）でpublishするため、実行側に .NET のインストールは不要です。`scripts/publish-windows.ps1 -Runtime win-arm64` で ARM64 成果物も出せますが、正式検証対象は x64 のみです（ARM64 は実験的）。
 
 ### ビルドと配布物の作成
 
@@ -134,7 +134,7 @@ dotnet test  windows/RealtimeTranslator.slnx -c Release
 
 # 自己完結の配布物を artifacts/RealtimeTranslator-win-x64 へ出力する
 pwsh -File scripts/publish-windows.ps1
-# PowerShell 7がない場合は Windows PowerShell でも実行できます
+# PowerShell 7がない場合は Windows PowerShell でも実行できます（スクリプトは UTF-8 BOM）
 powershell -ExecutionPolicy Bypass -File scripts/publish-windows.ps1
 ```
 

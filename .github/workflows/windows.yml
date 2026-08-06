@@ -38,35 +38,63 @@ jobs:
 
       - name: Restore
         if: steps.locate.outputs.found == 'true'
-        run: dotnet restore "${{ steps.locate.outputs.path }}"
+        env:
+          SOLUTION_PATH: ${{ steps.locate.outputs.path }}
+        shell: pwsh
+        run: dotnet restore "$env:SOLUTION_PATH"
 
       - name: Build
         if: steps.locate.outputs.found == 'true'
-        run: dotnet build "${{ steps.locate.outputs.path }}" --configuration Release --no-restore
+        env:
+          SOLUTION_PATH: ${{ steps.locate.outputs.path }}
+        shell: pwsh
+        run: dotnet build "$env:SOLUTION_PATH" --configuration Release --no-restore
 
       - name: Test
         if: steps.locate.outputs.found == 'true'
-        run: dotnet test "${{ steps.locate.outputs.path }}" --configuration Release --no-build
+        env:
+          SOLUTION_PATH: ${{ steps.locate.outputs.path }}
+        shell: pwsh
+        run: dotnet test "$env:SOLUTION_PATH" --configuration Release --no-build
 
       - name: Audit packages
         if: steps.locate.outputs.found == 'true'
+        env:
+          SOLUTION_PATH: ${{ steps.locate.outputs.path }}
         shell: pwsh
         run: |
-          dotnet list "${{ steps.locate.outputs.path }}" package --vulnerable --include-transitive
+          dotnet list "$env:SOLUTION_PATH" package --vulnerable --include-transitive
           # dotnet list は脆弱性を見つけても終了コード 0 を返すため、機械可読な出力で判定する。
-          # 脆弱性がない project では frameworks が出力されない。
-          $report = dotnet list "${{ steps.locate.outputs.path }}" package --vulnerable --include-transitive --format json |
+          $report = dotnet list "$env:SOLUTION_PATH" package --vulnerable --include-transitive --format json --output-version 1 |
             Out-String |
             ConvertFrom-Json
-          $vulnerable = @($report.projects | Where-Object { $null -ne $_.frameworks })
-          if ($vulnerable.Count -gt 0) {
-            throw "vulnerable packages found in $($vulnerable.Count) project(s)"
+          if ($null -ne $report.problems -and @($report.problems).Count -gt 0) {
+            throw "dotnet list package reported $(@($report.problems).Count) problem(s)"
           }
+          $vulnerabilityCount = 0
+          foreach ($project in @($report.projects)) {
+            foreach ($framework in @($project.frameworks)) {
+              foreach ($package in @($framework.topLevelPackages) + @($framework.transitivePackages)) {
+                if ($null -eq $package) { continue }
+                $vulnerabilityCount += @($package.vulnerabilities).Count
+              }
+            }
+          }
+          if ($vulnerabilityCount -gt 0) {
+            throw "vulnerable packages found: $vulnerabilityCount advisory binding(s)"
+          }
+
+      - name: Restore for publish
+        if: steps.locate.outputs.found == 'true'
+        env:
+          SOLUTION_PATH: ${{ steps.locate.outputs.path }}
+        shell: pwsh
+        run: dotnet restore "$env:SOLUTION_PATH" --runtime win-x64
 
       - name: Publish self-contained app
         if: steps.locate.outputs.found == 'true'
         shell: pwsh
-        run: ./scripts/publish-windows.ps1 -Runtime win-x64
+        run: ./scripts/publish-windows.ps1 -Runtime win-x64 -NoRestore
 
       - uses: actions/upload-artifact@v4
         if: steps.locate.outputs.found == 'true'

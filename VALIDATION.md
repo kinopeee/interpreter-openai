@@ -58,15 +58,15 @@ cd /Users/yoo/dev/interpreter-openai
 ```powershell
 dotnet build windows/RealtimeTranslator.slnx -c Release
 dotnet test  windows/RealtimeTranslator.slnx -c Release
-dotnet list  windows/RealtimeTranslator.slnx package --vulnerable --include-transitive
+dotnet list  windows/RealtimeTranslator.slnx package --vulnerable --include-transitive --format json --output-version 1
 pwsh -File scripts/publish-windows.ps1
 ```
 
 - `dotnet build -c Release`: 成功（0 warning / 0 error、`TreatWarningsAsErrors` 有効）
 - `dotnet test -c Release`: 成功（Core 205 + Platform 18 = 223 tests、0 failures）
-- `dotnet list package --vulnerable --include-transitive`: 全5 projectで脆弱性なし
+- `dotnet list package --vulnerable --include-transitive --format json --output-version 1`: 全5 projectで `vulnerabilities` 件数 0（CIのAuditも同判定）
 - Snyk Code（`snyk code test windows`）: 0 件
-- `scripts/publish-windows.ps1`: 自己完結（win-x64）publish成功。出力された `RealtimeTranslator.App.exe` の起動と常駐（応答あり）を確認
+- `scripts/publish-windows.ps1`: 自己完結（win-x64）publish成功。出力された `RealtimeTranslator.App.exe` の起動と常駐（応答あり）を確認。`win-arm64` はスクリプトで生成可能だが本検証の対象外（実験的）
 - カバーした単体テスト:
   - shared fixture同値性（audio / codec / language / routing / subtitle / tuning / privacy）
   - Realtimeイベントcodec、100 ms PCM16 packet化、adaptive gain
@@ -107,3 +107,4 @@ pwsh -File scripts/publish-windows.ps1
 
 - Swiftのローカル実行（macOS環境のため本作業では対象外）
 - 複数モニタ / 高DPI環境でのGUI確認（検証環境がない）
+- `win-arm64` 配布物の実機検証（publishスクリプトは対応、正式サポートは x64 のみ）
