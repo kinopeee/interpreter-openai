@@ -194,6 +194,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     /// 送信が停滞しても `timeoutNanoseconds` で待機だけを打ち切り、送信ポンプ自体は停止しない。
     func waitForTranslationDrain(timeoutNanoseconds: UInt64 = 5_000_000_000) async throws {
         let deadline = ContinuousClock.now + .nanoseconds(Int64(timeoutNanoseconds))
+        let pollInterval = Duration.milliseconds(5)
         while true {
             if translationPumpTask == nil, pendingTranslationFrames.isEmpty {
                 return
@@ -207,31 +208,9 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                 throw RealtimeTranslationError.recoverableTransportFailure("translation pump drain timeout")
             }
 
-            if let pump = translationPumpTask {
-                let timedOut = try await withThrowingTaskGroup(of: Bool.self) { group in
-                    group.addTask {
-                        await pump.value
-                        return false
-                    }
-                    group.addTask {
-                        try await Task.sleep(for: remaining)
-                        return true
-                    }
-                    let result = try await group.next()!
-                    group.cancelAll()
-                    return result
-                }
-                if timedOut {
-                    // timeout と完了が競合したとき、すでに空なら成功扱いにする。
-                    if translationPumpTask == nil, pendingTranslationFrames.isEmpty {
-                        return
-                    }
-                    throw RealtimeTranslationError.recoverableTransportFailure("translation pump drain timeout")
-                }
-                continue
-            }
-
-            try await Task.sleep(nanoseconds: 5_000_000)
+            // TaskGroupはスコープ終了時にキャンセル済み子タスクの完了も待つ。
+            // pump.value待ちはキャンセルで解けないため、状態を短周期で再確認する。
+            try await Task.sleep(for: min(remaining, pollInterval))
         }
     }
 
