@@ -1,0 +1,104 @@
+<Window x:Class="RealtimeTranslator.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Realtime Translator 設定"
+        Width="620"
+        Height="560"
+        ResizeMode="CanMinimize"
+        WindowStartupLocation="CenterScreen">
+  <TabControl Margin="12">
+    <TabItem Header="一般">
+      <StackPanel Margin="16">
+        <TextBlock Text="OpenAI Realtime" FontWeight="Bold" Margin="0,0,0,8" />
+        <TextBlock Text="モデル: gpt-live-transcribe / gpt-realtime-translate" Margin="0,0,0,2" />
+        <TextBlock Text="翻訳方向: 自動（日本語 ↔ 英語）" Margin="0,0,0,2" />
+        <TextBlock Text="字幕表示: 原文＋翻訳" Margin="0,0,0,2" />
+        <TextBlock Text="翻訳音声: 字幕のみ（再生なし）" Margin="0,0,0,10" />
+
+        <CheckBox x:Name="ConsentCheckBox"
+                  Content="マイク音声を OpenAI API へ送信することに同意する"
+                  Checked="OnConsentChanged"
+                  Unchecked="OnConsentChanged" />
+        <TextBlock TextWrapping="Wrap"
+                   Margin="0,6,0,12"
+                   Foreground="Gray"
+                   Text="録音中はマイク音声・原文・訳文が OpenAI へ送信されます。オンライン接続と API 料金が必要です。データ取扱いは OpenAI の Data controls を確認してください。" />
+
+        <TextBlock Text="API キー" FontWeight="Bold" Margin="0,8,0,6" />
+        <PasswordBox x:Name="ApiKeyBox" PasswordChanged="OnApiKeyDraftChanged" />
+        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+          <Button x:Name="SaveApiKeyButton" Content="保存" Width="90" Click="OnSaveApiKey" IsEnabled="False" />
+          <Button x:Name="DeleteApiKeyButton" Content="削除" Width="90" Margin="8,0,0,0" Click="OnDeleteApiKey" />
+          <TextBlock x:Name="StoredKeyStateText" Margin="16,4,0,0" Foreground="Gray" />
+        </StackPanel>
+        <TextBlock x:Name="ApiKeyStatusText" Margin="0,8,0,0" TextWrapping="Wrap" />
+        <TextBlock TextWrapping="Wrap"
+                   Margin="0,8,0,0"
+                   Foreground="Gray"
+                   Text="API キーは Windows 資格情報マネージャーへ保存され、設定ファイルには書き出しません。" />
+      </StackPanel>
+    </TabItem>
+
+    <TabItem Header="音声認識">
+      <StackPanel Margin="16">
+        <TextBlock Text="認識設定" FontWeight="Bold" Margin="0,0,0,8" />
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+          <TextBlock Text="ノイズ低減" Width="90" VerticalAlignment="Center" />
+          <ComboBox x:Name="NoiseReductionBox" Width="220" SelectionChanged="OnNoiseReductionChanged" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+          <TextBlock Text="認識遅延" Width="90" VerticalAlignment="Center" />
+          <ComboBox x:Name="TranscriptionDelayBox" Width="220" SelectionChanged="OnTranscriptionDelayChanged" />
+        </StackPanel>
+        <TextBlock Foreground="Gray"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,10"
+                   Text="値を上げると短い発話の認識精度が上がり、字幕表示は遅くなります。" />
+
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+          <ComboBox x:Name="PresetBox" Width="220" />
+          <Button Content="プリセットを適用" Margin="8,0,0,0" Padding="10,2" Click="OnApplyPreset" />
+          <Button Content="デフォルトに戻す" Margin="8,0,0,0" Padding="10,2" Click="OnRestoreDefaults" />
+        </StackPanel>
+
+        <TextBlock Text="認識ヒント" FontWeight="Bold" Margin="0,0,0,6" />
+        <TextBox x:Name="PromptBox" TextChanged="OnPromptChanged" TextWrapping="Wrap" MinHeight="52" AcceptsReturn="False" />
+        <TextBlock x:Name="PromptCounterText" Foreground="Gray" Margin="0,4,0,10" />
+
+        <TextBlock Text="キーワード (1 行 1 語)" Foreground="Gray" Margin="0,0,0,4" />
+        <TextBox x:Name="KeywordsBox"
+                 TextChanged="OnKeywordsChanged"
+                 AcceptsReturn="True"
+                 VerticalScrollBarVisibility="Auto"
+                 Height="110" />
+        <TextBlock x:Name="KeywordCounterText" Foreground="Gray" Margin="0,4,0,0" />
+        <TextBlock x:Name="KeywordWarningText" Foreground="DarkOrange" Margin="0,4,0,0" />
+
+        <TextBlock Foreground="Gray"
+                   TextWrapping="Wrap"
+                   Margin="0,12,0,0"
+                   Text="プロンプト・キーワード・認識遅延の変更は録音中でも数秒で反映されます。ノイズ低減は次回の録音開始から反映されます。" />
+      </StackPanel>
+    </TabItem>
+
+    <TabItem Header="字幕・操作">
+      <StackPanel Margin="16">
+        <TextBlock Text="字幕" FontWeight="Bold" Margin="0,0,0,8" />
+        <StackPanel Orientation="Horizontal">
+          <TextBlock x:Name="FontSizeText" Width="180" VerticalAlignment="Center" />
+          <Slider x:Name="FontSizeSlider"
+                  Width="260"
+                  Minimum="18"
+                  Maximum="48"
+                  TickFrequency="2"
+                  IsSnapToTickEnabled="True"
+                  ValueChanged="OnFontSizeChanged" />
+        </StackPanel>
+
+        <TextBlock Text="操作" FontWeight="Bold" Margin="0,20,0,8" />
+        <TextBlock TextWrapping="Wrap"
+                   Text="タスクトレイのメニュー、または Ctrl + Alt + Space で録音の開始/停止を切り替えます。字幕位置はトレイメニューの「字幕位置を編集」からドラッグで変更できます。" />
+      </StackPanel>
+    </TabItem>
+  </TabControl>
+</Window>

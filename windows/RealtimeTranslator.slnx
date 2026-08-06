@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/RealtimeTranslator.Core/RealtimeTranslator.Core.csproj" />
     <Project Path="src/RealtimeTranslator.Platform/RealtimeTranslator.Platform.csproj" />
+    <Project Path="src/RealtimeTranslator.App/RealtimeTranslator.App.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RealtimeTranslator.Core.Tests/RealtimeTranslator.Core.Tests.csproj" />
