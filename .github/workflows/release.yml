@@ -30,6 +30,7 @@ jobs:
         id: resolve
         env:
           INPUT_TAG: ${{ inputs.tag }}
+          PR_NUMBER: ${{ github.event.number }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
@@ -37,11 +38,13 @@ jobs:
           elif [[ -n "$INPUT_TAG" ]]; then
             tag="$INPUT_TAG"
           else
-            echo "tag=pr${{ github.event.number }}" >> "$GITHUB_OUTPUT"
+            # PR では Release を作らず、artifact 名用の仮タグだけ付ける。
+            echo "tag=pr${PR_NUMBER}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [[ "$tag" != v* ]]; then
-            echo "release tag must start with 'v': $tag" >&2
+          # ZIP パスに使える文字だけ許可（区切り・traversal を拒否）。
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9]+)*$ ]]; then
+            echo "release tag must look like v0.1.0 (no path separators): $tag" >&2
             exit 1
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -61,17 +64,23 @@ jobs:
         with:
           global-json-file: windows/global.json
 
+      # setup-dotnet の global-json-file は SDK インストール先だけ決め、CLI の CWD 探索は変えない。
+      # windows/global.json を効かせるため、dotnet 系は windows/ から実行する。
       - name: Test
+        working-directory: windows
         shell: pwsh
-        run: dotnet test windows/RealtimeTranslator.slnx --configuration Release
+        run: dotnet test RealtimeTranslator.slnx --configuration Release
 
       - name: Restore for publish
+        working-directory: windows
         shell: pwsh
-        run: dotnet restore windows/RealtimeTranslator.slnx --runtime win-x64
+        run: dotnet restore RealtimeTranslator.slnx --runtime win-x64
 
       - name: Publish self-contained app
+        working-directory: windows
         shell: pwsh
-        run: ./scripts/publish-windows.ps1 -Runtime win-x64 -NoRestore
+        # publish-windows.ps1 は PSScriptRoot からリポジトリルートを解決する。
+        run: ../scripts/publish-windows.ps1 -Runtime win-x64 -NoRestore
 
       - name: Package
         shell: pwsh
