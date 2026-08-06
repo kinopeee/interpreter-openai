@@ -44,11 +44,11 @@
         <TextBlock Text="認識設定" FontWeight="Bold" Margin="0,0,0,8" />
         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
           <TextBlock Text="ノイズ低減" Width="90" VerticalAlignment="Center" />
-          <ComboBox x:Name="NoiseReductionBox" Width="220" SelectionChanged="OnNoiseReductionChanged" />
+          <ComboBox x:Name="NoiseReductionBox" Width="220" DisplayMemberPath="DisplayName" SelectionChanged="OnNoiseReductionChanged" />
         </StackPanel>
         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
           <TextBlock Text="認識遅延" Width="90" VerticalAlignment="Center" />
-          <ComboBox x:Name="TranscriptionDelayBox" Width="220" SelectionChanged="OnTranscriptionDelayChanged" />
+          <ComboBox x:Name="TranscriptionDelayBox" Width="220" DisplayMemberPath="DisplayName" SelectionChanged="OnTranscriptionDelayChanged" />
         </StackPanel>
         <TextBlock Foreground="Gray"
                    TextWrapping="Wrap"
@@ -56,7 +56,7 @@
                    Text="値を上げると短い発話の認識精度が上がり、字幕表示は遅くなります。" />
 
         <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-          <ComboBox x:Name="PresetBox" Width="220" />
+          <ComboBox x:Name="PresetBox" Width="220" DisplayMemberPath="DisplayName" />
           <Button Content="プリセットを適用" Margin="8,0,0,0" Padding="10,2" Click="OnApplyPreset" />
           <Button Content="デフォルトに戻す" Margin="8,0,0,0" Padding="10,2" Click="OnRestoreDefaults" />
         </StackPanel>

@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Realtime;
 using RealtimeTranslator.Core.Settings;
@@ -20,6 +21,7 @@ public partial class App : Application, IDisposable
     private readonly SubtitleSnapshotBuilder _snapshots = new();
     private readonly SubtitleOverlayViewModel _overlayViewModel = new();
     private readonly AppSettingsStore _settingsStore = new();
+    private readonly DispatcherTimer _subtitleClear = new() { Interval = SubtitleClearDelay };
 
     private SingleInstanceLease? _lease;
     private CredentialManagerApiKeyStore? _apiKeyStore;
@@ -36,6 +38,9 @@ public partial class App : Application, IDisposable
     private TranslationState _state = TranslationState.Idle;
     private bool _isEditingPosition;
     private bool _shuttingDown;
+
+    /// <summary>録音停止から字幕を消すまでの猶予 (macOS 版と同じ)。</summary>
+    public static readonly TimeSpan SubtitleClearDelay = TimeSpan.FromSeconds(5);
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -78,6 +83,8 @@ public partial class App : Application, IDisposable
         _overlayViewModel.Apply(_snapshots.Apply(TranslationState.Idle));
         _overlay.Show();
         _overlay.ApplyPlacement(_settings.HasCustomOverlayOrigin, _settings.OverlayOriginX, _settings.OverlayOriginY);
+
+        _subtitleClear.Tick += OnSubtitleClearElapsed;
 
         RegisterHotkey();
         AppLogger.Info(LogCategory.General, "app started");
@@ -206,7 +213,8 @@ public partial class App : Application, IDisposable
             return;
         }
 
-        var window = new SettingsWindow(_settings, _apiKeyStore!);
+        // 設定ウィンドウは開いている間にトレイから変わる値 (字幕位置) を上書きしないよう、常に最新を読む。
+        var window = new SettingsWindow(() => _settings, _apiKeyStore!);
         window.SettingsChanged += (_, settings) => UpdateSettings(settings);
         window.TuningChanged += (_, _) =>
         {
@@ -234,10 +242,31 @@ public partial class App : Application, IDisposable
             _state = state;
             _tray?.UpdateState(state);
             _overlayViewModel.Apply(_snapshots.Apply(state));
+            ScheduleSubtitleClear(state);
         });
 
     private void OnSubtitleUpdated(object? sender, RealtimeSubtitleUpdate update) =>
-        Dispatcher.InvokeAsync(() => _overlayViewModel.Apply(_snapshots.Apply(update, _state)));
+        Dispatcher.InvokeAsync(() =>
+        {
+            _subtitleClear.Stop();
+            _overlayViewModel.Apply(_snapshots.Apply(update, _state));
+        });
+
+    /// <summary>録音停止後は約 5 秒で最後の字幕を消す (録音中はタイマー消去しない)。</summary>
+    private void ScheduleSubtitleClear(TranslationState state)
+    {
+        _subtitleClear.Stop();
+        if (state is TranslationState.Idle or TranslationState.Error)
+        {
+            _subtitleClear.Start();
+        }
+    }
+
+    private void OnSubtitleClearElapsed(object? sender, EventArgs e)
+    {
+        _subtitleClear.Stop();
+        _overlayViewModel.Apply(_snapshots.Reset(_state));
+    }
 
     private void OnSessionMessage(object? sender, string message) =>
         Dispatcher.InvokeAsync(() =>
@@ -294,6 +323,8 @@ public partial class App : Application, IDisposable
 
     private void DisposeResources()
     {
+        _subtitleClear.Stop();
+        _subtitleClear.Tick -= OnSubtitleClearElapsed;
         _hotkey?.Unregister();
         if (_overlaySource is not null)
         {

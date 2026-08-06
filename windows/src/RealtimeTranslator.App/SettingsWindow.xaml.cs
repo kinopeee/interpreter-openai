@@ -19,16 +19,19 @@ public partial class SettingsWindow : Window
 
     private readonly CredentialManagerApiKeyStore _apiKeyStore;
     private readonly DispatcherTimer _tuningDebounce;
+    private readonly Func<AppSettingsData> _currentSettings;
 
-    private AppSettingsData _settings;
     private bool _loading = true;
 
-    public SettingsWindow(AppSettingsData settings, CredentialManagerApiKeyStore apiKeyStore)
+    /// <param name="currentSettings">
+    /// 開いている間にトレイ側 (字幕位置など) で変わった値を上書きしないよう、値は都度最新を読む。
+    /// </param>
+    public SettingsWindow(Func<AppSettingsData> currentSettings, CredentialManagerApiKeyStore apiKeyStore)
     {
-        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(currentSettings);
         ArgumentNullException.ThrowIfNull(apiKeyStore);
 
-        _settings = settings;
+        _currentSettings = currentSettings;
         _apiKeyStore = apiKeyStore;
 
         InitializeComponent();
@@ -65,30 +68,36 @@ public partial class SettingsWindow : Window
     /// <summary>録音中セッションへ反映すべき変更 (プロンプト・キーワード・遅延) を debounce 後に通知する。</summary>
     public event EventHandler? TuningChanged;
 
+    private AppSettingsData Settings => _currentSettings();
+
     protected override void OnClosed(EventArgs e)
     {
+        // 入力直後に閉じても debounce 待ちの変更を取りこぼさない。
+        var hasPendingTuningChange = _tuningDebounce.IsEnabled;
         _tuningDebounce.Stop();
         _tuningDebounce.Tick -= OnTuningDebounceElapsed;
+        if (hasPendingTuningChange)
+        {
+            TuningChanged?.Invoke(this, EventArgs.Empty);
+        }
+
         base.OnClosed(e);
     }
 
     private void LoadFromSettings()
     {
-        ConsentCheckBox.IsChecked = _settings.HasAcceptedCurrentConsent;
-        SelectOption(NoiseReductionBox, _settings.NoiseReduction);
-        SelectOption(TranscriptionDelayBox, _settings.TranscriptionDelay);
-        PromptBox.Text = _settings.TranscriptionPrompt;
-        KeywordsBox.Text = _settings.TranscriptionKeywordsText;
-        FontSizeSlider.Value = _settings.FontSize;
+        var settings = Settings;
+        ConsentCheckBox.IsChecked = settings.HasAcceptedCurrentConsent;
+        SelectOption(NoiseReductionBox, settings.NoiseReduction);
+        SelectOption(TranscriptionDelayBox, settings.TranscriptionDelay);
+        PromptBox.Text = settings.TranscriptionPrompt;
+        KeywordsBox.Text = settings.TranscriptionKeywordsText;
+        FontSizeSlider.Value = settings.FontSize;
         UpdateFontSizeText();
         UpdateHintCounters();
     }
 
-    private void Publish(AppSettingsData settings)
-    {
-        _settings = settings;
-        SettingsChanged?.Invoke(this, settings);
-    }
+    private void Publish(AppSettingsData settings) => SettingsChanged?.Invoke(this, settings);
 
     private void ScheduleTuningChange()
     {
@@ -110,7 +119,7 @@ public partial class SettingsWindow : Window
         }
 
         var accepted = ConsentCheckBox.IsChecked == true;
-        Publish(_settings with
+        Publish(Settings with
         {
             AcceptedConsentVersion = accepted ? AppSettingsData.CurrentConsentVersion : 0,
         });
@@ -159,7 +168,7 @@ public partial class SettingsWindow : Window
         }
 
         // ノイズ低減は session.update では変えられないため、次回の録音開始から反映する。
-        Publish(_settings with { NoiseReduction = value });
+        Publish(Settings with { NoiseReduction = value });
     }
 
     private void OnTranscriptionDelayChanged(object sender, SelectionChangedEventArgs e)
@@ -169,7 +178,7 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        Publish(_settings with { TranscriptionDelay = value });
+        Publish(Settings with { TranscriptionDelay = value });
         ScheduleTuningChange();
     }
 
@@ -180,7 +189,7 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        Publish(_settings with { TranscriptionPrompt = PromptBox.Text });
+        Publish(Settings with { TranscriptionPrompt = PromptBox.Text });
         UpdateHintCounters();
         ScheduleTuningChange();
     }
@@ -192,7 +201,7 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        Publish(_settings with { TranscriptionKeywordsText = KeywordsBox.Text });
+        Publish(Settings with { TranscriptionKeywordsText = KeywordsBox.Text });
         UpdateHintCounters();
         ScheduleTuningChange();
     }
@@ -205,7 +214,7 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        Publish(_settings with { FontSize = AppSettingsCodec.ClampFontSize(FontSizeSlider.Value) });
+        Publish(Settings with { FontSize = AppSettingsCodec.ClampFontSize(FontSizeSlider.Value) });
     }
 
     private void OnApplyPreset(object sender, RoutedEventArgs e)
@@ -229,7 +238,7 @@ public partial class SettingsWindow : Window
         KeywordsBox.Text = keywordsText;
         _loading = false;
 
-        Publish(_settings with
+        Publish(Settings with
         {
             TranscriptionPrompt = prompt,
             TranscriptionKeywordsText = keywordsText,
