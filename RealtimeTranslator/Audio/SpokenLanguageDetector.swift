@@ -30,6 +30,7 @@ enum SpokenLanguageDetector {
     /// 空白を除いた末尾N個の Unicode scalar（code point）分の範囲だけで証拠を評価する。
     /// 空白 scalar は語境界判定のため残す。日本語がウィンドウ外へ流れ出ると英語切替を検出できる。
     /// 単位は Swift `Character` / UTF-16 `char` ではなく Unicode scalar（shared/protocol/routing.md 正本）。
+    /// 全文コピーはせず、`unicodeScalars` の index を末尾から戻して部分文字列だけ評価する。
     static func recentEvidence(
         in text: String,
         window: Int = recentEvidenceWindow
@@ -38,11 +39,11 @@ enum SpokenLanguageDetector {
             return evidence(in: text)
         }
 
-        let scalars = Array(text.unicodeScalars)
+        let scalars = text.unicodeScalars
         var nonWhitespaceCount = 0
-        var start = scalars.count
-        while start > 0, nonWhitespaceCount < window {
-            start -= 1
+        var start = scalars.endIndex
+        while start > scalars.startIndex, nonWhitespaceCount < window {
+            start = scalars.index(before: start)
             let scalar = scalars[start]
             if !CharacterSet.whitespacesAndNewlines.contains(scalar) {
                 nonWhitespaceCount += 1
@@ -52,7 +53,7 @@ enum SpokenLanguageDetector {
         guard nonWhitespaceCount > 0 else {
             return .none
         }
-        return evidence(in: String(String.UnicodeScalarView(scalars[start...])))
+        return evidence(in: String(scalars[start...]))
     }
 
     static func evidence(in text: String) -> SpokenLanguageEvidence {
