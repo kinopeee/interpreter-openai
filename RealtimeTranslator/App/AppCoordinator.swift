@@ -28,13 +28,15 @@ final class AppCoordinator: NSObject {
 
     func start() {
         NSApp.setActivationPolicy(.accessory)
+        #if DEBUG
         do {
             _ = try APIKeyBootstrap.importFromEnvironmentIfNeeded(store: apiKeyStore)
         } catch {
             AppLogger.general.error(
-                "API key bootstrap failed: \(error.localizedDescription, privacy: .public)"
+                "API key bootstrap failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
             )
         }
+        #endif
 
         interpretationSession.delegate = self
         menuBarController = MenuBarController(coordinator: self)
@@ -207,9 +209,10 @@ extension AppCoordinator: InterpretationSessionDelegate {
         _ session: InterpretationSession,
         didEncounterMessage message: String
     ) {
-        if translationState == .error {
-            presentMessage(message)
-        }
-        AppLogger.general.notice("Session message: \(message, privacy: .public)")
+        // error 時は InterpretationSession が既に statusBanner へ載せている。
+        // runModal はホットキー／トレイ操作を止めるため使わない。
+        AppLogger.general.notice(
+            "Session message: \(AppLogger.redact(message), privacy: .public)"
+        )
     }
 }

@@ -163,6 +163,61 @@ final class InterpretationSessionTests: XCTestCase {
         await session.stop()
     }
 
+    func testUnknownErrorEntersErrorWithoutReconnect() async {
+        // Given: capture start が未知エラーを投げる
+        struct UnknownCaptureError: Error {}
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        audio.startError = UnknownCaptureError()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+
+        // When: startする
+        await session.start()
+        await waitUntil { session.state == .error }
+
+        // Then: 再接続せず即 error。dual.start は1回だけ
+        XCTAssertEqual(session.state, .error)
+        XCTAssertEqual(dual.startCallCount, 1)
+        XCTAssertEqual(audio.startCallCount, 1)
+    }
+
+    func testURLErrorTriggersReconnectThenListening() async {
+        // Given: 1回目の dual.start だけ URLError を投げる
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        dual.startError = URLError(.timedOut)
+        dual.startFailuresRemaining = 0
+        // startError は常設なので、1回投げたあと消す仕組みが必要。
+        // Fake の startError は毎回投げるため、startFailuresRemaining 相当の
+        // one-shot として startError を使い、別途クリアするヘルパを使う。
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+
+        // When: startし、再接続前に startError を解除する
+        let startTask = Task { await session.start() }
+        await waitUntil { dual.startCallCount >= 1 }
+        await waitUntil { session.state == .reconnecting }
+        dual.startError = nil
+        await waitUntil(timeout: 3) { session.state == .listening && dual.startCallCount >= 2 }
+        await startTask.value
+
+        // Then: URLError でも再接続して listening へ戻る
+        XCTAssertEqual(session.state, .listening)
+        XCTAssertGreaterThanOrEqual(dual.startCallCount, 2)
+        await session.stop()
+    }
+
     func testRuntimeTransportErrorCancelsAudioFeedAndReconnects() async {
         // Given: listening中で、audio feedは次frame待ちのまま
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")

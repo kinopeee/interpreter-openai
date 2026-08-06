@@ -31,8 +31,10 @@ enum AppStatusFile {
     static let path = "/tmp/realtimetranslator.status"
 
     static func write(_ status: String, state: String = "") {
+        #if DEBUG
         let body = state.isEmpty ? "\(status)\n" : "\(status)\n\(state)\n"
         try? body.write(toFile: path, atomically: true, encoding: .utf8)
+        #endif
     }
 }
 
@@ -68,7 +70,7 @@ enum AppRuntime {
             instanceLease = lease
         } catch {
             AppLogger.general.error(
-                "Failed to acquire runtime lock: \(error.localizedDescription, privacy: .public)"
+                "Failed to acquire runtime lock: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
             )
             NSApp.terminate(nil)
             return

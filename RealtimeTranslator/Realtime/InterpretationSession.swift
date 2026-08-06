@@ -127,7 +127,7 @@ final class InterpretationSession {
             try await dualClient.updateTranscriptionTuning(tuning)
         } catch {
             AppLogger.session.error(
-                "Failed to update transcription tuning: \(error.localizedDescription, privacy: .public)"
+                "Failed to update transcription tuning: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
             )
         }
     }
@@ -139,7 +139,12 @@ final class InterpretationSession {
                 return
             } catch is CancellationError {
                 return
-            } catch let error as RealtimeTranslationError where !error.isRecoverable {
+            } catch let error as RealtimeTranslationError where error.isRecoverable {
+                // recoverable: fall through to reconnect
+            } catch let error as URLError {
+                // WebSocket transport 由来: fall through to reconnect
+                _ = error
+            } catch let error as RealtimeTranslationError {
                 guard generation == lifecycleGeneration else { return }
                 await tearDownStreaming()
                 enterError(error)
@@ -150,7 +155,11 @@ final class InterpretationSession {
                 enterError(error)
                 return
             } catch {
-                // recoverable transport / stream end
+                // 未知エラーは再接続せず即 error（予測可能性を優先）。
+                guard generation == lifecycleGeneration else { return }
+                await tearDownStreaming()
+                enterError(error)
+                return
             }
 
             guard generation == lifecycleGeneration else { return }
@@ -283,9 +292,11 @@ final class InterpretationSession {
             }
 
             if let update = assembler.ingest(streamEvent) {
+                #if DEBUG
                 AppLogger.session.notice(
                     "DBG_ASSEMBLER_UPDATE epoch=\(streamEvent.epoch, privacy: .public) generation=\(update.segmentGeneration, privacy: .public) sourceEmpty=\(update.sourceText.isEmpty, privacy: .public) translationEmpty=\(update.translatedText.isEmpty, privacy: .public)"
                 )
+                #endif
                 enqueueRender(update)
                 if update.shouldFinalize {
                     await resetAudioRoutingForNextSegment()
@@ -317,7 +328,7 @@ final class InterpretationSession {
             try await dualClient.closeGracefully()
         } catch {
             AppLogger.realtime.error(
-                "Graceful close failed: \(error.localizedDescription, privacy: .public)"
+                "Graceful close failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
             )
             await dualClient.forceClose()
         }

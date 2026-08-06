@@ -27,6 +27,7 @@ enum RealtimeAudioCaptureError: Error, LocalizedError, Sendable {
     case audioConverterUnavailable
     case audioBufferPoolUnavailable
     case pipelineOverloaded
+    case inputDeviceChanged
 
     var errorDescription: String? {
         switch self {
@@ -40,6 +41,8 @@ enum RealtimeAudioCaptureError: Error, LocalizedError, Sendable {
             return "音声バッファを準備できません"
         case .pipelineOverloaded:
             return "音声処理が遅延しています"
+        case .inputDeviceChanged:
+            return "マイク入力デバイスが変更されました"
         }
     }
 }
@@ -61,6 +64,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     private var captureContinuation: AsyncStream<CapturedAudioBuffer>.Continuation?
     private var frameContinuation: AsyncStream<Data>.Continuation?
     private var feederTask: Task<Void, Never>?
+    private var configurationObserver: (any NSObjectProtocol)?
     private var isTapInstalled = false
     private var lifecycleGeneration = 0
     private(set) var frames: AsyncStream<Data>
@@ -90,9 +94,11 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             throw RealtimeAudioCaptureError.audioFormatUnavailable
         }
+        #if DEBUG
         AppLogger.audio.notice(
             "DBG_CAPTURE_START rate=\(inputFormat.sampleRate, privacy: .public) channels=\(inputFormat.channelCount, privacy: .public)"
         )
+        #endif
 
         guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -160,12 +166,14 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
                     let frames = packetizer.append(pcm16)
                     for frame in frames {
                         emittedFrameCount += 1
+                        #if DEBUG
                         if emittedFrameCount == 1 || emittedFrameCount.isMultiple(of: 25) {
                             let peak = Self.peakAmplitude(inPCM16LE: frame)
                             AppLogger.audio.notice(
                                 "DBG_CAPTURE_FRAME count=\(emittedFrameCount, privacy: .public) bytes=\(frame.count, privacy: .public) peak=\(peak, privacy: .public)"
                             )
                         }
+                        #endif
                         let result = await self?.yieldFrame(frame)
                         if result == false {
                             await self?.reportFailure(
@@ -183,9 +191,25 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
                 return
             } catch {
                 AppLogger.audio.error(
-                    "Audio feeder failed: \(error.localizedDescription, privacy: .public)"
+                    "Audio feeder failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
                 )
                 await self?.reportFailure(error, generation: generation)
+            }
+        }
+
+        removeConfigurationObserver()
+        // 既定デバイス変更・切断。無音を流し続けず、上位の再接続判断へ委ねる。
+        // コールバックは MainActor を仮定しない。
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: audioEngine,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.reportFailure(
+                    RealtimeAudioCaptureError.inputDeviceChanged,
+                    generation: generation
+                )
             }
         }
 
@@ -205,6 +229,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
 
     func stop() async {
         lifecycleGeneration += 1
+        removeConfigurationObserver()
         if isTapInstalled {
             audioEngine.inputNode.removeTap(onBus: 0)
             isTapInstalled = false
@@ -220,6 +245,13 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         frameContinuation = nil
     }
 
+    private func removeConfigurationObserver() {
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+            self.configurationObserver = nil
+        }
+    }
+
     private func yieldFrame(_ frame: Data) -> Bool {
         guard let frameContinuation else { return false }
         return RealtimeAudioFrameYieldOutcome.didAccept(frameContinuation.yield(frame))
@@ -228,7 +260,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     private func reportFailure(_ error: Error, generation: Int) {
         guard generation == lifecycleGeneration else { return }
         AppLogger.audio.error(
-            "Realtime audio capture failed: \(error.localizedDescription, privacy: .public)"
+            "Realtime audio capture failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
         )
         frameContinuation?.finish()
         frameContinuation = nil
