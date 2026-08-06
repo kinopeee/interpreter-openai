@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'リリースするタグ名 (例: windows-v0.1.0)'
+        description: '既存の windows-v* タグ名 (例: windows-v0.1.0)。タグは事前に push 済みであること'
         required: true
 
 permissions:
@@ -17,14 +17,7 @@ jobs:
     name: publish and release (win-x64)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: windows/global.json
-
+      # 手動実行でもビルド対象と公開タグを一致させるため、checkout 前にタグを確定する。
       - name: Resolve release tag
         id: release
         shell: pwsh
@@ -35,7 +28,19 @@ jobs:
             '${{ inputs.tag }}'
           }
           if ([string]::IsNullOrWhiteSpace($tag)) { throw 'release tag is empty' }
+          if ($tag -notmatch '^windows-v') {
+            throw "release tag must start with 'windows-v': $tag"
+          }
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: windows/global.json
 
       - name: Test
         shell: pwsh
@@ -68,4 +73,9 @@ jobs:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           ZIP_PATH: ${{ steps.package.outputs.zip }}
         run: |
-          gh release create $env:RELEASE_TAG "$env:ZIP_PATH" "$env:ZIP_PATH.sha256" --title "Realtime Translator for Windows $env:RELEASE_TAG" --notes-file .github/release-notes-windows.md
+          # --verify-tag: 未作成タグを default branch tip に勝手に作らない。
+          # checkout 済みのタグとバイナリが一致していることを前提にする。
+          gh release create $env:RELEASE_TAG "$env:ZIP_PATH" "$env:ZIP_PATH.sha256" `
+            --verify-tag `
+            --title "Realtime Translator for Windows $env:RELEASE_TAG" `
+            --notes-file .github/release-notes-windows.md
