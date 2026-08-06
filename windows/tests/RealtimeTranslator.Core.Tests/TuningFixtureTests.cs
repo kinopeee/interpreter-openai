@@ -120,4 +120,19 @@ public sealed class TuningFixtureTests
 
         Assert.Equal(string.Concat(Enumerable.Repeat(emoji, limit)), truncated);
     }
+
+    // Given: 結合文字を含む書記素クラスタで上限を超える prompt
+    // When: SanitizedPrompt で正規化する
+    // Then: 結合文字ごと切り、基底文字だけを残さない
+    [Fact]
+    public void SanitizedPromptTruncatesCombiningGraphemeClusters()
+    {
+        const string combining = "e\u0301";
+        var limit = RealtimeSessionTuning.PromptCharacterLimit;
+        var input = new string('a', limit - 1) + combining + combining;
+
+        var truncated = RealtimeSessionTuning.SanitizedPrompt(input);
+
+        Assert.Equal(new string('a', limit - 1) + combining, truncated);
+    }
 }
