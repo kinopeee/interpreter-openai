@@ -58,4 +58,48 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
         XCTAssertEqual(high.gain, AdaptiveMicrophoneGain.maximumGain)
         XCTAssertEqual(low.gain, AdaptiveMicrophoneGain.minimumGain)
     }
+
+    func testNonFinitePeakDoesNotCorruptTrackedState() {
+        // Given: 初期ゲイン4.0
+        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
+        let before = agc.gain
+
+        // When: NaN / infinity のピークを観測する
+        let afterNan = agc.observePeak(.nan)
+        let afterInfinity = agc.observePeak(.infinity)
+
+        // Then: 追跡状態を壊さず現ゲインを維持する
+        XCTAssertEqual(afterNan, before)
+        XCTAssertEqual(afterInfinity, before)
+        XCTAssertEqual(agc.gain, before)
+    }
+
+    func testAllNonFiniteSamplesKeepCurrentGain() {
+        // Given: 非有限サンプルだけのバッファ
+        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
+        var samples: [Float] = [.nan, .infinity, -.infinity]
+
+        // When: observe に渡す
+        let gain = samples.withUnsafeBufferPointer { buffer in
+            agc.observe(floatSamples: buffer.baseAddress!, frameCount: buffer.count)
+        }
+
+        // Then: 有限サンプルが無いのでゲインは動かない
+        XCTAssertEqual(gain, 4.0)
+        XCTAssertEqual(agc.gain, 4.0)
+    }
+
+    func testMixedFiniteAndNonFiniteSamplesUseFinitePeakOnly() {
+        // Given: 有限サンプルと NaN が混在するバッファ
+        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
+        var samples: [Float] = [.nan, 0.3, .infinity]
+
+        // When: observe する
+        let gain = samples.withUnsafeBufferPointer { buffer in
+            agc.observe(floatSamples: buffer.baseAddress!, frameCount: buffer.count)
+        }
+
+        // Then: 有限ピーク 0.3 だけを使い、クリップ減衰する
+        XCTAssertEqual(gain, 0.5 / 0.3, accuracy: 0.01)
+    }
 }

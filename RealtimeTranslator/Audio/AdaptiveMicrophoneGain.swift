@@ -12,11 +12,13 @@ struct AdaptiveMicrophoneGain: Sendable {
     static let silenceFloor: Float = 0.005
     /// クリップとみなす増幅後ピーク。
     static let clipThreshold: Float = 0.95
+    /// shared/fixtures の defaultInitialGain と一致させる。
+    static let defaultInitialGain: Float = 4.0
 
     private(set) var gain: Float
     private var trackedPeak: Float
 
-    init(initialGain: Float = 4.0) {
+    init(initialGain: Float = defaultInitialGain) {
         gain = Self.clamp(initialGain)
         trackedPeak = 0
     }
@@ -26,14 +28,19 @@ struct AdaptiveMicrophoneGain: Sendable {
         guard frameCount > 0 else { return gain }
 
         var peak: Float = 0
-        for index in 0..<frameCount {
+        var sawFinite = false
+        for index in 0..<frameCount where floatSamples[index].isFinite {
+            sawFinite = true
             peak = max(peak, abs(floatSamples[index]))
         }
-        return observePeak(peak)
+        return sawFinite ? observePeak(peak) : gain
     }
 
     /// テスト用: 生ピークを直接渡してゲインを更新する。
     mutating func observePeak(_ peak: Float) -> Float {
+        // 非有限値で追跡状態を壊さない。
+        guard peak.isFinite else { return gain }
+
         let nonNegativePeak = max(0, peak)
         // 減衰付きピーク追跡 (新しいピークは即反映、減衰は緩やか)。
         if nonNegativePeak >= trackedPeak {
@@ -67,6 +74,7 @@ struct AdaptiveMicrophoneGain: Sendable {
     }
 
     private static func clamp(_ value: Float) -> Float {
-        min(maximumGain, max(minimumGain, value))
+        guard value.isFinite else { return minimumGain }
+        return min(maximumGain, max(minimumGain, value))
     }
 }
