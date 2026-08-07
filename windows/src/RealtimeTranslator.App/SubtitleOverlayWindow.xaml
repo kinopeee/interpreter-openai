@@ -24,33 +24,107 @@
     <StackPanel Margin="16,8,16,12">
       <Border CornerRadius="12" Background="#4D000000" Padding="18,8">
         <StackPanel>
-          <TextBlock x:Name="SourceTextBlock"
-                     Text="{Binding SourceText}"
-                     FontSize="{Binding SourceFontSize}"
-                     FontWeight="Medium"
-                     Foreground="White"
-                     Opacity="0.7"
-                     TextWrapping="Wrap"
-                     MaxHeight="120"
-                     Visibility="{Binding HasSourceText, Converter={StaticResource BooleanToVisibility}}">
-            <TextBlock.Effect>
-              <DropShadowEffect BlurRadius="6" ShadowDepth="1" Color="Black" Opacity="0.95" />
-            </TextBlock.Effect>
-          </TextBlock>
+          <Border Background="Transparent">
+            <Border.Effect>
+              <DropShadowEffect BlurRadius="3" ShadowDepth="0" Color="Black" Opacity="0.8" />
+            </Border.Effect>
+            <Border Background="Transparent">
+              <Border.Effect>
+                <DropShadowEffect BlurRadius="3" ShadowDepth="0" Color="Black" Opacity="0.8" />
+              </Border.Effect>
+              <TextBlock x:Name="SourceTextBlock"
+                         Text="{Binding SourceText}"
+                         FontSize="{Binding SourceFontSize}"
+                         FontWeight="Medium"
+                         Foreground="White"
+                         TextWrapping="Wrap"
+                         Height="{Binding SourceSlotHeight}"
+                         VerticalAlignment="Top"
+                         TextTrimming="CharacterEllipsis"
+                         LineHeight="{Binding SourceLineHeight}"
+                         LineStackingStrategy="BlockLineHeight">
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock">
+                    <Setter Property="Opacity" Value="0.7" />
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding HasSourceText}" Value="False">
+                        <Setter Property="Opacity" Value="0" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+                <TextBlock.Effect>
+                  <DropShadowEffect BlurRadius="10" ShadowDepth="0" Color="Black" Opacity="0.85" />
+                </TextBlock.Effect>
+              </TextBlock>
+            </Border>
+          </Border>
 
-          <TextBlock x:Name="TranslatedTextBlock"
-                     Text="{Binding TranslatedText}"
-                     FontSize="{Binding FontSize}"
-                     FontWeight="SemiBold"
-                     Foreground="White"
-                     Margin="0,4,0,0"
-                     TextWrapping="Wrap"
-                     MaxHeight="160"
-                     Visibility="{Binding HasTranslatedText, Converter={StaticResource BooleanToVisibility}}">
-            <TextBlock.Effect>
-              <DropShadowEffect BlurRadius="6" ShadowDepth="1" Color="Black" Opacity="0.95" />
-            </TextBlock.Effect>
-          </TextBlock>
+          <Border Margin="0,4,0,0">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="Opacity" Value="0" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding HasVisibleTranslation}" Value="True">
+                    <DataTrigger.EnterActions>
+                      <BeginStoryboard>
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                           To="1"
+                                           Duration="0:0:0.12">
+                            <DoubleAnimation.EasingFunction>
+                              <QuadraticEase EasingMode="EaseOut" />
+                            </DoubleAnimation.EasingFunction>
+                          </DoubleAnimation>
+                        </Storyboard>
+                      </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                      <BeginStoryboard>
+                        <Storyboard>
+                          <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                           To="0"
+                                           Duration="0:0:0.12">
+                            <DoubleAnimation.EasingFunction>
+                              <QuadraticEase EasingMode="EaseOut" />
+                            </DoubleAnimation.EasingFunction>
+                          </DoubleAnimation>
+                        </Storyboard>
+                      </BeginStoryboard>
+                    </DataTrigger.ExitActions>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
+            <Border Background="Transparent">
+              <Border.Effect>
+                <DropShadowEffect BlurRadius="3" ShadowDepth="0" Color="Black" Opacity="0.8" />
+              </Border.Effect>
+              <Border Background="Transparent">
+                <Border.Effect>
+                  <DropShadowEffect BlurRadius="3" ShadowDepth="0" Color="Black" Opacity="0.8" />
+                </Border.Effect>
+                <TextBlock x:Name="TranslatedTextBlock"
+                           FontSize="{Binding FontSize}"
+                           FontWeight="SemiBold"
+                           Foreground="White"
+                           TextWrapping="Wrap"
+                           Height="{Binding TranslatedSlotHeight}"
+                           VerticalAlignment="Top"
+                           TextTrimming="CharacterEllipsis"
+                           LineHeight="{Binding TranslatedLineHeight}"
+                           LineStackingStrategy="BlockLineHeight">
+                  <TextBlock.Inlines>
+                    <Run Text="{Binding TranslatedText, Mode=OneWay}" />
+                    <Run Text="{Binding PendingMarkerText, Mode=OneWay}" Foreground="#8CFFFFFF" />
+                  </TextBlock.Inlines>
+                  <TextBlock.Effect>
+                    <DropShadowEffect BlurRadius="10" ShadowDepth="0" Color="Black" Opacity="0.85" />
+                  </TextBlock.Effect>
+                </TextBlock>
+              </Border>
+            </Border>
+          </Border>
         </StackPanel>
       </Border>
 

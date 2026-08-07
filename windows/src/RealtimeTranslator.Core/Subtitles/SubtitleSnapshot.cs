@@ -4,9 +4,9 @@ using RealtimeTranslator.Core.Realtime;
 namespace RealtimeTranslator.Core.Subtitles;
 
 /// <summary>字幕スロット 1 件分の表示状態。macOS 版 <c>LiveSubtitle</c> と同義。</summary>
-public readonly record struct LiveSubtitle(string SourceText, string TranslatedText)
+public readonly record struct LiveSubtitle(string SourceText, string TranslatedText, bool IsFinalized)
 {
-    public static readonly LiveSubtitle Empty = new(string.Empty, string.Empty);
+    public static readonly LiveSubtitle Empty = new(string.Empty, string.Empty, false);
 
     public bool IsEmpty =>
         string.IsNullOrWhiteSpace(SourceText) && string.IsNullOrWhiteSpace(TranslatedText);
@@ -41,7 +41,7 @@ public sealed class SubtitleSnapshotBuilder
             _current = LiveSubtitle.Empty;
         }
 
-        _current = new LiveSubtitle(update.SourceText, update.TranslatedText);
+        _current = new LiveSubtitle(update.SourceText, update.TranslatedText, update.ShouldFinalize);
         if (update.ShouldFinalize)
         {
             _segmentGeneration = update.SegmentGeneration + 1;
