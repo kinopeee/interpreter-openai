@@ -115,8 +115,8 @@
                            LineHeight="{Binding TranslatedLineHeight}"
                            LineStackingStrategy="BlockLineHeight">
                   <TextBlock.Inlines>
-                    <Run Text="{Binding TranslatedText, Mode=OneWay}" />
-                    <Run Text="{Binding PendingMarkerText, Mode=OneWay}" Foreground="#8CFFFFFF" />
+                    <!-- Run 間の改行/インデントは空白1つとして描画されるため、タグを隣接させる -->
+                    <Run Text="{Binding TranslatedText, Mode=OneWay}" /><Run Text="{Binding PendingMarkerText, Mode=OneWay}" Foreground="#8CFFFFFF" />
                   </TextBlock.Inlines>
                   <TextBlock.Effect>
                     <DropShadowEffect BlurRadius="10" ShadowDepth="0" Color="Black" Opacity="0.85" />
