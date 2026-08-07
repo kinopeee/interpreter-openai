@@ -26,7 +26,9 @@ public sealed class SubtitleOverlayViewModel : INotifyPropertyChanged
 
     /// 訳文が未確定である間だけ末尾へ添える記号。
     public const string PendingMarker = "…";
-    private const string TerminalPunctuation = "。．.!？?！";
+    /// Aggregator の確定句読点に加え、表示用マーカー抑制のため末尾の `…` も見る。
+    /// （`……` の誤記を避ける。Aggregator の確定条件自体は変えない。）
+    private const string TerminalPunctuation = "。．.!？?！…";
 
     private string _sourceText = string.Empty;
     private string _translatedText = string.Empty;
@@ -126,6 +128,11 @@ public sealed class SubtitleOverlayViewModel : INotifyPropertyChanged
     {
         var source = SubtitleTailClipper.Clip(snapshot.Current.SourceText);
         var translated = SubtitleTailClipper.Clip(snapshot.Current.TranslatedText);
+        // 空白だけの訳文は「未着」と同じ扱い。不可視スペース＋… にしない。
+        if (string.IsNullOrWhiteSpace(translated))
+        {
+            translated = string.Empty;
+        }
 
         SourceText = source;
         OnPropertyChanged(nameof(HasSourceText));

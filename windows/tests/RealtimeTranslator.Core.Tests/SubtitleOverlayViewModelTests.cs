@@ -129,6 +129,7 @@ public sealed class SubtitleOverlayViewModelTests
     [InlineData("source", "ends.", false, false)]
     [InlineData("source", "ends！", false, false)]
     [InlineData("source", "ends？", false, false)]
+    [InlineData("source", "続きはまた…", false, false)]
     [InlineData("", "", false, false)]
     [InlineData("source", "   ", false, true)]
     [InlineData("", "   ", false, false)]
@@ -146,8 +147,9 @@ public sealed class SubtitleOverlayViewModelTests
         Assert.Equal(expected, viewModel.ShowsPendingMarker);
         Assert.Equal(expected ? SubtitleOverlayViewModel.PendingMarker : string.Empty, viewModel.PendingMarkerText);
         Assert.Equal(!string.IsNullOrWhiteSpace(translatedText) || expected, viewModel.HasVisibleTranslation);
-        if (string.IsNullOrWhiteSpace(translatedText) && viewModel.HasVisibleTranslation)
+        if (string.IsNullOrWhiteSpace(translatedText))
         {
+            Assert.Equal(string.Empty, viewModel.TranslatedText);
             Assert.False(viewModel.HasTranslatedText);
         }
     }
