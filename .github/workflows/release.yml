@@ -54,13 +54,13 @@ jobs:
     needs: version
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # 手動実行では起動元ブランチでなく、リリースするタグのコードをビルドする。
           ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: windows/global.json
 
@@ -92,7 +92,7 @@ jobs:
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $([System.IO.Path]::GetFileName($zip))" | Out-File "$zip.sha256" -Encoding ascii
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-win-x64
           path: |
@@ -105,7 +105,7 @@ jobs:
     needs: version
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
@@ -162,7 +162,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
           shasum -a 256 "$zip" | sed "s|artifacts/||" > "$zip.sha256"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-macos-arm64
           path: |
@@ -178,12 +178,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
