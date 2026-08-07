@@ -566,6 +566,41 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(japaneseClose, 1)
     }
 
+    func testWaitForTranslationDrainTimesOutWhenSendStalls() async throws {
+        // Given: 翻訳送信が完了しないdual（言語判定済みで翻訳laneへ流れる）
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await dual.setSpokenLanguage(.japanese)
+        await englishTransport.setSendHangNanoseconds(30_000_000_000)
+        let frame = Data(repeating: 0x11, count: PCM16FramePacketizer.bytesPerFrame)
+        try await dual.appendAudioFrame(frame)
+
+        // When: 短いtimeoutでdrainを待つ
+        // Then: ポンプ待ちでハングせず、timeoutエラーになる
+        do {
+            try await dual.waitForTranslationDrain(timeoutNanoseconds: 50_000_000)
+            XCTFail("Expected translation pump drain timeout")
+        } catch let error as RealtimeTranslationError {
+            XCTAssertEqual(
+                error,
+                .recoverableTransportFailure("translation pump drain timeout")
+            )
+        }
+        await dual.forceClose()
+    }
+
     private func makeDual(
         sourceTransport: FakeRealtimeWebSocketTransport,
         englishTransport: FakeRealtimeWebSocketTransport,

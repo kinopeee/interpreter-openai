@@ -7,8 +7,10 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
     private(set) var sent: [Data] = []
     private(set) var connectCount = 0
     private(set) var closeCount = 0
+    private(set) var sendAttemptCount = 0
     var connectError: Error?
     var sendError: Error?
+    private var failNextSend = false
     /// セットするとsendがこの時間だけ待機してから通常処理へ進む。
     var sendHangNanoseconds: UInt64 = 0
 
@@ -35,9 +37,18 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
         _ = headers
     }
 
+    func failNextSendOnce() {
+        failNextSend = true
+    }
+
     func send(_ data: Data) async throws {
+        sendAttemptCount += 1
         if sendHangNanoseconds > 0 {
             try await Task.sleep(nanoseconds: sendHangNanoseconds)
+        }
+        if failNextSend {
+            failNextSend = false
+            throw RealtimeTranslationError.recoverableTransportFailure("one-shot send failure")
         }
         if let sendError {
             throw sendError

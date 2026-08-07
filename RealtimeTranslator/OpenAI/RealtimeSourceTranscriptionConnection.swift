@@ -21,7 +21,7 @@ actor RealtimeSourceTranscriptionConnection {
 
     init(
         transport: any RealtimeWebSocketTransport = URLSessionWebSocketTransport(),
-        safetyIdentifier: String = OpenAISafetyIdentifier.hashedValue(),
+        safetyIdentifier: String,
         handshakeTimeoutNanoseconds: UInt64 = 15_000_000_000,
         closeTimeoutNanoseconds: UInt64 = 5_000_000_000
     ) {
@@ -141,9 +141,11 @@ actor RealtimeSourceTranscriptionConnection {
                     case "conversation.item.input_audio_transcription.delta":
                         let delta = object["delta"] as? String ?? ""
                         guard !delta.isEmpty else { continue }
+                        #if DEBUG
                         AppLogger.realtime.notice(
                             "DBG_TRANSCRIPT_EVENT target=source kind=input epoch=\(currentEpoch, privacy: .public)"
                         )
+                        #endif
                         eventContinuation?.yield(
                             RealtimeTranslationStreamEvent(
                                 target: .english,

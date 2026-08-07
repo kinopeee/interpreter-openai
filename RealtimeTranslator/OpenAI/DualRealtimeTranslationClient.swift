@@ -14,8 +14,8 @@ protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
 
 actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     /// 100 ms frame × 40 = 直近4秒。言語判定遅延でも発話冒頭を翻訳へ届ける。
-    private static let translationPrerollFrameLimit = 40
-    private static let consecutiveTranslationFailureLimit = 3
+    static let translationPrerollFrameLimit = 40
+    static let consecutiveTranslationFailureLimit = 3
 
     private let sourceConnection: RealtimeSourceTranscriptionConnection
     private let englishConnection: RealtimeTranslationConnection
@@ -41,18 +41,29 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     }
 
     init(
-        sourceConnection: RealtimeSourceTranscriptionConnection =
-            RealtimeSourceTranscriptionConnection(),
-        englishConnection: RealtimeTranslationConnection = RealtimeTranslationConnection(
-            target: .english
-        ),
-        japaneseConnection: RealtimeTranslationConnection = RealtimeTranslationConnection(
-            target: .japanese
-        )
+        sourceConnection: RealtimeSourceTranscriptionConnection? = nil,
+        englishConnection: RealtimeTranslationConnection? = nil,
+        japaneseConnection: RealtimeTranslationConnection? = nil
     ) {
-        self.sourceConnection = sourceConnection
-        self.englishConnection = englishConnection
-        self.japaneseConnection = japaneseConnection
+        if let sourceConnection, let englishConnection, let japaneseConnection {
+            self.sourceConnection = sourceConnection
+            self.englishConnection = englishConnection
+            self.japaneseConnection = japaneseConnection
+        } else {
+            let safetyIdentifier = OpenAISafetyIdentifier.hashedValue()
+            self.sourceConnection = sourceConnection
+                ?? RealtimeSourceTranscriptionConnection(safetyIdentifier: safetyIdentifier)
+            self.englishConnection = englishConnection
+                ?? RealtimeTranslationConnection(
+                    target: .english,
+                    safetyIdentifier: safetyIdentifier
+                )
+            self.japaneseConnection = japaneseConnection
+                ?? RealtimeTranslationConnection(
+                    target: .japanese,
+                    safetyIdentifier: safetyIdentifier
+                )
+        }
         let pair = Self.makeEventStream()
         eventStream = pair.stream
         eventContinuation = pair.continuation
@@ -119,6 +130,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         // 原文送信は単独で完了させ、翻訳側の停滞に巻き込まない。
         try await sourceConnection.appendAudioFrame(pcm16LE)
         sourceSentFrameCount += 1
+        #if DEBUG
         if sourceSentFrameCount == 1 || sourceSentFrameCount.isMultiple(of: 25) {
             AppLogger.realtime.notice(
                 "DBG_SOURCE_STATS sent=\(self.sourceSentFrameCount, privacy: .public) deltas=\(self.sourceDeltaCount, privacy: .public) epoch=\(self.connectionEpoch, privacy: .public)"
@@ -127,6 +139,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                 "DBG_SOCKET_FRAME count=\(self.appendedFrameCount, privacy: .public) bytes=\(pcm16LE.count, privacy: .public) epoch=\(self.connectionEpoch, privacy: .public)"
             )
         }
+        #endif
 
         // 言語切替検出の遅延を吸収するため、選択後も直近4秒をrolling保持する。
         appendRollingPreroll(pcm16LE)
@@ -153,9 +166,11 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         // 旧target向けの未送信frameは破棄し、rolling prerollを新targetへflushする。
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         let preroll = translationPrerollFrames
+        #if DEBUG
         AppLogger.realtime.notice(
             "DBG_AUDIO_ROUTE target=\(target.rawValue, privacy: .public) frame=\(self.appendedFrameCount, privacy: .public) preroll=\(preroll.count, privacy: .public)"
         )
+        #endif
         for frame in preroll {
             enqueueTranslationFrame(frame, target: target)
         }
@@ -173,6 +188,30 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         selectedTranslationTarget = nil
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         consecutiveTranslationFailures = 0
+    }
+
+    /// 翻訳ポンプが現在の待ち行列を処理し終えるまで待つ。決定的なテストのために使う。
+    /// 送信が停滞しても `timeoutNanoseconds` で待機だけを打ち切り、送信ポンプ自体は停止しない。
+    func waitForTranslationDrain(timeoutNanoseconds: UInt64 = 5_000_000_000) async throws {
+        let deadline = ContinuousClock.now + .nanoseconds(Int64(timeoutNanoseconds))
+        let pollInterval = Duration.milliseconds(5)
+        while true {
+            if translationPumpTask == nil, pendingTranslationFrames.isEmpty {
+                return
+            }
+
+            let remaining = deadline - ContinuousClock.now
+            guard remaining > .zero else {
+                if translationPumpTask == nil, pendingTranslationFrames.isEmpty {
+                    return
+                }
+                throw RealtimeTranslationError.recoverableTransportFailure("translation pump drain timeout")
+            }
+
+            // TaskGroupはスコープ終了時にキャンセル済み子タスクの完了も待つ。
+            // pump.value待ちはキャンセルで解けないため、状態を短周期で再確認する。
+            try await Task.sleep(for: min(remaining, pollInterval))
+        }
     }
 
     private func appendRollingPreroll(_ pcm16LE: Data) {
@@ -346,11 +385,13 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
 
     private func noteSourceDelta() {
         sourceDeltaCount += 1
+        #if DEBUG
         if sourceDeltaCount == 1 || sourceDeltaCount.isMultiple(of: 25) {
             AppLogger.realtime.notice(
                 "DBG_SOURCE_STATS sent=\(self.sourceSentFrameCount, privacy: .public) deltas=\(self.sourceDeltaCount, privacy: .public) epoch=\(self.connectionEpoch, privacy: .public)"
             )
         }
+        #endif
     }
 
     private func recreateEventStream() {

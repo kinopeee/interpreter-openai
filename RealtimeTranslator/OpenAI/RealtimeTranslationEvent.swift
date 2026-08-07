@@ -107,6 +107,8 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
     case closeTimeout
     case cancelled
 
+    static let genericServerMessage = "翻訳サーバーでエラーが発生しました"
+
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
@@ -188,9 +190,9 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
             || lowered.contains("authorization")
             || lowered.contains("bearer ")
         {
-            return "翻訳サーバーでエラーが発生しました"
+            return genericServerMessage
         }
-        return message.isEmpty ? "翻訳サーバーでエラーが発生しました" : message
+        return message.isEmpty ? genericServerMessage : message
     }
 
     private static let knownAuthenticationFailureCodes: Set<String> = [
