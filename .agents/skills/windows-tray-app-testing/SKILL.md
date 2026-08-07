@@ -88,7 +88,15 @@ Most VMs have no audio input, so live speech → subtitle → transcript cannot 
 
 ```powershell
 $f = "$env:LOCALAPPDATA\RealtimeTranslator\transcripts\session.txt"
-Set-ItemProperty $f -Name IsReadOnly -Value $true
+Set-ItemProperty -LiteralPath $f -Name IsReadOnly -Value $true
+```
+
+After the failure toast is confirmed, clear the attribute so later tests can write:
+
+```powershell
+if (Test-Path -LiteralPath $f) {
+  Set-ItemProperty -LiteralPath $f -Name IsReadOnly -Value $false
+}
 ```
 
 ## Gotchas
