@@ -116,7 +116,6 @@ public sealed class SubtitleOverlayViewModelTests
 
         Assert.Equal(translatedHeight, viewModel.TranslatedSlotHeight);
         Assert.Equal(sourceHeight, viewModel.SourceSlotHeight);
-        Assert.Equal(SubtitleOverlayViewModel.ReservedLineCount, 2);
     }
 
     // Given: 様々な確定状態と末尾文字
@@ -131,6 +130,7 @@ public sealed class SubtitleOverlayViewModelTests
     [InlineData("source", "ends！", false, false)]
     [InlineData("source", "ends？", false, false)]
     [InlineData("", "", false, false)]
+    [InlineData("source", "   ", false, true)]
     [InlineData("", "   ", false, false)]
     public void PendingMarkerFollowsFinalizationAndPunctuationRules(
         string sourceText,
@@ -146,6 +146,10 @@ public sealed class SubtitleOverlayViewModelTests
         Assert.Equal(expected, viewModel.ShowsPendingMarker);
         Assert.Equal(expected ? SubtitleOverlayViewModel.PendingMarker : string.Empty, viewModel.PendingMarkerText);
         Assert.Equal(!string.IsNullOrWhiteSpace(translatedText) || expected, viewModel.HasVisibleTranslation);
+        if (string.IsNullOrWhiteSpace(translatedText) && viewModel.HasVisibleTranslation)
+        {
+            Assert.False(viewModel.HasTranslatedText);
+        }
     }
 
     // Given: バインドされる派生プロパティ

@@ -24,6 +24,7 @@ public sealed class SubtitleOverlayViewModel : INotifyPropertyChanged
     /// 行数で高さが動かないよう常に確保する行数。macOS 版 currentLineLimit と同じ。
     public const int ReservedLineCount = 2;
 
+    /// 訳文が未確定である間だけ末尾へ添える記号。
     public const string PendingMarker = "…";
     private const string TerminalPunctuation = "。．.!？?！";
 
@@ -102,6 +103,8 @@ public sealed class SubtitleOverlayViewModel : INotifyPropertyChanged
 
     public double SourceSlotHeight => SourceLineHeight * ReservedLineCount;
 
+    /// 未確定かつ字幕が空でなく、訳文が文末記号で終わらない場合だけマーカーを出す。
+    /// 文末記号で終わる訳文へ足すと「are.…」のような誤記に見えるため出さない。
     public bool ShowsPendingMarker =>
         !IsFinalized
         && !(string.IsNullOrWhiteSpace(SourceText) && string.IsNullOrWhiteSpace(TranslatedText))
@@ -109,6 +112,7 @@ public sealed class SubtitleOverlayViewModel : INotifyPropertyChanged
 
     public string PendingMarkerText => ShowsPendingMarker ? PendingMarker : string.Empty;
 
+    /// 訳文本体かマーカーのどちらかが出るなら訳文スロットを可視にする。
     public bool HasVisibleTranslation => HasTranslatedText || ShowsPendingMarker;
 
     /// <summary>位置編集中はクリックスルーを解除し、枠線を出す。</summary>
