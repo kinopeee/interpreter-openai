@@ -49,10 +49,13 @@ struct SubtitlePresentation: Equatable, Sendable {
     struct Block: Equatable, Sendable {
         let sourceText: String
         let translatedText: String
+        /// 未確定マーカーの有無が変わるため、確定状態も再描画の判定に含める。
+        let isFinalized: Bool
 
         init(_ subtitle: LiveSubtitle) {
             sourceText = subtitle.sourceText
             translatedText = subtitle.translatedText
+            isFinalized = subtitle.state == .finalized
         }
     }
 
