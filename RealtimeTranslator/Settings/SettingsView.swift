@@ -118,6 +118,7 @@ private struct SettingsMultilineField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
+                .accessibilityHidden(true)
 
             TextEditor(text: $text)
                 .font(.body)
@@ -134,6 +135,7 @@ private struct SettingsMultilineField: View {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
                 )
+                .accessibilityLabel(Text(title))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -245,14 +247,11 @@ private struct SettingsSpeechRecognitionTab: View {
     }
 
     private var isPromptOverLimit: Bool {
-        settings.transcriptionPrompt.count > RealtimeSessionTuning.promptCharacterLimit
+        RealtimeSessionTuning.isPromptOverCharacterLimit(settings.transcriptionPrompt)
     }
 
     private var isKeywordLineCountOverLimit: Bool {
-        settings.transcriptionKeywordsText
-            .split(whereSeparator: \.isNewline)
-            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .count > RealtimeSessionTuning.keywordLimit
+        RealtimeSessionTuning.isKeywordCountOverLimit(from: settings.transcriptionKeywordsText)
     }
 
     var body: some View {
