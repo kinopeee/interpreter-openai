@@ -254,6 +254,112 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: idle finalize 前の完全な原文+訳文ペア
+    // When: transport error で再接続し BeginNewEpoch する
+    // Then: 捨てる前に ShouldFinalize が発行され、オプトイン字幕記録へ届く
+    [Fact]
+    public async Task ReconnectFinalizesCompletePairBeforeNewEpoch()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("会議を始めます");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Let's start the meeting");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+            }
+        });
+
+        client.PublishTransportError();
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.ShouldFinalize);
+            }
+        });
+        await WaitUntilAsync(() => client.StartCount >= 2);
+
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("会議を始めます", finalized.SourceText);
+        Assert.Equal("Let's start the meeting", finalized.TranslatedText);
+        await session.StopAsync();
+    }
+
+    // Given: idle finalize 前の完全ペア
+    // When: 認証失敗でセッションが止まる
+    // Then: エラー遷移前に ShouldFinalize が発行される
+    [Fact]
+    public async Task FatalErrorFinalizesCompletePairBeforeStopping()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("ありがとうございます");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Thank you");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+            }
+        });
+
+        client.PublishServerError("Incorrect API key provided", "invalid_api_key");
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.ShouldFinalize);
+            }
+        });
+
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("ありがとうございます", finalized.SourceText);
+        Assert.Equal("Thank you", finalized.TranslatedText);
+        Assert.Equal(1, client.StartCount);
+    }
+
     // Given: 認証に失敗するサーバー
     // When: セッションがエラーイベントを受け取る
     // Then: 再接続せずエラー状態で止まる
