@@ -1,5 +1,4 @@
 import Foundation
-import os
 import XCTest
 @testable import RealtimeTranslator
 
@@ -136,13 +135,13 @@ final class RoutingFixtureTests: XCTestCase {
     }
 }
 
-private final class RoutingHarness: @unchecked Sendable {
+private final class RoutingHarness {
     let sourceTransport: FakeRealtimeWebSocketTransport
     let englishTransport: FakeRealtimeWebSocketTransport
     let japaneseTransport: FakeRealtimeWebSocketTransport
     let dual: DualRealtimeTranslationClient
 
-    private let transportErrors = OSAllocatedUnfairLock(initialState: 0)
+    private let transportErrors = TransportErrorCounter()
     private var collector: Task<Void, Never>?
     private var selectedTarget: RealtimeTranslationOutputLanguage?
 
@@ -199,10 +198,11 @@ private final class RoutingHarness: @unchecked Sendable {
             dual: dual
         )
         let stream = await dual.events
+        let transportErrors = harness.transportErrors
         harness.collector = Task {
             for await event in stream {
                 if case .error(_, let code) = event.event, code == "transport" {
-                    harness.transportErrors.withLock { $0 += 1 }
+                    await transportErrors.increment()
                 }
             }
         }
@@ -266,7 +266,7 @@ private final class RoutingHarness: @unchecked Sendable {
     func transportErrorCount() async -> Int {
         // ポンプの非同期 emit を少し待つ。
         try? await Task.sleep(nanoseconds: 80_000_000)
-        return transportErrors.withLock { $0 }
+        return await transportErrors.value
     }
 
     func appendedFrameTexts(from transport: FakeRealtimeWebSocketTransport) async -> [String] {
@@ -333,5 +333,13 @@ private final class RoutingHarness: @unchecked Sendable {
             code: 3,
             userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for sent count \(minimum)"]
         )
+    }
+}
+
+private actor TransportErrorCounter {
+    private(set) var value = 0
+
+    func increment() {
+        value += 1
     }
 }

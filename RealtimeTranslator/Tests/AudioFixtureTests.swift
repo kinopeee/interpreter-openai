@@ -125,7 +125,7 @@ final class AudioFixtureTests: XCTestCase {
                 gain: Float(SharedFixtures.real(fixture["gain"]))
             )
             let actual = encoded.withUnsafeBytes { buffer -> Int16 in
-                buffer.load(as: Int16.self)
+                Int16(littleEndian: buffer.loadUnaligned(as: Int16.self))
             }
             XCTAssertEqual(Int16(SharedFixtures.number(fixture["expected"])), actual)
         }

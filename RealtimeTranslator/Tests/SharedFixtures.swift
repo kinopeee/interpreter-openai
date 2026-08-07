@@ -60,16 +60,21 @@ enum SharedFixtures {
 
     static func optionalNumber(_ value: Any?) -> Int? {
         guard let value, !(value is NSNull) else { return nil }
-        switch value {
-        case let int as Int:
-            return int
-        case let double as Double:
-            return Int(double)
-        case let number as NSNumber:
-            return number.intValue
-        default:
-            return nil
+
+        if let number = value as? NSNumber {
+            switch String(cString: number.objCType) {
+            case "f", "d":
+                return Int(exactly: number.doubleValue)
+            case "C", "S", "I", "L", "Q":
+                return Int(exactly: number.uint64Value)
+            default:
+                return Int(exactly: number.int64Value)
+            }
         }
+
+        if let int = value as? Int { return int }
+        if let double = value as? Double { return Int(exactly: double) }
+        return nil
     }
 
     static func real(_ value: Any?) -> Double {
