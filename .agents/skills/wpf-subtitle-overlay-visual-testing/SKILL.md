@@ -24,18 +24,30 @@ Create a WPF exe **outside the repo** that `<Reference>`s the built
 `RealtimeTranslator.App.dll` / `Core.dll` / `Platform.dll` (plus an `AfterTargets="Build"`
 `Copy` of the whole App bin folder into `$(OutDir)`, otherwise transitive NAudio deps are missing).
 
+Match production DPI bootstrap in the harness csproj / startup:
+
+- Set `<ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>` (same as
+  `RealtimeTranslator.App.csproj`).
+- Call `ApplicationConfiguration.Initialize()` before any WPF window is created
+  (production does this via `DpiBootstrap` `[ModuleInitializer]`).
+
 ```csharp
+ApplicationConfiguration.Initialize(); // before any WPF window; needs UseWindowsForms
+
 var vm = new SubtitleOverlayViewModel();
 var overlay = new SubtitleOverlayWindow(vm);   // real production XAML, BAML resolves fine
 overlay.Width = 800; overlay.Left = 40; overlay.Show();
 const double anchorBottom = 700; // chosen bottom edge for this harness instance
 vm.FontSize = 30;
+const string src = "これは二行になるくらいの日本語原文サンプルです。";
+const string dst = "This is a sample English translation long enough to wrap.";
+string? banner = null; // or SubtitleSnapshotBuilder.ConnectingBanner, etc.
 vm.Apply(new SubtitleSnapshot(new LiveSubtitle(src, dst), banner));
-_ = overlay.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+_ = overlay.Dispatcher.InvokeAsync(() =>
 {
     overlay.UpdateLayout();
     overlay.Top = anchorBottom - overlay.ActualHeight; // bottom-anchor after every Apply
-});
+}, DispatcherPriority.Loaded);
 ```
 
 Gotchas learned the hard way:
@@ -47,8 +59,9 @@ Gotchas learned the hard way:
   Set `Left`/`Width` yourself and recompute `Top = anchorBottom - ActualHeight` after every
   `Apply` (production `OnRenderSizeChanged` only clamps — without this, height changes grow
   from the top and look like position jumps).
-- Measure inside `Dispatcher.BeginInvoke(DispatcherPriority.Loaded, ...)` after
-  `UpdateLayout()`, or `ActualHeight` is stale.
+- Measure inside `Dispatcher.InvokeAsync(..., DispatcherPriority.Loaded)` after
+  `UpdateLayout()`, or `ActualHeight` is stale. Prefer `InvokeAsync(Action, DispatcherPriority)`
+  over `BeginInvoke(DispatcherPriority, Delegate)` — the latter does not accept a lambda.
 
 ## True before/after side by side
 
@@ -83,10 +96,13 @@ Run **two processes** of the harness at once, upper and lower half of the screen
 
 ## Display scaling
 
-Where Settings > System > Display lets you change scaling, exercise 150% and 200% and
-record the result. On the standard virtual display used for verification here, scaling is
-greyed out at "100% (Recommended)" — mark high-DPI behaviour *untested* in that case.
-Do **not** edit the registry to force scaling.
+Only compare 150%/200% results against production when the harness uses the same DPI
+bootstrap (`ApplicationHighDpiMode=PerMonitorV2` + `ApplicationConfiguration.Initialize()`
+before WPF startup). Where Settings > System > Display lets you change scaling, exercise
+150% and 200% and record the result. On the standard virtual display used for verification
+here, scaling is greyed out at "100% (Recommended)" — mark high-DPI behaviour *untested*
+and exclude those scales from production comparisons. Do **not** edit the registry to
+force scaling.
 
 ## Devin Secrets Needed
 
