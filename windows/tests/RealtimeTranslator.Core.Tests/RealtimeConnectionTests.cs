@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -205,6 +206,28 @@ public sealed class RealtimeConnectionTests
 
         Assert.Equal(RealtimeTranslationErrorKind.CloseTimeout, error.Kind);
         Assert.Equal("session.close", TypeOf(transport.Sent[^1]));
+    }
+
+    // Given: handshake 前（未 ready）の翻訳接続。closeTimeout は長く、誤って待つとテストが固まる
+    // When: ready 前に graceful close する
+    // Then: session.closed 待ちへ入らず即完了し、session.close も送らない
+    [Fact]
+    public async Task TranslationConnectionCloseBeforeReadyForceClosesWithoutWaiting()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.Japanese,
+            transport,
+            "test-safety",
+            closeTimeout: TimeSpan.FromSeconds(2));
+
+        var started = Stopwatch.StartNew();
+        await connection.CloseGracefullyAsync();
+        started.Stop();
+
+        Assert.True(started.Elapsed < TimeSpan.FromMilliseconds(500));
+        Assert.Equal(1, transport.CloseCount);
+        Assert.Empty(transport.Sent);
     }
 
     // Given: 原文 transcription 接続

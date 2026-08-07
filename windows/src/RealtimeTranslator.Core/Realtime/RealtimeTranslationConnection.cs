@@ -159,6 +159,7 @@ public sealed class RealtimeTranslationConnection : IDisposable
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            bool wasReady;
             lock (_sync)
             {
                 if (_isClosing)
@@ -166,8 +167,21 @@ public sealed class RealtimeTranslationConnection : IDisposable
                     return;
                 }
 
+                wasReady = _isReady;
                 _isClosing = true;
                 _isReady = false;
+                if (!wasReady)
+                {
+                    // handshake 未完了では receive loop が無いため session.closed を待てない。
+                    // 原文接続と同様に即 teardown し、停止が closeTimeout まで固まらないようにする。
+                    _epoch += 1;
+                }
+            }
+
+            if (!wasReady)
+            {
+                await TearDownTransportAsync().ConfigureAwait(false);
+                return;
             }
 
             try

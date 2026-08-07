@@ -250,6 +250,29 @@ final class RealtimeTranslationConnectionTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(closeCount, 1)
     }
 
+    func testCloseBeforeReadyForceClosesWithoutWaitingForSessionClosed() async throws {
+        // Given: handshake前（isReady=false）の翻訳接続。closeTimeoutは長く、誤って待つとテストが固まる。
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeTranslationConnection(
+            target: .english,
+            transport: transport,
+            safetyIdentifier: "safety",
+            closeTimeoutNanoseconds: 2_000_000_000
+        )
+
+        // When: ready前にgraceful closeする
+        let started = ContinuousClock.now
+        try await connection.closeGracefully()
+        let elapsed = ContinuousClock.now - started
+
+        // Then: session.closed待ちへ入らず即完了し、transportを閉じる
+        XCTAssertLessThan(elapsed, .milliseconds(500))
+        let closeCount = await transport.closeCount
+        XCTAssertEqual(closeCount, 1)
+        let sentCount = await transport.sent.count
+        XCTAssertEqual(sentCount, 0)
+    }
+
     func testSessionUpdateTimeout() async {
         // Given: created後にupdatedが来ない
         let transport = FakeRealtimeWebSocketTransport()
