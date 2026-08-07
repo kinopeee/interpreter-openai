@@ -160,6 +160,12 @@ public sealed class SubtitleTranscriptStore
         var currentBytes = FileByteCountLocked();
         if (currentBytes >= _maxFileBytes || currentBytes + chunkBytes > _maxFileBytes)
         {
+            // macOS 実装と同じく初回/以降を区別してフラグを立てる（呼び出し側の一度だけ案内と併用）。
+            if (_announcedSizeLimit)
+            {
+                return SubtitleTranscriptAppendResult.Capped;
+            }
+
             _announcedSizeLimit = true;
             return SubtitleTranscriptAppendResult.Capped;
         }
