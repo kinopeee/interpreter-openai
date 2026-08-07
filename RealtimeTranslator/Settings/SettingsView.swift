@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum SettingsWindowMetrics {
@@ -102,6 +103,39 @@ struct SettingsView: View {
             statusIsError = true
             statusMessage = error.localizedDescription
         }
+    }
+}
+
+// MARK: - Components
+
+/// 文章入力を前提とした固定高さの複数行フィールド。
+/// 入力量でレイアウトが動かないよう高さを固定し、超過分は内部スクロールへ逃がす。
+private struct SettingsMultilineField: View {
+    let title: String
+    @Binding var text: String
+    let height: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+
+            TextEditor(text: $text)
+                .font(.body)
+                .textEditorStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .padding(.vertical, 5)
+                .padding(.horizontal, 3)
+                .frame(height: height)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color(nsColor: .textBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+                )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -255,8 +289,14 @@ private struct SettingsSpeechRecognitionTab: View {
             }
 
             Section("認識ヒント") {
-                TextField("認識プロンプト", text: $settings.transcriptionPrompt)
-                    .textFieldStyle(.roundedBorder)
+                SettingsMultilineField(
+                    title: "認識プロンプト",
+                    text: $settings.transcriptionPrompt,
+                    height: 96
+                )
+                Text("会議のテーマや話者、話題を文章で書くと認識精度が上がります。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Text(
                     "\(promptCharacterCount)/\(RealtimeSessionTuning.promptCharacterLimit) 文字"
                         + (isPromptOverLimit ? "（超過分は切り詰められます）" : "")
@@ -264,13 +304,11 @@ private struct SettingsSpeechRecognitionTab: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-                Text("キーワード (1行1語)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextEditor(text: $settings.transcriptionKeywordsText)
-                    .font(.body)
-                    .frame(minHeight: 88, maxHeight: 120)
-                    .border(Color.secondary.opacity(0.3))
+                SettingsMultilineField(
+                    title: "キーワード (1行1語)",
+                    text: $settings.transcriptionKeywordsText,
+                    height: 112
+                )
                 Text(
                     "\(keywordCount)/\(RealtimeSessionTuning.keywordLimit) 語"
                         + (isKeywordLineCountOverLimit ? "（超過分は送信されません）" : "")
