@@ -118,13 +118,28 @@ struct RealtimeSessionTuning: Sendable, Equatable {
         return result
     }
 
-    /// promptを送信可能な形へ正規化する。改行→空白、trim、文字数上限。
-    static func sanitizedPrompt(_ text: String) -> String {
-        let collapsed = text
+    /// 改行を空白へ潰し trim した prompt（切り詰め前）。
+    private static func collapsedPrompt(_ text: String) -> String {
+        text
             .replacingOccurrences(of: "\r\n", with: " ")
             .replacingOccurrences(of: "\n", with: " ")
             .replacingOccurrences(of: "\r", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 正規化後・切り詰め前の文字数が送信上限を超えるか。
+    static func isPromptOverCharacterLimit(_ text: String) -> Bool {
+        collapsedPrompt(text).count > promptCharacterLimit
+    }
+
+    /// 送信対象キーワード数が上限を超えるか（`<>` のみの行など送信されない行は数えない）。
+    static func isKeywordCountOverLimit(from text: String) -> Bool {
+        parseKeywords(from: text, limit: keywordLimit + 1).count > keywordLimit
+    }
+
+    /// promptを送信可能な形へ正規化する。改行→空白、trim、文字数上限。
+    static func sanitizedPrompt(_ text: String) -> String {
+        let collapsed = collapsedPrompt(text)
         guard collapsed.count > promptCharacterLimit else { return collapsed }
         let end = collapsed.index(collapsed.startIndex, offsetBy: promptCharacterLimit)
         return String(collapsed[..<end])

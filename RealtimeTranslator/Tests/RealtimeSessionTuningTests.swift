@@ -58,6 +58,44 @@ final class RealtimeSessionTuningTests: XCTestCase {
         XCTAssertEqual(prompt.count, RealtimeSessionTuning.promptCharacterLimit)
     }
 
+    func testIsPromptOverCharacterLimitUsesCollapsedLength() {
+        // Given: 末尾改行で生文字数だけ上限を超えるprompt
+        let text = String(repeating: "a", count: RealtimeSessionTuning.promptCharacterLimit) + "\n"
+
+        // When: 上限判定する
+        let overLimit = RealtimeSessionTuning.isPromptOverCharacterLimit(text)
+
+        // Then: 改行は空白化のあと trim され、送信値は切り詰めなし
+        XCTAssertEqual(text.count, RealtimeSessionTuning.promptCharacterLimit + 1)
+        XCTAssertEqual(
+            RealtimeSessionTuning.sanitizedPrompt(text).count,
+            RealtimeSessionTuning.promptCharacterLimit
+        )
+        XCTAssertFalse(overLimit)
+        XCTAssertTrue(
+            RealtimeSessionTuning.isPromptOverCharacterLimit(
+                String(repeating: "a", count: RealtimeSessionTuning.promptCharacterLimit + 1)
+            )
+        )
+    }
+
+    func testIsKeywordCountOverLimitIgnoresNonSubmittedLines() {
+        // Given: 送信されない <> 行を含み、実送信は上限ちょうど
+        let keywords = (1...RealtimeSessionTuning.keywordLimit)
+            .map { "word\($0)" }
+            .joined(separator: "\n") + "\n<>\n"
+
+        // When: 上限判定する
+        let overLimit = RealtimeSessionTuning.isKeywordCountOverLimit(from: keywords)
+
+        // Then: 送信対象は64語なので超過ではない
+        XCTAssertEqual(
+            RealtimeSessionTuning.parseKeywords(from: keywords).count,
+            RealtimeSessionTuning.keywordLimit
+        )
+        XCTAssertFalse(overLimit)
+    }
+
     @MainActor
     func testAppSettingsSessionTuningUsesStoredValues() {
         // Given: カスタム設定を持つAppSettings (終了時に既定値へ戻す)
