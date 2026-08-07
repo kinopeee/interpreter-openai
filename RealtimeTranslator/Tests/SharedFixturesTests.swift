@@ -26,4 +26,15 @@ final class SharedFixturesTests: XCTestCase {
         XCTAssertNil(fractionalResult)
         XCTAssertNil(outOfRangeResult)
     }
+
+    func testOptionalNumberRejectsBooleanValues() {
+        // Given: Swift Bool と Boolean を保持する NSNumber
+        let values: [Any] = [true as Any, NSNumber(value: true)]
+
+        // When: fixture の整数として読み取る
+        let actual = values.map { SharedFixtures.optionalNumber($0) }
+
+        // Then: true を整数の 1 として受理しない
+        XCTAssertTrue(actual.allSatisfy { $0 == nil })
+    }
 }

@@ -62,6 +62,7 @@ enum SharedFixtures {
         guard let value, !(value is NSNull) else { return nil }
 
         if let number = value as? NSNumber {
+            guard !isBooleanNumber(number) else { return nil }
             switch String(cString: number.objCType) {
             case "f", "d":
                 return Int(exactly: number.doubleValue)
@@ -78,13 +79,18 @@ enum SharedFixtures {
     }
 
     static func real(_ value: Any?) -> Double {
+        if let number = value as? NSNumber {
+            guard !isBooleanNumber(number) else {
+                fatalError("expected a number")
+            }
+            return number.doubleValue
+        }
+
         switch value {
         case let double as Double:
             return double
         case let int as Int:
             return Double(int)
-        case let number as NSNumber:
-            return number.doubleValue
         default:
             fatalError("expected a number")
         }
