@@ -28,8 +28,14 @@ Create a WPF exe **outside the repo** that `<Reference>`s the built
 var vm = new SubtitleOverlayViewModel();
 var overlay = new SubtitleOverlayWindow(vm);   // real production XAML, BAML resolves fine
 overlay.Width = 800; overlay.Left = 40; overlay.Show();
+const double anchorBottom = 700; // chosen bottom edge for this harness instance
 vm.FontSize = 30;
 vm.Apply(new SubtitleSnapshot(new LiveSubtitle(src, dst), banner));
+_ = overlay.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+{
+    overlay.UpdateLayout();
+    overlay.Top = anchorBottom - overlay.ActualHeight; // bottom-anchor after every Apply
+});
 ```
 
 Gotchas learned the hard way:
@@ -37,9 +43,10 @@ Gotchas learned the hard way:
 - Add `UseWPF` **and** `UseWindowsForms` (the window uses `System.Windows.Forms.Screen`),
   then add `using` aliases for `Application`, `Button`, `Brushes`, `Color`, `Point`,
   `FontFamily`, `HorizontalAlignment`, `Orientation` — otherwise every WPF type is ambiguous.
-- Do **not** call `ApplyPlacement`; it centers at 70% of the work area. Set `Left`/`Width`
-  yourself and emulate the app's bottom anchoring with `Top = anchorBottom - ActualHeight`
-  after each update (that is what makes height changes visible as position jumps).
+- Do **not** call `ApplyPlacement`; it centers at 70% of the work area, capped at 1,200 DIP.
+  Set `Left`/`Width` yourself and recompute `Top = anchorBottom - ActualHeight` after every
+  `Apply` (production `OnRenderSizeChanged` only clamps — without this, height changes grow
+  from the top and look like position jumps).
 - Measure inside `Dispatcher.BeginInvoke(DispatcherPriority.Loaded, ...)` after
   `UpdateLayout()`, or `ActualHeight` is stale.
 
@@ -47,7 +54,9 @@ Gotchas learned the hard way:
 
 Run **two processes** of the harness at once, upper and lower half of the screen:
 
-1. `git stash` the change, build, copy `RealtimeTranslator.*.dll` to `appbin-before/`, `git stash pop`.
+1. `git stash` the change, build, copy the **entire** App bin folder (not just
+   `RealtimeTranslator.*.dll` — NAudio and other transitive deps are required) to
+   `appbin-before/`, then `git stash pop` and build again into `appbin-after/` the same way.
 2. Build the harness twice with `-p:AppBin=<dir> -p:BaseOutputPath=<out-dir>\`.
 3. One instance owns a full-screen backdrop window (white / bright gradient / dark) plus a
    control panel; both poll a shared state file for background/scene/font size.
@@ -74,9 +83,10 @@ Run **two processes** of the harness at once, upper and lower half of the screen
 
 ## Display scaling
 
-Changing Windows display scaling to 150%/200% is **not possible** on the standard virtual
-display here — Settings > System > Display shows "100% (Recommended)" greyed out. Report
-high-DPI behaviour as *untested* rather than editing the registry.
+Where Settings > System > Display lets you change scaling, exercise 150% and 200% and
+record the result. On the standard virtual display used for verification here, scaling is
+greyed out at "100% (Recommended)" — mark high-DPI behaviour *untested* in that case.
+Do **not** edit the registry to force scaling.
 
 ## Devin Secrets Needed
 
