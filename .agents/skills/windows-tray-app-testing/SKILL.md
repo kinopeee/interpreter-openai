@@ -48,6 +48,7 @@ hidden icons, then **right-click** the Realtime Translator icon in the popup.
 Reading Japanese file content in PowerShell needs explicit encoding, otherwise it is mojibake:
 
 ```powershell
+$path = "$env:LOCALAPPDATA\RealtimeTranslator\transcripts\session.txt"
 [Console]::OutputEncoding=[Text.Encoding]::UTF8
 Get-Content $path -Encoding UTF8
 ```
@@ -81,9 +82,14 @@ Most VMs have no audio input, so live speech → subtitle → transcript cannot 
    「字幕を書き出し…」/「字幕記録をクリア」items stay greyed out and clicks silently do nothing
    (easy to misdiagnose as a hung UI).
 4. **Forcing a write failure** (to see the「字幕の記録に失敗しました」toast): populate
-   `session.txt`, then `Set-ItemProperty $f -Name IsReadOnly -Value $true`, restart the app so the
-   menu items are enabled, and use「字幕記録をクリア」→ OK. Locking the file from another process
-   is less reliable than the read-only attribute. Remember to clear the attribute afterwards.
+   `session.txt`, then set the file read-only, restart the app so the menu items are enabled,
+   and use「字幕記録をクリア」→ OK. Locking the file from another process is less reliable than
+   the read-only attribute. Remember to clear the attribute afterwards:
+
+```powershell
+$f = "$env:LOCALAPPDATA\RealtimeTranslator\transcripts\session.txt"
+Set-ItemProperty $f -Name IsReadOnly -Value $true
+```
 
 ## Gotchas
 
@@ -91,9 +97,17 @@ Most VMs have no audio input, so live speech → subtitle → transcript cannot 
   raised close together will hide one. Trigger banners one at a time.
 - Confirmation dialogs are WinForms/WPF `MessageBox`; they can appear centered over whatever
   window has focus, not necessarily over the app.
-- Always start from a clean profile for opt-in tests: `Remove-Item -Recurse -Force "$env:LOCALAPPDATA\RealtimeTranslator"`.
+- Always start from a clean profile for opt-in tests (local data **and** stored API key):
+
+```powershell
+Remove-Item -Recurse -Force "$env:LOCALAPPDATA\RealtimeTranslator" -ErrorAction SilentlyContinue
+cmdkey /delete:RealtimeTranslator:openai-api-key
+```
 
 ## Devin Secrets Needed
 
 - `OPENAI_API_KEY` — only for live speech/translation validation (requires a mic or virtual
-  audio cable). All opt-in/persistence/export/clear/banner testing above works without it.
+  audio cable). Paste the value into Settings → `一般` → API key and save so it lands in
+  Windows Credential Manager (`RealtimeTranslator:openai-api-key`). Do **not** print the key
+  to the console, Trace, or any file. All opt-in/persistence/export/clear/banner testing above
+  works without it.
