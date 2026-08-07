@@ -24,12 +24,14 @@ public sealed class AppSettingsCodecTests
             TranscriptionKeywordsText = "Devin\nWASAPI",
             NoiseReduction = RealtimeTranslationNoiseReduction.NearField,
             TranscriptionDelay = RealtimeTranscriptionDelay.High,
+            RecordSubtitles = true,
         };
 
         var restored = AppSettingsCodec.Decode(AppSettingsCodec.Encode(settings));
 
         Assert.Equal(settings, restored);
         Assert.True(restored.HasAcceptedCurrentConsent);
+        Assert.True(restored.RecordSubtitles);
     }
 
     // Given: API キーを含めてはいけない設定 JSON
@@ -58,6 +60,16 @@ public sealed class AppSettingsCodecTests
         Assert.Equal(AppSettingsData.Default.NoiseReduction, settings.NoiseReduction);
         Assert.Equal(AppSettingsData.Default.TranscriptionDelay, settings.TranscriptionDelay);
         Assert.Equal(AppSettingsData.Default.FontSize, settings.FontSize);
+    }
+
+    // Given: recordSubtitles を含まない古い settings.json
+    // When: 読み込む
+    // Then: false になる
+    [Fact]
+    public void DecodeMissingRecordSubtitlesDefaultsToFalse()
+    {
+        var settings = AppSettingsCodec.Decode("{\"fontSize\":32}");
+        Assert.False(settings.RecordSubtitles);
     }
 
     // Given: 範囲外のフォントサイズ

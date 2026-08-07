@@ -93,6 +93,7 @@ public partial class SettingsWindow : Window
         PromptBox.Text = settings.TranscriptionPrompt;
         KeywordsBox.Text = settings.TranscriptionKeywordsText;
         FontSizeSlider.Value = settings.FontSize;
+        RecordSubtitlesCheckBox.IsChecked = settings.RecordSubtitles;
         UpdateFontSizeText();
         UpdateHintCounters();
     }
@@ -215,6 +216,16 @@ public partial class SettingsWindow : Window
         }
 
         Publish(Settings with { FontSize = AppSettingsCodec.ClampFontSize(FontSizeSlider.Value) });
+    }
+
+    private void OnRecordSubtitlesChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        Publish(Settings with { RecordSubtitles = RecordSubtitlesCheckBox.IsChecked == true });
     }
 
     private void OnApplyPreset(object sender, RoutedEventArgs e)

@@ -95,6 +95,16 @@
                   ValueChanged="OnFontSizeChanged" />
         </StackPanel>
 
+        <CheckBox x:Name="RecordSubtitlesCheckBox"
+                  Margin="0,12,0,4"
+                  Content="字幕をローカルに記録する"
+                  Checked="OnRecordSubtitlesChanged"
+                  Unchecked="OnRecordSubtitlesChanged" />
+        <TextBlock TextWrapping="Wrap"
+                   Foreground="Gray"
+                   Margin="0,0,0,0"
+                   Text="この PC にのみ保存します。OpenAI へ追加送信しません。トレイメニューから書き出し・クリアできます。" />
+
         <TextBlock Text="操作" FontWeight="Bold" Margin="0,20,0,8" />
         <TextBlock TextWrapping="Wrap"
                    Text="タスクトレイのメニュー、または Ctrl + Alt + Space で録音の開始/停止を切り替えます。字幕位置はトレイメニューの「字幕位置を編集」からドラッグで変更できます。" />

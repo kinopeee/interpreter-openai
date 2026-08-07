@@ -3,7 +3,7 @@ import SwiftUI
 
 enum SettingsWindowMetrics {
     static let contentWidth: CGFloat = 560
-    static let contentHeight: CGFloat = 520
+    static let contentHeight: CGFloat = 560
 }
 
 struct SettingsView: View {
@@ -343,6 +343,11 @@ private struct SettingsSubtitleAndControlsTab: View {
                 Stepper(value: $settings.fontSize, in: 18...48, step: 2) {
                     Text("フォントサイズ: \(Int(settings.fontSize))pt")
                 }
+
+                Toggle("字幕をローカルに記録する", isOn: $settings.recordSubtitles)
+                Text("このMacにのみ保存します。OpenAIへ追加送信しません。メニューから書き出し・クリアできます。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("操作") {

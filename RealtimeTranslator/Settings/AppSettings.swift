@@ -25,6 +25,7 @@ final class AppSettings {
         static let transcriptionKeywordsText = "transcriptionKeywordsText"
         static let noiseReductionMode = "noiseReductionMode"
         static let transcriptionDelayMode = "transcriptionDelayMode"
+        static let recordSubtitles = "recordSubtitles"
     }
 
     /// 現在有効な同意バージョン。文言変更時にインクリメントする。
@@ -79,6 +80,11 @@ final class AppSettings {
         didSet {
             UserDefaults.standard.set(transcriptionDelayMode, forKey: Keys.transcriptionDelayMode)
         }
+    }
+
+    /// オプトイン時のみ確定字幕をローカルファイルへ追記する。
+    var recordSubtitles: Bool {
+        didSet { UserDefaults.standard.set(recordSubtitles, forKey: Keys.recordSubtitles) }
     }
 
     var hasAcceptedCurrentOpenAIConsent: Bool {
@@ -147,6 +153,8 @@ final class AppSettings {
         } else {
             transcriptionDelayMode = RealtimeTranscriptionDelay.low.rawValue
         }
+
+        recordSubtitles = defaults.bool(forKey: Keys.recordSubtitles)
     }
 
     func acceptOpenAIConsent() {

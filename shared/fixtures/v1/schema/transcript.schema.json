@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v1/schema/transcript.schema.json",
+  "title": "Subtitle transcript formatting fixtures",
+  "type": "object",
+  "required": ["version", "limits", "messages", "format"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "limits": {
+      "type": "object",
+      "required": ["maxFileBytes"],
+      "additionalProperties": false,
+      "properties": {
+        "maxFileBytes": { "const": 10485760 }
+      }
+    },
+    "messages": {
+      "type": "object",
+      "required": ["sizeLimitBanner", "writeFailureBanner"],
+      "additionalProperties": false,
+      "properties": {
+        "sizeLimitBanner": { "type": "string" },
+        "writeFailureBanner": { "type": "string" }
+      }
+    },
+    "format": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "kind", "timestamp", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "enum": ["entry", "sessionStart"] },
+          "timestamp": { "type": "string" },
+          "sourceText": { "type": "string" },
+          "translatedText": { "type": "string" },
+          "expected": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "./schema/transcript.schema.json",
+  "version": 1,
+  "description": "字幕セッション記録のプレーンテキスト整形と上限・バナー文言の正本。",
+  "limits": {
+    "maxFileBytes": 10485760
+  },
+  "messages": {
+    "sizeLimitBanner": "字幕記録が上限に達しました。書き出してクリアしてください",
+    "writeFailureBanner": "字幕の記録に失敗しました"
+  },
+  "format": [
+    {
+      "name": "basic japanese english pair",
+      "kind": "entry",
+      "timestamp": "2026-08-07T15:40:12+09:00",
+      "sourceText": "こんにちは",
+      "translatedText": "Hello",
+      "expected": "--- 2026-08-07T15:40:12+09:00\n原文: こんにちは\n訳文: Hello\n\n"
+    },
+    {
+      "name": "english japanese pair",
+      "kind": "entry",
+      "timestamp": "2026-08-07T15:41:00+09:00",
+      "sourceText": "Good morning",
+      "translatedText": "おはようございます",
+      "expected": "--- 2026-08-07T15:41:00+09:00\n原文: Good morning\n訳文: おはようございます\n\n"
+    },
+    {
+      "name": "multiline source and translation keep newlines",
+      "kind": "entry",
+      "timestamp": "2026-08-07T16:00:00Z",
+      "sourceText": "一行目\n二行目",
+      "translatedText": "line one\nline two",
+      "expected": "--- 2026-08-07T16:00:00Z\n原文: 一行目\n二行目\n訳文: line one\nline two\n\n"
+    },
+    {
+      "name": "empty texts are still formatted when called directly",
+      "kind": "entry",
+      "timestamp": "2026-08-07T16:05:00+00:00",
+      "sourceText": "",
+      "translatedText": "",
+      "expected": "--- 2026-08-07T16:05:00+00:00\n原文: \n訳文: \n\n"
+    },
+    {
+      "name": "session start marker",
+      "kind": "sessionStart",
+      "timestamp": "2026-08-07T15:40:12+09:00",
+      "expected": "=== 録音開始 2026-08-07T15:40:12+09:00\n\n"
+    }
+  ]
+}

@@ -11,6 +11,7 @@ macOS版（Swift / `RealtimeTranslator/`）とWindows版（.NET / `windows/`）�
 - 原文文字種の反転（末尾ウィンドウ判定）をセグメント境界として扱い、確定・ルーティング・prerollを切り替える。
 - Translationセッション付属のtranscriptionを原文authorityにしない。専用transcriptionの低遅延deltaを使い、原文と訳文を常にペア表示する。
 - APIキー、Authorization、音声、原文、訳文をログ・status file・アラートへ出さない。
+- オプトイン時のみ、確定した原文・訳文ペアをローカル字幕記録ファイルへ保存する（ログ・status・アラートへは出さない）。
 - 初回MVPでは翻訳音声を再生しない。`session.output_audio.delta` は受信するがデコードしない。
 
 ## 構成
@@ -21,7 +22,7 @@ macOS版（Swift / `RealtimeTranslator/`）とWindows版（.NET / `windows/`）�
 - `Audio/SpokenLanguage.swift` / `SpokenLanguageDetector.swift`: 原文deltaの文字種判定と末尾ウィンドウによる言語切替検出。
 - `OpenAI/`: Realtime Transcription / Translation WebSocket、イベントcodec、日英dual client。
 - `Realtime/InterpretationSession.swift`: 接続、音声送信、字幕整列、状態遷移を統合。
-- `Subtitles/`: 単一current字幕集約、透明オーバーレイ、録音コントロール。
+- `Subtitles/`: 単一current字幕集約、透明オーバーレイ、録音コントロール、オプトイン時のローカル字幕記録。
 - `project.yml`: XcodeGen設定、Info.plist項目、権限説明の正本。
 
 ## 並行処理
@@ -108,7 +109,7 @@ xcodebuild test -scheme RealtimeTranslator \
 
 - `windows/RealtimeTranslator.slnx`: .NET 10 solution。プロジェクト追加はここへ登録する。
 - `windows/src/RealtimeTranslator.Core/`: OS非依存。codec、tuning、packetizer、gain、言語判定、字幕整列、接続、`InterpretationSession`、字幕snapshot・geometry・設定codec。Windows APIやWPF型を持ち込まない。
-- `windows/src/RealtimeTranslator.Platform/`: Windows固有。WASAPI capture、資格情報マネージャー、install identifier、多重起動防止、グローバルホットキー、ログ、設定ファイル。
+- `windows/src/RealtimeTranslator.Platform/`: Windows固有。WASAPI capture、資格情報マネージャー、install identifier、多重起動防止、グローバルホットキー、ログ、設定ファイル、字幕記録ファイル。
 - `windows/src/RealtimeTranslator.App/`: WPFシェル（composition root、トレイ、設定ウィンドウ、字幕オーバーレイ）。ロジックは持たずCoreへ委譲する。
 - `windows/tests/`: `RealtimeTranslator.Core.Tests` と `RealtimeTranslator.Platform.Tests`（xUnit）。
 - `shared/`: 言語中立の契約とfixture。両実装の同値性はここを正本にする。
@@ -121,6 +122,7 @@ xcodebuild test -scheme RealtimeTranslator \
 - 音声は 24 kHz / PCM16 / mono / little-endian / 100 msフレーム（2,400 samples・4,800 bytes）。フレームchannelは容量32の`DropOldest`で、遅延を溜めずに落とす。
 - 原文送信は翻訳送信と分離する。翻訳送信が3回連続で失敗したらtransport errorを1回通知して翻訳pumpを止め、再接続へ回す。
 - 字幕は単一currentスロット。日本語60文字・英語120文字で末尾を`…`へ切り詰める。停止後は約5秒でcurrentを消す。
+- オプトイン時の字幕記録ファイルは `%LOCALAPPDATA%\RealtimeTranslator\transcripts\session.txt` へ追記する（ログ・status・アラートへ本文は出さない）。
 - オーバーレイは通常時 `WS_EX_TRANSPARENT` / `WS_EX_NOACTIVATE` / `WS_EX_TOOLWINDOW` でクリック透過。位置編集モードのみ透過を外してドラッグを受ける。位置は作業領域へクランプして保存する。
 - 多重起動は`SingleInstanceLease`でUI生成前に判定する。2個目は案内ダイアログのみで終了する。
 - ホットキーは既定 `Control + Alt + Space`（`NoRepeat`）。受け皿は常駐しているオーバーレイのHWNDにする。
