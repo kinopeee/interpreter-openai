@@ -407,6 +407,121 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(session.state, .idle)
     }
 
+    func testReconnectFinalizesCompletePairBeforeNewEpoch() async throws {
+        // Given: idle finalize 前の完全な原文+訳文ペア
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let startCountAtListening = dual.startCallCount
+
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "会議を始めます", eventID: "s1", elapsedMs: 10)
+        )
+        await waitUntil { dual.spokenLanguages.contains(.japanese) }
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(
+                delta: "Let's start the meeting",
+                eventID: "t1",
+                elapsedMs: 20
+            )
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.translatedText.contains("Let's start the meeting")
+                == true
+                && delegate.latestSnapshot?.current.state == .live
+        }
+
+        // When: transport error で再接続し beginNewEpoch する
+        dual.emit(
+            target: .english,
+            event: .error(message: "socket closed", code: "transport")
+        )
+
+        // Then: 捨てる前に .finalized が発行され、オプトイン字幕記録へ届く
+        await waitUntil(timeout: 3) {
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText.contains("会議を始めます")
+                    && $0.translatedText.contains("Let's start the meeting")
+            }
+        }
+        await waitUntil(timeout: 3) {
+            session.state == .listening && dual.startCallCount > startCountAtListening
+        }
+        let finalized = try XCTUnwrap(
+            delegate.finalizedSnapshots.last {
+                $0.sourceText.contains("会議を始めます")
+            }
+        )
+        XCTAssertEqual(finalized.translatedText, "Let's start the meeting")
+        await session.stop()
+    }
+
+    func testFatalErrorFinalizesCompletePairBeforeStopping() async throws {
+        // Given: idle finalize 前の完全ペア
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let startCountAtListening = dual.startCallCount
+
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "ありがとうございます", eventID: "s1", elapsedMs: 10)
+        )
+        await waitUntil { dual.spokenLanguages.contains(.japanese) }
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Thank you", eventID: "t1", elapsedMs: 20)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.translatedText.contains("Thank you") == true
+                && delegate.latestSnapshot?.current.state == .live
+        }
+
+        // When: 認証失敗でセッションが止まる
+        dual.emit(
+            target: .english,
+            event: .error(message: "Incorrect API key provided", code: "invalid_api_key")
+        )
+        await waitUntil { session.state == .error }
+
+        // Then: エラー遷移前に .finalized が発行される
+        await waitUntil {
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText.contains("ありがとうございます")
+                    && $0.translatedText.contains("Thank you")
+            }
+        }
+        XCTAssertEqual(dual.startCallCount, startCountAtListening)
+        let finalized = try XCTUnwrap(
+            delegate.finalizedSnapshots.last {
+                $0.sourceText.contains("ありがとうございます")
+            }
+        )
+        XCTAssertEqual(finalized.translatedText, "Thank you")
+    }
+
     func testPostStopSubtitleClearsAfterRetention() async throws {
         // Given: 短い保持時間と、原文・訳文が揃ったlisteningセッション
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
@@ -918,6 +1033,7 @@ final class InterpretationSessionDelegateSpy: InterpretationSessionDelegate {
     private(set) var states: [TranslationState] = []
     private(set) var messages: [String] = []
     private(set) var latestSnapshot: SubtitleSnapshot?
+    private(set) var finalizedSnapshots: [LiveSubtitle] = []
 
     func interpretationSession(
         _ session: InterpretationSession,
@@ -931,6 +1047,9 @@ final class InterpretationSessionDelegateSpy: InterpretationSessionDelegate {
         didUpdateSubtitles snapshot: SubtitleSnapshot
     ) {
         latestSnapshot = snapshot
+        if snapshot.current.state == .finalized {
+            finalizedSnapshots.append(snapshot.current)
+        }
     }
 
     func interpretationSession(

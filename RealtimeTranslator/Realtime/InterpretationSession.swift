@@ -155,6 +155,8 @@ final class InterpretationSession {
             } catch let error as RealtimeTranslationError {
                 guard generation == lifecycleGeneration else { return }
                 await tearDownStreaming()
+                // epoch/buffer を捨てる前に完全ペアを確定し、オプトイン字幕記録へ渡す。
+                flushPendingFinalizeIfNeeded()
                 enterError(error)
                 return
             } catch let error as RealtimeAudioCaptureError {
@@ -168,6 +170,7 @@ final class InterpretationSession {
                 default:
                     guard generation == lifecycleGeneration else { return }
                     await tearDownStreaming()
+                    flushPendingFinalizeIfNeeded()
                     enterError(error)
                     return
                 }
@@ -175,6 +178,7 @@ final class InterpretationSession {
                 // 未知のアプリエラーは再接続せず即 error（予測可能性を優先）。
                 guard generation == lifecycleGeneration else { return }
                 await tearDownStreaming()
+                flushPendingFinalizeIfNeeded()
                 enterError(error)
                 return
             }
@@ -182,6 +186,7 @@ final class InterpretationSession {
             guard generation == lifecycleGeneration else { return }
             guard reconnectAttempt < Self.maxReconnectAttempts else {
                 await tearDownStreaming()
+                flushPendingFinalizeIfNeeded()
                 enterError(RealtimeTranslationError.recoverableTransportFailure("再接続上限"))
                 return
             }
@@ -257,6 +262,9 @@ final class InterpretationSession {
         }
 
         let epoch = await dualClient.connectionEpoch
+        // 再接続時 beginNewEpoch は buffer を捨てる。idle finalize 前の完全ペアを
+        // 先に確定しないと、オプトイン字幕記録へ .finalized が届かない。
+        flushPendingFinalizeIfNeeded()
         assembler.beginNewEpoch(epoch)
         routingSourceText = ""
         routedSpokenLanguage = .unknown
@@ -445,6 +453,29 @@ final class InterpretationSession {
             renderTask = nil
             pendingUpdate = nil
         }
+    }
+
+    /// 完全な原文+訳文ペアが assembler / aggregator に残っていれば idle 待ちを飛ばして確定する。
+    /// 停止・再接続・致命エラーで epoch/buffer を捨てる直前に呼び、字幕記録の欠落を防ぐ。
+    private func flushPendingFinalizeIfNeeded() {
+        renderTask?.cancel()
+        renderTask = nil
+        // スロットル中の live snapshot より assembler を正とする。
+        pendingUpdate = nil
+
+        let flushAt = Date().addingTimeInterval(RealtimeSubtitleAssembler.idleFinalizeInterval)
+        if let update = assembler.tick(now: flushAt) {
+            apply(update)
+            return
+        }
+
+        // assembler が空でも、live 経路 (canFinalize: false) の完全ペアが
+        // aggregator に残っている場合がある — 字幕記録のため確定する。
+        let before = aggregator.snapshot().current
+        guard before.state != .finalized else { return }
+        let snapshot = aggregator.forceFinalize()
+        guard snapshot.current.state == .finalized else { return }
+        delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
     }
 
     private func requireAPIKey() throws -> String {
