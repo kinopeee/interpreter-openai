@@ -8,9 +8,47 @@ enum SubtitleTextLayout {
 enum SubtitleVisualStyle {
     static let sourceTextOpacity = 0.7
     static let visibleTranslatedTextOpacity = 1.0
+    /// 訳文が未確定である間だけ末尾へ添える記号。
+    static let pendingMarker = "…"
+    static let pendingMarkerOpacity = 0.55
+    static let translationFadeDuration = 0.12
 
     static func translatedTextOpacity(for subtitle: LiveSubtitle) -> Double {
-        subtitle.translatedText.isEmpty ? 0 : visibleTranslatedTextOpacity
+        // 空白だけの訳文は「未着」と同じ扱いにし、マーカー行だけを出す。
+        if hasVisibleTranslation(subtitle.translatedText) {
+            return visibleTranslatedTextOpacity
+        }
+        return showsTranslationPendingMarker(for: subtitle)
+            ? visibleTranslatedTextOpacity
+            : 0
+    }
+
+    /// 確定前だけマーカーを出す。確定は finalizePair / forceFinalize 経由でしか起きないため、
+    /// セグメント途中で切り替わらず明滅しない。
+    static func showsTranslationPendingMarker(for subtitle: LiveSubtitle) -> Bool {
+        guard subtitle.state == .live, !subtitle.isEmpty else { return false }
+        // 文末記号で終わる訳文へ足すと「are.…」のような誤記に見えるため出さない。
+        // この条件は確定直前にしか成立せず、確定後の見た目と一致する。
+        return !endsWithTerminalPunctuation(subtitle.translatedText)
+    }
+
+    /// 空白・改行だけの訳文は表示本文なしとみなす。
+    static func hasVisibleTranslation(_ text: String) -> Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// 固定値だとフォントサイズ設定（18〜48pt）で行間比率が変わるため、サイズ比例にする。
+    static func lineSpacing(forFontSize fontSize: Double) -> Double {
+        fontSize / 10
+    }
+
+    /// Aggregator の確定句読点に加え、表示用マーカー抑制のため末尾の `…` も見る。
+    /// （`……` の誤記を避ける。Aggregator の確定条件自体は変えない。）
+    private static func endsWithTerminalPunctuation(_ text: String) -> Bool {
+        guard let last = text.trimmingCharacters(in: .whitespacesAndNewlines).last else {
+            return false
+        }
+        return "。．.!？?！…".contains(last)
     }
 }
 
@@ -92,35 +130,34 @@ struct SubtitleView: View {
     @ViewBuilder
     private func subtitleBlock(_ subtitle: LiveSubtitle) -> some View {
         let clippedSource = SubtitleTailClipper.clip(subtitle.sourceText)
-        let clippedTranslation = SubtitleTailClipper.clip(subtitle.translatedText)
         let sourceText = clippedSource.isEmpty ? " " : clippedSource
-        let translatedText = clippedTranslation.isEmpty ? " " : clippedTranslation
+        let lineSpacing = SubtitleVisualStyle.lineSpacing(forFontSize: fontSize)
+        let translatedOpacity = SubtitleVisualStyle.translatedTextOpacity(for: subtitle)
 
         VStack(alignment: .leading, spacing: 4) {
-            Text(sourceText)
-                .font(
-                    .system(
-                        size: fontSize * 0.85,
-                        weight: .medium
-                    )
-                )
-                .foregroundStyle(Color.white.opacity(SubtitleVisualStyle.sourceTextOpacity))
-                .lineLimit(SubtitleTextLayout.currentLineLimit, reservesSpace: true)
-                .truncationMode(SubtitleTextLayout.truncationMode)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .subtitleHalo()
-                .opacity(subtitle.sourceText.isEmpty ? 0 : 1)
-                .accessibilityHidden(subtitle.sourceText.isEmpty)
+            reservedTextSlot(
+                Text(sourceText),
+                font: .system(size: fontSize * 0.85, weight: .medium),
+                lineSpacing: lineSpacing
+            )
+            .foregroundStyle(Color.white.opacity(SubtitleVisualStyle.sourceTextOpacity))
+            .subtitleHalo()
+            .opacity(subtitle.sourceText.isEmpty ? 0 : 1)
+            .accessibilityHidden(subtitle.sourceText.isEmpty)
 
-            Text(translatedText)
-                .font(.system(size: fontSize, weight: .semibold))
-                .foregroundStyle(.white)
-                .lineLimit(SubtitleTextLayout.currentLineLimit, reservesSpace: true)
-                .truncationMode(SubtitleTextLayout.truncationMode)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .subtitleHalo()
-                .opacity(SubtitleVisualStyle.translatedTextOpacity(for: subtitle))
-                .accessibilityHidden(subtitle.translatedText.isEmpty)
+            reservedTextSlot(
+                translatedText(for: subtitle),
+                font: .system(size: fontSize, weight: .semibold),
+                lineSpacing: lineSpacing
+            )
+            .foregroundStyle(.white)
+            .subtitleHalo()
+            .opacity(translatedOpacity)
+            .animation(
+                .easeOut(duration: SubtitleVisualStyle.translationFadeDuration),
+                value: translatedOpacity
+            )
+            .accessibilityHidden(translatedOpacity == 0)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 8)
@@ -131,13 +168,62 @@ struct SubtitleView: View {
         )
         .shadow(color: .black.opacity(0.58), radius: 8, y: 3)
     }
+
+    /// 実際の行数で高さが変わらないよう、行間込みの最大行数分を常に確保する。
+    /// `lineLimit(_:reservesSpace:)` の予約高は行間を含まないため、
+    /// 非表示のsizerで高さを決めて本文をその上へ重ねる。
+    private func reservedTextSlot(
+        _ text: Text,
+        font: Font,
+        lineSpacing: Double
+    ) -> some View {
+        Text(
+            verbatim: String(
+                repeating: "\n",
+                count: SubtitleTextLayout.currentLineLimit - 1
+            )
+        )
+        .font(font)
+        .lineSpacing(lineSpacing)
+        .lineLimit(SubtitleTextLayout.currentLineLimit, reservesSpace: true)
+        .hidden()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .topLeading) {
+            text
+                .font(font)
+                .lineSpacing(lineSpacing)
+                .lineLimit(SubtitleTextLayout.currentLineLimit)
+                .truncationMode(SubtitleTextLayout.truncationMode)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// 訳文本体と未確定マーカーを1つのTextへ連結する。
+    /// SubtitleTailClipper が付ける先頭の「…」とは別物で、こちらは末尾に付く。
+    private func translatedText(for subtitle: LiveSubtitle) -> Text {
+        let clipped = SubtitleTailClipper.clip(subtitle.translatedText)
+        // clip は空白のみ入力をそのまま返すため、表示可否は trim 後で判定する。
+        let hasBody = SubtitleVisualStyle.hasVisibleTranslation(clipped)
+        guard SubtitleVisualStyle.showsTranslationPendingMarker(for: subtitle) else {
+            return Text(hasBody ? clipped : " ")
+        }
+
+        let marker = Text(SubtitleVisualStyle.pendingMarker)
+            .foregroundStyle(
+                Color.white.opacity(SubtitleVisualStyle.pendingMarkerOpacity)
+            )
+        return hasBody ? Text(clipped) + marker : marker
+    }
 }
 
 private extension View {
+    /// オフセットなしの影を重ねて左上だけ薄くならない対称アウトラインにする。
+    /// 太さとにじみは半径ではなくopacityで調整する。
     func subtitleHalo() -> some View {
         self
-            .shadow(color: .black.opacity(0.98), radius: 2, x: 1, y: 1)
-            .shadow(color: .black.opacity(0.9), radius: 5)
+            .shadow(color: .black.opacity(0.8), radius: 1.5)
+            .shadow(color: .black.opacity(0.8), radius: 1.5)
+            .shadow(color: .black.opacity(0.85), radius: 5)
     }
 }
 

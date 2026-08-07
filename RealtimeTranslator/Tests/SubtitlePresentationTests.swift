@@ -6,7 +6,7 @@ import XCTest
 @MainActor
 final class SubtitlePresentationTests: XCTestCase {
     func testMetadataOnlyChangesKeepSamePresentation() {
-        // Given: 表示文字が同じで、更新時刻・状態・freshnessだけが異なる字幕
+        // Given: 表示文字と確定状態が同じで、更新時刻・freshnessだけが異なる字幕
         let first = snapshot(
             current: subtitle(
                 source: "同じ原文",
@@ -21,7 +21,7 @@ final class SubtitlePresentationTests: XCTestCase {
                 source: "同じ原文",
                 translation: "Same translation",
                 isTranslationCurrent: true,
-                state: .finalized,
+                state: .live,
                 updatedAt: Date()
             )
         )
@@ -32,6 +32,28 @@ final class SubtitlePresentationTests: XCTestCase {
 
         // Then: 意味メタデータだけでは再描画対象にしない
         XCTAssertEqual(firstPresentation, secondPresentation)
+    }
+
+    func testFinalizeStateChangeChangesPresentation() {
+        // Given: 本文が同じまま未確定から確定へ移った字幕
+        let live = snapshot(
+            current: subtitle(
+                source: "同じ原文",
+                translation: "Same translation",
+                state: .live
+            )
+        )
+        let finalized = snapshot(
+            current: subtitle(
+                source: "同じ原文",
+                translation: "Same translation",
+                state: .finalized
+            )
+        )
+
+        // When: 表示状態を比較する
+        // Then: 未確定マーカーを消すため確定状態の変化も再描画対象にする
+        XCTAssertNotEqual(live.presentation, finalized.presentation)
     }
 
     func testSourceTextChangeChangesPresentation() {
@@ -85,14 +107,95 @@ final class SubtitlePresentationTests: XCTestCase {
     }
 
     func testEmptyTranslationRemainsHidden() {
-        // Given: 翻訳結果がまだ空の字幕
-        let subtitle = subtitle(source: "原文", translation: "")
+        // Given: 原文も訳文もまだ空の字幕
+        let subtitle = subtitle(source: "", translation: "")
 
         // When: 訳文の表示opacityを算出する
         let opacity = SubtitleVisualStyle.translatedTextOpacity(for: subtitle)
 
         // Then: 空のプレースホルダー文字は表示しない
         XCTAssertEqual(opacity, 0)
+    }
+
+    func testEmptyTranslationShowsPendingMarkerWhileSourceIsLive() {
+        // Given: 原文だけ届いて訳文がまだ空の未確定字幕
+        let subtitle = subtitle(source: "原文", translation: "", state: .live)
+
+        // When: マーカー表示可否と訳文の表示opacityを算出する
+        let showsMarker = SubtitleVisualStyle.showsTranslationPendingMarker(for: subtitle)
+        let opacity = SubtitleVisualStyle.translatedTextOpacity(for: subtitle)
+
+        // Then: 翻訳中であることを伝えるマーカーだけを表示する
+        XCTAssertTrue(showsMarker)
+        XCTAssertEqual(opacity, 1)
+    }
+
+    func testWhitespaceOnlyTranslationIsTreatedAsEmptyForPendingMarker() {
+        // Given: 訳文が空白・改行だけの未確定字幕
+        let subtitle = subtitle(source: "原文", translation: " \n\t ", state: .live)
+
+        // When: 表示本文の有無と opacity を算出する
+        let hasVisible = SubtitleVisualStyle.hasVisibleTranslation(subtitle.translatedText)
+        let showsMarker = SubtitleVisualStyle.showsTranslationPendingMarker(for: subtitle)
+        let opacity = SubtitleVisualStyle.translatedTextOpacity(for: subtitle)
+
+        // Then: 空白は未着と同じ扱いでマーカー行だけを出す（不可視スペース＋… にしない）
+        XCTAssertFalse(hasVisible)
+        XCTAssertTrue(showsMarker)
+        XCTAssertEqual(opacity, 1)
+    }
+
+    func testPendingMarkerDisappearsOnlyAfterFinalize() {
+        // Given: 訳文ありの未確定字幕、同じ本文の確定字幕、原文だけの未確定字幕
+        let liveWithTranslation = subtitle(
+            source: "原文",
+            translation: "Translation",
+            state: .live
+        )
+        let finalized = subtitle(
+            source: "原文",
+            translation: "Translation",
+            state: .finalized
+        )
+        let liveSourceOnly = subtitle(source: "原文", translation: "", state: .live)
+
+        // When: それぞれのマーカー表示可否を算出する
+        // Then: 確定した字幕だけマーカーを消し、未確定の間は出し続ける
+        XCTAssertTrue(
+            SubtitleVisualStyle.showsTranslationPendingMarker(for: liveWithTranslation)
+        )
+        XCTAssertFalse(
+            SubtitleVisualStyle.showsTranslationPendingMarker(for: finalized)
+        )
+        XCTAssertTrue(
+            SubtitleVisualStyle.showsTranslationPendingMarker(for: liveSourceOnly)
+        )
+    }
+
+    func testPendingMarkerIsHiddenWhenTranslationEndsWithPunctuation() {
+        // Given: 文末記号で終わる未確定の訳文（日本語・英語・省略記号）
+        let japanese = subtitle(source: "原文", translation: "訳文です。", state: .live)
+        let english = subtitle(source: "Source", translation: "Translated.", state: .live)
+        let ellipsis = subtitle(source: "原文", translation: "続きはまた…", state: .live)
+        let midSentence = subtitle(source: "原文", translation: "訳文の途中", state: .live)
+
+        // When: マーカー表示可否を算出する
+        // Then: 「訳文です。…」「……」のような誤記に見える連結を避け、文中だけ出す
+        XCTAssertFalse(SubtitleVisualStyle.showsTranslationPendingMarker(for: japanese))
+        XCTAssertFalse(SubtitleVisualStyle.showsTranslationPendingMarker(for: english))
+        XCTAssertFalse(SubtitleVisualStyle.showsTranslationPendingMarker(for: ellipsis))
+        XCTAssertTrue(SubtitleVisualStyle.showsTranslationPendingMarker(for: midSentence))
+    }
+
+    func testLineSpacingScalesWithFontSize() {
+        // Given: 設定可能な最小18ptと最大48ptのフォントサイズ
+        // When: 行間を算出する
+        let smallSpacing = SubtitleVisualStyle.lineSpacing(forFontSize: 18)
+        let largeSpacing = SubtitleVisualStyle.lineSpacing(forFontSize: 48)
+
+        // Then: 固定値ではなくフォントサイズ比例で行間比率を保つ
+        XCTAssertEqual(smallSpacing, 1.8, accuracy: 0.001)
+        XCTAssertEqual(largeSpacing, 4.8, accuracy: 0.001)
     }
 
     func testTextLayoutUsesCompactLimitsAndKeepsSentenceEnd() {
@@ -156,6 +259,85 @@ final class SubtitlePresentationTests: XCTestCase {
 
         // Then: currentスロットは空でも高さを保ち、レイアウトが縮まない
         XCTAssertEqual(emptyHeight, withHeight, accuracy: 0.5)
+    }
+
+    func testPendingMarkerDoesNotChangeMeasuredHeight() {
+        // Given: 訳文空の未確定・訳文ありの未確定・確定済みの3状態
+        let pendingWithoutTranslation = SubtitleView(
+            snapshot: snapshot(
+                current: subtitle(source: "現在の原文", translation: "", state: .live)
+            ),
+            fontSize: 32,
+            isEditingPosition: false
+        )
+        let pendingWithTranslation = SubtitleView(
+            snapshot: snapshot(
+                current: subtitle(
+                    source: "現在の原文",
+                    translation: "Current translation",
+                    state: .live
+                )
+            ),
+            fontSize: 32,
+            isEditingPosition: false
+        )
+        let finalized = SubtitleView(
+            snapshot: snapshot(
+                current: subtitle(
+                    source: "現在の原文",
+                    translation: "Current translation",
+                    state: .finalized
+                )
+            ),
+            fontSize: 32,
+            isEditingPosition: false
+        )
+
+        // When: 同じ幅で固有高を計測する
+        let pendingEmptyHeight = measuredHeight(of: pendingWithoutTranslation, width: 600)
+        let pendingFilledHeight = measuredHeight(of: pendingWithTranslation, width: 600)
+        let finalizedHeight = measuredHeight(of: finalized, width: 600)
+
+        // Then: マーカーの出し入れでパネルが上下しない
+        XCTAssertEqual(pendingFilledHeight, pendingEmptyHeight, accuracy: 0.5)
+        XCTAssertEqual(finalizedHeight, pendingEmptyHeight, accuracy: 0.5)
+    }
+
+    func testHeightStaysFixedAtFontSizeBounds() {
+        // Given: 設定可能な最小18ptと最大48ptで、短文と何行にも折り返す長文
+        let longText = Array(
+            repeating: "This translation should remain fully readable.",
+            count: 30
+        ).joined(separator: " ")
+
+        for fontSize in [18.0, 48.0] {
+            let shortView = SubtitleView(
+                snapshot: snapshot(
+                    current: subtitle(source: "短い原文", translation: "Short translation")
+                ),
+                fontSize: fontSize,
+                isEditingPosition: false
+            )
+            let longView = SubtitleView(
+                snapshot: snapshot(
+                    current: subtitle(source: longText, translation: longText)
+                ),
+                fontSize: fontSize,
+                isEditingPosition: false
+            )
+
+            // When: 同じ幅で固有高を計測する
+            let shortHeight = measuredHeight(of: shortView, width: 600)
+            let longHeight = measuredHeight(of: longView, width: 600)
+
+            // Then: フォントサイズ比例の行間でも境界サイズで高さが固定される
+            XCTAssertEqual(
+                longHeight,
+                shortHeight,
+                accuracy: 0.5,
+                "fontSize \(fontSize) で高さが固定されていない"
+            )
+        }
     }
 
     func testIdleBannerSitsBelowReservedCurrentSlot() {
