@@ -68,6 +68,9 @@ final class SubtitleTranscriptStore: @unchecked Sendable {
     func markSessionStart() -> SubtitleTranscriptAppendResult {
         lock.lock()
         defer { lock.unlock() }
+        // 新セッションでは直前セッション末尾との連続重複判定を切る。
+        lastSource = nil
+        lastTranslation = nil
         let timestamp = SubtitleTranscriptFormatter.formatTimestamp(now(), timeZone: timeZone)
         let chunk = SubtitleTranscriptFormatter.formatSessionStart(timestamp: timestamp)
         return appendChunkLocked(chunk, updatingLastPair: nil)
@@ -162,6 +165,11 @@ final class SubtitleTranscriptStore: @unchecked Sendable {
             }
             return .appended
         } catch {
+            // 失敗したペアも記憶し、ticker からの同一再試行で失敗バナーを連発しない。
+            if let updatingLastPair {
+                lastSource = updatingLastPair.0
+                lastTranslation = updatingLastPair.1
+            }
             return .failed
         }
     }

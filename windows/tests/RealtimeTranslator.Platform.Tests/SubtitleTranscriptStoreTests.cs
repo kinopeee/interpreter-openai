@@ -67,6 +67,40 @@ public sealed class SubtitleTranscriptStoreTests : IDisposable
         Assert.Equal(1, text.Split("--- ", StringSplitOptions.None).Length - 1);
     }
 
+    // Given: 直前セッション末尾と同じペア
+    // When: MarkSessionStart のあと再度 Append する
+    // Then: 新セッションでは重複スキップせず追記される
+    [Fact]
+    public void MarkSessionStartClearsConsecutiveDedup()
+    {
+        var store = MakeStore();
+        Assert.Equal(SubtitleTranscriptAppendResult.Appended, store.AppendEntry("こんにちは", "Hello"));
+        Assert.Equal(SubtitleTranscriptAppendResult.Appended, store.MarkSessionStart());
+        Assert.Equal(SubtitleTranscriptAppendResult.Appended, store.AppendEntry("こんにちは", "Hello"));
+
+        var text = File.ReadAllText(_filePath, Encoding.UTF8);
+        Assert.Equal(2, text.Split("--- ", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, text.Split("=== 録音開始 ", StringSplitOptions.None).Length - 1);
+    }
+
+    // Given: 書き込み不能なパス
+    // When: 同じペアを連続で Append する
+    // Then: 初回は Failed、2回目は SkippedDuplicate になり再試行しない
+    [Fact]
+    public void FailedWriteRemembersPairToAvoidRetrySpam()
+    {
+        var blockedPath = Path.Combine(_directory, "blocked-dir");
+        Directory.CreateDirectory(blockedPath);
+        var store = new SubtitleTranscriptStore(blockedPath, () => _fixedNow);
+
+        Assert.Equal(
+            SubtitleTranscriptAppendResult.Failed,
+            store.AppendEntry("こんにちは", "Hello"));
+        Assert.Equal(
+            SubtitleTranscriptAppendResult.SkippedDuplicate,
+            store.AppendEntry("こんにちは", "Hello"));
+    }
+
     // Given: 空白のみの原文または訳文
     // When: append する
     // Then: SkippedEmpty になり HasEntries は false

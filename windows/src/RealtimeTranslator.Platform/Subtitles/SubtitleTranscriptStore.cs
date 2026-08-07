@@ -78,6 +78,9 @@ public sealed class SubtitleTranscriptStore
     {
         lock (_sync)
         {
+            // 新セッションでは直前セッション末尾との連続重複判定を切る。
+            _lastSource = null;
+            _lastTranslation = null;
             var timestamp = SubtitleTranscriptFormatter.FormatTimestamp(_now());
             var chunk = SubtitleTranscriptFormatter.FormatSessionStart(timestamp);
             return AppendChunkLocked(chunk, updateLastPair: false, source: null, translation: null);
@@ -192,6 +195,13 @@ public sealed class SubtitleTranscriptStore
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
+            // 失敗したペアも記憶し、同一再試行で失敗通知を連発しない。
+            if (updateLastPair)
+            {
+                _lastSource = source;
+                _lastTranslation = translation;
+            }
+
             return SubtitleTranscriptAppendResult.Failed;
         }
     }

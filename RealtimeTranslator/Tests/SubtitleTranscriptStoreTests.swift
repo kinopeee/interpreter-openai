@@ -70,6 +70,48 @@ final class SubtitleTranscriptStoreTests: XCTestCase {
         XCTAssertEqual(text.components(separatedBy: "--- ").count - 1, 1)
     }
 
+    // Given: 直前セッション末尾と同じペア
+    // When: markSessionStart のあと再度 append する
+    // Then: 新セッションでは重複スキップせず追記される
+    func testMarkSessionStartClearsConsecutiveDedup() throws {
+        let store = makeStore()
+        XCTAssertEqual(
+            store.appendEntry(sourceText: "こんにちは", translatedText: "Hello"),
+            .appended
+        )
+        XCTAssertEqual(store.markSessionStart(), .appended)
+        XCTAssertEqual(
+            store.appendEntry(sourceText: "こんにちは", translatedText: "Hello"),
+            .appended
+        )
+
+        let text = try String(contentsOf: fileURL, encoding: .utf8)
+        XCTAssertEqual(text.components(separatedBy: "--- ").count - 1, 2)
+        XCTAssertEqual(text.components(separatedBy: "=== 録音開始 ").count - 1, 1)
+    }
+
+    // Given: 書き込み不能なパス
+    // When: 同じペアを連続で append する
+    // Then: 初回は failed、2回目は skippedDuplicate になり再試行しない
+    func testFailedWriteRemembersPairToAvoidRetrySpam() {
+        let blockedPath = directory.appendingPathComponent("blocked-dir", isDirectory: true)
+        try? FileManager.default.createDirectory(at: blockedPath, withIntermediateDirectories: true)
+        let store = SubtitleTranscriptStore(
+            fileURL: blockedPath,
+            now: { self.fixedNow },
+            timeZone: TimeZone(secondsFromGMT: 9 * 3600)!
+        )
+
+        XCTAssertEqual(
+            store.appendEntry(sourceText: "こんにちは", translatedText: "Hello"),
+            .failed
+        )
+        XCTAssertEqual(
+            store.appendEntry(sourceText: "こんにちは", translatedText: "Hello"),
+            .skippedDuplicate
+        )
+    }
+
     // Given: 空白のみの原文または訳文
     // When: append する
     // Then: skippedEmpty になりファイルは作られないか空のまま
