@@ -9,7 +9,9 @@
     "parseKeywords",
     "parseKeywordsLimit",
     "sanitizedPrompt",
-    "sanitizedPromptLimit"
+    "sanitizedPromptLimit",
+    "isPromptOverCharacterLimit",
+    "isKeywordCountOverLimit"
   ],
   "additionalProperties": false,
   "properties": {
@@ -85,6 +87,38 @@
         "repeatedCharacter": { "type": "string", "minLength": 1, "maxLength": 1 },
         "inputLength": { "type": "integer", "minimum": 1 },
         "expectedLength": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "isPromptOverCharacterLimit": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "repeatedCharacter", "inputLength", "suffix", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "repeatedCharacter": { "type": "string", "minLength": 1, "maxLength": 1 },
+          "inputLength": { "type": "integer", "minimum": 0 },
+          "suffix": { "type": "string" },
+          "expected": { "type": "boolean" }
+        }
+      }
+    },
+    "isKeywordCountOverLimit": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "lineTemplate", "lineCount", "suffix", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "lineTemplate": { "type": "string" },
+          "lineCount": { "type": "integer", "minimum": 0 },
+          "suffix": { "type": "string" },
+          "expected": { "type": "boolean" }
+        }
       }
     }
   }

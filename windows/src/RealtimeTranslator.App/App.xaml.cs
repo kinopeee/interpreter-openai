@@ -52,9 +52,7 @@ public partial class App : Application, IDisposable
     private TranslationState _state = TranslationState.Idle;
     private bool _isEditingPosition;
     private bool _shuttingDown;
-    private bool _didAnnounceTranscriptCap;
-    /// <summary>現在の録音区間でセッション開始マーカーを既に書いたか。</summary>
-    private bool _hasOpenTranscriptSession;
+    private readonly SubtitleTranscriptSessionGate _transcriptSession = new();
 
     /// <summary>録音停止から字幕を消すまでの猶予 (macOS 版と同じ)。</summary>
     public static readonly TimeSpan SubtitleClearDelay = TimeSpan.FromSeconds(5);
@@ -214,10 +212,9 @@ public partial class App : Application, IDisposable
             return;
         }
 
-        _hasOpenTranscriptSession = false;
-        if (_settings.RecordSubtitles)
+        if (_transcriptSession.BeginRecording(_settings.RecordSubtitles))
         {
-            OpenTranscriptSessionIfNeeded();
+            HandleTranscriptResult(_transcriptStore.MarkSessionStart());
         }
 
         _ = RunGuarded(_session!.StartAsync);
@@ -287,7 +284,7 @@ public partial class App : Application, IDisposable
         try
         {
             _transcriptStore.Clear();
-            _didAnnounceTranscriptCap = false;
+            _transcriptSession.ResetCapAnnouncement();
             _tray?.SetHasRecordedSubtitles(false);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -329,10 +326,7 @@ public partial class App : Application, IDisposable
     private void UpdateSettings(AppSettingsData settings)
     {
         // メモリ上の設定とフォントは即時反映し、ディスク書き込みだけ debounce する。
-        var enablingTranscript =
-            !_settings.RecordSubtitles
-            && settings.RecordSubtitles
-            && _state is not TranslationState.Idle and not TranslationState.Error;
+        var previouslyEnabled = _settings.RecordSubtitles;
         _settings = settings;
         _overlayViewModel.FontSize = settings.FontSize;
         _pendingSettingsSave = settings;
@@ -340,9 +334,13 @@ public partial class App : Application, IDisposable
         _settingsSaveDebounce.Start();
 
         // 録音中の初回オプトインだけ開始マーカーを補う（OFF→ON の再有効化では重複させない）。
-        if (enablingTranscript)
+        var isActivelyRecording = _state is not TranslationState.Idle and not TranslationState.Error;
+        if (_transcriptSession.TryOpenOnMidRecordingOptIn(
+                previouslyEnabled,
+                settings.RecordSubtitles,
+                isActivelyRecording))
         {
-            OpenTranscriptSessionIfNeeded();
+            HandleTranscriptResult(_transcriptStore.MarkSessionStart());
         }
     }
 
@@ -366,7 +364,7 @@ public partial class App : Application, IDisposable
             _state = state;
             if (state is TranslationState.Idle or TranslationState.Error)
             {
-                _hasOpenTranscriptSession = false;
+                _transcriptSession.ResetOnIdle();
             }
 
             _tray?.UpdateState(state);
@@ -379,7 +377,11 @@ public partial class App : Application, IDisposable
         if (update.ShouldFinalize && _settings.RecordSubtitles)
         {
             // 録音中にオプトインした場合も、最初の確定ペア前に開始マーカーを書く。
-            OpenTranscriptSessionIfNeeded();
+            if (_transcriptSession.TryOpenBeforeAppend(recordSubtitles: true))
+            {
+                HandleTranscriptResult(_transcriptStore.MarkSessionStart());
+            }
+
             HandleTranscriptResult(
                 _transcriptStore.AppendEntry(update.SourceText, update.TranslatedText));
         }
@@ -391,17 +393,6 @@ public partial class App : Application, IDisposable
         });
     }
 
-    private void OpenTranscriptSessionIfNeeded()
-    {
-        if (_hasOpenTranscriptSession)
-        {
-            return;
-        }
-
-        HandleTranscriptResult(_transcriptStore.MarkSessionStart());
-        _hasOpenTranscriptSession = true;
-    }
-
     private void HandleTranscriptResult(SubtitleTranscriptAppendResult result)
     {
         switch (result)
@@ -410,12 +401,11 @@ public partial class App : Application, IDisposable
                 Dispatcher.InvokeAsync(() => _tray?.SetHasRecordedSubtitles(true));
                 break;
             case SubtitleTranscriptAppendResult.Capped:
-                if (_didAnnounceTranscriptCap)
+                if (!_transcriptSession.TryAnnounceCap())
                 {
                     return;
                 }
 
-                _didAnnounceTranscriptCap = true;
                 AppLogger.Info(LogCategory.General, "subtitle transcript reached size limit");
                 Dispatcher.InvokeAsync(() =>
                     _tray?.ShowMessage(SubtitleTranscriptStore.SizeLimitBanner));
