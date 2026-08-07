@@ -213,17 +213,8 @@ public sealed class InterpretationSession : IDisposable
 
         cts?.Dispose();
 
-        // 停止時点で完全ペアが残っていれば確定して見せる。
-        RealtimeSubtitleUpdate? pending;
-        lock (_sync)
-        {
-            pending = _assembler.Tick(_timeProvider.GetUtcNow() + RealtimeSubtitleAssembler.IdleFinalizeInterval);
-        }
-
-        if (pending is { } update)
-        {
-            SubtitleUpdated?.Invoke(this, update);
-        }
+        // 停止時点で完全ペアが残っていれば確定して見せる（オプトイン字幕記録も含む）。
+        FlushPendingFinalizeIfNeeded();
 
         SetState(TranslationState.Idle);
     }
@@ -304,6 +295,8 @@ public sealed class InterpretationSession : IDisposable
                 }
 
                 await TearDownStreamingAsync().ConfigureAwait(false);
+                // epoch を捨てる前に完全ペアを確定し、オプトイン字幕記録へ渡す。
+                FlushPendingFinalizeIfNeeded();
                 EnterError(error.Message);
                 return;
             }
@@ -336,6 +329,7 @@ public sealed class InterpretationSession : IDisposable
             if (attempt < 0)
             {
                 await TearDownStreamingAsync().ConfigureAwait(false);
+                FlushPendingFinalizeIfNeeded();
                 EnterError("再接続上限に達しました");
                 return;
             }
@@ -369,6 +363,9 @@ public sealed class InterpretationSession : IDisposable
         }
 
         var epoch = _dualClient.ConnectionEpoch;
+        // 再接続時 BeginNewEpoch は buffer を捨てる。idle finalize 前の完全ペアを
+        // 先に確定しないと、オプトイン字幕記録へ ShouldFinalize が届かない。
+        FlushPendingFinalizeIfNeeded();
         lock (_sync)
         {
             _assembler.BeginNewEpoch(epoch);
@@ -649,6 +646,25 @@ public sealed class InterpretationSession : IDisposable
         finally
         {
             await _dualClient.ForceCloseAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// 完全な原文+訳文ペアが assembler に残っていれば idle 待ちを飛ばして確定する。
+    /// 停止・再接続・致命エラーで epoch/buffer を捨てる直前に呼び、字幕記録の欠落を防ぐ。
+    /// </summary>
+    private void FlushPendingFinalizeIfNeeded()
+    {
+        RealtimeSubtitleUpdate? pending;
+        lock (_sync)
+        {
+            pending = _assembler.Tick(
+                _timeProvider.GetUtcNow() + RealtimeSubtitleAssembler.IdleFinalizeInterval);
+        }
+
+        if (pending is { } update)
+        {
+            SubtitleUpdated?.Invoke(this, update);
         }
     }
 
