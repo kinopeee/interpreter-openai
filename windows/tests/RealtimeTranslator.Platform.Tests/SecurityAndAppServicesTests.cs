@@ -50,6 +50,22 @@ public sealed class SecurityAndAppServicesTests
         Assert.Null(store.Load());
     }
 
+    // Given: 未保存ターゲット（CredRead → ERROR_NOT_FOUND = 1168）
+    // When: HasStoredKey / Load する
+    // Then: 例外にせず false / null を返す（Settings・録音開始ゲートの契約）
+    // NOTE: ERROR_NO_SUCH_LOGON_SESSION (1312) も Load 内で同じく null に畳む。
+    [Fact]
+    public void MissingCredentialDoesNotThrowFromHasStoredKeyOrLoad()
+    {
+        Assert.Equal(1168, CredentialManagerApiKeyStore.ErrorNotFound);
+        Assert.Equal(1312, CredentialManagerApiKeyStore.ErrorNoSuchLogonSession);
+
+        var store = new CredentialManagerApiKeyStore($"RealtimeTranslator.Tests:{Guid.NewGuid()}");
+
+        Assert.False(store.HasStoredKey);
+        Assert.Null(store.Load());
+    }
+
     // Given: テスト専用のレジストリキー
     // When: install 識別子を 2 回取得する
     // Then: 同じ UUID が返り、送信値はその SHA-256 hex になる

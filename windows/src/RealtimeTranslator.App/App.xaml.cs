@@ -180,7 +180,18 @@ public partial class App : Application, IDisposable
             return;
         }
 
-        if (_apiKeyStore?.HasStoredKey != true)
+        // CredRead が NOT_FOUND 以外で失敗しても録音開始ゲートでプロセスを落とさない。
+        bool hasStoredKey;
+        try
+        {
+            hasStoredKey = _apiKeyStore?.HasStoredKey == true;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            hasStoredKey = false;
+        }
+
+        if (!hasStoredKey)
         {
             ShowSettings();
             _tray?.ShowMessage("録音を開始する前に、設定で OpenAI API キーを保存してください。");
