@@ -59,16 +59,24 @@ final class RealtimeSessionTuningTests: XCTestCase {
     }
 
     func testIsPromptOverCharacterLimitUsesCollapsedLength() {
-        // Given: 生文字数は上限超えだが CRLF 正規化後は上限未満
-        let text = String(repeating: "a", count: 999) + "\r\n"
+        // Given: 末尾改行で生文字数だけ上限を超えるprompt
+        let text = String(repeating: "a", count: RealtimeSessionTuning.promptCharacterLimit) + "\n"
 
         // When: 上限判定する
         let overLimit = RealtimeSessionTuning.isPromptOverCharacterLimit(text)
 
-        // Then: 送信値基準なので超過ではない
-        XCTAssertEqual(text.count, 1_001)
-        XCTAssertEqual(RealtimeSessionTuning.sanitizedPrompt(text).count, 999)
+        // Then: 改行は空白化のあと trim され、送信値は切り詰めなし
+        XCTAssertEqual(text.count, RealtimeSessionTuning.promptCharacterLimit + 1)
+        XCTAssertEqual(
+            RealtimeSessionTuning.sanitizedPrompt(text).count,
+            RealtimeSessionTuning.promptCharacterLimit
+        )
         XCTAssertFalse(overLimit)
+        XCTAssertTrue(
+            RealtimeSessionTuning.isPromptOverCharacterLimit(
+                String(repeating: "a", count: RealtimeSessionTuning.promptCharacterLimit + 1)
+            )
+        )
     }
 
     func testIsKeywordCountOverLimitIgnoresNonSubmittedLines() {
