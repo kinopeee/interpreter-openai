@@ -15,10 +15,12 @@ using RealtimeTranslator.Platform.Logging;
 using RealtimeTranslator.Platform.Security;
 using RealtimeTranslator.Platform.Settings;
 using RealtimeTranslator.Platform.Subtitles;
+using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
 using MessageBoxResult = System.Windows.MessageBoxResult;
+using SaveFileDialog = System.Windows.Forms.SaveFileDialog;
 
 namespace RealtimeTranslator.App;
 
