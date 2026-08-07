@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
@@ -12,6 +13,13 @@ using RealtimeTranslator.Platform.Audio;
 using RealtimeTranslator.Platform.Logging;
 using RealtimeTranslator.Platform.Security;
 using RealtimeTranslator.Platform.Settings;
+using RealtimeTranslator.Platform.Subtitles;
+using Application = System.Windows.Application;
+using MessageBox = System.Windows.MessageBox;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
+using MessageBoxResult = System.Windows.MessageBoxResult;
+using SaveFileDialog = System.Windows.Forms.SaveFileDialog;
 
 namespace RealtimeTranslator.App;
 
@@ -21,6 +29,7 @@ public partial class App : Application, IDisposable
     private readonly SubtitleSnapshotBuilder _snapshots = new();
     private readonly SubtitleOverlayViewModel _overlayViewModel = new();
     private readonly AppSettingsStore _settingsStore = new();
+    private readonly SubtitleTranscriptStore _transcriptStore = new();
     private readonly DispatcherTimer _subtitleClear = new() { Interval = SubtitleClearDelay };
     private readonly DispatcherTimer _settingsSaveDebounce = new()
     {
@@ -43,6 +52,9 @@ public partial class App : Application, IDisposable
     private TranslationState _state = TranslationState.Idle;
     private bool _isEditingPosition;
     private bool _shuttingDown;
+    private bool _didAnnounceTranscriptCap;
+    /// <summary>現在の録音区間でセッション開始マーカーを既に書いたか。</summary>
+    private bool _hasOpenTranscriptSession;
 
     /// <summary>録音停止から字幕を消すまでの猶予 (macOS 版と同じ)。</summary>
     public static readonly TimeSpan SubtitleClearDelay = TimeSpan.FromSeconds(5);
@@ -79,10 +91,14 @@ public partial class App : Application, IDisposable
         _session.MessageEncountered += OnSessionMessage;
 
         _tray = new TrayController();
-        _tray.StartStopRequested += (_, _) => ToggleTranslation();
-        _tray.EditPositionRequested += (_, _) => ToggleEditingPosition();
-        _tray.SettingsRequested += (_, _) => ShowSettings();
-        _tray.ExitRequested += (_, _) => BeginShutdown();
+        // NotifyIcon コールバックは UI スレッドとは限らないため Dispatcher へ渡す。
+        _tray.StartStopRequested += (_, _) => Dispatcher.InvokeAsync(ToggleTranslation);
+        _tray.EditPositionRequested += (_, _) => Dispatcher.InvokeAsync(ToggleEditingPosition);
+        _tray.ExportSubtitlesRequested += (_, _) => Dispatcher.InvokeAsync(ExportSubtitles);
+        _tray.ClearSubtitlesRequested += (_, _) => Dispatcher.InvokeAsync(ClearSubtitleTranscript);
+        _tray.SettingsRequested += (_, _) => Dispatcher.InvokeAsync(ShowSettings);
+        _tray.ExitRequested += (_, _) => Dispatcher.InvokeAsync(BeginShutdown);
+        _tray.SetHasRecordedSubtitles(_transcriptStore.HasEntries);
 
         _overlay = new SubtitleOverlayWindow(_overlayViewModel);
         _overlayViewModel.Apply(_snapshots.Apply(TranslationState.Idle));
@@ -198,6 +214,12 @@ public partial class App : Application, IDisposable
             return;
         }
 
+        _hasOpenTranscriptSession = false;
+        if (_settings.RecordSubtitles)
+        {
+            OpenTranscriptSessionIfNeeded();
+        }
+
         _ = RunGuarded(_session!.StartAsync);
     }
 
@@ -220,6 +242,58 @@ public partial class App : Application, IDisposable
                 OverlayOriginX = _overlay.Left,
                 OverlayOriginY = _overlay.Top,
             });
+        }
+    }
+
+    private void ExportSubtitles()
+    {
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "テキスト ファイル (*.txt)|*.txt",
+            DefaultExt = "txt",
+            AddExtension = true,
+            FileName = SubtitleTranscriptStore.DefaultExportFileName(),
+            OverwritePrompt = true,
+        };
+
+        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            _transcriptStore.ExportCopy(dialog.FileName);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            AppLogger.Error(LogCategory.General, "subtitle transcript export failed");
+            _tray?.ShowMessage(SubtitleTranscriptStore.WriteFailureBanner);
+        }
+    }
+
+    private void ClearSubtitleTranscript()
+    {
+        var result = MessageBox.Show(
+            "ローカルの字幕記録ファイルを空にします。",
+            "字幕記録をクリアしますか？",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+        if (result != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            _transcriptStore.Clear();
+            _didAnnounceTranscriptCap = false;
+            _tray?.SetHasRecordedSubtitles(false);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            AppLogger.Error(LogCategory.General, "subtitle transcript clear failed");
+            _tray?.ShowMessage(SubtitleTranscriptStore.WriteFailureBanner);
         }
     }
 
@@ -255,11 +329,21 @@ public partial class App : Application, IDisposable
     private void UpdateSettings(AppSettingsData settings)
     {
         // メモリ上の設定とフォントは即時反映し、ディスク書き込みだけ debounce する。
+        var enablingTranscript =
+            !_settings.RecordSubtitles
+            && settings.RecordSubtitles
+            && _state is not TranslationState.Idle and not TranslationState.Error;
         _settings = settings;
         _overlayViewModel.FontSize = settings.FontSize;
         _pendingSettingsSave = settings;
         _settingsSaveDebounce.Stop();
         _settingsSaveDebounce.Start();
+
+        // 録音中の初回オプトインだけ開始マーカーを補う（OFF→ON の再有効化では重複させない）。
+        if (enablingTranscript)
+        {
+            OpenTranscriptSessionIfNeeded();
+        }
     }
 
     private void OnSettingsSaveDebounceElapsed(object? sender, EventArgs e) => FlushSettingsSave();
@@ -280,17 +364,72 @@ public partial class App : Application, IDisposable
         Dispatcher.InvokeAsync(() =>
         {
             _state = state;
+            if (state is TranslationState.Idle or TranslationState.Error)
+            {
+                _hasOpenTranscriptSession = false;
+            }
+
             _tray?.UpdateState(state);
             _overlayViewModel.Apply(_snapshots.Apply(state));
             ScheduleSubtitleClear(state);
         });
 
-    private void OnSubtitleUpdated(object? sender, RealtimeSubtitleUpdate update) =>
+    private void OnSubtitleUpdated(object? sender, RealtimeSubtitleUpdate update)
+    {
+        if (update.ShouldFinalize && _settings.RecordSubtitles)
+        {
+            // 録音中にオプトインした場合も、最初の確定ペア前に開始マーカーを書く。
+            OpenTranscriptSessionIfNeeded();
+            HandleTranscriptResult(
+                _transcriptStore.AppendEntry(update.SourceText, update.TranslatedText));
+        }
+
         Dispatcher.InvokeAsync(() =>
         {
             _subtitleClear.Stop();
             _overlayViewModel.Apply(_snapshots.Apply(update, _state));
         });
+    }
+
+    private void OpenTranscriptSessionIfNeeded()
+    {
+        if (_hasOpenTranscriptSession)
+        {
+            return;
+        }
+
+        HandleTranscriptResult(_transcriptStore.MarkSessionStart());
+        _hasOpenTranscriptSession = true;
+    }
+
+    private void HandleTranscriptResult(SubtitleTranscriptAppendResult result)
+    {
+        switch (result)
+        {
+            case SubtitleTranscriptAppendResult.Appended:
+                Dispatcher.InvokeAsync(() => _tray?.SetHasRecordedSubtitles(true));
+                break;
+            case SubtitleTranscriptAppendResult.Capped:
+                if (_didAnnounceTranscriptCap)
+                {
+                    return;
+                }
+
+                _didAnnounceTranscriptCap = true;
+                AppLogger.Info(LogCategory.General, "subtitle transcript reached size limit");
+                Dispatcher.InvokeAsync(() =>
+                    _tray?.ShowMessage(SubtitleTranscriptStore.SizeLimitBanner));
+                break;
+            case SubtitleTranscriptAppendResult.Failed:
+                AppLogger.Error(LogCategory.General, "subtitle transcript write failed");
+                Dispatcher.InvokeAsync(() =>
+                    _tray?.ShowMessage(SubtitleTranscriptStore.WriteFailureBanner));
+                break;
+            case SubtitleTranscriptAppendResult.SkippedDuplicate:
+            case SubtitleTranscriptAppendResult.SkippedEmpty:
+                break;
+        }
+    }
 
     /// <summary>録音停止後は約 5 秒で最後の字幕を消す (録音中はタイマー消去しない)。</summary>
     private void ScheduleSubtitleClear(TranslationState state)

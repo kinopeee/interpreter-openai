@@ -15,6 +15,8 @@ public sealed class TrayController : IDisposable
 {
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _startStopItem;
+    private readonly ToolStripMenuItem _exportSubtitlesItem;
+    private readonly ToolStripMenuItem _clearSubtitlesItem;
     private readonly ToolStripMenuItem _editPositionItem;
     private readonly Dictionary<TranslationState, Icon> _icons = new();
 
@@ -23,6 +25,20 @@ public sealed class TrayController : IDisposable
     public TrayController()
     {
         _startStopItem = new ToolStripMenuItem("翻訳を開始", null, (_, _) => StartStopRequested?.Invoke(this, EventArgs.Empty));
+        _exportSubtitlesItem = new ToolStripMenuItem(
+            "字幕を書き出し…",
+            null,
+            (_, _) => ExportSubtitlesRequested?.Invoke(this, EventArgs.Empty))
+        {
+            Enabled = false,
+        };
+        _clearSubtitlesItem = new ToolStripMenuItem(
+            "字幕記録をクリア",
+            null,
+            (_, _) => ClearSubtitlesRequested?.Invoke(this, EventArgs.Empty))
+        {
+            Enabled = false,
+        };
         _editPositionItem = new ToolStripMenuItem(
             "字幕位置を編集",
             null,
@@ -37,6 +53,9 @@ public sealed class TrayController : IDisposable
         menu.Items.Add(Disabled("翻訳方向: 自動（日本語 ↔ 英語）"));
         menu.Items.Add(Disabled("字幕表示: 原文＋翻訳"));
         menu.Items.Add(Disabled("翻訳音声: 字幕のみ"));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_exportSubtitlesItem);
+        menu.Items.Add(_clearSubtitlesItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_editPositionItem);
         menu.Items.Add(new ToolStripMenuItem("設定…", null, (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty)));
@@ -57,6 +76,10 @@ public sealed class TrayController : IDisposable
     public event EventHandler? StartStopRequested;
 
     public event EventHandler? EditPositionRequested;
+
+    public event EventHandler? ExportSubtitlesRequested;
+
+    public event EventHandler? ClearSubtitlesRequested;
 
     public event EventHandler? SettingsRequested;
 
@@ -80,6 +103,12 @@ public sealed class TrayController : IDisposable
     }
 
     public void SetEditingPosition(bool isEditing) => _editPositionItem.Checked = isEditing;
+
+    public void SetHasRecordedSubtitles(bool hasEntries)
+    {
+        _exportSubtitlesItem.Enabled = hasEntries;
+        _clearSubtitlesItem.Enabled = hasEntries;
+    }
 
     /// <summary>OS 通知でエラーや案内を出す。字幕本文は通知に載せない。</summary>
     public void ShowMessage(string message)

@@ -17,7 +17,8 @@ public sealed record AppSettingsData(
     string TranscriptionPrompt,
     string TranscriptionKeywordsText,
     RealtimeTranslationNoiseReduction NoiseReduction,
-    RealtimeTranscriptionDelay TranscriptionDelay)
+    RealtimeTranscriptionDelay TranscriptionDelay,
+    bool RecordSubtitles)
 {
     /// <summary>同意文言を変えたら上げる。上げると再同意を求める。</summary>
     public const int CurrentConsentVersion = 1;
@@ -35,7 +36,8 @@ public sealed record AppSettingsData(
         RealtimeSessionTuning.DefaultPrompt,
         RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywords),
         RealtimeTranslationNoiseReduction.FarField,
-        RealtimeTranscriptionDelay.Low);
+        RealtimeTranscriptionDelay.Low,
+        RecordSubtitles: false);
 
     public bool HasAcceptedCurrentConsent => AcceptedConsentVersion >= CurrentConsentVersion;
 
@@ -67,6 +69,7 @@ public static class AppSettingsCodec
             writer.WriteString("transcriptionKeywordsText", settings.TranscriptionKeywordsText);
             writer.WriteString("noiseReduction", settings.NoiseReduction.ToWireValue());
             writer.WriteString("transcriptionDelay", settings.TranscriptionDelay.ToWireValue());
+            writer.WriteBoolean("recordSubtitles", settings.RecordSubtitles);
             writer.WriteEndObject();
         }
 
@@ -102,7 +105,8 @@ public static class AppSettingsCodec
             Text(dictionary, "transcriptionPrompt") ?? defaults.TranscriptionPrompt,
             Text(dictionary, "transcriptionKeywordsText") ?? defaults.TranscriptionKeywordsText,
             NoiseReduction(dictionary) ?? defaults.NoiseReduction,
-            TranscriptionDelay(dictionary) ?? defaults.TranscriptionDelay);
+            TranscriptionDelay(dictionary) ?? defaults.TranscriptionDelay,
+            Boolean(dictionary, "recordSubtitles") ?? false);
     }
 
     public static double ClampFontSize(double value) =>

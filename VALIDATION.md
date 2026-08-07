@@ -52,6 +52,9 @@ cd /Users/yoo/dev/interpreter-openai
 - [ ] 入力デバイス切断/切替で listening のまま固まらず、transcription と Translation 両セッションを再接続し、言語判定をリセットし、旧接続epochのdeltaを表示しない
 - [ ] 通常の録音開始/停止で不要な再接続が起きない（AVAudioEngineConfigurationChangeの誤発火確認）
 - [ ] 1時間連続でqueue増大、buffer leak、再接続loopがなく、OpenAI usageが想定範囲である
+- [ ] 設定で「字幕をローカルに記録する」をONにし、日英を1文ずつ話したあとメニュー「字幕を書き出し…」で TXT に録音開始マーカーと両ペアがある
+- [ ] 録音中に書き出しても完全なエントリが読める／記録OFFではファイルが増えない
+- [ ] ログ・status file に字幕本文がなく、記録ファイル以外へ原文・訳文が漏れない
 
 ## Windows版
 
@@ -118,6 +121,7 @@ APIキーはマスク済み入力欄から資格情報マネージャーへ保�
 - [ ] 録音中に設定を閉じた際の debounce flush が、現在のセッションへ `session.update` として送信・反映されること（UIから直接観測できず未検証）
 - [ ] 無効キー、ネット切断、片側socket切断、再接続上限の表示
 - [ ] 1時間連続でqueue増大、buffer leak、再接続loopがなく、OpenAI usageが想定範囲である
+- [ ] 設定で字幕記録をONにし、日英1文ずつ → トレイ「字幕を書き出し…」の TXT にマーカーと両ペアがある／録音中書き出しでも完全／OFFでは増えない／ログ・通知に本文なし
 
 ### 検証対象外（合意済み）
 

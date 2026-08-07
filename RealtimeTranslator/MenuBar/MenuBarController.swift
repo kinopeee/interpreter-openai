@@ -67,6 +67,27 @@ final class MenuBarController: NSObject {
         menu.addItem(audioItem)
 
         menu.addItem(.separator())
+
+        let hasEntries = coordinator?.hasRecordedSubtitles == true
+        let exportItem = NSMenuItem(
+            title: "字幕を書き出し…",
+            action: #selector(exportSubtitles),
+            keyEquivalent: ""
+        )
+        exportItem.target = self
+        exportItem.isEnabled = hasEntries
+        menu.addItem(exportItem)
+
+        let clearItem = NSMenuItem(
+            title: "字幕記録をクリア",
+            action: #selector(clearSubtitleTranscript),
+            keyEquivalent: ""
+        )
+        clearItem.target = self
+        clearItem.isEnabled = hasEntries
+        menu.addItem(clearItem)
+
+        menu.addItem(.separator())
         let editPositionItem = NSMenuItem(
             title: "字幕位置を編集",
             action: #selector(togglePositionEditing),
@@ -127,6 +148,14 @@ final class MenuBarController: NSObject {
 
     @objc private func toggleStartStop() {
         coordinator?.toggleTranslation()
+    }
+
+    @objc private func exportSubtitles() {
+        coordinator?.exportSubtitles()
+    }
+
+    @objc private func clearSubtitleTranscript() {
+        coordinator?.clearSubtitleTranscript()
     }
 
     @objc private func togglePositionEditing() {

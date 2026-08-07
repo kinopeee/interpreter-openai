@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppCoordinator: NSObject {
@@ -17,13 +18,26 @@ final class AppCoordinator: NSObject {
             settings.sessionTuning()
         }
     )
+    private lazy var transcriptStore: SubtitleTranscriptStore = {
+        let url = (try? SubtitleTranscriptStore.defaultFileURL())
+            ?? FileManager.default.temporaryDirectory
+            .appendingPathComponent("realtimetranslator-session.txt")
+        return SubtitleTranscriptStore(fileURL: url)
+    }()
     private let hotKeys = HotKeyManager()
     private var settingsWindow: NSWindow?
     private var lastSnapshot = SubtitleSnapshot.empty
+    private var didAnnounceTranscriptCap = false
+    /// 現在の録音区間でセッション開始マーカーを既に書いたか。
+    private var hasOpenTranscriptSession = false
 
     init(apiKeyStore: any APIKeyStore = KeychainAPIKeyStore()) {
         self.apiKeyStore = apiKeyStore
         super.init()
+    }
+
+    var hasRecordedSubtitles: Bool {
+        transcriptStore.hasEntries
     }
 
     func start() {
@@ -86,6 +100,11 @@ final class AppCoordinator: NSObject {
             return
         }
 
+        hasOpenTranscriptSession = false
+        if settings.recordSubtitles {
+            openTranscriptSessionIfNeeded()
+        }
+
         writeStatusFile("starting")
         Task { await interpretationSession.start() }
     }
@@ -101,6 +120,43 @@ final class AppCoordinator: NSObject {
             settings.savePanelOrigin(subtitleWindow.currentOrigin)
         }
         menuBarController.refresh()
+    }
+
+    func exportSubtitles() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = SubtitleTranscriptStore.defaultExportFileName()
+        panel.begin { [weak self] response in
+            guard let self else { return }
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try self.transcriptStore.exportCopy(to: url)
+            } catch {
+                AppLogger.general.error("subtitle transcript export failed")
+                self.presentMessage(SubtitleTranscriptStore.writeFailureBanner)
+            }
+        }
+    }
+
+    func clearSubtitleTranscript() {
+        let alert = NSAlert()
+        alert.messageText = "字幕記録をクリアしますか？"
+        alert.informativeText = "ローカルの字幕記録ファイルを空にします。"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "クリア")
+        alert.addButton(withTitle: "キャンセル")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        do {
+            try transcriptStore.clear()
+            didAnnounceTranscriptCap = false
+            menuBarController.refresh()
+        } catch {
+            AppLogger.general.error("subtitle transcript clear failed")
+            presentMessage(SubtitleTranscriptStore.writeFailureBanner)
+        }
     }
 
     func openSettings() {
@@ -164,6 +220,53 @@ final class AppCoordinator: NSObject {
         alert.alertStyle = .warning
         alert.runModal()
     }
+
+    private func recordFinalizedSubtitleIfNeeded(_ subtitle: LiveSubtitle) {
+        guard settings.recordSubtitles else { return }
+        guard subtitle.state == .finalized, !subtitle.isEmpty else { return }
+        // 録音中にオプトインした場合も、最初の確定ペア前に開始マーカーを書く。
+        openTranscriptSessionIfNeeded()
+        handleTranscriptResult(
+            transcriptStore.appendEntry(
+                sourceText: subtitle.sourceText,
+                translatedText: subtitle.translatedText
+            )
+        )
+    }
+
+    private func openTranscriptSessionIfNeeded() {
+        guard !hasOpenTranscriptSession else { return }
+        handleTranscriptResult(transcriptStore.markSessionStart())
+        hasOpenTranscriptSession = true
+    }
+
+    private func handleTranscriptResult(_ result: SubtitleTranscriptAppendResult) {
+        switch result {
+        case .appended:
+            menuBarController.refresh()
+        case .capped:
+            guard !didAnnounceTranscriptCap else { return }
+            didAnnounceTranscriptCap = true
+            applyTranscriptBanner(SubtitleTranscriptStore.sizeLimitBanner)
+            AppLogger.general.notice("subtitle transcript reached size limit")
+        case .failed:
+            applyTranscriptBanner(SubtitleTranscriptStore.writeFailureBanner)
+            AppLogger.general.error("subtitle transcript write failed")
+        case .skippedDuplicate, .skippedEmpty:
+            break
+        }
+    }
+
+    private func applyTranscriptBanner(_ message: String) {
+        var snapshot = lastSnapshot
+        snapshot.statusBanner = message
+        lastSnapshot = snapshot
+        subtitleWindow.update(
+            snapshot: snapshot,
+            fontSize: settings.fontSize,
+            translationState: translationState
+        )
+    }
 }
 
 extension AppCoordinator: InterpretationSessionDelegate {
@@ -174,6 +277,9 @@ extension AppCoordinator: InterpretationSessionDelegate {
         translationState = state
         menuBarController.refresh()
         writeStatusFile(state.rawValue)
+        if state == .idle {
+            hasOpenTranscriptSession = false
+        }
         if state == .idle, lastSnapshot.current.isEmpty {
             lastSnapshot = idleSnapshot
         }
@@ -188,6 +294,8 @@ extension AppCoordinator: InterpretationSessionDelegate {
         _ session: InterpretationSession,
         didUpdateSubtitles snapshot: SubtitleSnapshot
     ) {
+        recordFinalizedSubtitleIfNeeded(snapshot.current)
+
         let displayedSnapshot: SubtitleSnapshot
         if translationState == .idle,
            snapshot.current.isEmpty,
@@ -197,9 +305,19 @@ extension AppCoordinator: InterpretationSessionDelegate {
         } else {
             displayedSnapshot = snapshot
         }
-        lastSnapshot = displayedSnapshot
+        // 記録上限バナーを、直後の session snapshot で上書きしない。
+        if didAnnounceTranscriptCap,
+           lastSnapshot.statusBanner == SubtitleTranscriptStore.sizeLimitBanner,
+           displayedSnapshot.statusBanner == nil
+        {
+            var merged = displayedSnapshot
+            merged.statusBanner = SubtitleTranscriptStore.sizeLimitBanner
+            lastSnapshot = merged
+        } else {
+            lastSnapshot = displayedSnapshot
+        }
         subtitleWindow.update(
-            snapshot: displayedSnapshot,
+            snapshot: lastSnapshot,
             fontSize: settings.fontSize,
             translationState: translationState
         )
