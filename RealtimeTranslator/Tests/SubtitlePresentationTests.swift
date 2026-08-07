@@ -130,6 +130,21 @@ final class SubtitlePresentationTests: XCTestCase {
         XCTAssertEqual(opacity, 1)
     }
 
+    func testWhitespaceOnlyTranslationIsTreatedAsEmptyForPendingMarker() {
+        // Given: 訳文が空白・改行だけの未確定字幕
+        let subtitle = subtitle(source: "原文", translation: " \n\t ", state: .live)
+
+        // When: 表示本文の有無と opacity を算出する
+        let hasVisible = SubtitleVisualStyle.hasVisibleTranslation(subtitle.translatedText)
+        let showsMarker = SubtitleVisualStyle.showsTranslationPendingMarker(for: subtitle)
+        let opacity = SubtitleVisualStyle.translatedTextOpacity(for: subtitle)
+
+        // Then: 空白は未着と同じ扱いでマーカー行だけを出す（不可視スペース＋… にしない）
+        XCTAssertFalse(hasVisible)
+        XCTAssertTrue(showsMarker)
+        XCTAssertEqual(opacity, 1)
+    }
+
     func testPendingMarkerDisappearsOnlyAfterFinalize() {
         // Given: 訳文ありの未確定字幕、同じ本文の確定字幕、原文だけの未確定字幕
         let liveWithTranslation = subtitle(
@@ -158,15 +173,17 @@ final class SubtitlePresentationTests: XCTestCase {
     }
 
     func testPendingMarkerIsHiddenWhenTranslationEndsWithPunctuation() {
-        // Given: 文末記号で終わる未確定の訳文（日本語と英語）
+        // Given: 文末記号で終わる未確定の訳文（日本語・英語・省略記号）
         let japanese = subtitle(source: "原文", translation: "訳文です。", state: .live)
         let english = subtitle(source: "Source", translation: "Translated.", state: .live)
+        let ellipsis = subtitle(source: "原文", translation: "続きはまた…", state: .live)
         let midSentence = subtitle(source: "原文", translation: "訳文の途中", state: .live)
 
         // When: マーカー表示可否を算出する
-        // Then: 「訳文です。…」のような誤記に見える連結を避け、文中だけ出す
+        // Then: 「訳文です。…」「……」のような誤記に見える連結を避け、文中だけ出す
         XCTAssertFalse(SubtitleVisualStyle.showsTranslationPendingMarker(for: japanese))
         XCTAssertFalse(SubtitleVisualStyle.showsTranslationPendingMarker(for: english))
+        XCTAssertFalse(SubtitleVisualStyle.showsTranslationPendingMarker(for: ellipsis))
         XCTAssertTrue(SubtitleVisualStyle.showsTranslationPendingMarker(for: midSentence))
     }
 

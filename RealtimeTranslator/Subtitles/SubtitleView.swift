@@ -14,7 +14,8 @@ enum SubtitleVisualStyle {
     static let translationFadeDuration = 0.12
 
     static func translatedTextOpacity(for subtitle: LiveSubtitle) -> Double {
-        if !subtitle.translatedText.isEmpty {
+        // 空白だけの訳文は「未着」と同じ扱いにし、マーカー行だけを出す。
+        if hasVisibleTranslation(subtitle.translatedText) {
             return visibleTranslatedTextOpacity
         }
         return showsTranslationPendingMarker(for: subtitle)
@@ -31,17 +32,23 @@ enum SubtitleVisualStyle {
         return !endsWithTerminalPunctuation(subtitle.translatedText)
     }
 
+    /// 空白・改行だけの訳文は表示本文なしとみなす。
+    static func hasVisibleTranslation(_ text: String) -> Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// 固定値だとフォントサイズ設定（18〜48pt）で行間比率が変わるため、サイズ比例にする。
     static func lineSpacing(forFontSize fontSize: Double) -> Double {
         fontSize / 10
     }
 
-    /// SubtitleAggregator の確定条件と同じ文末記号を見る。
+    /// Aggregator の確定句読点に加え、表示用マーカー抑制のため末尾の `…` も見る。
+    /// （`……` の誤記を避ける。Aggregator の確定条件自体は変えない。）
     private static func endsWithTerminalPunctuation(_ text: String) -> Bool {
         guard let last = text.trimmingCharacters(in: .whitespacesAndNewlines).last else {
             return false
         }
-        return "。．.!？?！".contains(last)
+        return "。．.!？?！…".contains(last)
     }
 }
 
@@ -195,15 +202,17 @@ struct SubtitleView: View {
     /// SubtitleTailClipper が付ける先頭の「…」とは別物で、こちらは末尾に付く。
     private func translatedText(for subtitle: LiveSubtitle) -> Text {
         let clipped = SubtitleTailClipper.clip(subtitle.translatedText)
+        // clip は空白のみ入力をそのまま返すため、表示可否は trim 後で判定する。
+        let hasBody = SubtitleVisualStyle.hasVisibleTranslation(clipped)
         guard SubtitleVisualStyle.showsTranslationPendingMarker(for: subtitle) else {
-            return Text(clipped.isEmpty ? " " : clipped)
+            return Text(hasBody ? clipped : " ")
         }
 
         let marker = Text(SubtitleVisualStyle.pendingMarker)
             .foregroundStyle(
                 Color.white.opacity(SubtitleVisualStyle.pendingMarkerOpacity)
             )
-        return clipped.isEmpty ? marker : Text(clipped) + marker
+        return hasBody ? Text(clipped) + marker : marker
     }
 }
 
