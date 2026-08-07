@@ -91,6 +91,7 @@ public sealed class SubtitleFixtureTests
             var update = kind switch
             {
                 "tick" => assembler.Tick(now),
+                "finalizeForLanguageSwitch" => assembler.FinalizeForLanguageSwitch(now),
                 "sourceDelta" or "translationDelta" => assembler.Ingest(
                     new RealtimeTranslationStreamEvent(
                         RealtimeTranslationWireValues.ParseOutputLanguage(SharedFixtures.Text(step["lane"])),
