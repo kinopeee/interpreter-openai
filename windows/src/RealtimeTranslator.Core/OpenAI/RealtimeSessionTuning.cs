@@ -125,16 +125,46 @@ public sealed record RealtimeSessionTuning(
         return [.. result];
     }
 
-    /// <summary>prompt を送信可能な形へ正規化する。改行→空白、trim、文字数上限。</summary>
-    public static string SanitizedPrompt(string text)
+    /// <summary>改行を空白へ潰し trim した prompt（切り詰め前）。</summary>
+    public static string CollapsedPrompt(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
 
-        var collapsed = text
+        return text
             .Replace("\r\n", " ", StringComparison.Ordinal)
             .Replace("\n", " ", StringComparison.Ordinal)
             .Replace("\r", " ", StringComparison.Ordinal)
             .Trim();
+    }
+
+    /// <summary>書記素クラスタ数（Swift の <c>Character</c> 相当）。</summary>
+    public static int CountTextElements(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        var count = 0;
+        var offset = 0;
+        while (offset < text.Length)
+        {
+            offset += StringInfo.GetNextTextElementLength(text.AsSpan(offset));
+            count += 1;
+        }
+
+        return count;
+    }
+
+    /// <summary>正規化後・切り詰め前の文字数が送信上限を超えるか。</summary>
+    public static bool IsPromptOverCharacterLimit(string text) =>
+        CountTextElements(CollapsedPrompt(text)) > PromptCharacterLimit;
+
+    /// <summary>送信対象キーワード数が上限を超えるか（<c>&lt;&gt;</c> のみの行など送信されない行は数えない）。</summary>
+    public static bool IsKeywordCountOverLimit(string text) =>
+        ParseKeywords(text, KeywordLimit + 1).Length > KeywordLimit;
+
+    /// <summary>prompt を送信可能な形へ正規化する。改行→空白、trim、文字数上限。</summary>
+    public static string SanitizedPrompt(string text)
+    {
+        var collapsed = CollapsedPrompt(text);
 
         // 上限は Swift の Character 数、つまり書記素クラスタ数で数える。
         // UTF-16 code unit で切ると絵文字などでサロゲートペアを割り、 lone surrogate が送信される。

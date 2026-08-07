@@ -108,5 +108,51 @@
     "repeatedCharacter": "a",
     "inputLength": 1500,
     "expectedLength": 1000
-  }
+  },
+  "isPromptOverCharacterLimit": [
+    {
+      "name": "trailing newline alone is not over limit",
+      "repeatedCharacter": "a",
+      "inputLength": 1000,
+      "suffix": "\n",
+      "expected": false
+    },
+    {
+      "name": "one character over collapsed limit",
+      "repeatedCharacter": "a",
+      "inputLength": 1001,
+      "suffix": "",
+      "expected": true
+    },
+    {
+      "name": "exact limit is not over",
+      "repeatedCharacter": "a",
+      "inputLength": 1000,
+      "suffix": "",
+      "expected": false
+    }
+  ],
+  "isKeywordCountOverLimit": [
+    {
+      "name": "angle-bracket-only trailing line does not count",
+      "lineTemplate": "word{index}",
+      "lineCount": 64,
+      "suffix": "\n<>\n",
+      "expected": false
+    },
+    {
+      "name": "one submitted keyword over limit",
+      "lineTemplate": "word{index}",
+      "lineCount": 65,
+      "suffix": "",
+      "expected": true
+    },
+    {
+      "name": "exact submitted keyword limit is not over",
+      "lineTemplate": "word{index}",
+      "lineCount": 64,
+      "suffix": "",
+      "expected": false
+    }
+  ]
 }

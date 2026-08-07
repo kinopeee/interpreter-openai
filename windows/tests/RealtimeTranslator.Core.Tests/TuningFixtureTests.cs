@@ -12,6 +12,12 @@ public sealed class TuningFixtureTests
 
     public static TheoryData<string> SanitizedPromptCases => SharedFixtures.CaseNames("tuning", "sanitizedPrompt");
 
+    public static TheoryData<string> PromptOverLimitCases =>
+        SharedFixtures.CaseNames("tuning", "isPromptOverCharacterLimit");
+
+    public static TheoryData<string> KeywordOverLimitCases =>
+        SharedFixtures.CaseNames("tuning", "isKeywordCountOverLimit");
+
     // Given: shared fixture の tuning 上限値
     // When: C# 実装の定数と照合する
     // Then: keyword 上限・prompt 上限・禁止文字が一致する
@@ -134,5 +140,46 @@ public sealed class TuningFixtureTests
         var truncated = RealtimeSessionTuning.SanitizedPrompt(input);
 
         Assert.Equal(new string('a', limit - 1) + combining, truncated);
+    }
+
+    // Given: shared fixture の prompt 上限判定ケース
+    // When: IsPromptOverCharacterLimit で判定する
+    // Then: 改行潰し後の書記素クラスタ数で超過判定される
+    [Theory]
+    [MemberData(nameof(PromptOverLimitCases))]
+    public void IsPromptOverCharacterLimitMatchesFixture(string name)
+    {
+        var fixture = SharedFixtures.Case("tuning", "isPromptOverCharacterLimit", name);
+        var input = new string(
+            SharedFixtures.Text(fixture["repeatedCharacter"])[0],
+            SharedFixtures.Number(fixture["inputLength"]))
+            + SharedFixtures.Text(fixture["suffix"]);
+
+        Assert.Equal(
+            SharedFixtures.Flag(fixture["expected"]),
+            RealtimeSessionTuning.IsPromptOverCharacterLimit(input));
+    }
+
+    // Given: shared fixture の keyword 上限判定ケース
+    // When: IsKeywordCountOverLimit で判定する
+    // Then: 送信対象語だけを数え、<> のみの行は超過に含めない
+    [Theory]
+    [MemberData(nameof(KeywordOverLimitCases))]
+    public void IsKeywordCountOverLimitMatchesFixture(string name)
+    {
+        var fixture = SharedFixtures.Case("tuning", "isKeywordCountOverLimit", name);
+        var template = SharedFixtures.Text(fixture["lineTemplate"]);
+        var lineCount = SharedFixtures.Number(fixture["lineCount"]);
+        var input = string.Join(
+            "\n",
+            Enumerable.Range(0, lineCount).Select(index => template.Replace(
+                "{index}",
+                index.ToString(CultureInfo.InvariantCulture),
+                StringComparison.Ordinal)))
+            + SharedFixtures.Text(fixture["suffix"]);
+
+        Assert.Equal(
+            SharedFixtures.Flag(fixture["expected"]),
+            RealtimeSessionTuning.IsKeywordCountOverLimit(input));
     }
 }

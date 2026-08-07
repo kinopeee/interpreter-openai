@@ -120,4 +120,45 @@ final class TuningFixtureTests: XCTestCase {
         let truncated = RealtimeSessionTuning.sanitizedPrompt(input)
         XCTAssertEqual(String(repeating: "a", count: limit - 1) + combining, truncated)
     }
+
+    // Given: shared fixture の prompt 上限判定ケース
+    // When: isPromptOverCharacterLimit で判定する
+    // Then: 改行潰し後の Character 数で超過判定される
+    func testIsPromptOverCharacterLimitMatchesFixture() throws {
+        for name in try SharedFixtures.caseNames("tuning", "isPromptOverCharacterLimit") {
+            let fixture = try SharedFixtures.case("tuning", "isPromptOverCharacterLimit", name)
+            let character = SharedFixtures.text(fixture["repeatedCharacter"])
+            let input = String(
+                repeating: character,
+                count: SharedFixtures.number(fixture["inputLength"])
+            ) + SharedFixtures.text(fixture["suffix"])
+
+            XCTAssertEqual(
+                SharedFixtures.flag(fixture["expected"]),
+                RealtimeSessionTuning.isPromptOverCharacterLimit(input),
+                name
+            )
+        }
+    }
+
+    // Given: shared fixture の keyword 上限判定ケース
+    // When: isKeywordCountOverLimit で判定する
+    // Then: 送信対象語だけを数え、<> のみの行は超過に含めない
+    func testIsKeywordCountOverLimitMatchesFixture() throws {
+        for name in try SharedFixtures.caseNames("tuning", "isKeywordCountOverLimit") {
+            let fixture = try SharedFixtures.case("tuning", "isKeywordCountOverLimit", name)
+            let template = SharedFixtures.text(fixture["lineTemplate"])
+            let lineCount = SharedFixtures.number(fixture["lineCount"])
+            let input = (0..<lineCount)
+                .map { template.replacingOccurrences(of: "{index}", with: String($0)) }
+                .joined(separator: "\n")
+                + SharedFixtures.text(fixture["suffix"])
+
+            XCTAssertEqual(
+                SharedFixtures.flag(fixture["expected"]),
+                RealtimeSessionTuning.isKeywordCountOverLimit(from: input),
+                name
+            )
+        }
+    }
 }

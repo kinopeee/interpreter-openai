@@ -264,21 +264,21 @@ public partial class SettingsWindow : Window
 
     private void UpdateHintCounters()
     {
-        var promptLength = RealtimeSessionTuning.SanitizedPrompt(PromptBox.Text).Length;
-        var isPromptOverLimit = PromptBox.Text.Length > RealtimeSessionTuning.PromptCharacterLimit;
+        // 表示件数・超過警告は送信値と同じ正規化（改行潰し / 書記素クラスタ / 送信対象語）で揃える。
+        var promptLength = RealtimeSessionTuning.CountTextElements(
+            RealtimeSessionTuning.SanitizedPrompt(PromptBox.Text));
+        var isPromptOverLimit = RealtimeSessionTuning.IsPromptOverCharacterLimit(PromptBox.Text);
         PromptCounterText.Text = string.Create(
             CultureInfo.InvariantCulture,
             $"{promptLength}/{RealtimeSessionTuning.PromptCharacterLimit} 文字")
             + (isPromptOverLimit ? "（超過分は切り詰められます）" : string.Empty);
 
-        var keywordLines = KeywordsBox.Text
-            .Split('\n')
-            .Count(line => !string.IsNullOrWhiteSpace(line));
         var keywordCount = RealtimeSessionTuning.ParseKeywords(KeywordsBox.Text).Length;
+        var isKeywordOverLimit = RealtimeSessionTuning.IsKeywordCountOverLimit(KeywordsBox.Text);
         KeywordCounterText.Text = string.Create(
             CultureInfo.InvariantCulture,
             $"{keywordCount}/{RealtimeSessionTuning.KeywordLimit} 語")
-            + (keywordLines > RealtimeSessionTuning.KeywordLimit ? "（超過分は送信されません）" : string.Empty);
+            + (isKeywordOverLimit ? "（超過分は送信されません）" : string.Empty);
 
         KeywordWarningText.Text = KeywordsBox.Text.IndexOfAny(['<', '>']) >= 0
             ? "「<」「>」は送信時に自動除去されます。"
