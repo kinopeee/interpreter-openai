@@ -82,6 +82,8 @@ final class SubtitleFixtureTests: XCTestCase {
                 switch kind {
                 case "tick":
                     update = assembler.tick(now: now)
+                case "finalizeForLanguageSwitch":
+                    update = assembler.finalizeForLanguageSwitch(now: now)
                 case "sourceDelta", "translationDelta":
                     update = assembler.ingest(
                         RealtimeTranslationStreamEvent(

@@ -144,6 +144,38 @@
           "isTranslationCurrent": false,
           "shouldFinalize": false
         }
+      },
+      {
+        "name": "language switch finalizes a complete pair",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 0.3, "kind": "finalizeForLanguageSwitch" }
+        ],
+        "expectedFinal": {
+          "sourceText": "こんにちは",
+          "translatedText": "Hello",
+          "isTranslationCurrent": true,
+          "shouldFinalize": true
+        }
+      },
+      {
+        "name": "language switch without pair clears buffers for the next source",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "finalizeForLanguageSwitch" },
+          { "at": 0.2, "kind": "sourceDelta", "lane": "en", "text": "Hello there", "eventId": "s2", "elapsedMs": 200 }
+        ],
+        "expectedFinal": {
+          "sourceText": "Hello there",
+          "translatedText": "",
+          "isTranslationCurrent": false,
+          "shouldFinalize": false
+        }
       }
     ]
   }
