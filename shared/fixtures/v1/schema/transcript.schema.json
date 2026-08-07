@@ -40,7 +40,18 @@
           "sourceText": { "type": "string" },
           "translatedText": { "type": "string" },
           "expected": { "type": "string" }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "kind": { "const": "entry" } },
+              "required": ["kind"]
+            },
+            "then": {
+              "required": ["sourceText", "translatedText"]
+            }
+          }
+        ]
       }
     }
   }

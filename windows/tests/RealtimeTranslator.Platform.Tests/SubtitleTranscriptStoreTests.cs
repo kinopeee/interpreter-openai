@@ -152,6 +152,19 @@ public sealed class SubtitleTranscriptStoreTests : IDisposable
             File.ReadAllText(destination, Encoding.UTF8));
     }
 
+    // Given: 追記済みのセッションファイル
+    // When: 同一パスへ ExportCopy する
+    // Then: 内容を消さず no-op になる
+    [Fact]
+    public void ExportCopyToSamePathIsNoOp()
+    {
+        var store = MakeStore();
+        Assert.Equal(SubtitleTranscriptAppendResult.Appended, store.AppendEntry("こんにちは", "Hello"));
+        var before = File.ReadAllText(_filePath, Encoding.UTF8);
+        store.ExportCopy(_filePath);
+        Assert.Equal(before, File.ReadAllText(_filePath, Encoding.UTF8));
+    }
+
     // Given: 固定時刻
     // When: 既定の書き出しファイル名を生成する
     // Then: subtitles-YYYYMMDD-HHmmss.txt になる

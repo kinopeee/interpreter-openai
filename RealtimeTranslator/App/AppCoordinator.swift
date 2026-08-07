@@ -28,6 +28,8 @@ final class AppCoordinator: NSObject {
     private var settingsWindow: NSWindow?
     private var lastSnapshot = SubtitleSnapshot.empty
     private var didAnnounceTranscriptCap = false
+    /// 現在の録音区間でセッション開始マーカーを既に書いたか。
+    private var hasOpenTranscriptSession = false
 
     init(apiKeyStore: any APIKeyStore = KeychainAPIKeyStore()) {
         self.apiKeyStore = apiKeyStore
@@ -98,8 +100,9 @@ final class AppCoordinator: NSObject {
             return
         }
 
+        hasOpenTranscriptSession = false
         if settings.recordSubtitles {
-            handleTranscriptResult(transcriptStore.markSessionStart())
+            openTranscriptSessionIfNeeded()
         }
 
         writeStatusFile("starting")
@@ -221,12 +224,20 @@ final class AppCoordinator: NSObject {
     private func recordFinalizedSubtitleIfNeeded(_ subtitle: LiveSubtitle) {
         guard settings.recordSubtitles else { return }
         guard subtitle.state == .finalized, !subtitle.isEmpty else { return }
+        // 録音中にオプトインした場合も、最初の確定ペア前に開始マーカーを書く。
+        openTranscriptSessionIfNeeded()
         handleTranscriptResult(
             transcriptStore.appendEntry(
                 sourceText: subtitle.sourceText,
                 translatedText: subtitle.translatedText
             )
         )
+    }
+
+    private func openTranscriptSessionIfNeeded() {
+        guard !hasOpenTranscriptSession else { return }
+        handleTranscriptResult(transcriptStore.markSessionStart())
+        hasOpenTranscriptSession = true
     }
 
     private func handleTranscriptResult(_ result: SubtitleTranscriptAppendResult) {
@@ -266,6 +277,9 @@ extension AppCoordinator: InterpretationSessionDelegate {
         translationState = state
         menuBarController.refresh()
         writeStatusFile(state.rawValue)
+        if state == .idle {
+            hasOpenTranscriptSession = false
+        }
         if state == .idle, lastSnapshot.current.isEmpty {
             lastSnapshot = idleSnapshot
         }

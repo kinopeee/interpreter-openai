@@ -102,6 +102,10 @@ final class SubtitleTranscriptStore: @unchecked Sendable {
     func exportCopy(to destination: URL) throws {
         lock.lock()
         defer { lock.unlock() }
+        // 自己コピーは記録を消さないよう no-op にする。
+        guard destination.standardizedFileURL != fileURL.standardizedFileURL else {
+            return
+        }
         let fileManager = FileManager.default
         if fileManager.fileExists(atPath: destination.path) {
             try fileManager.removeItem(at: destination)

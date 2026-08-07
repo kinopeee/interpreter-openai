@@ -169,6 +169,20 @@ final class SubtitleTranscriptStoreTests: XCTestCase {
         )
     }
 
+    // Given: 追記済みのセッションファイル
+    // When: 同一パスへ exportCopy する
+    // Then: 内容を消さず no-op になる
+    func testExportCopyToSamePathIsNoOp() throws {
+        let store = makeStore()
+        XCTAssertEqual(
+            store.appendEntry(sourceText: "こんにちは", translatedText: "Hello"),
+            .appended
+        )
+        let before = try String(contentsOf: fileURL, encoding: .utf8)
+        try store.exportCopy(to: fileURL)
+        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), before)
+    }
+
     // Given: 固定時刻
     // When: 既定の書き出しファイル名を生成する
     // Then: subtitles-YYYYMMDD-HHmmss.txt になる

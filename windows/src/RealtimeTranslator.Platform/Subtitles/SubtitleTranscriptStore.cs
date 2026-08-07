@@ -62,7 +62,7 @@ public sealed class SubtitleTranscriptStore
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "RealtimeTranslator",
             "transcripts");
-        Directory.CreateDirectory(directory);
+        // ディレクトリ作成は初回書き込み側で行い、既定パス解決だけでは起動を落とさない。
         return Path.Combine(directory, "session.txt");
     }
 
@@ -119,6 +119,12 @@ public sealed class SubtitleTranscriptStore
 
         lock (_sync)
         {
+            // 自己コピーは記録を消さないよう no-op にする。
+            if (PathsEqual(_filePath, destinationPath))
+            {
+                return;
+            }
+
             var directory = Path.GetDirectoryName(destinationPath);
             if (!string.IsNullOrEmpty(directory))
             {
@@ -133,6 +139,13 @@ public sealed class SubtitleTranscriptStore
 
             File.Copy(_filePath, destinationPath, overwrite: true);
         }
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        var fullLeft = Path.GetFullPath(left);
+        var fullRight = Path.GetFullPath(right);
+        return string.Equals(fullLeft, fullRight, StringComparison.OrdinalIgnoreCase);
     }
 
     public void Clear()

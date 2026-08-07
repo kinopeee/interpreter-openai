@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Forms;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using RealtimeTranslator.Core.OpenAI;
@@ -54,6 +53,8 @@ public partial class App : Application, IDisposable
     private bool _isEditingPosition;
     private bool _shuttingDown;
     private bool _didAnnounceTranscriptCap;
+    /// <summary>現在の録音区間でセッション開始マーカーを既に書いたか。</summary>
+    private bool _hasOpenTranscriptSession;
 
     /// <summary>録音停止から字幕を消すまでの猶予 (macOS 版と同じ)。</summary>
     public static readonly TimeSpan SubtitleClearDelay = TimeSpan.FromSeconds(5);
@@ -90,12 +91,13 @@ public partial class App : Application, IDisposable
         _session.MessageEncountered += OnSessionMessage;
 
         _tray = new TrayController();
-        _tray.StartStopRequested += (_, _) => ToggleTranslation();
-        _tray.EditPositionRequested += (_, _) => ToggleEditingPosition();
-        _tray.ExportSubtitlesRequested += (_, _) => ExportSubtitles();
-        _tray.ClearSubtitlesRequested += (_, _) => ClearSubtitleTranscript();
-        _tray.SettingsRequested += (_, _) => ShowSettings();
-        _tray.ExitRequested += (_, _) => BeginShutdown();
+        // NotifyIcon コールバックは UI スレッドとは限らないため Dispatcher へ渡す。
+        _tray.StartStopRequested += (_, _) => Dispatcher.InvokeAsync(ToggleTranslation);
+        _tray.EditPositionRequested += (_, _) => Dispatcher.InvokeAsync(ToggleEditingPosition);
+        _tray.ExportSubtitlesRequested += (_, _) => Dispatcher.InvokeAsync(ExportSubtitles);
+        _tray.ClearSubtitlesRequested += (_, _) => Dispatcher.InvokeAsync(ClearSubtitleTranscript);
+        _tray.SettingsRequested += (_, _) => Dispatcher.InvokeAsync(ShowSettings);
+        _tray.ExitRequested += (_, _) => Dispatcher.InvokeAsync(BeginShutdown);
         _tray.SetHasRecordedSubtitles(_transcriptStore.HasEntries);
 
         _overlay = new SubtitleOverlayWindow(_overlayViewModel);
@@ -212,9 +214,10 @@ public partial class App : Application, IDisposable
             return;
         }
 
+        _hasOpenTranscriptSession = false;
         if (_settings.RecordSubtitles)
         {
-            HandleTranscriptResult(_transcriptStore.MarkSessionStart());
+            OpenTranscriptSessionIfNeeded();
         }
 
         _ = RunGuarded(_session!.StartAsync);
@@ -326,11 +329,22 @@ public partial class App : Application, IDisposable
     private void UpdateSettings(AppSettingsData settings)
     {
         // メモリ上の設定とフォントは即時反映し、ディスク書き込みだけ debounce する。
+        var enablingTranscript =
+            !_settings.RecordSubtitles
+            && settings.RecordSubtitles
+            && _state is not TranslationState.Idle and not TranslationState.Error;
         _settings = settings;
         _overlayViewModel.FontSize = settings.FontSize;
         _pendingSettingsSave = settings;
         _settingsSaveDebounce.Stop();
         _settingsSaveDebounce.Start();
+
+        // 録音中にオプトインした場合は開始マーカーを補う。
+        if (enablingTranscript)
+        {
+            _hasOpenTranscriptSession = false;
+            OpenTranscriptSessionIfNeeded();
+        }
     }
 
     private void OnSettingsSaveDebounceElapsed(object? sender, EventArgs e) => FlushSettingsSave();
@@ -351,6 +365,11 @@ public partial class App : Application, IDisposable
         Dispatcher.InvokeAsync(() =>
         {
             _state = state;
+            if (state is TranslationState.Idle or TranslationState.Error)
+            {
+                _hasOpenTranscriptSession = false;
+            }
+
             _tray?.UpdateState(state);
             _overlayViewModel.Apply(_snapshots.Apply(state));
             ScheduleSubtitleClear(state);
@@ -360,6 +379,8 @@ public partial class App : Application, IDisposable
     {
         if (update.ShouldFinalize && _settings.RecordSubtitles)
         {
+            // 録音中にオプトインした場合も、最初の確定ペア前に開始マーカーを書く。
+            OpenTranscriptSessionIfNeeded();
             HandleTranscriptResult(
                 _transcriptStore.AppendEntry(update.SourceText, update.TranslatedText));
         }
@@ -369,6 +390,17 @@ public partial class App : Application, IDisposable
             _subtitleClear.Stop();
             _overlayViewModel.Apply(_snapshots.Apply(update, _state));
         });
+    }
+
+    private void OpenTranscriptSessionIfNeeded()
+    {
+        if (_hasOpenTranscriptSession)
+        {
+            return;
+        }
+
+        HandleTranscriptResult(_transcriptStore.MarkSessionStart());
+        _hasOpenTranscriptSession = true;
     }
 
     private void HandleTranscriptResult(SubtitleTranscriptAppendResult result)

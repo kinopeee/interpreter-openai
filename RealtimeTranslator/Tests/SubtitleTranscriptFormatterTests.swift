@@ -74,4 +74,28 @@ final class SubtitleTranscriptFormatterTests: XCTestCase {
             "2026-08-07T15:40:12+09:00"
         )
     }
+
+    // Given: UTC の固定時刻
+    // When: タイムスタンプを整形する
+    // Then: オフセットは Z 表記になる
+    func testFormatTimestampUsesZForUTC() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let components = DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: 2026,
+            month: 8,
+            day: 7,
+            hour: 16,
+            minute: 0,
+            second: 0
+        )
+        let date = try! XCTUnwrap(components.date)
+
+        XCTAssertEqual(
+            SubtitleTranscriptFormatter.formatTimestamp(date, timeZone: calendar.timeZone),
+            "2026-08-07T16:00:00Z"
+        )
+    }
 }

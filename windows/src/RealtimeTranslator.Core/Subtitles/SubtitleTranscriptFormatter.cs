@@ -37,7 +37,16 @@ public static class SubtitleTranscriptFormatter
             $"=== 録音開始 {timestamp}\n\n");
     }
 
-    /// <summary>ローカルオフセット付き ISO8601（<c>yyyy-MM-dd'T'HH:mm:sszzz</c>）。</summary>
-    public static string FormatTimestamp(DateTimeOffset timestamp) =>
-        timestamp.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
+    /// <summary>ローカルオフセット付き ISO8601。UTC は macOS の <c>XXXXX</c> と同様に <c>Z</c>。</summary>
+    public static string FormatTimestamp(DateTimeOffset timestamp)
+    {
+        if (timestamp.Offset == TimeSpan.Zero)
+        {
+            return timestamp.UtcDateTime.ToString(
+                "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                CultureInfo.InvariantCulture);
+        }
+
+        return timestamp.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
+    }
 }

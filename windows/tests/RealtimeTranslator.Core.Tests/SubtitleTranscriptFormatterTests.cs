@@ -67,4 +67,17 @@ public sealed class SubtitleTranscriptFormatterTests
             "2026-08-07T15:40:12+09:00",
             SubtitleTranscriptFormatter.FormatTimestamp(timestamp));
     }
+
+    // Given: UTC の固定時刻
+    // When: タイムスタンプを整形する
+    // Then: オフセットは Z 表記になる
+    [Fact]
+    public void FormatTimestampUsesZForUtc()
+    {
+        var timestamp = new DateTimeOffset(2026, 8, 7, 16, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal(
+            "2026-08-07T16:00:00Z",
+            SubtitleTranscriptFormatter.FormatTimestamp(timestamp));
+    }
 }
