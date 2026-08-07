@@ -51,7 +51,15 @@ public sealed class SubtitleTranscriptStore
         {
             lock (_sync)
             {
-                return FileByteCountLocked() > 0;
+                try
+                {
+                    return FileByteCountLocked() > 0;
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    _cachedByteCount = null;
+                    return false;
+                }
             }
         }
     }
@@ -172,22 +180,22 @@ public sealed class SubtitleTranscriptStore
         string? source,
         string? translation)
     {
-        var chunkBytes = Encoding.UTF8.GetByteCount(chunk);
-        var currentBytes = FileByteCountLocked();
-        if (currentBytes >= _maxFileBytes || currentBytes + chunkBytes > _maxFileBytes)
+        try
         {
-            // macOS 実装と同じく初回/以降を区別してフラグを立てる（呼び出し側の一度だけ案内と併用）。
-            if (_announcedSizeLimit)
+            var chunkBytes = Encoding.UTF8.GetByteCount(chunk);
+            var currentBytes = FileByteCountLocked();
+            if (currentBytes >= _maxFileBytes || currentBytes + chunkBytes > _maxFileBytes)
             {
+                // macOS 実装と同じく初回/以降を区別してフラグを立てる（呼び出し側の一度だけ案内と併用）。
+                if (_announcedSizeLimit)
+                {
+                    return SubtitleTranscriptAppendResult.Capped;
+                }
+
+                _announcedSizeLimit = true;
                 return SubtitleTranscriptAppendResult.Capped;
             }
 
-            _announcedSizeLimit = true;
-            return SubtitleTranscriptAppendResult.Capped;
-        }
-
-        try
-        {
             EnsureFileExistsLocked();
             using var stream = new FileStream(
                 _filePath,
@@ -208,6 +216,8 @@ public sealed class SubtitleTranscriptStore
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
+            // 部分書き込みの可能性があるので次回は実サイズを取り直す。
+            _cachedByteCount = null;
             // 失敗したペアも記憶し、同一再試行で失敗通知を連発しない。
             if (updateLastPair)
             {

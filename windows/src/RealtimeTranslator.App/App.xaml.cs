@@ -339,10 +339,9 @@ public partial class App : Application, IDisposable
         _settingsSaveDebounce.Stop();
         _settingsSaveDebounce.Start();
 
-        // 録音中にオプトインした場合は開始マーカーを補う。
+        // 録音中の初回オプトインだけ開始マーカーを補う（OFF→ON の再有効化では重複させない）。
         if (enablingTranscript)
         {
-            _hasOpenTranscriptSession = false;
             OpenTranscriptSessionIfNeeded();
         }
     }
