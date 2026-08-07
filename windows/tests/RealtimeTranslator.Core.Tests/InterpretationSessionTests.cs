@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -95,22 +96,144 @@ public sealed class InterpretationSessionTests
 
     // Given: 日本語で話し始めた後に英語へ切り替わる原文
     // When: 文字種の反転を検出する
-    // Then: 音声 routing を日本語 target へ切り替え直す
+    // Then: 音声 routing を英語へ切り替え直し、前セグメントを確定して preroll をリセットする
     [Fact]
-    public async Task LanguageFlipSwitchesTheTranslationTarget()
+    public async Task LanguageFlipFinalizesAndReroutes()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("これはテストです");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "This is a test");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.TranslatedText.Length > 0);
+            }
+        });
+        var resetsAfterJapanese = client.ResetAudioRoutingCount;
+
+        // When: 間を空けず英語原文が続く
+        client.PublishSourceDelta(" now we continue in english for a while");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
+
+        // Then: 言語切替で再ルーティングし、前セグメントが確定する
+        Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
+        Assert.True(client.ResetAudioRoutingCount > resetsAfterJapanese);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.ShouldFinalize)
+                    || updates.Exists(update => update.SourceText.Contains("now we continue", StringComparison.Ordinal));
+            }
+        });
+        await session.StopAsync();
+    }
+
+    // Given: ラテン文字 1 語だけの原文 delta
+    // When: 未判定状態で routing を更新する
+    // Then: AmbiguousLatin でも英語 lane を先に開く
+    [Fact]
+    public async Task AmbiguousLatinOpensTheEnglishTranslationTarget()
     {
         var client = new FakeDualClient();
         using var session = NewSession(client);
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
-        client.PublishSourceDelta("これはテストです");
+        client.PublishSourceDelta("Tokyo");
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
-        client.PublishSourceDelta(" now we continue in english for a while");
-        await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
 
-        Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
+        Assert.Equal(SpokenLanguage.English, client.SpokenLanguages[0]);
         await session.StopAsync();
+    }
+
+    // Given: Listening 中の現行 epoch
+    // When: 古い epoch の原文 delta が届く
+    // Then: routing も字幕も更新しない
+    [Fact]
+    public async Task StaleEpochSourceDeltaIsIgnored()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        var staleEpoch = client.ConnectionEpoch - 1;
+        Assert.True(staleEpoch >= 0);
+
+        client.PublishSourceDelta("これは古い接続です", epoch: staleEpoch);
+        await Task.Delay(80);
+
+        Assert.Empty(client.SpokenLanguages);
+        lock (updates)
+        {
+            Assert.Empty(updates);
+        }
+
+        await session.StopAsync();
+    }
+
+    // Given: Listening 中のセッションとカスタム tuningProvider
+    // When: tuning を変えて ApplyTuningChangeAsync する
+    // Then: dual へ最新 tuning が転送される
+    [Fact]
+    public async Task ApplyTuningChangeForwardsWhileListening()
+    {
+        var client = new FakeDualClient();
+        var currentTuning = RealtimeSessionTuning.Default;
+        using var session = NewSession(client, tuningProvider: () => currentTuning);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+
+        currentTuning = new RealtimeSessionTuning(
+            RealtimeTranslationNoiseReduction.NearField,
+            RealtimeTranscriptionDelay.High,
+            "Updated glossary",
+            ImmutableArray.Create("Acme"));
+        await session.ApplyTuningChangeAsync();
+
+        Assert.Equal(1, client.UpdateTranscriptionTuningCount);
+        Assert.Equal("Updated glossary", client.LastTuning?.TranscriptionPrompt);
+        Assert.Equal(ImmutableArray.Create("Acme"), client.LastTuning?.TranscriptionKeywords);
+        await session.StopAsync();
+    }
+
+    // Given: Idle のセッション
+    // When: ApplyTuningChangeAsync する
+    // Then: dual へ転送しない
+    [Fact]
+    public async Task ApplyTuningChangeIsNoOpWhenIdle()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+
+        await session.ApplyTuningChangeAsync();
+
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
     }
 
     // Given: 翻訳送信の連続失敗による transport error
@@ -165,11 +288,15 @@ public sealed class InterpretationSessionTests
         Assert.Equal(TranslationState.Idle, session.State);
     }
 
-    private static InterpretationSession NewSession(FakeDualClient client, string? apiKey = "sk-test") =>
+    private static InterpretationSession NewSession(
+        FakeDualClient client,
+        string? apiKey = "sk-test",
+        Func<RealtimeSessionTuning>? tuningProvider = null) =>
         new(
             new FakeApiKeyStore(apiKey),
             new FakeAudioCapture(),
             client,
+            tuningProvider,
             initialReconnectDelay: TimeSpan.FromMilliseconds(1),
             tickInterval: TimeSpan.FromMilliseconds(20));
 
@@ -239,6 +366,12 @@ public sealed class InterpretationSessionTests
 
         public int StartCount { get; private set; }
 
+        public int ResetAudioRoutingCount { get; private set; }
+
+        public int UpdateTranscriptionTuningCount { get; private set; }
+
+        public RealtimeSessionTuning? LastTuning { get; private set; }
+
         public bool ThrowOnNextStart { get; set; }
 
         public IReadOnlyList<SpokenLanguage> SpokenLanguages
@@ -268,6 +401,9 @@ public sealed class InterpretationSessionTests
 
                 _epoch += 1;
                 _spokenLanguages.Clear();
+                ResetAudioRoutingCount = 0;
+                UpdateTranscriptionTuningCount = 0;
+                LastTuning = null;
                 _events = Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
             }
 
@@ -292,9 +428,26 @@ public sealed class InterpretationSessionTests
 
         public Task UpdateTranscriptionTuningAsync(
             RealtimeSessionTuning tuning,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default)
+        {
+            lock (_sync)
+            {
+                UpdateTranscriptionTuningCount += 1;
+                LastTuning = tuning;
+            }
 
-        public Task ResetAudioRoutingAsync() => Task.CompletedTask;
+            return Task.CompletedTask;
+        }
+
+        public Task ResetAudioRoutingAsync()
+        {
+            lock (_sync)
+            {
+                ResetAudioRoutingCount += 1;
+            }
+
+            return Task.CompletedTask;
+        }
 
         public Task CloseGracefullyAsync(CancellationToken cancellationToken = default)
         {
@@ -308,9 +461,10 @@ public sealed class InterpretationSessionTests
             return Task.CompletedTask;
         }
 
-        public void PublishSourceDelta(string delta) => Publish(
+        public void PublishSourceDelta(string delta, int? epoch = null) => Publish(
             RealtimeTranslationOutputLanguage.English,
-            new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null));
+            new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
+            epoch);
 
         public void PublishTranslationDelta(RealtimeTranslationOutputLanguage target, string delta) => Publish(
             target,
@@ -326,11 +480,15 @@ public sealed class InterpretationSessionTests
             RealtimeTranslationOutputLanguage.English,
             new RealtimeTranslationServerEvent.ServerError(message, code));
 
-        private void Publish(RealtimeTranslationOutputLanguage target, RealtimeTranslationServerEvent serverEvent)
+        private void Publish(
+            RealtimeTranslationOutputLanguage target,
+            RealtimeTranslationServerEvent serverEvent,
+            int? epoch = null)
         {
             lock (_sync)
             {
-                _events.Writer.TryWrite(new RealtimeTranslationStreamEvent(target, serverEvent, _epoch));
+                _events.Writer.TryWrite(
+                    new RealtimeTranslationStreamEvent(target, serverEvent, epoch ?? _epoch));
             }
         }
 
