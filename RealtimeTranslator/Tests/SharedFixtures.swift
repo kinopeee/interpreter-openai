@@ -27,12 +27,28 @@ enum SharedFixtures {
     }
 
     static func caseNames(_ fixture: String, _ section: String) throws -> [String] {
-        try self.section(fixture, section).map { text($0["name"]) }
+        try self.section(fixture, section).map { item in
+            guard let name = item["name"] as? String else {
+                throw FixtureError.invalidCase(
+                    fixture: fixture,
+                    section: section,
+                    name: "<item>"
+                )
+            }
+            return name
+        }
     }
 
     static func `case`(_ fixture: String, _ section: String, _ name: String) throws -> [String: Any] {
         for item in try self.section(fixture, section) {
-            if text(item["name"]) == name {
+            guard let caseName = item["name"] as? String else {
+                throw FixtureError.invalidCase(
+                    fixture: fixture,
+                    section: section,
+                    name: "<item>"
+                )
+            }
+            if caseName == name {
                 return item
             }
         }
