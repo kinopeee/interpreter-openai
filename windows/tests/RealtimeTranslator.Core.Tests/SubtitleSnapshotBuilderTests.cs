@@ -118,4 +118,35 @@ public sealed class SubtitleSnapshotBuilderTests
         Assert.True(snapshot.Current.IsEmpty);
         Assert.Null(snapshot.StatusBanner);
     }
+
+    // Given: 確定済みの字幕更新
+    // When: スナップショットビルダーへ適用する
+    // Then: 確定状態が LiveSubtitle へ伝播する
+    [Fact]
+    public void ShouldFinalizePropagatesToLiveSubtitle()
+    {
+        var builder = new SubtitleSnapshotBuilder();
+
+        var snapshot = builder.Apply(
+            new RealtimeSubtitleUpdate("source", "translation", IsTranslationCurrent: true, ShouldFinalize: true, 0),
+            TranslationState.Listening);
+
+        Assert.True(snapshot.Current.IsFinalized);
+    }
+
+    // Given: 確定済みの字幕
+    // When: Reset する
+    // Then: 未確定の空スロットへ戻る
+    [Fact]
+    public void ResetReturnsToUnfinalizedSubtitle()
+    {
+        var builder = new SubtitleSnapshotBuilder();
+        builder.Apply(
+            new RealtimeSubtitleUpdate("source", "translation", IsTranslationCurrent: true, ShouldFinalize: true, 0),
+            TranslationState.Listening);
+
+        var snapshot = builder.Reset(TranslationState.Idle);
+
+        Assert.False(snapshot.Current.IsFinalized);
+    }
 }
