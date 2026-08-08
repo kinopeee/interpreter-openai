@@ -187,13 +187,35 @@ notarize_staple() {
   api_key_path="$(prepare_api_key)"
 
   echo "Submitting for notarization via notarytool..."
+  local submit_json
+  submit_json="$(mktemp "${RUNNER_TEMP:-/tmp}/notary-submit.XXXXXX.json")"
   xcrun notarytool submit "$submit_zip" \
     --key "$api_key_path" \
     --key-id "$APP_STORE_CONNECT_KEY_ID" \
     --issuer "$APP_STORE_CONNECT_ISSUER_ID" \
     --wait \
-    --timeout 30m
+    --timeout 30m \
+    --output-format json >"$submit_json"
 
+  local submission_id status
+  submission_id="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <"$submit_json")"
+  status="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])' <"$submit_json")"
+  echo "Notarization submission id: $submission_id"
+  echo "Notarization status: $status"
+
+  if [[ "$status" != "Accepted" ]]; then
+    echo "Notarization was not accepted (status=$status). Fetching log..." >&2
+    xcrun notarytool log "$submission_id" \
+      --key "$api_key_path" \
+      --key-id "$APP_STORE_CONNECT_KEY_ID" \
+      --issuer "$APP_STORE_CONNECT_ISSUER_ID" >&2 || true
+    rm -f "$submit_json"
+    rm -rf "$submit_dir"
+    write_state SUBMIT_DIR ""
+    exit 1
+  fi
+
+  rm -f "$submit_json"
   rm -rf "$submit_dir"
   write_state SUBMIT_DIR ""
 
