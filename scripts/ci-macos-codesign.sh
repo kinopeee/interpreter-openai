@@ -79,11 +79,14 @@ import_keychain() {
     -k "$keychain_password" \
     "$keychain_path"
 
-  local user_keychains
-  user_keychains="$(security list-keychains -d user | sed 's/"//g')"
+  # 空白を含むパスを壊さないよう、1行=1キーチェーンとして配列化する。
+  local user_keychains=()
+  while IFS= read -r kc; do
+    [[ -n "$kc" ]] || continue
+    user_keychains+=("$kc")
+  done < <(security list-keychains -d user | sed 's/"//g')
   # 一時キーチェーンを先頭に置き、既定キーチェーンも検索対象に残す。
-  # shellcheck disable=SC2086
-  security list-keychains -d user -s "$keychain_path" $user_keychains
+  security list-keychains -d user -s "$keychain_path" "${user_keychains[@]}"
 
   local identity="${MACOS_DEVELOPER_ID_IDENTITY:-}"
   if [[ -z "$identity" ]]; then
