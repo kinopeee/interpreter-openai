@@ -7,7 +7,9 @@ protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
     func setSpokenLanguage(_ language: SpokenLanguage) async throws
     func updateTranscriptionTuning(_ tuning: RealtimeSessionTuning) async throws
     func resetAudioRouting() async
-    func closeGracefully() async throws
+    /// 正常停止。commit/session.close 中の字幕イベントを返し、呼び出し側が assembler へ取り込む。
+    @discardableResult
+    func closeGracefully() async throws -> [RealtimeTranslationStreamEvent]
     func forceClose() async
     var connectionEpoch: Int { get async }
 }
@@ -35,6 +37,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     private var selectedTranslationTarget: RealtimeTranslationOutputLanguage?
     private var translationPrerollFrames: [Data] = []
     private var pendingTranslationFrames: [(Data, RealtimeTranslationOutputLanguage)] = []
+    /// closeGracefully 中だけ詰め、停止時の最終 delta 欠落を防ぐ。
+    private var stopDrainBuffer: [RealtimeTranslationStreamEvent]?
 
     var events: AsyncStream<RealtimeTranslationStreamEvent> {
         eventStream
@@ -223,8 +227,14 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         }
     }
 
-    func closeGracefully() async throws {
-        guard isRunning else { return }
+    @discardableResult
+    func closeGracefully() async throws -> [RealtimeTranslationStreamEvent] {
+        guard isRunning else { return [] }
+
+        // 未送信の翻訳フレームを先に送り、停止時の訳文欠落を防ぐ。
+        try? await waitForTranslationDrain()
+
+        stopDrainBuffer = []
         isRunning = false
         translationPumpTask?.cancel()
         translationPumpTask = nil
@@ -240,11 +250,14 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         }
         mergeTask?.cancel()
         mergeTask = nil
+        let drained = stopDrainBuffer ?? []
+        stopDrainBuffer = nil
         eventContinuation?.finish()
         eventContinuation = nil
         if let firstError {
             throw firstError
         }
+        return drained
     }
 
     func forceClose() async {
@@ -254,6 +267,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         consecutiveTranslationFailures = 0
         translationPumpHaltedForTransportFailure = false
+        stopDrainBuffer = nil
         connectionEpoch += 1
         translationPumpTask?.cancel()
         translationPumpTask = nil
@@ -329,7 +343,6 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
 
     private func startEventMerge(epoch: Int) {
         mergeTask?.cancel()
-        let continuation = eventContinuation
         mergeTask = Task {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { [sourceConnection] in
@@ -339,7 +352,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                         if case .inputTranscriptDelta = event.event {
                             await self.noteSourceDelta()
                         }
-                        continuation?.yield(
+                        await self.forwardMergedEvent(
                             RealtimeTranslationStreamEvent(
                                 target: event.target,
                                 event: event.event,
@@ -353,7 +366,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                     for await event in stream {
                         guard await self.connectionEpoch == epoch else { return }
                         // Dual側のepochで再ラベルし、接続内部epochと揃える。
-                        continuation?.yield(
+                        await self.forwardMergedEvent(
                             RealtimeTranslationStreamEvent(
                                 target: event.target,
                                 event: event.event,
@@ -366,7 +379,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                     let stream = await japaneseConnection.events
                     for await event in stream {
                         guard await self.connectionEpoch == epoch else { return }
-                        continuation?.yield(
+                        await self.forwardMergedEvent(
                             RealtimeTranslationStreamEvent(
                                 target: event.target,
                                 event: event.event,
@@ -378,9 +391,20 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
             }
             // 全接続のイベント流が終わったら購読側を解放する。
             if await self.connectionEpoch == epoch {
-                continuation?.finish()
+                await self.finishMergedEventStream()
             }
         }
+    }
+
+    private func forwardMergedEvent(_ event: RealtimeTranslationStreamEvent) {
+        if stopDrainBuffer != nil {
+            stopDrainBuffer?.append(event)
+        }
+        eventContinuation?.yield(event)
+    }
+
+    private func finishMergedEventStream() {
+        eventContinuation?.finish()
     }
 
     private func noteSourceDelta() {
