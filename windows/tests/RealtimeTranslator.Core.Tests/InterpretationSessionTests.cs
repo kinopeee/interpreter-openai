@@ -133,14 +133,71 @@ public sealed class InterpretationSessionTests
         // Then: 言語切替で再ルーティングし、前セグメントが確定する
         Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
         Assert.True(client.ResetAudioRoutingCount > resetsAfterJapanese);
+        RealtimeSubtitleUpdate finalized = default;
         await WaitUntilAsync(() =>
         {
             lock (updates)
             {
-                return updates.Exists(update => update.ShouldFinalize)
-                    || updates.Exists(update => update.SourceText.Contains("now we continue", StringComparison.Ordinal));
+                finalized = updates.Find(update => update.ShouldFinalize);
+                return finalized.ShouldFinalize;
             }
         });
+        Assert.Equal("これはテストです", finalized.SourceText);
+        Assert.Equal("This is a test", finalized.TranslatedText);
+        await session.StopAsync();
+    }
+
+    // Given: 訳文がまだ無い日本語原文だけのセグメント
+    // When: 英語へ文字種が反転する
+    // Then: 不完全ペアを ShouldFinalize せず、routing だけ切り替える
+    [Fact]
+    public async Task LanguageFlipDoesNotFinalizeIncompleteSourceOnlyPair()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("これは原文だけです");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.SourceText.Length > 0);
+            }
+        });
+        var resetsAfterJapanese = client.ResetAudioRoutingCount;
+
+        client.PublishSourceDelta(" now we continue in english for a while");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText.Contains("now we continue", StringComparison.Ordinal));
+            }
+        });
+        // Finalize が遅延して走っても拾えるよう少し待つ。
+        await Task.Delay(100);
+
+        Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
+        Assert.True(client.ResetAudioRoutingCount > resetsAfterJapanese);
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
+
         await session.StopAsync();
     }
 
@@ -379,6 +436,45 @@ public sealed class InterpretationSessionTests
 
         Assert.Equal("停止前の完全ペア", finalized.SourceText);
         Assert.Equal("Complete pair before stop", finalized.TranslatedText);
+    }
+
+    // Given: 訳文がまだ無い原文だけのセグメント
+    // When: 利用者が録音を停止する
+    // Then: 不完全ペアを ShouldFinalize せず Idle へ戻る
+    [Fact]
+    public async Task StopDoesNotFinalizeIncompleteSourceOnlyPair()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("停止前の原文だけ");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.SourceText.Length > 0);
+            }
+        });
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
     }
 
     // Given: idle finalize 前の完全な原文+訳文ペア
