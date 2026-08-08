@@ -179,19 +179,10 @@ public sealed class InterpretationSession : IDisposable
 
         SetState(TranslationState.Closing);
 
-        // 先に I/O を解放して接続待ちをほどき、その後 session task を排水する。
+        // 先に音声と session consumer を止め、close drain イベントを破棄されないようにする。
+        // generation を上げたまま consumer が生きていると、commit/session.close の
+        // 最終 delta を読んで捨ててしまい、オプトイン字幕記録が欠ける。
         await _audioCapture.StopAsync().ConfigureAwait(false);
-        try
-        {
-            await _dualClient.CloseGracefullyAsync().ConfigureAwait(false);
-        }
-#pragma warning disable CA1031 // graceful close が失敗しても force close で必ず解放する。
-        catch (Exception)
-#pragma warning restore CA1031
-        {
-            await _dualClient.ForceCloseAsync().ConfigureAwait(false);
-        }
-
         if (cts is not null)
         {
             await cts.CancelAsync().ConfigureAwait(false);
@@ -212,6 +203,20 @@ public sealed class InterpretationSession : IDisposable
         }
 
         cts?.Dispose();
+
+        try
+        {
+            await _dualClient.CloseGracefullyAsync().ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // graceful close が失敗しても force close で必ず解放する。
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            await _dualClient.ForceCloseAsync().ConfigureAwait(false);
+        }
+
+        // commit / session.close 中に届いた最終 delta を assembler へ取り込む。
+        await IngestStopDrainEventsAsync().ConfigureAwait(false);
 
         // 停止時点で完全ペアが残っていれば確定して見せる（オプトイン字幕記録も含む）。
         FlushPendingFinalizeIfNeeded();
@@ -665,6 +670,36 @@ public sealed class InterpretationSession : IDisposable
         if (pending is { } update)
         {
             SubtitleUpdated?.Invoke(this, update);
+        }
+    }
+
+    /// <summary>
+    /// 正常停止の close drain で channel に残った字幕イベントを assembler へ取り込む。
+    /// session consumer は世代更新で既に止まっている前提。
+    /// </summary>
+    private async Task IngestStopDrainEventsAsync()
+    {
+        var events = _dualClient.Events;
+        while (await events.WaitToReadAsync().ConfigureAwait(false))
+        {
+            while (events.TryRead(out var streamEvent))
+            {
+                if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError)
+                {
+                    continue;
+                }
+
+                RealtimeSubtitleUpdate? update;
+                lock (_sync)
+                {
+                    update = _assembler.Ingest(streamEvent, _timeProvider.GetUtcNow());
+                }
+
+                if (update is { } value)
+                {
+                    SubtitleUpdated?.Invoke(this, value);
+                }
+            }
         }
     }
 

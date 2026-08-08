@@ -407,6 +407,56 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(session.state, .idle)
     }
 
+    func testStopIngestsCompletePairPublishedDuringGracefulClose() async throws {
+        // Given: 停止時点では字幕がまだ無く、commit/session.close の drain で完全ペアが届く
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let epoch = await dual.connectionEpoch
+        dual.closeGracefullyEvents = [
+            RealtimeTranslationStreamEvent(
+                target: .english,
+                event: .inputTranscriptDelta(
+                    delta: "停止時の最終原文",
+                    eventID: "close-s1",
+                    elapsedMs: 10
+                ),
+                epoch: epoch
+            ),
+            RealtimeTranslationStreamEvent(
+                target: .english,
+                event: .outputTranscriptDelta(
+                    delta: "Final source at stop",
+                    eventID: "close-t1",
+                    elapsedMs: 20
+                ),
+                epoch: epoch
+            ),
+        ]
+
+        // When: 利用者が録音を停止する
+        await session.stop()
+
+        // Then: close drain の原文+訳文を取り込んで確定する
+        XCTAssertEqual(session.state, .idle)
+        let finalized = try XCTUnwrap(
+            delegate.finalizedSnapshots.last {
+                $0.sourceText.contains("停止時の最終原文")
+            }
+        )
+        XCTAssertEqual(finalized.translatedText, "Final source at stop")
+    }
+
     func testReconnectFinalizesCompletePairBeforeNewEpoch() async throws {
         // Given: idle finalize 前の完全な原文+訳文ペア
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
@@ -896,6 +946,8 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     var startGate: CheckedContinuationBox?
     var startFailuresRemaining = 0
     var startError: Error?
+    /// CloseGracefully 時に返す close drain イベント（停止時取り込みの回帰用）。
+    var closeGracefullyEvents: [RealtimeTranslationStreamEvent] = []
 
     var connectionEpoch: Int {
         get async {
@@ -965,9 +1017,13 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         resetAudioRoutingCallCount += 1
     }
 
-    func closeGracefully() async throws {
+    @discardableResult
+    func closeGracefully() async throws -> [RealtimeTranslationStreamEvent] {
         closeGracefullyCallCount += 1
+        let drained = closeGracefullyEvents
+        closeGracefullyEvents = []
         finishEvents()
+        return drained
     }
 
     func forceClose() async {

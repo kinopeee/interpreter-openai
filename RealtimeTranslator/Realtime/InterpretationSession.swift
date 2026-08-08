@@ -393,24 +393,31 @@ final class InterpretationSession {
         let pending = pendingUpdate
         pendingUpdate = nil
 
-        // 先にI/Oを解放して接続待ちをほどき、その後sessionTaskを排水する。
-        // cancelだけで抜けると、世代不一致パスのforceCloseが次のstartへ飛び火する。
+        // 先に音声と session consumer を止め、close drain を破棄されないようにする。
+        // generation を上げたまま consumer が生きていると、commit/session.close の
+        // 最終 delta を読んで捨ててしまい、オプトイン字幕記録が欠ける。
         await audioCapture.stop()
+        if let runningSessionTask {
+            await runningSessionTask.value
+        }
+
+        // スロットル中の旧 snapshot を先に適用し、その後の close drain で上書きする。
+        if let pending {
+            apply(pending)
+        }
+
+        let drainedEvents: [RealtimeTranslationStreamEvent]
         do {
-            try await dualClient.closeGracefully()
+            drainedEvents = try await dualClient.closeGracefully()
         } catch {
             AppLogger.realtime.error(
                 "Graceful close failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
             )
             await dualClient.forceClose()
+            drainedEvents = []
         }
-        if let runningSessionTask {
-            await runningSessionTask.value
-        }
-
-        if let pending {
-            apply(pending)
-        } else if let tickUpdate = assembler.tick(now: Date()) {
+        ingestStopDrainEvents(drainedEvents)
+        if let tickUpdate = assembler.tick(now: Date()) {
             apply(tickUpdate)
         }
 
@@ -421,6 +428,18 @@ final class InterpretationSession {
         publishSubtitles()
         stopTicker()
         schedulePostStopSubtitleClearIfNeeded()
+    }
+
+    /// 正常停止の close drain で届いた字幕イベントを assembler へ取り込む。
+    private func ingestStopDrainEvents(_ events: [RealtimeTranslationStreamEvent]) {
+        for streamEvent in events {
+            if case .error = streamEvent.event {
+                continue
+            }
+            if let update = assembler.ingest(streamEvent) {
+                apply(update)
+            }
+        }
     }
 
     private func schedulePostStopSubtitleClearIfNeeded() {
