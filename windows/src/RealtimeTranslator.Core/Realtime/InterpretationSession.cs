@@ -239,6 +239,19 @@ public sealed class InterpretationSession : IDisposable
 
     public void Dispose()
     {
+        // OnExit / プロセス終了は StopAsync を経由しないことがある。
+        // epoch/buffer を捨てる前に完全ペアを確定し、オプトイン字幕記録へ渡す。
+        try
+        {
+            FlushPendingFinalizeIfNeeded();
+        }
+#pragma warning disable CA1031 // Dispose 経路では例外を外へ出さない。
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            // flush 失敗でも CTS 解放は継続する。
+        }
+
         CancellationTokenSource? cts;
         lock (_sync)
         {
