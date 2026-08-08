@@ -97,6 +97,20 @@ public sealed class SubtitleOverlayViewModelTests
         Assert.Equal(30 * SubtitleOverlayViewModel.LineHeightRatio, maximumLineHeight - minimumLineHeight);
     }
 
+    // Given: WPF 既定行送りと macOS 相当の加算行間
+    // When: LineHeightRatio を読む
+    // Then: FontSize * 1.1 ではなく 1.3333 + 0.1 を保つ（詰まり回帰を防ぐ）
+    [Fact]
+    public void LineHeightRatioMatchesWpfDefaultPlusAddedSpacing()
+    {
+        Assert.Equal(
+            SubtitleOverlayViewModel.DefaultLineSpacingRatio + SubtitleOverlayViewModel.AddedLineSpacingRatio,
+            SubtitleOverlayViewModel.LineHeightRatio);
+        Assert.Equal(1.4333, SubtitleOverlayViewModel.LineHeightRatio, precision: 4);
+        Assert.True(SubtitleOverlayViewModel.LineHeightRatio > SubtitleOverlayViewModel.DefaultLineSpacingRatio);
+        Assert.True(SubtitleOverlayViewModel.LineHeightRatio > 1.1);
+    }
+
     // Given: 短い字幕と長い字幕
     // When: スナップショットを順に反映する
     // Then: 予約されたスロット高さは変化しない
@@ -127,6 +141,8 @@ public sealed class SubtitleOverlayViewModelTests
     [InlineData("source", "", false, true)]
     [InlineData("source", "ends。", false, false)]
     [InlineData("source", "ends.", false, false)]
+    [InlineData("source", "ends!", false, false)]
+    [InlineData("source", "ends?", false, false)]
     [InlineData("source", "ends！", false, false)]
     [InlineData("source", "ends？", false, false)]
     [InlineData("source", "続きはまた…", false, false)]

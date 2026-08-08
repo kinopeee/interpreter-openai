@@ -134,6 +134,43 @@ public sealed class SubtitleSnapshotBuilderTests
         Assert.True(snapshot.Current.IsFinalized);
     }
 
+    // Given: ShouldFinalize 付きの更新
+    // When: builder → ViewModel へ通す
+    // Then: 確定後は翻訳中マーカーを出さない
+    [Fact]
+    public void FinalizedSnapshotHidesPendingMarkerThroughViewModel()
+    {
+        var builder = new SubtitleSnapshotBuilder();
+        var snapshot = builder.Apply(
+            new RealtimeSubtitleUpdate("source", "translation", IsTranslationCurrent: true, ShouldFinalize: true, 0),
+            TranslationState.Listening);
+        var viewModel = new SubtitleOverlayViewModel();
+
+        viewModel.Apply(snapshot);
+
+        Assert.True(viewModel.IsFinalized);
+        Assert.False(viewModel.ShowsPendingMarker);
+        Assert.Equal(string.Empty, viewModel.PendingMarkerText);
+    }
+
+    // Given: 字幕を表示したままエラーへ遷移する
+    // When: Error 状態を適用する
+    // Then: 字幕は残し、待機バナーで失敗表示を覆わない
+    [Fact]
+    public void ErrorKeepsVisibleSubtitleWithoutIdleBanner()
+    {
+        var builder = new SubtitleSnapshotBuilder();
+        builder.Apply(
+            new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
+            TranslationState.Listening);
+
+        var snapshot = builder.Apply(TranslationState.Error);
+
+        Assert.Equal("こんにちは", snapshot.Current.SourceText);
+        Assert.Equal("Hello", snapshot.Current.TranslatedText);
+        Assert.Null(snapshot.StatusBanner);
+    }
+
     // Given: 確定済みの字幕
     // When: Reset する
     // Then: 未確定の空スロットへ戻る
