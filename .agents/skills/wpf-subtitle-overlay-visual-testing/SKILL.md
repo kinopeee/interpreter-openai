@@ -42,6 +42,9 @@ vm.FontSize = 30;
 const string src = "これは二行になるくらいの日本語原文サンプルです。";
 const string dst = "This is a sample English translation long enough to wrap.";
 string? banner = null; // or SubtitleSnapshotBuilder.ConnectingBanner, etc.
+// Match the LiveSubtitle arity on the revision under test (main is two args today).
+// When a change adds positional members (e.g. IsFinalized), prefer reflection
+// (see below) or the matching ctor — do not hardcode unmerged members here.
 vm.Apply(new SubtitleSnapshot(new LiveSubtitle(src, dst), banner));
 _ = overlay.Dispatcher.InvokeAsync(() =>
 {
@@ -67,10 +70,11 @@ Gotchas learned the hard way:
 
 Run **two processes** of the harness at once, upper and lower half of the screen:
 
-1. `git stash` the change, build, copy the **entire** App bin folder (not just
-   `RealtimeTranslator.*.dll` — NAudio and other transitive deps are required) to
-   `appbin-before/`, then `git stash pop` and build again into `appbin-after/` the same way.
-2. Build the harness twice with `-p:AppBin=<dir> -p:BaseOutputPath=<out-dir>\`.
+1. Build the "before" revision from a `git worktree` (see below), then copy each build's
+   **entire** App bin folder (not just `RealtimeTranslator.*.dll` — NAudio and other
+   transitive deps are required) to `appbin-before/` and `appbin-after/`.
+2. Either build the harness twice with `-p:AppBin=<dir> -p:BaseOutputPath=<out-dir>\`, or
+   better, load both appbins from one harness binary (see below).
 3. One instance owns a full-screen backdrop window (white / bright gradient / dark) plus a
    control panel; both poll a shared state file for background/scene/font size.
 4. **Open the shared state file with `FileShare.ReadWrite` and retry on `IOException`.**
@@ -92,6 +96,8 @@ Run **two processes** of the harness at once, upper and lower half of the screen
   tail. Head truncation must be done in the view model / clipper.
 - To keep window height fixed, give the text slots an explicit `Height` and replace
   `Visibility=Collapsed` with `Opacity` (Collapsed is what makes the window jump).
+  A local `Opacity="..."` attribute beats `Style`/`DataTrigger` setters, so move the visible
+  value into the `Style` when a trigger has to override it.
 - Per-run opacity: use an alpha `Foreground` (e.g. `#8CFFFFFF` ≈ 0.55) on a second `<Run>`.
 
 ## Display scaling
@@ -107,3 +113,64 @@ force scaling.
 ## Devin Secrets Needed
 
 None. All overlay visual testing works offline without `OPENAI_API_KEY`.
+
+## Prefer a git worktree over `git stash` for the "before" build
+
+A sidekick/lead agent may be building the same checkout concurrently, and `git stash` /
+`stash pop` on a shared tree is destructive and racy. Instead:
+
+```powershell
+git worktree add C:\wt-before <merge-base-sha>
+dotnet build C:\wt-before\windows\RealtimeTranslator.slnx -c Release
+```
+
+`git worktree add` writes its progress lines to stderr, so PowerShell may report a nonzero
+status even when the worktree was created fine — check `Test-Path` / `git worktree list`
+before assuming failure. Then copy each build's **entire** App bin folder to
+`appbin-before\` / `appbin-after\`.
+
+Also: PowerShell here is Windows PowerShell 5.1, so `&&` is not a statement separator —
+chain with `;`.
+
+## Loading both builds from ONE harness binary (better than building it twice)
+
+Rather than `-p:AppBin=...` twice, have the harness take the appbin directory as a
+command-line argument and load `RealtimeTranslator.App.dll` / `.Core.dll` with
+`Assembly.LoadFrom`, then create `SubtitleOverlayViewModel` / `SubtitleOverlayWindow` /
+`LiveSubtitle` / `SubtitleSnapshot` by reflection (`Activator.CreateInstance`, property
+setters, and the record's positional constructor). BAML and the XAML resources resolve
+correctly from the loaded assembly. This keeps before/after pixel-identical apart from the
+code under test, and lets one control panel drive both processes. Reflection also survives
+the positional members of `LiveSubtitle` changing between the two revisions.
+
+When writing the shared-state helper, check `File.Exists(path)` **before** the retry loop and
+keep only `catch (IOException)`. Adding `catch (FileNotFoundException)` after
+`catch (IOException)` is a compile error (`CS0160`).
+
+## Assertions that a marker/inline-run change needs
+
+When the change appends a marker (e.g. a pending `…`) as a second `<Run>`, test these
+explicitly — they are easy to get wrong and only visible in pixels:
+
+- **XAML whitespace between `Run`s becomes a real space.** Two `<Run/>` elements on separate
+  source lines render as `body␣marker`. If the reference platform (SwiftUI) concatenates
+  directly, the two will not match. Zoom into the glyphs to check for the gap; do not trust
+  the bound string.
+- **Whitespace-only text still occupies advance width.** A view model that gates the marker on
+  `string.IsNullOrWhiteSpace(...)` still lays out the whitespace if the first `Run` is bound to
+  the raw text, producing `␣␣␣…` with the marker indented. Compare an empty-translation
+  screenshot against a whitespace-only one at the *same* crop origin — the marker's x position
+  must be identical.
+- Marker absent when finalized (when the revision exposes that flag), when both texts are
+  empty, and for every terminal-punctuation character in the set (test `.` and a full-width
+  `。` at minimum).
+
+## Capturing evidence on Windows
+
+- Native full-resolution captures and zoom crops:
+  `Add-Type -TypeDefinition <C# using System.Drawing> -ReferencedAssemblies System.Drawing`
+  (referencing `System.Drawing.Common.dll` by path fails with "metadata file not found").
+  Use `InterpolationMode.NearestNeighbor` for halo/glyph crops so the blur is not resampled.
+- `upload_attachment` rejects `C:\...` paths. Copy artifacts into `/tmp` (which maps to
+  `C:\tmp`) and upload from `/tmp/...`.
+- Screen recordings land under `C:\tmp\devin-recordings\<id>\<id>-edited.mp4`.
