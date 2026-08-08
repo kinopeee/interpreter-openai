@@ -42,7 +42,10 @@ vm.FontSize = 30;
 const string src = "これは二行になるくらいの日本語原文サンプルです。";
 const string dst = "This is a sample English translation long enough to wrap.";
 string? banner = null; // or SubtitleSnapshotBuilder.ConnectingBanner, etc.
-vm.Apply(new SubtitleSnapshot(new LiveSubtitle(src, dst, isFinalized: false), banner));
+// Match the LiveSubtitle arity on the revision under test (main is two args today).
+// When a change adds positional members (e.g. IsFinalized), prefer reflection
+// (see below) or the matching ctor — do not hardcode unmerged members here.
+vm.Apply(new SubtitleSnapshot(new LiveSubtitle(src, dst), banner));
 _ = overlay.Dispatcher.InvokeAsync(() =>
 {
     overlay.UpdateLayout();
@@ -158,8 +161,9 @@ explicitly — they are easy to get wrong and only visible in pixels:
   the raw text, producing `␣␣␣…` with the marker indented. Compare an empty-translation
   screenshot against a whitespace-only one at the *same* crop origin — the marker's x position
   must be identical.
-- Marker absent when finalized, when both texts are empty, and for every terminal-punctuation
-  character in the set (test `.` and a full-width `。` at minimum).
+- Marker absent when finalized (when the revision exposes that flag), when both texts are
+  empty, and for every terminal-punctuation character in the set (test `.` and a full-width
+  `。` at minimum).
 
 ## Capturing evidence on Windows
 
