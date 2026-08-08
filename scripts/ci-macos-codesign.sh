@@ -187,8 +187,9 @@ notarize_staple() {
   api_key_path="$(prepare_api_key)"
 
   echo "Submitting for notarization via notarytool..."
+  # macOS mktemp はテンプレート末尾の X を要求するため、submit_dir 内に JSON を置く。
   local submit_json
-  submit_json="$(mktemp "${RUNNER_TEMP:-/tmp}/notary-submit.XXXXXX.json")"
+  submit_json="${submit_dir}/notary-submit.json"
   xcrun notarytool submit "$submit_zip" \
     --key "$api_key_path" \
     --key-id "$APP_STORE_CONNECT_KEY_ID" \
