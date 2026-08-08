@@ -65,10 +65,11 @@ import_keychain() {
   security create-keychain -p "$keychain_password" "$keychain_path"
   security set-keychain-settings -lut 21600 "$keychain_path"
   security unlock-keychain -p "$keychain_password" "$keychain_path"
+  # PKCS#12 は証明書+秘密鍵の aggregate。-t cert だと秘密鍵が落ちる。
   security import "$cert_path" \
     -P "$MACOS_CERTIFICATE_PASSWORD" \
     -A \
-    -t cert \
+    -t agg \
     -f pkcs12 \
     -k "$keychain_path"
   # GUIプロンプト無しで codesign / security が鍵を使えるようにする。
@@ -79,10 +80,10 @@ import_keychain() {
     "$keychain_path"
 
   local user_keychains
-  user_keychains="$(security list-keychain -d user | sed 's/"//g')"
+  user_keychains="$(security list-keychains -d user | sed 's/"//g')"
   # 一時キーチェーンを先頭に置き、既定キーチェーンも検索対象に残す。
   # shellcheck disable=SC2086
-  security list-keychain -d user -s "$keychain_path" $user_keychains
+  security list-keychains -d user -s "$keychain_path" $user_keychains
 
   local identity="${MACOS_DEVELOPER_ID_IDENTITY:-}"
   if [[ -z "$identity" ]]; then
@@ -144,7 +145,11 @@ prepare_api_key() {
 
   local key_path="${RUNNER_TEMP:-/tmp}/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
   # secrets のリテラル \n も実改行へ正規化する。
-  printf '%s\n' "$APP_STORE_CONNECT_KEY_P8" | sed 's/\r$//' | sed 's/\\n/\n/g' >"$key_path"
+  # BSD sed は置換側の \n を解釈しないため、Bash のパラメータ展開を使う。
+  local key_pem="$APP_STORE_CONNECT_KEY_P8"
+  key_pem="${key_pem//$'\r'/}"
+  key_pem="${key_pem//\\n/$'\n'}"
+  printf '%s\n' "$key_pem" >"$key_path"
   chmod 600 "$key_path"
   write_state API_KEY_PATH "$key_path"
   echo "$key_path"
@@ -167,8 +172,11 @@ notarize_staple() {
   codesign --verify --deep --strict --verbose=2 "$app_path"
   codesign -dv --verbose=2 "$app_path"
 
-  local submit_zip
-  submit_zip="$(mktemp "${RUNNER_TEMP:-/tmp}/notarize-submit.XXXXXX.zip")"
+  # macOS mktemp はテンプレート末尾の X を要求するため、一時dir内に zip を置く。
+  local submit_dir submit_zip
+  submit_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/notarize-submit.XXXXXX")"
+  write_state SUBMIT_DIR "$submit_dir"
+  submit_zip="${submit_dir}/RealtimeTranslator-notarize.zip"
   # notarytool 提出用の一時zip（拡張属性と署名を保持）。
   ditto -c -k --sequesterRsrc --keepParent "$app_path" "$submit_zip"
 
@@ -183,7 +191,8 @@ notarize_staple() {
     --wait \
     --timeout 30m
 
-  rm -f "$submit_zip"
+  rm -rf "$submit_dir"
+  write_state SUBMIT_DIR ""
 
   echo "Stapling notarization ticket..."
   xcrun stapler staple "$app_path"
@@ -206,10 +215,13 @@ cleanup() {
   if [[ -n "${API_KEY_PATH:-}" && -f "${API_KEY_PATH:-}" ]]; then
     rm -f "$API_KEY_PATH"
   fi
-  # AuthKey_*.p8 の取りこぼしを掃除する。
+  if [[ -n "${SUBMIT_DIR:-}" && -d "${SUBMIT_DIR:-}" ]]; then
+    rm -rf "$SUBMIT_DIR"
+  fi
+  # AuthKey_*.p8 / 提出用一時dir の取りこぼしを掃除する。
   rm -f "${RUNNER_TEMP:-/tmp}"/AuthKey_*.p8 \
-    "${RUNNER_TEMP:-/tmp}"/developer-id-application.p12 \
-    "${RUNNER_TEMP:-/tmp}"/notarize-submit.*.zip 2>/dev/null || true
+    "${RUNNER_TEMP:-/tmp}"/developer-id-application.p12 2>/dev/null || true
+  rm -rf "${RUNNER_TEMP:-/tmp}"/notarize-submit.* 2>/dev/null || true
   rm -f "$STATE_FILE"
   echo "Cleaned up temporary signing materials."
 }
