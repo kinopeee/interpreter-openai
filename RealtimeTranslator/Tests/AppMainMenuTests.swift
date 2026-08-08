@@ -3,6 +3,20 @@ import XCTest
 @testable import RealtimeTranslator
 
 final class AppMainMenuTests: XCTestCase {
+    func testQuitMenuItemUsesTerminateAction() {
+        // Given: LSUIElement向けに組み立てた mainMenu
+        let menu = AppMainMenu.makeMenu()
+
+        // When: アプリメニューの終了項目を探す
+        let quitItem = menu.items.first?.submenu?.items.first {
+            $0.title == "Realtime Translator を終了"
+        }
+
+        // Then: ⌘Q は NSApp.terminate へ繋がり、applicationShouldTerminate で session.stop する
+        XCTAssertEqual(quitItem?.keyEquivalent, "q")
+        XCTAssertEqual(quitItem?.action, #selector(NSApplication.terminate(_:)))
+    }
+
     func testEditMenuProvidesPasteKeyEquivalent() {
         // Given: LSUIElement向けに組み立てた mainMenu
         let menu = AppMainMenu.makeMenu()

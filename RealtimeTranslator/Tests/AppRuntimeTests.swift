@@ -52,4 +52,21 @@ final class AppRuntimeTests: XCTestCase {
         // Then: Coordinatorを生成せず、UIやホットキーを起動しない
         XCTAssertNil(AppRuntime.coordinator)
     }
+
+    func testTerminationGateStartsUnpreparedAndCanBeMarked() {
+        // Given: テスト用に終了ゲートを初期化
+        AppTerminationGate.resetForTests()
+
+        // When: まだ prepare していない
+        // Then: terminateLater 側へ進める
+        XCTAssertFalse(AppTerminationGate.isPrepared)
+
+        // When: セッション停止後に prepared を立てる
+        AppTerminationGate.markPrepared()
+
+        // Then: 二重 stop せず terminateNow できる
+        XCTAssertTrue(AppTerminationGate.isPrepared)
+
+        AppTerminationGate.resetForTests()
+    }
 }

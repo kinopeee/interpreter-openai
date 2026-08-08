@@ -337,6 +337,50 @@ public sealed class InterpretationSessionTests
     }
 
     // Given: idle finalize 前の完全な原文+訳文ペア
+    // When: StopAsync を経ずに Dispose される（OnExit / プロセス終了相当）
+    // Then: 破棄前に ShouldFinalize が発行され、オプトイン字幕記録へ届く
+    [Fact]
+    public async Task DisposeFinalizesCompletePairWithoutStop()
+    {
+        var client = new FakeDualClient();
+        var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("終了前の完全ペア");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Complete pair before exit");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+            }
+        });
+
+        session.Dispose();
+
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("終了前の完全ペア", finalized.SourceText);
+        Assert.Equal("Complete pair before exit", finalized.TranslatedText);
+    }
+
+    // Given: idle finalize 前の完全な原文+訳文ペア
     // When: 利用者が録音を停止する
     // Then: Idle へ戻る前に ShouldFinalize が発行される
     [Fact]
