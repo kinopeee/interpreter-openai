@@ -254,6 +254,133 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 訳文がまだ無い原文だけのセグメント
+    // When: transport error で再接続する
+    // Then: 不完全ペアを ShouldFinalize しない（字幕記録へゴミを書かない）
+    [Fact]
+    public async Task ReconnectDoesNotFinalizeIncompleteSourceOnlyPair()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("まだ訳がない発話です");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.SourceText.Length > 0);
+            }
+        });
+
+        client.PublishTransportError();
+        await WaitUntilAsync(() => client.StartCount >= 2);
+
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
+
+        await session.StopAsync();
+    }
+
+    // Given: 訳文がまだ無い原文だけのセグメント
+    // When: 認証失敗でセッションが止まる
+    // Then: 不完全ペアを ShouldFinalize しない
+    [Fact]
+    public async Task FatalErrorDoesNotFinalizeIncompleteSourceOnlyPair()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("認証失敗前の原文だけ");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.SourceText.Length > 0);
+            }
+        });
+
+        client.PublishServerError("Incorrect API key provided", "invalid_api_key");
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+        // Flush が遅延して走っても拾えるよう少し待つ。
+        await Task.Delay(100);
+
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
+    }
+
+    // Given: idle finalize 前の完全な原文+訳文ペア
+    // When: 利用者が録音を停止する
+    // Then: Idle へ戻る前に ShouldFinalize が発行される
+    [Fact]
+    public async Task StopFinalizesCompletePairBeforeIdle()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("停止前の完全ペア");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Complete pair before stop");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+            }
+        });
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("停止前の完全ペア", finalized.SourceText);
+        Assert.Equal("Complete pair before stop", finalized.TranslatedText);
+    }
+
     // Given: idle finalize 前の完全な原文+訳文ペア
     // When: transport error で再接続し BeginNewEpoch する
     // Then: 捨てる前に ShouldFinalize が発行され、オプトイン字幕記録へ届く
