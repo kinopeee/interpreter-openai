@@ -19,7 +19,7 @@ if ($actual -ne $expected) { throw "SHA-256 mismatch: expected $expected, got $a
 ## macOS (`RealtimeTranslator-<tag>-macos-arm64.zip`)
 
 - macOS 26 以降 / Apple Silicon。
-- Developer ID 署名・公証を行っていない ad-hoc 署名ビルドです。初回は Gatekeeper にブロックされるため、ZIP を検証してから `.app` を `/Applications` へ移し、隔離属性を外してください。
+- Developer ID Application 署名済みで、公証（notarization）と staple 済みです。ZIP を検証してから `.app` を `/Applications` へ移してください。
 
 SHA-256 は zip 内ではなく、Release アセット `RealtimeTranslator-<tag>-macos-arm64.zip.sha256` です。
 
@@ -28,13 +28,10 @@ SHA-256 は zip 内ではなく、Release アセット `RealtimeTranslator-<tag>
 # `ditto: .: Operation not permitted` になる）
 cd ~/Downloads
 
-# 起動前に検証
 shasum -a 256 -c RealtimeTranslator-<tag>-macos-arm64.zip.sha256
 
-# 検証成功後に展開し、/Applications へ配置して起動
 ditto -x -k RealtimeTranslator-<tag>-macos-arm64.zip .
 ditto RealtimeTranslator.app /Applications/RealtimeTranslator.app
-xattr -dr com.apple.quarantine /Applications/RealtimeTranslator.app
 open /Applications/RealtimeTranslator.app
 ```
 
