@@ -1,16 +1,30 @@
+# macOS
 .DS_Store
-*.xcodeproj
-*.xcworkspace
+
+# Secrets / local env
+.env
+.env.*
+
+# Editors
+.idea/
+*.swp
+*.user
+
+# Logs / coverage
+*.log
+*.profraw
+
+# XcodeGen output (source of truth is project.yml)
+*.xcodeproj/
+*.xcworkspace/
+
+# Xcode user-specific / local build
+xcuserdata/
+*.xcuserstate
 DerivedData/
 build/
-*.xcuserstate
-xcuserdata/
-*.swp
-.idea/
-*.log
-.env
+
+# .NET / Windows
 bin/
 obj/
-*.user
 artifacts/
-*.profraw
