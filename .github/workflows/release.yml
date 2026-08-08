@@ -150,17 +150,6 @@ jobs:
           echo "mode=developer-id" >> "$GITHUB_OUTPUT"
           echo "tag/workflow_dispatch: Developer ID signing and notarization enabled."
 
-      - name: Import Developer ID certificate
-        if: steps.sign.outputs.mode == 'developer-id'
-        env:
-          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          MACOS_DEVELOPER_ID_IDENTITY: ${{ secrets.MACOS_DEVELOPER_ID_IDENTITY }}
-          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
-        run: |
-          set -euo pipefail
-          ./scripts/ci-macos-codesign.sh import-keychain
-
       - name: Generate the Xcode project
         run: |
           set -euo pipefail
@@ -175,6 +164,17 @@ jobs:
             -destination 'platform=macOS' \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Import Developer ID certificate
+        if: steps.sign.outputs.mode == 'developer-id'
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_DEVELOPER_ID_IDENTITY: ${{ secrets.MACOS_DEVELOPER_ID_IDENTITY }}
+          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          ./scripts/ci-macos-codesign.sh import-keychain
 
       - name: Build
         env:
