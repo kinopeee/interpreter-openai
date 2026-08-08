@@ -200,10 +200,13 @@ jobs:
               -scheme RealtimeTranslator \
               -configuration Release \
               -destination 'platform=macOS' \
-              -derivedDataPath build/DerivedData \
+              -derivedDataPath build/DerivedDataRelease \
+              ARCHS=arm64 \
+              ONLY_ACTIVE_ARCH=NO \
               CODE_SIGN_STYLE=Manual \
               CODE_SIGN_IDENTITY="$identity" \
               DEVELOPMENT_TEAM="$team_id" \
+              CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
               OTHER_CODE_SIGN_FLAGS="--timestamp --keychain ${CODESIGN_KEYCHAIN_PATH}"
           else
             # PR dry-run: CIに証明書が無くても配布zip経路を検証できるようad-hoc署名する。
@@ -211,21 +214,28 @@ jobs:
               -scheme RealtimeTranslator \
               -configuration Release \
               -destination 'platform=macOS' \
-              -derivedDataPath build/DerivedData \
+              -derivedDataPath build/DerivedDataRelease \
+              ARCHS=arm64 \
+              ONLY_ACTIVE_ARCH=NO \
               CODE_SIGN_STYLE=Manual \
               CODE_SIGN_IDENTITY=- \
-              DEVELOPMENT_TEAM=
+              DEVELOPMENT_TEAM= \
+              CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO
           fi
 
       - name: Verify the audio input entitlement
         run: |
           set -euo pipefail
-          app="build/DerivedData/Build/Products/Release/RealtimeTranslator.app"
+          app="build/DerivedDataRelease/Build/Products/Release/RealtimeTranslator.app"
           # entitlementsが欠けるとマイク許可済みでもrequestAccessが拒否されるため、配布前に必ず確認する。
           codesign -d --entitlements :- --xml "$app" > entitlements.xml
           value=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' entitlements.xml)
           if [[ "$value" != "true" ]]; then
             echo "com.apple.security.device.audio-input must be true, got: $value" >&2
+            exit 1
+          fi
+          if /usr/libexec/PlistBuddy -c 'Print :com.apple.security.get-task-allow' entitlements.xml >/dev/null 2>&1; then
+            echo "com.apple.security.get-task-allow must not be present in Release builds" >&2
             exit 1
           fi
 
@@ -237,7 +247,7 @@ jobs:
           APP_STORE_CONNECT_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
         run: |
           set -euo pipefail
-          app="build/DerivedData/Build/Products/Release/RealtimeTranslator.app"
+          app="build/DerivedDataRelease/Build/Products/Release/RealtimeTranslator.app"
           ./scripts/ci-macos-codesign.sh notarize-staple "$app"
 
       - name: Package
@@ -246,7 +256,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          app="build/DerivedData/Build/Products/Release/RealtimeTranslator.app"
+          app="build/DerivedDataRelease/Build/Products/Release/RealtimeTranslator.app"
           zip="artifacts/RealtimeTranslator-${RELEASE_TAG}-macos-arm64.zip"
           # ditto はbundleの拡張属性と署名を保ったままzip化できる（Compress-Archive相当のzipでは壊れる）。
           # staple 後に最終zipを作る（公証チケットをzip内へ含める）。
