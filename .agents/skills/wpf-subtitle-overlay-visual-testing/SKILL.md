@@ -42,10 +42,10 @@ vm.FontSize = 30;
 const string src = "これは二行になるくらいの日本語原文サンプルです。";
 const string dst = "This is a sample English translation long enough to wrap.";
 string? banner = null; // or SubtitleSnapshotBuilder.ConnectingBanner, etc.
-// Match the LiveSubtitle arity on the revision under test (main is two args today).
-// When a change adds positional members (e.g. IsFinalized), prefer reflection
-// (see below) or the matching ctor — do not hardcode unmerged members here.
-vm.Apply(new SubtitleSnapshot(new LiveSubtitle(src, dst), banner));
+// Match the LiveSubtitle arity on the revision under test. On main it is
+// (SourceText, TranslatedText, IsFinalized) since #32; older revisions take two args.
+// When comparing revisions with different arity, drive both by reflection (see below).
+vm.Apply(new SubtitleSnapshot(new LiveSubtitle(src, dst, IsFinalized: false), banner));
 _ = overlay.Dispatcher.InvokeAsync(() =>
 {
     overlay.UpdateLayout();
@@ -94,8 +94,15 @@ Run **two processes** of the harness at once, upper and lower half of the screen
   WPF allows only one `Effect` per element, so stack shadows by nesting `Border`s.
 - SwiftUI `truncationMode(.head)` has **no** WPF equivalent; `TextTrimming` only trims the
   tail. Head truncation must be done in the view model / clipper.
+- WPF `TextTrimming` trims the tail, which is the newest live-subtitle text, while
+  `SubtitleTailClipper` deliberately keeps the tail. At large font sizes, the fixed
+  2-line slot can silently discard what the clipper kept. The accepted practical range
+  is 24–32pt for bilingual user events; 48pt is explicitly out of scope.
 - To keep window height fixed, give the text slots an explicit `Height` and replace
-  `Visibility=Collapsed` with `Opacity` (Collapsed is what makes the window jump).
+  `Visibility=Collapsed` with `Opacity` (Collapsed is what makes the window jump). Since #32
+  the production slots are already fixed at `LineHeight * ReservedLineCount`, so an unchanged
+  overlay should measure the *same* `ActualHeight` in every subtitle state — a height that
+  varies with content is now a regression, not the baseline.
   A local `Opacity="..."` attribute beats `Style`/`DataTrigger` setters, so move the visible
   value into the `Style` when a trigger has to override it.
 - Per-run opacity: use an alpha `Foreground` (e.g. `#8CFFFFFF` ≈ 0.55) on a second `<Run>`.
