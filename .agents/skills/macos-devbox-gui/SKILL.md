@@ -176,7 +176,9 @@ VALUES
 ('kTCCServicePostEvent','/bin/zsh',1,2,4,1,'UNUSED',0);
 COMMIT;
 SQL
-# tccd relaunches on demand after the next TCC check
+sudo killall tccd 2>/dev/null || true
+# Required to make the database mutation visible to tccd; this was required
+# by the measured screencapture flow.
 ```
 
 Retry and verify:
@@ -202,6 +204,8 @@ preserves any pre-existing allowances for the same clients/services. Stop
 sudo killall tccd 2>/dev/null || true
 sudo sqlite3 "$DB" ".restore '/tmp/TCC.db.bak'"
 sudo sqlite3 "$DB" 'PRAGMA integrity_check;'
+sudo killall tccd 2>/dev/null || true
+# Required to make the restored database visible to tccd.
 ```
 
 If `.restore` is unavailable in the local `sqlite3`, copy the backup file onto
@@ -236,6 +240,10 @@ XCTest / target-app grant templates live in the skill scripts directory (not
 .agents/skills/macos-devbox-gui/scripts/tcc-target-app-grants.sql
 .agents/skills/macos-devbox-gui/scripts/tcc-target-app-restore.sql
 ```
+
+These `/tmp` images and the integrated report are artifacts from the original
+investigation session. They are not expected to exist in a newly created
+Devbox; capture new evidence paths for future sessions.
 
 Always take a `.backup` first, edit the templates to match the measured
 `Sub:` / `Resp:` clients, apply only denied services, then restore from the
