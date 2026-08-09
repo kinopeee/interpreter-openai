@@ -566,6 +566,42 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(japaneseClose, 1)
     }
 
+    func testCloseGracefullyReturnsDrainEventsCapturedBeforeWait() async throws {
+        // Given: consumer 相当が止まり、stop drain 武装済みの dual
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        await dual.beginStopDrainCapture()
+
+        // When: translation pump drain / session.close 前に最終原文が届き、close は timeout する
+        try await sourceTransport.enqueueJSON([
+            "type": "conversation.item.input_audio_transcription.delta",
+            "item_id": "close-drain-1",
+            "delta": "drain前の原文",
+        ])
+        // merge が stopDrainBuffer へ載るまで短い間を空ける（completed は送らず closeTimeout へ）
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let drained = await dual.closeGracefully()
+
+        // Then: close 失敗経路でも武装後の delta を返す
+        let sourceTexts = drained.compactMap { event -> String? in
+            guard case .inputTranscriptDelta(let delta, _, _) = event.event else { return nil }
+            return delta
+        }
+        XCTAssertTrue(sourceTexts.contains("drain前の原文"))
+    }
+
     func testWaitForTranslationDrainTimesOutWhenSendStalls() async throws {
         // Given: 翻訳送信が完了しないdual（言語判定済みで翻訳laneへ流れる）
         let sourceTransport = FakeRealtimeWebSocketTransport()

@@ -401,21 +401,16 @@ final class InterpretationSession {
             await runningSessionTask.value
         }
 
+        // consumer 終了直後から drain を蓄え、translation pump drain / session.close の
+        // 窓で届く最終 delta を AsyncStream の読み捨てにしない。
+        await dualClient.beginStopDrainCapture()
+
         // スロットル中の旧 snapshot を先に適用し、その後の close drain で上書きする。
         if let pending {
             apply(pending)
         }
 
-        let drainedEvents: [RealtimeTranslationStreamEvent]
-        do {
-            drainedEvents = try await dualClient.closeGracefully()
-        } catch {
-            AppLogger.realtime.error(
-                "Graceful close failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
-            )
-            await dualClient.forceClose()
-            drainedEvents = []
-        }
+        let drainedEvents = await dualClient.closeGracefully()
         ingestStopDrainEvents(drainedEvents)
         if let tickUpdate = assembler.tick(now: Date()) {
             apply(tickUpdate)
