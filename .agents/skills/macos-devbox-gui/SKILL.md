@@ -115,10 +115,12 @@ not merely the accessor binary.
 > **Repeat the security warning:** this edits `/Library` system state. Do it only
 > on the disposable Devbox described above. Back up first and restore afterward.
 
-The TCC database used in the investigation was:
+Pin the same `TCC_DB` / `TCC_BACKUP` for an entire grant→work→restore flow.
+Backups must live under `/tmp/rt-tcc/` (the helpers enforce this):
 
 ```bash
-DB="/Library/Application Support/com.apple.TCC/TCC.db"
+export TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
+export TCC_BACKUP="/tmp/rt-tcc/TCC.db.bak"
 ```
 
 ### Back up and grant
@@ -148,7 +150,9 @@ insert the allowed row. Because that deletes prior state, **restore only from
 the pre-grant `.backup`** — never with a broad `DELETE` by client list.
 
 Prefer the bundled helpers (they use `set -euo pipefail`, sqlite3 `.bail on`,
-fresh `.backup`, `PRAGMA integrity_check == ok`, and restore-on-failure):
+path validation, `PRAGMA integrity_check == ok`, restore-on-failure, and they
+reuse an existing `TCC_BACKUP` instead of overwriting it so multiple grants
+share one pre-grant snapshot):
 
 ```text
 .agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh
@@ -169,36 +173,38 @@ Example: temporary ScreenCapture for the measured responsible process only.
 
 ```bash
 cd /path/to/repository
+export TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
+export TCC_BACKUP="/tmp/rt-tcc/TCC.db.bak"
 cp .agents/skills/macos-devbox-gui/scripts/tcc-screencapture-grants.sql /tmp/tcc-grant.sql
 # edit /tmp/tcc-grant.sql:
 #   CLIENT -> /opt/namespace/vmguest
 #   CLIENT_TYPE -> 1
-TCC_BACKUP=/tmp/TCC.db.bak \
-  .agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh /tmp/tcc-grant.sql
+.agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh /tmp/tcc-grant.sql
 ```
 
-The grant helper leaves the temporary grant active after success and records
-the pre-grant state in `TCC_BACKUP`. Use the restore helper when finished:
+The grant helper leaves the temporary grant active after success. Use the same
+`TCC_DB` / `TCC_BACKUP` with the restore helper when finished:
 
 ```bash
-TCC_BACKUP=/tmp/TCC.db.bak \
-  .agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
+.agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
 ```
 
-For a disposable script smoke test, use a separate backup path so the
-investigation's original `/tmp/TCC.db.bak` is not overwritten:
+For a disposable script smoke test, use a separate backup basename under
+`/tmp/rt-tcc/` and set `TCC_FORCE_BACKUP=1` only when you intentionally want a
+fresh snapshot:
 
 ```bash
-TCC_BACKUP=/tmp/TCC.db.skilltest.bak \
+export TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
+export TCC_BACKUP="/tmp/rt-tcc/TCC.db.skilltest.bak"
+TCC_FORCE_BACKUP=1 \
   .agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh /tmp/tcc-grant.sql
 /usr/sbin/screencapture -x /tmp/tcc-skilltest-after.png
-TCC_BACKUP=/tmp/TCC.db.skilltest.bak \
-  .agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
+.agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
 ```
 
-For CGEvent input, apply `tcc-guievent-grants.sql` the same way for the
-responsible client that tccd denied — do not merge ScreenCapture into that
-file unless capture is also denied for that client.
+For CGEvent input, apply `tcc-guievent-grants.sql` with the **same**
+`TCC_BACKUP` (the helper reuses it). Do not merge ScreenCapture into that file
+unless capture is also denied for that client.
 
 Retry and verify after a ScreenCapture grant:
 
@@ -215,8 +221,8 @@ returned `rc=0`.
 
 ### Restoration
 
-Restore only from the pre-grant backup. That is the only path that preserves
-pre-existing allow/deny rows for the same clients/services:
+Restore only from the pre-grant backup using the same `TCC_DB` / `TCC_BACKUP`
+values as the grant step:
 
 ```bash
 .agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
@@ -227,11 +233,11 @@ If the backup file is missing, stop and treat the Devbox TCC state as untrusted.
 Optional verification after restore:
 
 ```bash
-sudo sqlite3 "$DB" \
+sudo sqlite3 "$TCC_DB" \
   "SELECT service,client,client_type,auth_value FROM access
    WHERE client = '/opt/namespace/vmguest'
    AND service = 'kTCCServiceScreenCapture';"
-sudo sqlite3 /tmp/TCC.db.bak \
+sudo sqlite3 "$TCC_BACKUP" \
   "SELECT service,client,client_type,auth_value FROM access
    WHERE client = '/opt/namespace/vmguest'
    AND service = 'kTCCServiceScreenCapture';"

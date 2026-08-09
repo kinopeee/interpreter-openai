@@ -4,7 +4,34 @@
 set -euo pipefail
 
 DB="${TCC_DB:-/Library/Application Support/com.apple.TCC/TCC.db}"
-BACKUP="${TCC_BACKUP:-/tmp/TCC.db.bak}"
+BACKUP_DIR="${TCC_BACKUP_DIR:-/tmp/rt-tcc}"
+BACKUP="${TCC_BACKUP:-$BACKUP_DIR/TCC.db.bak}"
+
+reject_unsafe_path() {
+  local label="$1"
+  local value="$2"
+  if [[ "$value" == *$'\n'* || "$value" == *$'\r'* || "$value" == *"'"* || "$value" == *'"'* ]]; then
+    echo "$label contains disallowed quote or newline characters" >&2
+    exit 2
+  fi
+}
+
+reject_unsafe_path "TCC_DB" "$DB"
+reject_unsafe_path "TCC_BACKUP" "$BACKUP"
+
+case "$BACKUP" in
+  "$BACKUP_DIR"/*)
+    base="$(basename "$BACKUP")"
+    if [[ ! "$base" =~ ^[A-Za-z0-9._-]+$ ]]; then
+      echo "TCC_BACKUP basename must match [A-Za-z0-9._-]+" >&2
+      exit 2
+    fi
+    ;;
+  *)
+    echo "TCC_BACKUP must be under $BACKUP_DIR" >&2
+    exit 2
+    ;;
+esac
 
 if [[ ! -f "$BACKUP" ]]; then
   echo "missing backup: $BACKUP" >&2
@@ -13,10 +40,7 @@ if [[ ! -f "$BACKUP" ]]; then
 fi
 
 sudo killall tccd 2>/dev/null || true
-sudo sqlite3 "$DB" <<SQL
-.bail on
-.restore '$BACKUP'
-SQL
+printf '.bail on\n.restore %s\n' "$BACKUP" | sudo sqlite3 "$DB"
 
 check="$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')"
 [[ "$check" == "ok" ]] || {
