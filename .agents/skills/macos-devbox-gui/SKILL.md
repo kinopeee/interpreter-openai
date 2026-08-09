@@ -567,8 +567,8 @@ artifacts include:
 /tmp/gui-probe-standalone-final.png
 /tmp/xcui_state_xctest.png
 /tmp/demo1.png ... /tmp/demo7.png
-/tmp/tcc-xctrunner-grants.sql
-/tmp/tcc-xctrunner-restore.sql
-/tmp/tcc-target-app-grants.sql
-/tmp/tcc-target-app-restore.sql
+.agents/skills/macos-devbox-gui/scripts/tcc-xctrunner-grants.sql
+.agents/skills/macos-devbox-gui/scripts/tcc-xctrunner-restore.sql
+.agents/skills/macos-devbox-gui/scripts/tcc-target-app-grants.sql
+.agents/skills/macos-devbox-gui/scripts/tcc-target-app-restore.sql
 ```
