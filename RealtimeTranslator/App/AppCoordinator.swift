@@ -194,10 +194,16 @@ final class AppCoordinator: NSObject {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// 終了前に録音を止め、完全ペアを字幕記録へ flush する。
+    func prepareToTerminate() async {
+        await interpretationSession.stop()
+        hotKeys.unregisterAll()
+    }
+
     func quit() {
         Task {
-            await interpretationSession.stop()
-            hotKeys.unregisterAll()
+            await prepareToTerminate()
+            AppTerminationGate.markPrepared()
             NSApp.terminate(nil)
         }
     }

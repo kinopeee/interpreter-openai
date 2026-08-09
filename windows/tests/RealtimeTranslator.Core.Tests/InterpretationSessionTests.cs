@@ -337,6 +337,115 @@ public sealed class InterpretationSessionTests
     }
 
     // Given: idle finalize 前の完全な原文+訳文ペア
+    // When: StopAsync を経ずに Dispose される（OnExit / プロセス終了相当）
+    // Then: 破棄前に ShouldFinalize が発行され、オプトイン字幕記録へ届く
+    [Fact]
+    public async Task DisposeFinalizesCompletePairWithoutStop()
+    {
+        var client = new FakeDualClient();
+        var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("終了前の完全ペア");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Complete pair before exit");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+            }
+        });
+
+        session.Dispose();
+
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("終了前の完全ペア", finalized.SourceText);
+        Assert.Equal("Complete pair before exit", finalized.TranslatedText);
+    }
+
+    // Given: 完全ペア確定後に次イベントが generation 確認済み・Ingest 前で停止している
+    // When: その間に Dispose して取り込みをフェンスする
+    // Then: 既存完全ペアは ShouldFinalize され、停止中イベントは assembler を更新しない
+    [Fact]
+    public async Task DisposeFencesInFlightIngestBeforeFlushingCompletePair()
+    {
+        var client = new FakeDualClient();
+        var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("フェンス前の完全ペア");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Complete pair before fence");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+            }
+        });
+
+        using var enteredHook = new ManualResetEventSlim(false);
+        using var releaseHook = new ManualResetEventSlim(false);
+        session.BeforeAssemblerIngestForTests = () =>
+        {
+            enteredHook.Set();
+            if (!releaseHook.Wait(TimeSpan.FromSeconds(5)))
+            {
+                throw new TimeoutException("Dispose fence test hook was not released");
+            }
+        };
+
+        client.PublishSourceDelta("Dispose中に取り込ませない原文");
+        Assert.True(enteredHook.Wait(TimeSpan.FromSeconds(5)));
+
+        session.Dispose();
+        releaseHook.Set();
+
+        // consumer が stale ingest を捨てて戻るのを待つ。
+        await Task.Delay(100);
+
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+            Assert.DoesNotContain(
+                updates,
+                update => update.SourceText.Contains("取り込ませない", StringComparison.Ordinal));
+        }
+
+        Assert.Equal("フェンス前の完全ペア", finalized.SourceText);
+        Assert.Equal("Complete pair before fence", finalized.TranslatedText);
+    }
+
+    // Given: idle finalize 前の完全な原文+訳文ペア
     // When: 利用者が録音を停止する
     // Then: Idle へ戻る前に ShouldFinalize が発行される
     [Fact]

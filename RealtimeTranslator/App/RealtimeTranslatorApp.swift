@@ -47,6 +47,32 @@ enum AppRuntimeEnvironment {
     }
 }
 
+/// ⌘Q / `NSApp.terminate` とメニューバー終了で二重に stop しないためのゲート。
+enum AppTerminationGate {
+    private static let lock = NSLock()
+    // Accessed from nonisolated AppKit terminate path and MainActor prepare; guarded by `lock`.
+    private nonisolated(unsafe) static var prepared = false
+
+    static var isPrepared: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return prepared
+    }
+
+    static func markPrepared() {
+        lock.lock()
+        prepared = true
+        lock.unlock()
+    }
+
+    /// ユニットテスト用。本番経路では呼ばない。
+    static func resetForTests() {
+        lock.lock()
+        prepared = false
+        lock.unlock()
+    }
+}
+
 @MainActor
 enum AppRuntime {
     private(set) static var coordinator: AppCoordinator?
@@ -84,6 +110,21 @@ enum AppRuntime {
         coordinator.start()
     }
 
+    /// 終了前にセッションを止め、完全ペアを字幕記録へ渡してから terminate を許可する。
+    static func prepareTerminationThenReply() {
+        Task {
+            await prepareTermination()
+            AppTerminationGate.markPrepared()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+    }
+
+    static func prepareTermination() async {
+        if let coordinator {
+            await coordinator.prepareToTerminate()
+        }
+    }
+
     private static func installKeepAliveWindow() {
         let window = NSWindow(
             contentRect: NSRect(x: -10_000, y: -10_000, width: 1, height: 1),
@@ -111,6 +152,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AppRuntime.start()
             }
         }
+    }
+
+    /// ⌘Q / アプリメニュー終了でもメニューバー終了と同じく session.stop 経由で finalize する。
+    nonisolated func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if AppTerminationGate.isPrepared {
+            return .terminateNow
+        }
+
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                AppRuntime.prepareTerminationThenReply()
+            }
+        }
+        return .terminateLater
     }
 
     nonisolated func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
