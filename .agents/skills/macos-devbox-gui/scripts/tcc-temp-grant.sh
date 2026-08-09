@@ -3,15 +3,14 @@
 # Applies one grant SQL file under a consistent TCC.db backup, with restore on
 # failure. Successful grants stay applied until you run tcc-restore-backup.sh.
 #
-# If TCC_BACKUP already exists, it is reused (not overwritten) so multiple
-# grants in one investigation share one pre-grant snapshot. Set
-# TCC_FORCE_BACKUP=1 to replace an existing backup deliberately.
-# Reused and freshly created backups are both integrity-checked before use.
+# Default: create a unique backup path under /tmp/rt-tcc for this run.
+# Multi-grant sessions must export an explicit TCC_BACKUP and reuse it; when
+# that file already exists it is reused (not overwritten) unless
+# TCC_FORCE_BACKUP=1. Reused and freshly created backups are integrity-checked.
 set -euo pipefail
 
 DB="${TCC_DB:-/Library/Application Support/com.apple.TCC/TCC.db}"
 BACKUP_DIR="${TCC_BACKUP_DIR:-/tmp/rt-tcc}"
-BACKUP="${TCC_BACKUP:-$BACKUP_DIR/TCC.db.bak}"
 GRANT_SQL="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FORCE_BACKUP="${TCC_FORCE_BACKUP:-0}"
@@ -21,8 +20,8 @@ GRANT_APPLIED=0
 reject_unsafe_path() {
   local label="$1"
   local value="$2"
-  if [[ "$value" == *$'\n'* || "$value" == *$'\r'* || "$value" == *"'"* || "$value" == *'"'* ]]; then
-    echo "$label contains disallowed quote or newline characters" >&2
+  if [[ "$value" == *$'\n'* || "$value" == *$'\r'* || "$value" == *"'"* || "$value" == *'"'* || "$value" == *'..'* ]]; then
+    echo "$label contains disallowed characters (.., quote, or newline)" >&2
     exit 2
   fi
 }
@@ -36,6 +35,31 @@ require_backup_integrity() {
   }
 }
 
+# Resolve BACKUP_DIR to a physical absolute path and require BACKUP to be a
+# direct child of that directory (blocks /tmp/rt-tcc/../escape.db).
+resolve_backup_paths() {
+  reject_unsafe_path "TCC_BACKUP_DIR" "$BACKUP_DIR"
+  mkdir -p "$BACKUP_DIR"
+  chmod 700 "$BACKUP_DIR" 2>/dev/null || true
+  BACKUP_DIR="$(cd "$BACKUP_DIR" && pwd -P)"
+
+  local base
+  if [[ -n "${TCC_BACKUP:-}" ]]; then
+    reject_unsafe_path "TCC_BACKUP" "$TCC_BACKUP"
+    base="$(basename "$TCC_BACKUP")"
+    if [[ ! "$base" =~ ^[A-Za-z0-9._-]+$ ]]; then
+      echo "TCC_BACKUP basename must match [A-Za-z0-9._-]+" >&2
+      exit 2
+    fi
+    # Rebuild from resolved directory + basename only (drops any .. parents).
+    BACKUP="$BACKUP_DIR/$base"
+  else
+    # Unique per invocation so a previous investigation's snapshot is not reused
+    # accidentally. Multi-grant flows must export TCC_BACKUP explicitly.
+    BACKUP="$BACKUP_DIR/TCC.db.bak.$$"
+  fi
+}
+
 if [[ -z "$GRANT_SQL" || ! -f "$GRANT_SQL" ]]; then
   echo "usage: $0 <grant.sql>" >&2
   echo "grant.sql must be one of the skill *-grants.sql templates (edited copy ok)." >&2
@@ -43,7 +67,7 @@ if [[ -z "$GRANT_SQL" || ! -f "$GRANT_SQL" ]]; then
 fi
 
 reject_unsafe_path "TCC_DB" "$DB"
-reject_unsafe_path "TCC_BACKUP" "$BACKUP"
+resolve_backup_paths
 
 GRANT_SQL_ABS="$(cd "$(dirname "$GRANT_SQL")" && pwd)/$(basename "$GRANT_SQL")"
 reject_unsafe_path "GRANT_SQL" "$GRANT_SQL_ABS"
@@ -56,23 +80,6 @@ case "$GRANT_SQL_ABS" in
     exit 2
     ;;
 esac
-
-case "$BACKUP" in
-  "$BACKUP_DIR"/*)
-    base="$(basename "$BACKUP")"
-    if [[ ! "$base" =~ ^[A-Za-z0-9._-]+$ ]]; then
-      echo "TCC_BACKUP basename must match [A-Za-z0-9._-]+" >&2
-      exit 2
-    fi
-    ;;
-  *)
-    echo "TCC_BACKUP must be under $BACKUP_DIR" >&2
-    exit 2
-    ;;
-esac
-
-mkdir -p "$BACKUP_DIR"
-chmod 700 "$BACKUP_DIR" 2>/dev/null || true
 
 restore_backup() {
   local rc=$?
@@ -109,7 +116,10 @@ else
   # Write to a temp path first so a failed .backup cannot leave a partial file
   # at TCC_BACKUP for the ERR trap or a later restore helper to consume.
   tmp_backup="${BACKUP}.creating.$$"
-  rm -f "$tmp_backup" "$BACKUP"
+  rm -f "$tmp_backup"
+  if [[ "$FORCE_BACKUP" == "1" ]]; then
+    rm -f "$BACKUP"
+  fi
   if ! printf '.bail on\n.backup %s\n' "$tmp_backup" | sudo sqlite3 "$DB"; then
     rm -f "$tmp_backup"
     echo "sqlite3 .backup failed" >&2
@@ -131,4 +141,5 @@ sudo sqlite3 "$DB" <"$GRANT_SQL_ABS"
 GRANT_APPLIED=1
 sudo killall tccd 2>/dev/null || true
 echo "grant applied from $GRANT_SQL_ABS; backup at $BACKUP"
-echo "when finished, restore with: TCC_BACKUP=$BACKUP $SCRIPT_DIR/tcc-restore-backup.sh"
+echo "when finished, restore with:"
+echo "  TCC_DB=$(printf '%q' "$DB") TCC_BACKUP_DIR=$(printf '%q' "$BACKUP_DIR") TCC_BACKUP=$(printf '%q' "$BACKUP") $SCRIPT_DIR/tcc-restore-backup.sh"

@@ -116,10 +116,15 @@ not merely the accessor binary.
 > on the disposable Devbox described above. Back up first and restore afterward.
 
 Pin the same `TCC_DB` / `TCC_BACKUP` for an entire grant→work→restore flow.
-Backups must live under `/tmp/rt-tcc/` (the helpers enforce this):
+Backups must live under `/tmp/rt-tcc/` (helpers resolve that directory with
+`pwd -P` and rebuild `TCC_BACKUP` as a direct child, so `..` escapes are
+rejected). If `TCC_BACKUP` is unset, `tcc-temp-grant.sh` creates a unique
+per-run file and prints the restore command; restore always requires an
+explicit `TCC_BACKUP`. For multi-grant sessions, export one path up front:
 
 ```bash
 export TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
+export TCC_BACKUP_DIR="/tmp/rt-tcc"
 export TCC_BACKUP="/tmp/rt-tcc/TCC.db.bak"
 ```
 
