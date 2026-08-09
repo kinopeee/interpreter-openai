@@ -276,6 +276,30 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
     public async Task CloseGracefullyAsync(CancellationToken cancellationToken = default)
     {
+        lock (_sync)
+        {
+            if (!_isRunning)
+            {
+                return;
+            }
+        }
+
+        // 未送信の翻訳フレームを先に送り、停止時の訳文欠落を防ぐ。
+        // 送信が停滞しても close 自体は進める。
+        try
+        {
+            await WaitForTranslationDrainAsync(TimeSpan.FromSeconds(5), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            // drain できなくても session.close へ進む。
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+
         Task? pump;
         CancellationTokenSource pumpCts;
         lock (_sync)

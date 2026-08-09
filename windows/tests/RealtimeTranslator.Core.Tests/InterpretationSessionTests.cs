@@ -336,6 +336,49 @@ public sealed class InterpretationSessionTests
         }
     }
 
+    // Given: 停止時点では字幕がまだ無く、commit/session.close の drain で完全ペアが届く
+    // When: 利用者が録音を停止する
+    // Then: close drain の原文+訳文を取り込んで ShouldFinalize する（字幕記録欠落を防ぐ）
+    [Fact]
+    public async Task StopIngestsCompletePairPublishedDuringGracefulClose()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.OnCloseGracefully = () =>
+        {
+            client.PublishSourceDelta("停止時の最終原文");
+            client.PublishTranslationDelta(
+                RealtimeTranslationOutputLanguage.English,
+                "Final source at stop");
+            client.Complete();
+            return Task.CompletedTask;
+        };
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("停止時の最終原文", finalized.SourceText);
+        Assert.Equal("Final source at stop", finalized.TranslatedText);
+    }
+
     // Given: idle finalize 前の完全な原文+訳文ペア
     // When: StopAsync を経ずに Dispose される（OnExit / プロセス終了相当）
     // Then: 破棄前に ShouldFinalize が発行され、オプトイン字幕記録へ届く
@@ -716,6 +759,9 @@ public sealed class InterpretationSessionTests
 
         public bool ThrowOnNextStart { get; set; }
 
+        /// <summary>CloseGracefully 時に close drain イベントを流すテスト用フック。</summary>
+        public Func<Task>? OnCloseGracefully { get; set; }
+
         public IReadOnlyList<SpokenLanguage> SpokenLanguages
         {
             get
@@ -746,6 +792,7 @@ public sealed class InterpretationSessionTests
                 ResetAudioRoutingCount = 0;
                 UpdateTranscriptionTuningCount = 0;
                 LastTuning = null;
+                OnCloseGracefully = null;
                 _events = Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
             }
 
@@ -791,10 +838,15 @@ public sealed class InterpretationSessionTests
             return Task.CompletedTask;
         }
 
-        public Task CloseGracefullyAsync(CancellationToken cancellationToken = default)
+        public async Task CloseGracefullyAsync(CancellationToken cancellationToken = default)
         {
+            if (OnCloseGracefully is { } hook)
+            {
+                await hook().ConfigureAwait(false);
+                return;
+            }
+
             Complete();
-            return Task.CompletedTask;
         }
 
         public Task ForceCloseAsync()
@@ -822,6 +874,14 @@ public sealed class InterpretationSessionTests
             RealtimeTranslationOutputLanguage.English,
             new RealtimeTranslationServerEvent.ServerError(message, code));
 
+        public void Complete()
+        {
+            lock (_sync)
+            {
+                _events.Writer.TryComplete();
+            }
+        }
+
         private void Publish(
             RealtimeTranslationOutputLanguage target,
             RealtimeTranslationServerEvent serverEvent,
@@ -831,14 +891,6 @@ public sealed class InterpretationSessionTests
             {
                 _events.Writer.TryWrite(
                     new RealtimeTranslationStreamEvent(target, serverEvent, epoch ?? _epoch));
-            }
-        }
-
-        private void Complete()
-        {
-            lock (_sync)
-            {
-                _events.Writer.TryComplete();
             }
         }
     }
