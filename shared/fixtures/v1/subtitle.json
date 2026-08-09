@@ -241,6 +241,37 @@
           "isTranslationCurrent": true,
           "shouldFinalize": false
         }
+      },
+      {
+        "name": "shared elapsed ms allows multiple source deltas",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "Hi", "eventId": "s1", "elapsedMs": 5 },
+          { "at": 0.1, "kind": "sourceDelta", "lane": "en", "text": " there", "eventId": "s2", "elapsedMs": 5 }
+        ],
+        "expectedFinal": {
+          "sourceText": "Hi there",
+          "translatedText": "",
+          "isTranslationCurrent": false,
+          "shouldFinalize": false
+        }
+      },
+      {
+        "name": "punctuation does not finalize a streaming complete pair",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "こんにちは。", "eventId": "s1", "elapsedMs": 1 },
+          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "Hello.", "eventId": "t1", "elapsedMs": 2 },
+          { "at": 0.5, "kind": "tick" }
+        ],
+        "expectedFinal": {
+          "sourceText": "こんにちは。",
+          "translatedText": "Hello.",
+          "isTranslationCurrent": true,
+          "shouldFinalize": false
+        }
       }
     ]
   }
