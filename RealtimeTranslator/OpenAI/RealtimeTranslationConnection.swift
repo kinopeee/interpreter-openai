@@ -230,6 +230,9 @@ actor RealtimeTranslationConnection {
                 "DBG_TRANSCRIPT_EVENT target=\(self.target.rawValue, privacy: .public) kind=input epoch=\(currentEpoch, privacy: .public)"
             )
             #endif
+            // 翻訳接続の input_transcript は原文 authority にしない（専用 transcription のみ）。
+            // target=en 翻訳セッションの delta を通すと assembler が原文として取り込む。
+            return
         case .outputTranscriptDelta:
             #if DEBUG
             AppLogger.realtime.notice(

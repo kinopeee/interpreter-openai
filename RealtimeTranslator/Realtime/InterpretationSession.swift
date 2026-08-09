@@ -359,7 +359,10 @@ final class InterpretationSession {
                 )
             }
 
-            if case .inputTranscriptDelta(let delta, _, _) = streamEvent.event {
+            // 原文 routing も専用 transcription（target=.english へ remap）だけを使う。
+            // 翻訳接続の input_transcript は接続側で落とすが、ここに来ても混ぜない。
+            if case .inputTranscriptDelta(let delta, _, _) = streamEvent.event,
+               streamEvent.target == .english {
                 try await updateAudioRouting(withSourceDelta: delta)
             }
 

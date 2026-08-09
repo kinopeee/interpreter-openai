@@ -162,6 +162,50 @@ public sealed class RealtimeConnectionTests
         await connection.ForceCloseAsync();
     }
 
+    // Given: ready な翻訳接続（原文 transcription は別接続）
+    // When: session.input_transcript.delta のあとに output_transcript.delta が届く
+    // Then: 翻訳側 input_transcript は Events に出ず、訳文だけが届く（原文 authority 汚染を防ぐ）
+    [Fact]
+    public async Task TranslationConnectionDoesNotEnqueueInputTranscriptDeltas()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety");
+        await connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+
+        transport.EnqueueJson(
+            """{"type":"session.input_transcript.delta","delta":"polluting source","event_id":"in-1","elapsed_ms":10}""");
+        transport.EnqueueJson(
+            """{"type":"session.output_transcript.delta","delta":"kept translation","event_id":"out-1"}""");
+
+        RealtimeTranslationServerEvent.OutputTranscriptDelta? kept = null;
+        var deadline = Environment.TickCount64 + 5_000;
+        while (kept is null && Environment.TickCount64 < deadline)
+        {
+            while (connection.Events.TryRead(out var streamEvent))
+            {
+                Assert.IsNotType<RealtimeTranslationServerEvent.InputTranscriptDelta>(streamEvent.Event);
+                if (streamEvent.Event is RealtimeTranslationServerEvent.OutputTranscriptDelta transcript)
+                {
+                    kept = transcript;
+                }
+            }
+
+            if (kept is null)
+            {
+                await Task.Delay(10);
+            }
+        }
+
+        Assert.NotNull(kept);
+        Assert.Equal("kept translation", kept.Delta);
+        await connection.ForceCloseAsync();
+    }
+
     // Given: Stop 相当で Events を読まないまま output_audio.delta が channel 容量を超えて届く
     // When: その後に output_transcript.delta が届く
     // Then: 音声 delta は channel に載せず、訳文 delta が DropOldest で消えない

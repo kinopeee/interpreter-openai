@@ -323,6 +323,56 @@ final class RealtimeTranslationConnectionTests: XCTestCase {
         await connection.forceClose()
     }
 
+    func testInputTranscriptDeltaIsNotForwardedToEventStream() async throws {
+        // Given: ready な翻訳接続。原文 authority は専用 transcription のみ。
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeTranslationConnection(
+            target: .english,
+            transport: transport,
+            safetyIdentifier: "safety"
+        )
+        try await transport.enqueueJSON(["type": "session.created"])
+        try await transport.enqueueJSON(["type": "session.updated"])
+        try await connection.start(
+            apiKey: "sk-test",
+            config: .englishTargetWithoutSourceTranscription()
+        )
+
+        let stream = await connection.events
+        // When: 翻訳側 input_transcript のあとに訳文 delta を送る
+        try await transport.enqueueJSON([
+            "type": "session.input_transcript.delta",
+            "delta": "polluting source",
+            "event_id": "in-1",
+            "elapsed_ms": 10,
+        ])
+        try await transport.enqueueJSON([
+            "type": "session.output_transcript.delta",
+            "delta": "kept translation",
+            "event_id": "out-1",
+        ])
+
+        // Then: input_transcript は event stream に出ず、訳文だけが届く
+        var sawInput = false
+        var keptTranslation: String?
+        let deadline = ContinuousClock.now + .seconds(3)
+        for await event in stream {
+            if case .inputTranscriptDelta = event.event {
+                sawInput = true
+            }
+            if case .outputTranscriptDelta(let delta, _, _) = event.event {
+                keptTranslation = delta
+                break
+            }
+            if ContinuousClock.now >= deadline {
+                break
+            }
+        }
+        XCTAssertFalse(sawInput)
+        XCTAssertEqual(keptTranslation, "kept translation")
+        await connection.forceClose()
+    }
+
     func testSessionUpdateTimeout() async {
         // Given: created後にupdatedが来ない
         let transport = FakeRealtimeWebSocketTransport()
