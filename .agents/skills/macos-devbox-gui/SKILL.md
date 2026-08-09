@@ -389,10 +389,13 @@ succeed; the corresponding Accessibility/PostEvent grant did not by itself
 make GUIProbeMac's Button hittable.
 
 ```bash
+export TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
+export TCC_BACKUP="/tmp/rt-tcc/TCC.db.xctest.bak"
 .agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh \
   .agents/skills/macos-devbox-gui/scripts/tcc-xctrunner-grants.sql
-# optional, only if tccd denies Accessibility/PostEvent for the target app:
-# edit TARGET_CLIENT / TARGET_CLIENT_TYPE in a copy of tcc-target-app-grants.sql
+# optional second grant: reuse the same TCC_BACKUP (do not force a new backup)
+# cp .../tcc-target-app-grants.sql /tmp/tcc-target-app.sql
+# edit TARGET_CLIENT / TARGET_CLIENT_TYPE, then:
 # .agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh /tmp/tcc-target-app.sql
 # ... run XCTest / capture ...
 .agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
@@ -551,10 +554,10 @@ has been correctly diagnosed.
 1. Confirm `gui/$(id -u)` says `session = Aqua`; ignore `managername=Background`
    as a GUI verdict.
 2. Capture the exact tccd `Sub:`/`Resp:` responsible process.
-3. Back up TCC with `tcc-temp-grant.sh` before any temporary grant; grant only
-   the denied Sub:/Resp: service+client pair.
-4. Restart `tccd`, retry, capture logs, then restore with
-   `tcc-restore-backup.sh`.
+3. Export one `TCC_DB` / `TCC_BACKUP` pair for the whole flow; grant only the
+   denied Sub:/Resp: service+client pair via `tcc-temp-grant.sh`.
+4. Restart `tccd`, retry, capture logs, then restore with the same
+   `TCC_BACKUP` via `tcc-restore-backup.sh`.
 5. List current windows before clicking; use logical bounds, never screenshot
    pixels.
 6. Clear live `UserNotificationCenter`/`universalAccessAuthWarn` dialogs.
