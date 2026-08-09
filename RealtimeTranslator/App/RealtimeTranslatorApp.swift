@@ -50,7 +50,8 @@ enum AppRuntimeEnvironment {
 /// ⌘Q / `NSApp.terminate` とメニューバー終了で二重に stop しないためのゲート。
 enum AppTerminationGate {
     private static let lock = NSLock()
-    private static var prepared = false
+    // Accessed from nonisolated AppKit terminate path and MainActor prepare; guarded by `lock`.
+    private nonisolated(unsafe) static var prepared = false
 
     static var isPrepared: Bool {
         lock.lock()
