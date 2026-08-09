@@ -123,65 +123,64 @@ DB="/Library/Application Support/com.apple.TCC/TCC.db"
 
 ### Back up and grant
 
-The measured path-based clients were `/opt/namespace/vmguest`, `/bin/bash`, and
-`/bin/zsh`. Path clients use `client_type=1`; the observed allowed value was
-`auth_value=2`.
+Grant only the **denied service** for the **responsible client** shown in tccd
+`Sub:` / `Resp:`. Do not blanket-grant ScreenCapture + Accessibility +
+PostEvent to every shell path “just in case”.
 
-Grant only the services denied for the operation you are diagnosing. Capture
-`tccd` `Sub:` / `Resp:` first, then add the minimum set:
+Service map:
 
 - `kTCCServiceScreenCapture` — `screencapture` / ScreenCaptureKit
-- `kTCCServiceAccessibility` — AX trust and synthesizing input
+- `kTCCServiceAccessibility` — AX trust / synthesizing input
 - `kTCCServicePostEvent` — posting `CGEvent` mouse/keyboard events
 
 Do **not** grant `kTCCServiceListenEvent` by default. `guievent.swift` posts
-events; it does not install an event tap or otherwise monitor input. Add
-ListenEvent only when tccd shows a ListenEvent denial for a monitoring API.
+events; it does not install an event tap. Add ListenEvent only when tccd shows
+a ListenEvent denial for a monitoring API.
 
-Copy and run this only in the disposable environment.
+Path clients use `client_type=1`; bundle-id clients use `client_type=0`. The
+observed allowed value was `auth_value=2`. In the measured screencapture flow
+the responsible path was `/opt/namespace/vmguest`. Grant `/bin/bash` or
+`/bin/zsh` only when tccd attributes a denial to those clients.
 
-Do **not** use `INSERT OR IGNORE`: if a matching row already exists with a
-denied or weaker `auth_value`, SQLite skips the insert and the grant appears to
-succeed while permissions stay unchanged. Delete the matching client/service
-rows first, then insert the allowed rows so existing denials are upgraded.
+Do **not** use `INSERT OR IGNORE`: an existing weaker/denied row is left
+unchanged. Templates delete the matching client/service/type row first, then
+insert the allowed row. Because that deletes prior state, **restore only from
+the pre-grant `.backup`** — never with a broad `DELETE` by client list.
 
-Prefer `sqlite3 .backup` over `cp` so the snapshot is consistent even if WAL
-or journal files are present. Stop `tccd` before mutating or restoring the DB.
+Prefer the bundled helpers (they use `set -euo pipefail`, sqlite3 `.bail on`,
+fresh `.backup`, `PRAGMA integrity_check == ok`, and restore-on-failure):
 
-```bash
-sudo killall tccd 2>/dev/null || true
-sudo sqlite3 "$DB" ".backup '/tmp/TCC.db.bak'"
-sudo sqlite3 /tmp/TCC.db.bak 'PRAGMA integrity_check;'
-sudo sqlite3 "$DB" <<'SQL'
-BEGIN IMMEDIATE;
-DELETE FROM access
-WHERE client IN ('/opt/namespace/vmguest','/bin/bash','/bin/zsh')
-  AND service IN (
-    'kTCCServiceScreenCapture',
-    'kTCCServiceAccessibility',
-    'kTCCServicePostEvent'
-  );
-INSERT INTO access
-  (service,client,client_type,auth_value,auth_reason,auth_version,
-   indirect_object_identifier,flags)
-VALUES
-('kTCCServiceScreenCapture','/opt/namespace/vmguest',1,2,4,1,'UNUSED',0),
-('kTCCServiceScreenCapture','/bin/bash',1,2,4,1,'UNUSED',0),
-('kTCCServiceScreenCapture','/bin/zsh',1,2,4,1,'UNUSED',0),
-('kTCCServiceAccessibility','/opt/namespace/vmguest',1,2,4,1,'UNUSED',0),
-('kTCCServiceAccessibility','/bin/bash',1,2,4,1,'UNUSED',0),
-('kTCCServiceAccessibility','/bin/zsh',1,2,4,1,'UNUSED',0),
-('kTCCServicePostEvent','/opt/namespace/vmguest',1,2,4,1,'UNUSED',0),
-('kTCCServicePostEvent','/bin/bash',1,2,4,1,'UNUSED',0),
-('kTCCServicePostEvent','/bin/zsh',1,2,4,1,'UNUSED',0);
-COMMIT;
-SQL
-sudo killall tccd 2>/dev/null || true
-# Required to make the database mutation visible to tccd; this was required
-# by the measured screencapture flow.
+```text
+.agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh
+.agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
 ```
 
-Retry and verify:
+Operation-specific SQL templates (edit `CLIENT` / `CLIENT_TYPE` or
+`TARGET_CLIENT` / `TARGET_CLIENT_TYPE` before applying):
+
+```text
+.agents/skills/macos-devbox-gui/scripts/tcc-screencapture-grants.sql
+.agents/skills/macos-devbox-gui/scripts/tcc-guievent-grants.sql
+.agents/skills/macos-devbox-gui/scripts/tcc-xctrunner-grants.sql
+.agents/skills/macos-devbox-gui/scripts/tcc-target-app-grants.sql
+```
+
+Example: temporary ScreenCapture for the measured responsible process only.
+
+```bash
+cd /path/to/repository
+cp .agents/skills/macos-devbox-gui/scripts/tcc-screencapture-grants.sql /tmp/tcc-grant.sql
+# edit /tmp/tcc-grant.sql:
+#   CLIENT -> /opt/namespace/vmguest
+#   CLIENT_TYPE -> 1
+.agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh /tmp/tcc-grant.sql
+```
+
+For CGEvent input, apply `tcc-guievent-grants.sql` the same way for the
+responsible client that tccd denied — do not merge ScreenCapture into that
+file unless capture is also denied for that client.
+
+Retry and verify after a ScreenCapture grant:
 
 ```bash
 /usr/sbin/screencapture -x /tmp/devbox-after.png
@@ -194,60 +193,31 @@ The measured result after granting the responsible process was
 `ReqResult(Auth Right: Allowed (System Set), ...)` and `screencapture -x`
 returned `rc=0`.
 
-### Restoration SQL
+### Restoration
 
-Restore from the backup taken before the grant. That is the only path that
-preserves any pre-existing allowances for the same clients/services. Stop
-`tccd` before restoring, then integrity-check the live DB:
+Restore only from the pre-grant backup. That is the only path that preserves
+pre-existing allow/deny rows for the same clients/services:
 
 ```bash
-sudo killall tccd 2>/dev/null || true
-sudo sqlite3 "$DB" ".restore '/tmp/TCC.db.bak'"
-sudo sqlite3 "$DB" 'PRAGMA integrity_check;'
-sudo killall tccd 2>/dev/null || true
-# Required to make the restored database visible to tccd.
+.agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
 ```
 
-If `.restore` is unavailable in the local `sqlite3`, copy the backup file onto
-`$DB` only after `tccd` is stopped, then run `PRAGMA integrity_check` and
-compare a client/service dump against the backup. Do **not** use a broad
-`DELETE FROM access WHERE client IN (...) AND service IN (...)` as
-“restoration”: it removes every matching row, including allowances that
-existed before the temporary grant. If the backup file is missing, stop and
-treat the Devbox TCC state as untrusted rather than deleting by client list.
+The `*-restore.sql` files under `scripts/` intentionally refuse partial
+`DELETE` restore and point back to this helper. If the backup file is missing,
+stop and treat the Devbox TCC state as untrusted.
 
-Verify the post-restore rows match the backup snapshot:
+Optional verification after restore:
 
 ```bash
 sudo sqlite3 "$DB" \
   "SELECT service,client,client_type,auth_value FROM access
-   WHERE client IN ('/opt/namespace/vmguest','/bin/bash','/bin/zsh')
-   AND service IN ('kTCCServiceScreenCapture','kTCCServiceAccessibility',
-                   'kTCCServicePostEvent');"
+   WHERE client = '/opt/namespace/vmguest'
+   AND service = 'kTCCServiceScreenCapture';"
 sudo sqlite3 /tmp/TCC.db.bak \
   "SELECT service,client,client_type,auth_value FROM access
-   WHERE client IN ('/opt/namespace/vmguest','/bin/bash','/bin/zsh')
-   AND service IN ('kTCCServiceScreenCapture','kTCCServiceAccessibility',
-                   'kTCCServicePostEvent');"
+   WHERE client = '/opt/namespace/vmguest'
+   AND service = 'kTCCServiceScreenCapture';"
 ```
-
-XCTest / target-app grant templates live in the skill scripts directory (not
-`/tmp`):
-
-```text
-.agents/skills/macos-devbox-gui/scripts/tcc-xctrunner-grants.sql
-.agents/skills/macos-devbox-gui/scripts/tcc-xctrunner-restore.sql
-.agents/skills/macos-devbox-gui/scripts/tcc-target-app-grants.sql
-.agents/skills/macos-devbox-gui/scripts/tcc-target-app-restore.sql
-```
-
-These `/tmp` images and the integrated report are artifacts from the original
-investigation session. They are not expected to exist in a newly created
-Devbox; capture new evidence paths for future sessions.
-
-Always take a `.backup` first, edit the templates to match the measured
-`Sub:` / `Resp:` clients, apply only denied services, then restore from the
-backup when finished.
 
 ## 3. Coordinates and the reusable event helper
 
@@ -392,10 +362,17 @@ An XCTest-launched `screencapture` has a different responsible process:
 `com.apple.XCTRunner`. Granting the shell process does not grant XCTRunner.
 The measured XCTest ScreenCapture grant made the test-side `screencapture`
 succeed; the corresponding Accessibility/PostEvent grant did not by itself
-make GUIProbeMac's Button hittable. Use the skill templates
-`scripts/tcc-xctrunner-*.sql` and `scripts/tcc-target-app-*.sql` (adjust
-clients to the measured responsible process), then restore from the pre-grant
-`.backup`.
+make GUIProbeMac's Button hittable.
+
+```bash
+.agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh \
+  .agents/skills/macos-devbox-gui/scripts/tcc-xctrunner-grants.sql
+# optional, only if tccd denies Accessibility/PostEvent for the target app:
+# edit TARGET_CLIENT / TARGET_CLIENT_TYPE in a copy of tcc-target-app-grants.sql
+# .agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh /tmp/tcc-target-app.sql
+# ... run XCTest / capture ...
+.agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
+```
 
 ## 6. iOS Simulator
 
@@ -550,8 +527,10 @@ has been correctly diagnosed.
 1. Confirm `gui/$(id -u)` says `session = Aqua`; ignore `managername=Background`
    as a GUI verdict.
 2. Capture the exact tccd `Sub:`/`Resp:` responsible process.
-3. Back up TCC before any temporary grant; grant only required services.
-4. Restart `tccd`, retry, capture logs, then restore the backup.
+3. Back up TCC with `tcc-temp-grant.sh` before any temporary grant; grant only
+   the denied Sub:/Resp: service+client pair.
+4. Restart `tccd`, retry, capture logs, then restore with
+   `tcc-restore-backup.sh`.
 5. List current windows before clicking; use logical bounds, never screenshot
    pixels.
 6. Clear live `UserNotificationCenter`/`universalAccessAuthWarn` dialogs.
@@ -565,18 +544,15 @@ has been correctly diagnosed.
 
 ## Evidence from the original investigation
 
-The integrated report is `/tmp/devbox-gui-final-report.md`. Useful existing
-artifacts include:
+The `/tmp` images and `/tmp/devbox-gui-final-report.md` are artifacts from the
+original investigation session. They are not expected on a fresh Devbox; capture
+new evidence paths for future sessions. In-repo helpers:
 
 ```text
-/tmp/scA.png
-/tmp/sim.png
-/tmp/textedit-xcui.png
-/tmp/gui-probe-standalone-final.png
-/tmp/xcui_state_xctest.png
-/tmp/demo1.png ... /tmp/demo7.png
+.agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh
+.agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
+.agents/skills/macos-devbox-gui/scripts/tcc-screencapture-grants.sql
+.agents/skills/macos-devbox-gui/scripts/tcc-guievent-grants.sql
 .agents/skills/macos-devbox-gui/scripts/tcc-xctrunner-grants.sql
-.agents/skills/macos-devbox-gui/scripts/tcc-xctrunner-restore.sql
 .agents/skills/macos-devbox-gui/scripts/tcc-target-app-grants.sql
-.agents/skills/macos-devbox-gui/scripts/tcc-target-app-restore.sql
 ```

@@ -1,15 +1,15 @@
--- Template: temporary TCC grants for XCTest-driven screencapture.
--- Disposable Devbox only. Back up with `sqlite3 "$DB" ".backup '...'"` first.
--- Adjust clients to the measured tccd Sub:/Resp: values before applying.
--- Default: ScreenCapture for com.apple.XCTRunner (bundle id, client_type=0).
--- Do not add kTCCServiceListenEvent unless tccd shows a ListenEvent denial.
+-- Template: temporary ScreenCapture grant for XCTest-driven screencapture.
+-- Disposable Devbox only. Apply via tcc-temp-grant.sh after editing if needed.
+-- Default client is com.apple.XCTRunner (bundle id, CLIENT_TYPE=0).
+-- Adjust CLIENT / CLIENT_TYPE to the measured tccd Sub:/Resp: values.
+-- Restore only with tcc-restore-backup.sh (pre-grant .backup). Partial DELETE
+-- restore is unsupported because this file deletes matching rows first.
 
 BEGIN IMMEDIATE;
 DELETE FROM access
-WHERE client IN ('com.apple.XCTRunner')
-  AND service IN (
-    'kTCCServiceScreenCapture'
-  );
+WHERE client = 'com.apple.XCTRunner'
+  AND client_type = 0
+  AND service = 'kTCCServiceScreenCapture';
 INSERT INTO access
   (service,client,client_type,auth_value,auth_reason,auth_version,
    indirect_object_identifier,flags)

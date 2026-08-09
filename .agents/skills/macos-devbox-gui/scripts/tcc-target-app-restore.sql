@@ -1,17 +1,14 @@
--- Template: remove only the temporary target-app rows added by
--- tcc-target-app-grants.sql. Prefer restoring the pre-grant `.backup` instead.
--- Disposable Devbox only. Replace TARGET_BUNDLE_ID to match the grant file.
--- Stop tccd before mutating TCC.db.
+-- Unsupported as a restore mechanism.
+-- tcc-target-app-grants.sql deletes matching rows before insert, so a later
+-- DELETE cannot recreate any pre-existing allow/deny state.
+--
+-- Restore only from the pre-grant sqlite3 backup:
+--   .agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
+--
+-- Or manually:
+--   sudo killall tccd 2>/dev/null || true
+--   sudo sqlite3 "$DB" ".restore '/tmp/TCC.db.bak'"
+--   sudo sqlite3 "$DB" 'PRAGMA integrity_check;'
+--   sudo killall tccd 2>/dev/null || true
 
-BEGIN IMMEDIATE;
-DELETE FROM access
-WHERE client = 'TARGET_BUNDLE_ID'
-  AND client_type = 0
-  AND auth_value = 2
-  AND auth_reason = 4
-  AND indirect_object_identifier = 'UNUSED'
-  AND service IN (
-    'kTCCServiceAccessibility',
-    'kTCCServicePostEvent'
-  );
-COMMIT;
+SELECT CAST('use tcc-restore-backup.sh / sqlite3 .restore; do not DELETE by client' AS TEXT);
