@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
@@ -9,6 +12,8 @@ namespace RealtimeTranslator.Core.Tests;
 
 public sealed class DualRealtimeTranslationClientDrainTests
 {
+    private static readonly TimeSpan ShortCloseTimeout = TimeSpan.FromMilliseconds(300);
+
     [Fact]
     public async Task WaitForTranslationDrainTimesOutWhenSendStalls()
     {
@@ -72,10 +77,99 @@ public sealed class DualRealtimeTranslationClientDrainTests
         await dual.ForceCloseAsync();
     }
 
+    // Given: 翻訳 lane へ未送信 frame が溜まっている dual（#42 の drain-before-clear）
+    // When: CloseGracefullyAsync する
+    // Then: session.close より前に溜まった frame が英語 target へ送られる
+    [Fact]
+    public async Task CloseGracefullyDrainsPendingTranslationFramesBeforeSessionClose()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(source, english, japanese, ShortCloseTimeout);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+
+        // 送信を少し遅らせて pending を作り、CloseGracefully の drain 待ちに載せる。
+        english.SendDelay = TimeSpan.FromMilliseconds(120);
+        await dual.AppendAudioFrameAsync(Frame(0x21));
+        await dual.AppendAudioFrameAsync(Frame(0x22));
+        await dual.AppendAudioFrameAsync(Frame(0x23));
+        english.SendDelay = TimeSpan.Zero;
+
+        await dual.CloseGracefullyAsync();
+
+        var englishTypes = SentTypes(english);
+        var lastAppendIndex = englishTypes.FindLastIndex(type => type == "session.input_audio_buffer.append");
+        var closeIndex = englishTypes.FindLastIndex(type => type == "session.close");
+        Assert.Equal(3, english.AppendedFrameTexts().Count);
+        Assert.True(lastAppendIndex >= 0);
+        Assert.True(closeIndex > lastAppendIndex);
+        // close 応答で残ったイベントを吸い切ったあと、停止側の WaitToReadAsync が終了できること。
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
+    // Given: session.closed / transcription completed を返さない dual
+    // When: CloseGracefullyAsync が CloseTimeout になる
+    // Then: 例外を返しても Events channel は完了し、停止側の drain 待ちが固まらない
+    [Fact]
+    public async Task CloseGracefullyCompletesEventsChannelAfterCloseTimeout()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese, ShortCloseTimeout);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.CloseGracefullyAsync());
+
+        Assert.Equal(RealtimeTranslationErrorKind.CloseTimeout, error.Kind);
+        Assert.Contains("session.close", SentTypes(english));
+        Assert.Contains("session.close", SentTypes(japanese));
+        Assert.Contains("input_audio_buffer.commit", SentTypes(source));
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
+    private static DualRealtimeTranslationClient CreateDual(
+        FakeRealtimeServerTransport source,
+        FakeRealtimeServerTransport english,
+        FakeRealtimeServerTransport japanese,
+        TimeSpan closeTimeout) =>
+        new(
+            new RealtimeSourceTranscriptionConnection(source, "test-safety", closeTimeout: closeTimeout),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.English,
+                english,
+                "test-safety",
+                closeTimeout: closeTimeout),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Japanese,
+                japanese,
+                "test-safety",
+                closeTimeout: closeTimeout));
+
     private static byte[] Frame(byte fill)
     {
         var frame = new byte[Pcm16FramePacketizer.BytesPerFrame];
         Array.Fill(frame, fill);
         return frame;
     }
+
+    private static List<string> SentTypes(FakeRealtimeServerTransport transport) =>
+        transport.Sent
+            .Select(payload => JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>() ?? string.Empty)
+            .Where(type => type.Length > 0)
+            .ToList();
 }

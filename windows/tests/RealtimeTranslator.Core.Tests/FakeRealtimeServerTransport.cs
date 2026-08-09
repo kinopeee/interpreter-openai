@@ -23,6 +23,13 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
 
     public bool AutoHandshake { get; set; } = true;
 
+    /// <summary>
+    /// graceful close 用の完了イベントを自動応答する。
+    /// <c>session.close</c> → <c>session.closed</c>、
+    /// <c>input_audio_buffer.commit</c> → transcription completed。
+    /// </summary>
+    public bool AutoCloseResponses { get; set; }
+
     public Exception? ConnectError { get; set; }
 
     /// <summary>設定している間、すべての send が失敗する。</summary>
@@ -117,9 +124,23 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
             _sent.Add(payload);
         }
 
-        if (AutoHandshake && TypeOf(payload) == "session.update")
+        var type = TypeOf(payload);
+        if (AutoHandshake && type == "session.update")
         {
             EnqueueJson("""{"type":"session.updated"}""");
+        }
+
+        if (AutoCloseResponses)
+        {
+            if (type == "session.close")
+            {
+                EnqueueJson("""{"type":"session.closed"}""");
+            }
+            else if (type == "input_audio_buffer.commit")
+            {
+                EnqueueJson(
+                    """{"type":"conversation.item.input_audio_transcription.completed"}""");
+            }
         }
     }
 
