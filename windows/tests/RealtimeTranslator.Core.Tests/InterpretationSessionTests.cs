@@ -311,6 +311,59 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: idle finalize 前の完全ペアと、再接続 Start が連続失敗する dual
+    // When: transport error 後に再接続上限へ到達する
+    // Then: Error 遷移前に ShouldFinalize し、オプトイン字幕記録の欠落を防ぐ
+    [Fact]
+    public async Task MaxReconnectAttemptsFinalizesCompletePairBeforeError()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        string? message = null;
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("再接続上限前の完全ペア");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "Complete pair before max reconnect");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+            }
+        });
+
+        // 成功再接続では BeginNewEpoch 前に flush されるが、Start 失敗の連続では
+        // 上限到達時の FlushPendingFinalizeIfNeeded だけが最後の機会になる。
+        client.RemainingStartFailures = InterpretationSession.MaxReconnectAttempts;
+        client.PublishTransportError();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        Assert.Equal("再接続上限に達しました", message);
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("再接続上限前の完全ペア", finalized.SourceText);
+        Assert.Equal("Complete pair before max reconnect", finalized.TranslatedText);
+    }
+
     // Given: 訳文がまだ無い原文だけのセグメント
     // When: transport error で再接続する
     // Then: 不完全ペアを ShouldFinalize しない（字幕記録へゴミを書かない）
@@ -436,6 +489,51 @@ public sealed class InterpretationSessionTests
         Assert.Equal("Final source at stop", finalized.TranslatedText);
     }
 
+    // Given: close 自体は失敗するが、drain 済みの完全ペアは channel に残っている
+    // When: 利用者が録音を停止する
+    // Then: ForceClose 後も drain イベントを取り込んで ShouldFinalize する
+    [Fact]
+    public async Task StopIngestsCloseDrainEventsEvenWhenGracefulCloseFails()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.OnCloseGracefully = () =>
+        {
+            client.PublishSourceDelta("失敗経路の最終原文");
+            client.PublishTranslationDelta(
+                RealtimeTranslationOutputLanguage.English,
+                "Final source on close failure");
+            // Complete せずに失敗させる。ForceClose が channel を閉じる前提。
+            throw new InvalidOperationException("graceful close failed");
+        };
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        Assert.Equal(1, client.CloseGracefullyCallCount);
+        Assert.True(client.ForceCloseCallCount >= 1);
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("失敗経路の最終原文", finalized.SourceText);
+        Assert.Equal("Final source on close failure", finalized.TranslatedText);
+    }
+
     // Given: idle finalize 前の完全な原文+訳文ペア
     // When: StopAsync を経ずに Dispose される（OnExit / プロセス終了相当）
     // Then: 破棄前に ShouldFinalize が発行され、オプトイン字幕記録へ届く
@@ -543,6 +641,45 @@ public sealed class InterpretationSessionTests
 
         Assert.Equal("フェンス前の完全ペア", finalized.SourceText);
         Assert.Equal("Complete pair before fence", finalized.TranslatedText);
+    }
+
+    // Given: 訳文がまだ無い原文だけのセグメント
+    // When: StopAsync を経ずに Dispose される
+    // Then: 不完全ペアを ShouldFinalize しない（字幕記録へゴミを書かない）
+    [Fact]
+    public async Task DisposeDoesNotFinalizeIncompleteSourceOnlyPair()
+    {
+        var client = new FakeDualClient();
+        var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("終了前の原文だけ");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.SourceText.Length > 0);
+            }
+        });
+
+        session.Dispose();
+        await Task.Delay(100);
+
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
     }
 
     // Given: idle finalize 前の完全な原文+訳文ペア
@@ -851,9 +988,16 @@ public sealed class InterpretationSessionTests
 
         public int UpdateTranscriptionTuningCount { get; private set; }
 
+        public int CloseGracefullyCallCount { get; private set; }
+
+        public int ForceCloseCallCount { get; private set; }
+
         public RealtimeSessionTuning? LastTuning { get; private set; }
 
         public bool ThrowOnNextStart { get; set; }
+
+        /// <summary>StartAsync を指定回数だけ失敗させる（再接続上限テスト用）。</summary>
+        public int RemainingStartFailures { get; set; }
 
         /// <summary>CloseGracefully 時に close drain イベントを流すテスト用フック。</summary>
         public Func<Task>? OnCloseGracefully { get; set; }
@@ -881,6 +1025,12 @@ public sealed class InterpretationSessionTests
                 {
                     ThrowOnNextStart = false;
                     throw new InvalidOperationException("unexpected device failure");
+                }
+
+                if (RemainingStartFailures > 0)
+                {
+                    RemainingStartFailures -= 1;
+                    throw new InvalidOperationException("repeated device failure");
                 }
 
                 _epoch += 1;
@@ -936,6 +1086,7 @@ public sealed class InterpretationSessionTests
 
         public async Task CloseGracefullyAsync(CancellationToken cancellationToken = default)
         {
+            CloseGracefullyCallCount += 1;
             if (OnCloseGracefully is { } hook)
             {
                 await hook().ConfigureAwait(false);
@@ -947,6 +1098,7 @@ public sealed class InterpretationSessionTests
 
         public Task ForceCloseAsync()
         {
+            ForceCloseCallCount += 1;
             Complete();
             return Task.CompletedTask;
         }
