@@ -173,7 +173,27 @@ cp .agents/skills/macos-devbox-gui/scripts/tcc-screencapture-grants.sql /tmp/tcc
 # edit /tmp/tcc-grant.sql:
 #   CLIENT -> /opt/namespace/vmguest
 #   CLIENT_TYPE -> 1
-.agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh /tmp/tcc-grant.sql
+TCC_BACKUP=/tmp/TCC.db.bak \
+  .agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh /tmp/tcc-grant.sql
+```
+
+The grant helper leaves the temporary grant active after success and records
+the pre-grant state in `TCC_BACKUP`. Use the restore helper when finished:
+
+```bash
+TCC_BACKUP=/tmp/TCC.db.bak \
+  .agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
+```
+
+For a disposable script smoke test, use a separate backup path so the
+investigation's original `/tmp/TCC.db.bak` is not overwritten:
+
+```bash
+TCC_BACKUP=/tmp/TCC.db.skilltest.bak \
+  .agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh /tmp/tcc-grant.sql
+/usr/sbin/screencapture -x /tmp/tcc-skilltest-after.png
+TCC_BACKUP=/tmp/TCC.db.skilltest.bak \
+  .agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
 ```
 
 For CGEvent input, apply `tcc-guievent-grants.sql` the same way for the
@@ -202,9 +222,7 @@ pre-existing allow/deny rows for the same clients/services:
 .agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
 ```
 
-The `*-restore.sql` files under `scripts/` intentionally refuse partial
-`DELETE` restore and point back to this helper. If the backup file is missing,
-stop and treat the Devbox TCC state as untrusted.
+If the backup file is missing, stop and treat the Devbox TCC state as untrusted.
 
 Optional verification after restore:
 
