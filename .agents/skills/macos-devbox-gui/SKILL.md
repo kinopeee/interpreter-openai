@@ -132,13 +132,26 @@ The measured path-based clients were `/opt/namespace/vmguest`, `/bin/bash`, and
 - `kTCCServicePostEvent`
 - `kTCCServiceListenEvent`
 
-Copy and run this only in the disposable environment:
+Copy and run this only in the disposable environment.
+
+Do **not** use `INSERT OR IGNORE`: if a matching row already exists with a
+denied or weaker `auth_value`, SQLite skips the insert and the grant appears to
+succeed while permissions stay unchanged. Delete the matching client/service
+rows first, then insert the allowed rows so existing denials are upgraded.
 
 ```bash
 sudo cp "$DB" /tmp/TCC.db.bak
 sudo sqlite3 "$DB" <<'SQL'
 BEGIN IMMEDIATE;
-INSERT OR IGNORE INTO access
+DELETE FROM access
+WHERE client IN ('/opt/namespace/vmguest','/bin/bash','/bin/zsh')
+  AND service IN (
+    'kTCCServiceScreenCapture',
+    'kTCCServiceAccessibility',
+    'kTCCServicePostEvent',
+    'kTCCServiceListenEvent'
+  );
+INSERT INTO access
   (service,client,client_type,auth_value,auth_reason,auth_version,
    indirect_object_identifier,flags)
 VALUES
@@ -174,33 +187,21 @@ returned `rc=0`.
 
 ### Restoration SQL
 
-Use the backup for exact restoration whenever possible:
+Restore from the backup taken before the grant. That is the only path that
+preserves any pre-existing allowances for the same clients/services:
 
 ```bash
 sudo cp /tmp/TCC.db.bak "$DB"
 sudo killall tccd
 ```
 
-If a backup restore is not possible, remove the temporary path rows with the
-same service set:
+Do **not** use a broad `DELETE FROM access WHERE client IN (...) AND service
+IN (...)` as “restoration”: it removes every matching row, including allowances
+that existed before the temporary grant. If the backup file is missing, stop
+and treat the Devbox TCC state as untrusted rather than deleting by client
+list.
 
-```bash
-sudo sqlite3 "$DB" <<'SQL'
-BEGIN IMMEDIATE;
-DELETE FROM access
-WHERE client IN ('/opt/namespace/vmguest','/bin/bash','/bin/zsh')
-  AND service IN (
-    'kTCCServiceScreenCapture',
-    'kTCCServiceAccessibility',
-    'kTCCServicePostEvent',
-    'kTCCServiceListenEvent'
-  );
-COMMIT;
-SQL
-sudo killall tccd
-```
-
-Verify the intended temporary rows are gone and compare against the backup:
+Verify the post-restore rows match the backup snapshot:
 
 ```bash
 sudo sqlite3 "$DB" \
