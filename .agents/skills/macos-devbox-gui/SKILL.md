@@ -125,12 +125,18 @@ DB="/Library/Application Support/com.apple.TCC/TCC.db"
 
 The measured path-based clients were `/opt/namespace/vmguest`, `/bin/bash`, and
 `/bin/zsh`. Path clients use `client_type=1`; the observed allowed value was
-`auth_value=2`. The services were:
+`auth_value=2`.
 
-- `kTCCServiceScreenCapture`
-- `kTCCServiceAccessibility`
-- `kTCCServicePostEvent`
-- `kTCCServiceListenEvent`
+Grant only the services denied for the operation you are diagnosing. Capture
+`tccd` `Sub:` / `Resp:` first, then add the minimum set:
+
+- `kTCCServiceScreenCapture` — `screencapture` / ScreenCaptureKit
+- `kTCCServiceAccessibility` — AX trust and synthesizing input
+- `kTCCServicePostEvent` — posting `CGEvent` mouse/keyboard events
+
+Do **not** grant `kTCCServiceListenEvent` by default. `guievent.swift` posts
+events; it does not install an event tap or otherwise monitor input. Add
+ListenEvent only when tccd shows a ListenEvent denial for a monitoring API.
 
 Copy and run this only in the disposable environment.
 
@@ -139,8 +145,13 @@ denied or weaker `auth_value`, SQLite skips the insert and the grant appears to
 succeed while permissions stay unchanged. Delete the matching client/service
 rows first, then insert the allowed rows so existing denials are upgraded.
 
+Prefer `sqlite3 .backup` over `cp` so the snapshot is consistent even if WAL
+or journal files are present. Stop `tccd` before mutating or restoring the DB.
+
 ```bash
-sudo cp "$DB" /tmp/TCC.db.bak
+sudo killall tccd 2>/dev/null || true
+sudo sqlite3 "$DB" ".backup '/tmp/TCC.db.bak'"
+sudo sqlite3 /tmp/TCC.db.bak 'PRAGMA integrity_check;'
 sudo sqlite3 "$DB" <<'SQL'
 BEGIN IMMEDIATE;
 DELETE FROM access
@@ -148,8 +159,7 @@ WHERE client IN ('/opt/namespace/vmguest','/bin/bash','/bin/zsh')
   AND service IN (
     'kTCCServiceScreenCapture',
     'kTCCServiceAccessibility',
-    'kTCCServicePostEvent',
-    'kTCCServiceListenEvent'
+    'kTCCServicePostEvent'
   );
 INSERT INTO access
   (service,client,client_type,auth_value,auth_reason,auth_version,
@@ -163,13 +173,10 @@ VALUES
 ('kTCCServiceAccessibility','/bin/zsh',1,2,4,1,'UNUSED',0),
 ('kTCCServicePostEvent','/opt/namespace/vmguest',1,2,4,1,'UNUSED',0),
 ('kTCCServicePostEvent','/bin/bash',1,2,4,1,'UNUSED',0),
-('kTCCServicePostEvent','/bin/zsh',1,2,4,1,'UNUSED',0),
-('kTCCServiceListenEvent','/opt/namespace/vmguest',1,2,4,1,'UNUSED',0),
-('kTCCServiceListenEvent','/bin/bash',1,2,4,1,'UNUSED',0),
-('kTCCServiceListenEvent','/bin/zsh',1,2,4,1,'UNUSED',0);
+('kTCCServicePostEvent','/bin/zsh',1,2,4,1,'UNUSED',0);
 COMMIT;
 SQL
-sudo killall tccd
+# tccd relaunches on demand after the next TCC check
 ```
 
 Retry and verify:
@@ -188,18 +195,22 @@ returned `rc=0`.
 ### Restoration SQL
 
 Restore from the backup taken before the grant. That is the only path that
-preserves any pre-existing allowances for the same clients/services:
+preserves any pre-existing allowances for the same clients/services. Stop
+`tccd` before restoring, then integrity-check the live DB:
 
 ```bash
-sudo cp /tmp/TCC.db.bak "$DB"
-sudo killall tccd
+sudo killall tccd 2>/dev/null || true
+sudo sqlite3 "$DB" ".restore '/tmp/TCC.db.bak'"
+sudo sqlite3 "$DB" 'PRAGMA integrity_check;'
 ```
 
-Do **not** use a broad `DELETE FROM access WHERE client IN (...) AND service
-IN (...)` as “restoration”: it removes every matching row, including allowances
-that existed before the temporary grant. If the backup file is missing, stop
-and treat the Devbox TCC state as untrusted rather than deleting by client
-list.
+If `.restore` is unavailable in the local `sqlite3`, copy the backup file onto
+`$DB` only after `tccd` is stopped, then run `PRAGMA integrity_check` and
+compare a client/service dump against the backup. Do **not** use a broad
+`DELETE FROM access WHERE client IN (...) AND service IN (...)` as
+“restoration”: it removes every matching row, including allowances that
+existed before the temporary grant. If the backup file is missing, stop and
+treat the Devbox TCC state as untrusted rather than deleting by client list.
 
 Verify the post-restore rows match the backup snapshot:
 
@@ -208,12 +219,27 @@ sudo sqlite3 "$DB" \
   "SELECT service,client,client_type,auth_value FROM access
    WHERE client IN ('/opt/namespace/vmguest','/bin/bash','/bin/zsh')
    AND service IN ('kTCCServiceScreenCapture','kTCCServiceAccessibility',
-                   'kTCCServicePostEvent','kTCCServiceListenEvent');"
+                   'kTCCServicePostEvent');"
+sudo sqlite3 /tmp/TCC.db.bak \
+  "SELECT service,client,client_type,auth_value FROM access
+   WHERE client IN ('/opt/namespace/vmguest','/bin/bash','/bin/zsh')
+   AND service IN ('kTCCServiceScreenCapture','kTCCServiceAccessibility',
+                   'kTCCServicePostEvent');"
 ```
 
-The saved investigation SQL for related XCTest experiments is in
-`/tmp/tcc-xctrunner-grants.sql`, `/tmp/tcc-xctrunner-restore.sql`,
-`/tmp/tcc-target-app-grants.sql`, and `/tmp/tcc-target-app-restore.sql`.
+XCTest / target-app grant templates live in the skill scripts directory (not
+`/tmp`):
+
+```text
+.agents/skills/macos-devbox-gui/scripts/tcc-xctrunner-grants.sql
+.agents/skills/macos-devbox-gui/scripts/tcc-xctrunner-restore.sql
+.agents/skills/macos-devbox-gui/scripts/tcc-target-app-grants.sql
+.agents/skills/macos-devbox-gui/scripts/tcc-target-app-restore.sql
+```
+
+Always take a `.backup` first, edit the templates to match the measured
+`Sub:` / `Resp:` clients, apply only denied services, then restore from the
+backup when finished.
 
 ## 3. Coordinates and the reusable event helper
 
@@ -358,8 +384,10 @@ An XCTest-launched `screencapture` has a different responsible process:
 `com.apple.XCTRunner`. Granting the shell process does not grant XCTRunner.
 The measured XCTest ScreenCapture grant made the test-side `screencapture`
 succeed; the corresponding Accessibility/PostEvent grant did not by itself
-make GUIProbeMac's Button hittable. Use the saved `/tmp/tcc-xctrunner-*.sql`
-files as a template and restore all temporary rows.
+make GUIProbeMac's Button hittable. Use the skill templates
+`scripts/tcc-xctrunner-*.sql` and `scripts/tcc-target-app-*.sql` (adjust
+clients to the measured responsible process), then restore from the pre-grant
+`.backup`.
 
 ## 6. iOS Simulator
 

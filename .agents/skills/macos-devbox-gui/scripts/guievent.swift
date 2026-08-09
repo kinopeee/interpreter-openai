@@ -66,9 +66,11 @@ func parseKeyCode(_ raw: String) throws -> CGKeyCode {
     return CGKeyCode(value)
 }
 
-func flags(from raw: String) -> CGEventFlags {
-    raw.split(separator: ",").reduce(into: CGEventFlags()) { result, name in
-        switch name.lowercased() {
+func flags(from raw: String) throws -> CGEventFlags {
+    var result = CGEventFlags()
+    for name in raw.split(separator: ",") {
+        let modifier = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch modifier.lowercased() {
         case "command", "cmd":
             result.insert(.maskCommand)
         case "option", "alt":
@@ -78,11 +80,12 @@ func flags(from raw: String) -> CGEventFlags {
         case "shift":
             result.insert(.maskShift)
         case "":
-            break
+            throw CommandError.usage("--flags contains an empty modifier name")
         default:
-            fputs("warning: unknown modifier '\(name)'\n", stderr)
+            throw CommandError.usage("unknown modifier '\(modifier)'")
         }
     }
+    return result
 }
 
 func click(at point: CGPoint, clickState: Int64 = 1) {
@@ -185,7 +188,7 @@ do {
             guard arguments.count > index + 1 else {
                 throw CommandError.usage("--flags requires a comma-separated modifier list")
             }
-            eventFlags = flags(from: arguments[index + 1])
+            eventFlags = try flags(from: arguments[index + 1])
             index += 2
         }
         guard arguments.count > index else {
