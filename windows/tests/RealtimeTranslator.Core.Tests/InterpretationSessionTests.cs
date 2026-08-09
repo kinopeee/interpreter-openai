@@ -320,12 +320,27 @@ public sealed class InterpretationSessionTests
         var client = new FakeDualClient();
         using var session = NewSession(client);
         var updates = new List<RealtimeSubtitleUpdate>();
+        var notificationOrder = new List<string>();
         string? message = null;
         session.SubtitleUpdated += (_, update) =>
         {
             lock (updates)
             {
                 updates.Add(update);
+                if (update.ShouldFinalize)
+                {
+                    notificationOrder.Add("ShouldFinalize");
+                }
+            }
+        };
+        session.StateChanged += (_, state) =>
+        {
+            if (state == TranslationState.Error)
+            {
+                lock (updates)
+                {
+                    notificationOrder.Add("Error");
+                }
             }
         };
         session.MessageEncountered += (_, value) => message = value;
@@ -353,10 +368,18 @@ public sealed class InterpretationSessionTests
         client.PublishTransportError();
         await WaitUntilAsync(() => session.State == TranslationState.Error);
 
+        // 初回 Start 成功 + MaxReconnectAttempts 回の失敗 Start を消費したこと。
+        Assert.Equal(0, client.RemainingStartFailures);
+        Assert.Equal(1 + InterpretationSession.MaxReconnectAttempts, client.StartCount);
         Assert.Equal("再接続上限に達しました", message);
         RealtimeSubtitleUpdate finalized;
         lock (updates)
         {
+            Assert.Contains("ShouldFinalize", notificationOrder);
+            Assert.Contains("Error", notificationOrder);
+            Assert.True(
+                notificationOrder.IndexOf("ShouldFinalize") <
+                notificationOrder.IndexOf("Error"));
             finalized = updates.Find(update => update.ShouldFinalize);
         }
 
