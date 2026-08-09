@@ -176,6 +176,71 @@
           "isTranslationCurrent": false,
           "shouldFinalize": false
         }
+      },
+      {
+        "name": "late translation after idle finalize is ignored until next source",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "こんにちは。", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello.", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 9, "kind": "tick" },
+          { "at": 9.1, "kind": "translationDelta", "lane": "en", "text": " Late", "eventId": "t2", "elapsedMs": 300 }
+        ],
+        "expectedFinal": {
+          "sourceText": "こんにちは。",
+          "translatedText": "Hello.",
+          "isTranslationCurrent": true,
+          "shouldFinalize": true
+        }
+      },
+      {
+        "name": "mid idle pause does not finalize a complete pair",
+        "epoch": 1,
+        "expectLane": "ja",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "hello world", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "ja", "text": "こんにちは世界", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 5.5, "kind": "tick" }
+        ],
+        "expectedFinal": {
+          "sourceText": "hello world",
+          "translatedText": "こんにちは世界",
+          "isTranslationCurrent": true,
+          "shouldFinalize": false
+        }
+      },
+      {
+        "name": "first output lane wins when both eventually emit",
+        "epoch": 1,
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "Tokyo", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "Tokyo", "eventId": "e1", "elapsedMs": 150 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "ja", "text": "東京", "eventId": "j1", "elapsedMs": 200 }
+        ],
+        "expectedFinal": {
+          "sourceText": "Tokyo",
+          "translatedText": "Tokyo",
+          "isTranslationCurrent": true,
+          "shouldFinalize": false
+        }
+      },
+      {
+        "name": "selected lane silence in mixed speech still displays source",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "今日は", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "Today", "eventId": "t1", "elapsedMs": 150 },
+          { "at": 0.2, "kind": "sourceDelta", "lane": "en", "text": " meeting", "eventId": "s2", "elapsedMs": 200 },
+          { "at": 0.3, "kind": "translationDelta", "lane": "ja", "text": "会議", "eventId": "j1", "elapsedMs": 250 }
+        ],
+        "expectedFinal": {
+          "sourceText": "今日は meeting",
+          "translatedText": "Today",
+          "isTranslationCurrent": true,
+          "shouldFinalize": false
+        }
       }
     ]
   }
