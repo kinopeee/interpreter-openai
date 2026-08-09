@@ -273,7 +273,7 @@ final class CodecFixtureTests: XCTestCase {
     }
 
     private func transcriptionTuning(_ fixture: [String: Any]) -> RealtimeSessionTuning {
-        let keywords = (fixture["keywords"] as? [Any] ?? []).map(SharedFixtures.text)
+        let keywords: [String] = (fixture["keywords"] as? [Any] ?? []).map(SharedFixtures.text)
         return RealtimeSessionTuning(
             noiseReduction: RealtimeTranslationNoiseReduction(
                 rawValue: SharedFixtures.text(fixture["noiseReduction"])
