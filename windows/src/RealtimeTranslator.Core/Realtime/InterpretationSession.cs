@@ -60,6 +60,9 @@ public sealed class InterpretationSession : IDisposable
     private string _routingSourceText = string.Empty;
     private SpokenLanguage _routedSpokenLanguage = SpokenLanguage.Unknown;
 
+    /// <summary>テスト用。generation 確認後・assembler 更新前に差し込む。</summary>
+    internal Action? BeforeAssemblerIngestForTests { get; set; }
+
     public InterpretationSession(
         IApiKeyStore apiKeyStore,
         IRealtimeAudioCapture audioCapture,
@@ -240,18 +243,8 @@ public sealed class InterpretationSession : IDisposable
     public void Dispose()
     {
         // OnExit / プロセス終了は StopAsync を経由しないことがある。
-        // epoch/buffer を捨てる前に完全ペアを確定し、オプトイン字幕記録へ渡す。
-        try
-        {
-            FlushPendingFinalizeIfNeeded();
-        }
-#pragma warning disable CA1031 // Dispose 経路では例外を外へ出さない。
-        catch (Exception)
-#pragma warning restore CA1031
-        {
-            // flush 失敗でも CTS 解放は継続する。
-        }
-
+        // flush より先に generation を進め CTS を切って取り込みをフェンスし、
+        // その時点の assembler 状態だけを ShouldFinalize する。
         CancellationTokenSource? cts;
         lock (_sync)
         {
@@ -272,6 +265,17 @@ public sealed class InterpretationSession : IDisposable
             }
 
             cts.Dispose();
+        }
+
+        try
+        {
+            FlushPendingFinalizeIfNeeded();
+        }
+#pragma warning disable CA1031 // Dispose 経路では例外を外へ出さない。
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            // flush 失敗でも破棄完了は継続する。
         }
 
         // `_routingGate` は同期 Dispose では破棄しない。
@@ -475,9 +479,18 @@ public sealed class InterpretationSession : IDisposable
                 await UpdateAudioRoutingAsync(source.Delta, cancellationToken).ConfigureAwait(false);
             }
 
+            BeforeAssemblerIngestForTests?.Invoke();
+
             RealtimeSubtitleUpdate? update;
             lock (_sync)
             {
+                // Dispose/Stop が generation を進めたあとに、取り出し済みイベントで
+                // assembler を更新しない（flush 後の完全ペア欠落を防ぐ）。
+                if (_lifecycleGeneration != generation)
+                {
+                    return;
+                }
+
                 update = _assembler.Ingest(streamEvent, _timeProvider.GetUtcNow());
             }
 
