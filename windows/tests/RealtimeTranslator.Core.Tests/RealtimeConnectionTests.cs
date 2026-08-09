@@ -162,6 +162,54 @@ public sealed class RealtimeConnectionTests
         await connection.ForceCloseAsync();
     }
 
+    // Given: Stop 相当で Events を読まないまま output_audio.delta が channel 容量を超えて届く
+    // When: その後に output_transcript.delta が届く
+    // Then: 音声 delta は channel に載せず、訳文 delta が DropOldest で消えない
+    [Fact]
+    public async Task TranslationConnectionDoesNotEnqueueOutputAudioDeltas()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety");
+        await connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+
+        // bounded(512) + DropOldest を超える量。フィルタが無いと後続の訳文が落ちる。
+        for (var index = 0; index < 600; index += 1)
+        {
+            transport.EnqueueJson("""{"type":"session.output_audio.delta","delta":"AAAA"}""");
+        }
+
+        transport.EnqueueJson(
+            """{"type":"session.output_transcript.delta","delta":"kept after audio flood","event_id":"keep-1"}""");
+
+        RealtimeTranslationServerEvent.OutputTranscriptDelta? kept = null;
+        var deadline = Environment.TickCount64 + 5_000;
+        while (kept is null && Environment.TickCount64 < deadline)
+        {
+            while (connection.Events.TryRead(out var streamEvent))
+            {
+                Assert.IsNotType<RealtimeTranslationServerEvent.OutputAudioDelta>(streamEvent.Event);
+                if (streamEvent.Event is RealtimeTranslationServerEvent.OutputTranscriptDelta transcript)
+                {
+                    kept = transcript;
+                }
+            }
+
+            if (kept is null)
+            {
+                await Task.Delay(10);
+            }
+        }
+
+        Assert.NotNull(kept);
+        Assert.Equal("kept after audio flood", kept.Delta);
+        await connection.ForceCloseAsync();
+    }
+
     // Given: ready 状態の翻訳接続
     // When: 復号できないメッセージが届く
     // Then: transport error として 1 度だけ通知しイベント流を閉じる

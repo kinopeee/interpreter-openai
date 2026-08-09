@@ -417,6 +417,10 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     }
 
     private func forwardMergedEvent(_ event: RealtimeTranslationStreamEvent) {
+        // 接続側で落とすのが正攻法だが、stopDrainBuffer のメモリ肥大も防ぐ。
+        if case .outputAudioDelta = event.event {
+            return
+        }
         if stopDrainBuffer != nil {
             stopDrainBuffer?.append(event)
         }

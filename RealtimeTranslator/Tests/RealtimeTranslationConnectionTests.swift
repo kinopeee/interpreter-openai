@@ -273,6 +273,56 @@ final class RealtimeTranslationConnectionTests: XCTestCase {
         XCTAssertEqual(sentCount, 0)
     }
 
+    func testOutputAudioDeltaIsNotForwardedToEventStream() async throws {
+        // Given: ready な翻訳接続。Stop 後の購読停止中に音声 delta が洪水しても字幕を落とさない。
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeTranslationConnection(
+            target: .english,
+            transport: transport,
+            safetyIdentifier: "safety"
+        )
+        try await transport.enqueueJSON(["type": "session.created"])
+        try await transport.enqueueJSON(["type": "session.updated"])
+        try await connection.start(
+            apiKey: "sk-test",
+            config: .englishTargetWithoutSourceTranscription()
+        )
+
+        let stream = await connection.events
+        // When: output_audio.delta を大量に流したあと訳文 delta を送る
+        for _ in 0..<300 {
+            try await transport.enqueueJSON([
+                "type": "session.output_audio.delta",
+                "delta": "AAAA",
+            ])
+        }
+        try await transport.enqueueJSON([
+            "type": "session.output_transcript.delta",
+            "delta": "kept after audio flood",
+            "event_id": "keep-1",
+        ])
+
+        // Then: 音声は event stream に出ず、訳文だけが届く
+        var sawAudio = false
+        var keptTranslation: String?
+        let deadline = ContinuousClock.now + .seconds(3)
+        for await event in stream {
+            if case .outputAudioDelta = event.event {
+                sawAudio = true
+            }
+            if case .outputTranscriptDelta(let delta, _, _) = event.event {
+                keptTranslation = delta
+                break
+            }
+            if ContinuousClock.now >= deadline {
+                break
+            }
+        }
+        XCTAssertFalse(sawAudio)
+        XCTAssertEqual(keptTranslation, "kept after audio flood")
+        await connection.forceClose()
+    }
+
     func testSessionUpdateTimeout() async {
         // Given: created後にupdatedが来ない
         let transport = FakeRealtimeWebSocketTransport()

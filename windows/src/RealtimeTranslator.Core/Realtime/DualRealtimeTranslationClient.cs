@@ -674,6 +674,12 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                     return;
                 }
 
+                // MVP は翻訳音声を再生しない。念のため merge でも落とす（接続側のフィルタと二重化）。
+                if (streamEvent.Event is RealtimeTranslationServerEvent.OutputAudioDelta)
+                {
+                    continue;
+                }
+
                 // Dual 側の epoch で貼り直し、接続内部の epoch と揃える。
                 writer.TryWrite(streamEvent with { Epoch = epoch });
             }

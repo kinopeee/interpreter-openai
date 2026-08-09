@@ -221,6 +221,9 @@ actor RealtimeTranslationConnection {
                 )
             }
             #endif
+            // MVP は翻訳音声を再生しない。AsyncStream(bufferingNewest) へ入れると
+            // Stop の close-drain 待ちで字幕 delta が落ちうるので受信カウントのみにする。
+            return
         case .inputTranscriptDelta:
             #if DEBUG
             AppLogger.realtime.notice(
