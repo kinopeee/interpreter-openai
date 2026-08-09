@@ -125,7 +125,8 @@ explicit `TCC_BACKUP`. For multi-grant sessions, export one path up front:
 ```bash
 export TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
 export TCC_BACKUP_DIR="/tmp/rt-tcc"
-export TCC_BACKUP="/tmp/rt-tcc/TCC.db.bak"
+export TCC_BACKUP="/tmp/rt-tcc/session.bak"
+rm -f -- "$TCC_BACKUP"   # new flow only — drop a stale snapshot
 ```
 
 ### Back up and grant
@@ -179,28 +180,33 @@ Example: temporary ScreenCapture for the measured responsible process only.
 ```bash
 cd /path/to/repository
 export TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
-export TCC_BACKUP="/tmp/rt-tcc/TCC.db.bak"
+export TCC_BACKUP_DIR="/tmp/rt-tcc"
+export TCC_BACKUP="/tmp/rt-tcc/session.bak"
+rm -f -- "$TCC_BACKUP"
 cp .agents/skills/macos-devbox-gui/scripts/tcc-screencapture-grants.sql /tmp/tcc-grant.sql
 # edit /tmp/tcc-grant.sql:
 #   CLIENT -> /opt/namespace/vmguest
 #   CLIENT_TYPE -> 1
-.agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh /tmp/tcc-grant.sql
+TCC_FORCE_BACKUP=1 \
+  .agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh /tmp/tcc-grant.sql
 ```
 
 The grant helper leaves the temporary grant active after success. Use the same
-`TCC_DB` / `TCC_BACKUP` with the restore helper when finished:
+`TCC_DB` / `TCC_BACKUP` with the restore helper when finished (`TCC_BACKUP` is
+required — there is no silent default):
 
 ```bash
 .agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh
 ```
 
 For a disposable script smoke test, use a separate backup basename under
-`/tmp/rt-tcc/` and set `TCC_FORCE_BACKUP=1` only when you intentionally want a
-fresh snapshot:
+`/tmp/rt-tcc/`:
 
 ```bash
 export TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
-export TCC_BACKUP="/tmp/rt-tcc/TCC.db.skilltest.bak"
+export TCC_BACKUP_DIR="/tmp/rt-tcc"
+export TCC_BACKUP="/tmp/rt-tcc/skilltest.bak"
+rm -f -- "$TCC_BACKUP"
 TCC_FORCE_BACKUP=1 \
   .agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh /tmp/tcc-grant.sql
 /usr/sbin/screencapture -x /tmp/tcc-skilltest-after.png
@@ -395,8 +401,11 @@ make GUIProbeMac's Button hittable.
 
 ```bash
 export TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
-export TCC_BACKUP="/tmp/rt-tcc/TCC.db.xctest.bak"
-.agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh \
+export TCC_BACKUP_DIR="/tmp/rt-tcc"
+export TCC_BACKUP="/tmp/rt-tcc/xctest.bak"
+rm -f -- "$TCC_BACKUP"
+TCC_FORCE_BACKUP=1 \
+  .agents/skills/macos-devbox-gui/scripts/tcc-temp-grant.sh \
   .agents/skills/macos-devbox-gui/scripts/tcc-xctrunner-grants.sql
 # optional second grant: reuse the same TCC_BACKUP (do not force a new backup)
 # cp .../tcc-target-app-grants.sql /tmp/tcc-target-app.sql
@@ -559,8 +568,8 @@ has been correctly diagnosed.
 1. Confirm `gui/$(id -u)` says `session = Aqua`; ignore `managername=Background`
    as a GUI verdict.
 2. Capture the exact tccd `Sub:`/`Resp:` responsible process.
-3. Export one `TCC_DB` / `TCC_BACKUP` pair for the whole flow; grant only the
-   denied Sub:/Resp: service+client pair via `tcc-temp-grant.sh`.
+3. Export one `TCC_DB` / `TCC_BACKUP` pair; `rm` the backup and use
+   `TCC_FORCE_BACKUP=1` only on the first grant of that flow.
 4. Restart `tccd`, retry, capture logs, then restore with the same
    `TCC_BACKUP` via `tcc-restore-backup.sh`.
 5. List current windows before clicking; use logical bounds, never screenshot
