@@ -6,6 +6,7 @@
 # If TCC_BACKUP already exists, it is reused (not overwritten) so multiple
 # grants in one investigation share one pre-grant snapshot. Set
 # TCC_FORCE_BACKUP=1 to replace an existing backup deliberately.
+# Reused and freshly created backups are both integrity-checked before use.
 set -euo pipefail
 
 DB="${TCC_DB:-/Library/Application Support/com.apple.TCC/TCC.db}"
@@ -14,6 +15,8 @@ BACKUP="${TCC_BACKUP:-$BACKUP_DIR/TCC.db.bak}"
 GRANT_SQL="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FORCE_BACKUP="${TCC_FORCE_BACKUP:-0}"
+BACKUP_READY=0
+GRANT_APPLIED=0
 
 reject_unsafe_path() {
   local label="$1"
@@ -22,6 +25,15 @@ reject_unsafe_path() {
     echo "$label contains disallowed quote or newline characters" >&2
     exit 2
   fi
+}
+
+require_backup_integrity() {
+  local check
+  check="$(sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;')"
+  [[ "$check" == "ok" ]] || {
+    echo "backup integrity_check failed: $check" >&2
+    return 1
+  }
 }
 
 if [[ -z "$GRANT_SQL" || ! -f "$GRANT_SQL" ]]; then
@@ -65,13 +77,14 @@ chmod 700 "$BACKUP_DIR" 2>/dev/null || true
 restore_backup() {
   local rc=$?
   trap - ERR INT TERM
-  if [[ "${GRANT_APPLIED:-0}" -eq 1 ]]; then
+  # Only restore after a validated pre-grant snapshot exists and before the
+  # grant was marked applied. Never .restore from a partial/unvalidated backup.
+  if [[ "$GRANT_APPLIED" -eq 1 || "$BACKUP_READY" -ne 1 ]]; then
     exit "$rc"
   fi
   if [[ -f "$BACKUP" ]]; then
-    echo "restoring TCC.db from $BACKUP after failure" >&2
+    echo "restoring TCC.db from validated backup $BACKUP after failure" >&2
     sudo killall tccd 2>/dev/null || true
-    # Paths validated above; keep CLI args as separate argv-style via printf.
     printf '.bail on\n.restore %s\n' "$BACKUP" | sudo sqlite3 "$DB"
     local check
     check="$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')"
@@ -90,14 +103,26 @@ sudo killall tccd 2>/dev/null || true
 
 if [[ -f "$BACKUP" && "$FORCE_BACKUP" != "1" ]]; then
   echo "reusing existing backup at $BACKUP (set TCC_FORCE_BACKUP=1 to replace)"
+  require_backup_integrity
+  BACKUP_READY=1
 else
-  rm -f "$BACKUP"
-  printf '.bail on\n.backup %s\n' "$BACKUP" | sudo sqlite3 "$DB"
-  backup_check="$(sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;')"
-  [[ "$backup_check" == "ok" ]] || {
-    echo "backup integrity_check failed: $backup_check" >&2
+  # Write to a temp path first so a failed .backup cannot leave a partial file
+  # at TCC_BACKUP for the ERR trap or a later restore helper to consume.
+  tmp_backup="${BACKUP}.creating.$$"
+  rm -f "$tmp_backup" "$BACKUP"
+  if ! printf '.bail on\n.backup %s\n' "$tmp_backup" | sudo sqlite3 "$DB"; then
+    rm -f "$tmp_backup"
+    echo "sqlite3 .backup failed" >&2
     exit 1
-  }
+  fi
+  tmp_check="$(sudo sqlite3 "$tmp_backup" 'PRAGMA integrity_check;' || true)"
+  if [[ "$tmp_check" != "ok" ]]; then
+    rm -f "$tmp_backup"
+    echo "backup integrity_check failed: ${tmp_check:-unavailable}" >&2
+    exit 1
+  fi
+  mv "$tmp_backup" "$BACKUP"
+  BACKUP_READY=1
 fi
 
 # Apply SQL via stdin redirection — never interpolate the path into .read.
