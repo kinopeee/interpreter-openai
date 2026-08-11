@@ -42,7 +42,7 @@ public sealed class TuningFixtureTests
         var preserved = custom.ForPair(LanguagePair.EnEs);
 
         Assert.Equal("Custom prompt", preserved.TranscriptionPrompt);
-        Assert.Equal(["Custom keyword"], preserved.TranscriptionKeywords);
+        Assert.Equal(["Custom keyword"], preserved.TranscriptionKeywords.ToArray());
     }
 
     // Given: shared fixture の tuning 上限値
