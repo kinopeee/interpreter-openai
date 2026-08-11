@@ -35,6 +35,12 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
     /// <summary>設定している間、すべての send が失敗する。</summary>
     public Exception? SendError { get; set; }
 
+    /// <summary>
+    /// 設定している間、<see cref="CloseAsync"/> が失敗する。
+    /// CloseCount は例外前に進める（Dual が残接続の teardown を続行した証拠に使う）。
+    /// </summary>
+    public Exception? CloseError { get; set; }
+
     public TimeSpan SendDelay { get; set; }
 
     public int ConnectCount { get; private set; }
@@ -153,6 +159,11 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
         lock (_sync)
         {
             CloseCount += 1;
+        }
+
+        if (CloseError is not null)
+        {
+            return Task.FromException(CloseError);
         }
 
         return Task.CompletedTask;

@@ -1,10 +1,19 @@
+using System;
+using System.Collections.Generic;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
 using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Realtime;
 using Xunit;
 
 namespace RealtimeTranslator.Core.Tests;
 
-/// <summary>受信メッセージの累積上限。巨大応答で managed memory を食い潰させない。</summary>
+/// <summary>
+/// 受信メッセージの累積上限と、connect timeout → Recoverable の本番 transport 契約。
+/// send timeout は peer が読まないだけでは OS 送信バッファ次第で満たせず flaky なため、ここでは扱わない。
+/// </summary>
 public sealed class ClientWebSocketTransportTests
 {
     // Given: 上限直下まで累積した受信状態
@@ -42,5 +51,59 @@ public sealed class ClientWebSocketTransportTests
             ClientWebSocketTransport.EnsureWithinMessageLimit(
                 0,
                 ClientWebSocketTransport.MaxMessageBytes + 1));
+    }
+
+    // Given: TCP は受けるが WebSocket ハンドシェイクを返さない loopback listener
+    // When: 短い connectTimeout で ConnectAsync する
+    // Then: 呼び出し側 cancel ではなく RecoverableTransportFailure になる
+    [Fact]
+    public async Task ConnectTimeoutMapsToRecoverableTransportFailure()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try
+        {
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            using var accepted = new CancellationTokenSource();
+            var acceptTask = AcceptAndHoldAsync(listener, accepted.Token);
+
+            using var transport = new ClientWebSocketTransport(
+                sendTimeout: TimeSpan.FromSeconds(5),
+                connectTimeout: TimeSpan.FromMilliseconds(200));
+            var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+                () => transport.ConnectAsync(
+                    new Uri($"ws://127.0.0.1:{port}/"),
+                    new Dictionary<string, string>(StringComparer.Ordinal),
+                    CancellationToken.None));
+
+            Assert.Equal(RealtimeTranslationErrorKind.RecoverableTransportFailure, error.Kind);
+            await accepted.CancelAsync();
+            try
+            {
+                await acceptTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // hold 解除。
+            }
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    private static async Task AcceptAndHoldAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        using var client = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
+        // ハンドシェイク応答を返さず、connect timeout が発火するまでソケットを保持する。
+        try
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // テスト終了。
+        }
     }
 }
