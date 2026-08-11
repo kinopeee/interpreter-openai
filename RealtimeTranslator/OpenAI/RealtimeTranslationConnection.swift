@@ -2,9 +2,30 @@ import Foundation
 import os
 
 struct RealtimeTranslationStreamEvent: Sendable, Equatable {
-    let target: RealtimeTranslationOutputLanguage
+    let lane: RealtimeTranslationLane
     let event: RealtimeTranslationServerEvent
     let epoch: Int
+
+    var target: RealtimeTranslationOutputLanguage {
+        guard let target = lane.target else {
+            preconditionFailure("source lane has no translation target")
+        }
+        return target
+    }
+
+    init(
+        target: RealtimeTranslationOutputLanguage,
+        event: RealtimeTranslationServerEvent,
+        epoch: Int
+    ) {
+        if case .inputTranscriptDelta = event {
+            self.lane = .source
+        } else {
+            self.lane = .translation(target)
+        }
+        self.event = event
+        self.epoch = epoch
+    }
 }
 
 actor RealtimeTranslationConnection {
@@ -252,7 +273,7 @@ actor RealtimeTranslationConnection {
         }
         eventContinuation?.yield(
             RealtimeTranslationStreamEvent(
-                target: target,
+                lane: .translation(target),
                 event: event,
                 epoch: currentEpoch
             )

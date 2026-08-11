@@ -8,7 +8,7 @@ struct RealtimeSubtitleUpdate: Equatable, Sendable {
     var segmentGeneration: Int
 }
 
-/// 原文authorityと日英2出力を時間整列し、自動lane選択する。
+/// 原文authorityとペア内の2出力を時間整列し、自動lane選択する。
 struct RealtimeSubtitleAssembler: Sendable {
     // Realtime Translation can pause output deltas for 5 seconds or more while
     // continuing the same sentence. A short idle cutoff truncates the translation.
@@ -18,14 +18,22 @@ struct RealtimeSubtitleAssembler: Sendable {
     private var epoch = 0
     private var segmentGeneration = 0
     private var sourceText = ""
-    private var englishText = ""
-    private var japaneseText = ""
+    private var translationText: [RealtimeTranslationOutputLanguage: String] = [:]
     private var selectedLane: RealtimeTranslationOutputLanguage?
     private var expectedLane: RealtimeTranslationOutputLanguage?
+    private var languagePair: LanguagePair
     private var seenEventIDs = Set<String>()
     private var lastActivityAt = Date.distantPast
     private var finalizedCutoffElapsedMs: Int?
     private var awaitingSourceAfterFinalize = false
+
+    init(languagePair: LanguagePair = .jaEn) {
+        self.languagePair = languagePair
+    }
+
+    mutating func setLanguagePair(_ pair: LanguagePair) {
+        languagePair = pair
+    }
 
     mutating func reset(epoch: Int) {
         self.epoch = epoch
@@ -72,12 +80,13 @@ struct RealtimeSubtitleAssembler: Sendable {
 
         switch streamEvent.event {
         case .inputTranscriptDelta(let delta, let eventID, let elapsedMs):
-            guard streamEvent.target == .english else { return nil }
+            guard streamEvent.lane.isSource else { return nil }
             return appendSource(delta, eventID: eventID, elapsedMs: elapsedMs, now: now)
         case .outputTranscriptDelta(let delta, let eventID, let elapsedMs):
+            guard case .translation(let target) = streamEvent.lane else { return nil }
             return appendTranslation(
                 delta,
-                target: streamEvent.target,
+                target: target,
                 eventID: eventID,
                 elapsedMs: elapsedMs,
                 now: now
@@ -135,12 +144,7 @@ struct RealtimeSubtitleAssembler: Sendable {
             return nil
         }
 
-        switch target {
-        case .english:
-            englishText += delta
-        case .japanese:
-            japaneseText += delta
-        }
+        translationText[target, default: ""] += delta
 
         lastActivityAt = now
 
@@ -150,8 +154,10 @@ struct RealtimeSubtitleAssembler: Sendable {
                 selectedLane = expectedLane
             } else if expectedLane == nil {
                 // 一次信号: どちらのセッションが訳文を出したか。
-                if englishText.isEmpty != japaneseText.isEmpty {
-                    selectedLane = englishText.isEmpty ? .japanese : .english
+                let pairTargets = languagePair.languages.compactMap { languagePair.translationTarget(for: $0) }
+                let available = pairTargets.filter { !(translationText[$0] ?? "").isEmpty }
+                if available.count == 1 {
+                    selectedLane = available[0]
                 } else {
                     resolveLaneIfNeeded()
                 }
@@ -173,11 +179,14 @@ struct RealtimeSubtitleAssembler: Sendable {
 
         if let expectedLane {
             switch expectedLane {
-            case .english where !englishText.isEmpty:
+            case .english where !(translationText[.english] ?? "").isEmpty:
                 selectedLane = .english
                 return
-            case .japanese where !japaneseText.isEmpty:
+            case .japanese where !(translationText[.japanese] ?? "").isEmpty:
                 selectedLane = .japanese
+                return
+            case .spanish where !(translationText[.spanish] ?? "").isEmpty:
+                selectedLane = .spanish
                 return
             default:
                 // 期待laneがまだ出力していない間は、他laneのfirst-outputで確定しない。
@@ -186,21 +195,21 @@ struct RealtimeSubtitleAssembler: Sendable {
         }
 
         // 一次: 片側だけが出力していればそれを選ぶ。
-        if !englishText.isEmpty && japaneseText.isEmpty {
-            selectedLane = .english
-            return
-        }
-        if !japaneseText.isEmpty && englishText.isEmpty {
-            selectedLane = .japanese
+        let pairTargets = languagePair.languages.compactMap { languagePair.translationTarget(for: $0) }
+        let available = pairTargets.filter { !(translationText[$0] ?? "").isEmpty }
+        if available.count == 1 {
+            selectedLane = available[0]
             return
         }
 
         // 補助: 原文の文字種。
-        switch SpokenLanguageDetector.detect(sourceText) {
+        switch SpokenLanguageDetector.detect(sourceText, pair: languagePair) {
         case .japanese:
-            selectedLane = .english
+            selectedLane = languagePair.translationTarget(for: .japanese)
         case .english:
-            selectedLane = .japanese
+            selectedLane = languagePair.translationTarget(for: .english)
+        case .spanish:
+            selectedLane = languagePair.translationTarget(for: .spanish)
         case .unknown:
             break
         }
@@ -241,13 +250,7 @@ struct RealtimeSubtitleAssembler: Sendable {
 
     private var currentTranslation: String {
         switch selectedLane {
-        case .english:
-            return englishText
-        case .japanese:
-            return japaneseText
-        case nil:
-            return ""
-        }
+        selectedLane.flatMap { translationText[$0] } ?? ""
     }
 
     private func snapshot(isTranslationCurrent: Bool) -> RealtimeSubtitleUpdate {
@@ -263,8 +266,7 @@ struct RealtimeSubtitleAssembler: Sendable {
 
     private mutating func clearSegmentBuffers(advancingGeneration: Bool) {
         sourceText = ""
-        englishText = ""
-        japaneseText = ""
+        translationText.removeAll(keepingCapacity: true)
         selectedLane = nil
         if advancingGeneration {
             segmentGeneration += 1

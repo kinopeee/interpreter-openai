@@ -33,6 +33,7 @@ final class InterpretationSession {
     private let activeTickerIntervalNanoseconds: UInt64
     private let postStopSubtitleRetentionNanoseconds: UInt64
     private let tuningProvider: @MainActor () -> RealtimeSessionTuning
+    private let languagePairProvider: @MainActor () -> LanguagePair
 
     private(set) var state: TranslationState = .idle {
         didSet {
@@ -57,6 +58,8 @@ final class InterpretationSession {
     private var reconnectAttempt = 0
     private var routingSourceText = ""
     private var routedSpokenLanguage = SpokenLanguage.unknown
+    private var selectedTranslationTarget: RealtimeTranslationOutputLanguage?
+    private var reverseEvidenceCount = 0
 
     init(
         apiKeyStore: any APIKeyStore,
@@ -66,7 +69,8 @@ final class InterpretationSession {
         activeTickerIntervalNanoseconds: UInt64 = 200_000_000,
         postStopSubtitleRetentionNanoseconds: UInt64 = InterpretationSession
             .defaultPostStopSubtitleRetentionNanoseconds,
-        tuningProvider: @escaping @MainActor () -> RealtimeSessionTuning = { .default }
+        tuningProvider: @escaping @MainActor () -> RealtimeSessionTuning = { .default },
+        languagePairProvider: @escaping @MainActor () -> LanguagePair = { .jaEn }
     ) {
         self.apiKeyStore = apiKeyStore
         self.audioCapture = audioCapture
@@ -75,6 +79,7 @@ final class InterpretationSession {
         self.activeTickerIntervalNanoseconds = activeTickerIntervalNanoseconds
         self.postStopSubtitleRetentionNanoseconds = postStopSubtitleRetentionNanoseconds
         self.tuningProvider = tuningProvider
+        self.languagePairProvider = languagePairProvider
     }
 
     func start() async {
@@ -255,7 +260,8 @@ final class InterpretationSession {
         publishSubtitles()
 
         let tuning = tuningProvider()
-        try await dualClient.start(apiKey: apiKey, tuning: tuning)
+        let pair = languagePairProvider()
+        try await dualClient.start(apiKey: apiKey, tuning: tuning, pair: pair)
         guard generation == lifecycleGeneration else {
             await dualClient.forceClose()
             return
@@ -268,6 +274,9 @@ final class InterpretationSession {
         assembler.beginNewEpoch(epoch)
         routingSourceText = ""
         routedSpokenLanguage = .unknown
+        selectedTranslationTarget = nil
+        reverseEvidenceCount = 0
+        assembler.setLanguagePair(pair)
         await dualClient.resetAudioRouting()
 
         try await audioCapture.start()
@@ -359,10 +368,9 @@ final class InterpretationSession {
                 )
             }
 
-            // 原文 routing も専用 transcription（target=.english へ remap）だけを使う。
-            // 翻訳接続の input_transcript は接続側で落とすが、ここに来ても混ぜない。
+            // 原文 routing は専用 transcription の source lane だけを使う。
             if case .inputTranscriptDelta(let delta, _, _) = streamEvent.event,
-               streamEvent.target == .english {
+               streamEvent.lane.isSource {
                 try await updateAudioRouting(withSourceDelta: delta)
             }
 
@@ -532,62 +540,37 @@ final class InterpretationSession {
 
     private func updateAudioRouting(withSourceDelta delta: String) async throws {
         routingSourceText += delta
-        let evidence = SpokenLanguageDetector.recentEvidence(in: routingSourceText)
+        let pair = languagePairProvider()
+        let evidence = SpokenLanguageDetector.recentEvidence(
+            in: routingSourceText,
+            pair: pair
+        )
+        let selection = TranslationTargetSelector.select(
+            pair: pair,
+            currentTarget: selectedTranslationTarget,
+            reverseEvidenceCount: reverseEvidenceCount,
+            evidence: evidence
+        )
+        reverseEvidenceCount = selection.reverseEvidenceCount
+        guard selection.target != selectedTranslationTarget else { return }
 
-        if routedSpokenLanguage == .unknown {
-            let detected: SpokenLanguage
-            switch evidence {
-            case .japanese:
-                detected = .japanese
-            case .english, .ambiguousLatin:
-                detected = .english
-            case .none:
-                return
+        if selectedTranslationTarget != nil {
+            if let finalized = assembler.finalizeForLanguageSwitch() {
+                enqueueRender(finalized)
             }
-            routedSpokenLanguage = detected
-            assembler.expectLane(Self.expectedTranslationLane(for: detected))
-            try await dualClient.setSpokenLanguage(detected)
-            return
+            await resetAudioRoutingForNextSegment()
+            routingSourceText = delta
         }
-
-        // 確定的な文字種反転のみをセグメント境界とする（ambiguousLatinは除外）。
-        let flipped: SpokenLanguage?
-        switch evidence {
-        case .japanese where routedSpokenLanguage == .english:
-            flipped = .japanese
-        case .english where routedSpokenLanguage == .japanese:
-            flipped = .english
-        default:
-            flipped = nil
-        }
-        guard let flipped else { return }
-
-        if let finalized = assembler.finalizeForLanguageSwitch() {
-            enqueueRender(finalized)
-        }
-        await resetAudioRoutingForNextSegment()
-        routingSourceText = delta
-        routedSpokenLanguage = flipped
-        assembler.expectLane(Self.expectedTranslationLane(for: flipped))
-        try await dualClient.setSpokenLanguage(flipped)
-    }
-
-    private static func expectedTranslationLane(
-        for spoken: SpokenLanguage
-    ) -> RealtimeTranslationOutputLanguage? {
-        switch spoken {
-        case .japanese:
-            return .english
-        case .english:
-            return .japanese
-        case .unknown:
-            return nil
-        }
+        selectedTranslationTarget = selection.target
+        assembler.expectLane(selection.target)
+        try await dualClient.selectTranslationTarget(selection.target)
     }
 
     private func resetAudioRoutingForNextSegment() async {
         routingSourceText = ""
         routedSpokenLanguage = .unknown
+        selectedTranslationTarget = nil
+        reverseEvidenceCount = 0
         assembler.expectLane(nil)
         await dualClient.resetAudioRouting()
     }

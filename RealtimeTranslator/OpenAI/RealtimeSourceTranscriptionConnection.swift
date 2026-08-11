@@ -13,6 +13,7 @@ actor RealtimeSourceTranscriptionConnection {
     private var epoch = 0
     private var isReady = false
     private var didReceiveCompleted = false
+    private var languagePair: LanguagePair = .jaEn
     /// 接続開始時のnoise_reduction。live updateでは変更しない。
     private var connectedNoiseReduction: RealtimeTranslationNoiseReduction = .farField
     private var receiveTask: Task<Void, Never>?
@@ -34,7 +35,8 @@ actor RealtimeSourceTranscriptionConnection {
 
     func start(
         apiKey: String,
-        tuning: RealtimeSessionTuning = .default
+        tuning: RealtimeSessionTuning = .default,
+        pair: LanguagePair = .jaEn
     ) async throws {
         await forceClose()
         recreateEventStream()
@@ -56,7 +58,8 @@ actor RealtimeSourceTranscriptionConnection {
             }
 
             connectedNoiseReduction = tuning.noiseReduction
-            try await sendJSON(makeSessionUpdatePayload(tuning: tuning))
+            languagePair = pair
+            try await sendJSON(makeSessionUpdatePayload(tuning: tuning, pair: pair))
 
             let updated = try await receiveJSON(timeoutNanoseconds: handshakeTimeoutNanoseconds)
             guard updated["type"] as? String == "session.updated" else {
@@ -80,7 +83,7 @@ actor RealtimeSourceTranscriptionConnection {
         }
         var liveTuning = tuning
         liveTuning.noiseReduction = connectedNoiseReduction
-        try await sendJSON(makeSessionUpdatePayload(tuning: liveTuning))
+        try await sendJSON(makeSessionUpdatePayload(tuning: liveTuning, pair: languagePair))
     }
 
     func appendAudioFrame(_ pcm16LE: Data) async throws {
@@ -148,7 +151,7 @@ actor RealtimeSourceTranscriptionConnection {
                         #endif
                         eventContinuation?.yield(
                             RealtimeTranslationStreamEvent(
-                                target: .english,
+                                lane: .source,
                                 event: .inputTranscriptDelta(
                                     delta: delta,
                                     // item_idは同一turnの全deltaで共通なので重複排除に使わない。
@@ -164,7 +167,7 @@ actor RealtimeSourceTranscriptionConnection {
                         let error = classifyError(object)
                         eventContinuation?.yield(
                             RealtimeTranslationStreamEvent(
-                                target: .english,
+                                lane: .source,
                                 event: .error(
                                     message: error.localizedDescription,
                                     code: "transcription"
@@ -181,7 +184,7 @@ actor RealtimeSourceTranscriptionConnection {
                     guard currentEpoch == epoch else { return }
                     eventContinuation?.yield(
                         RealtimeTranslationStreamEvent(
-                            target: .english,
+                            lane: .source,
                             event: .error(
                                 message: "原文字幕サーバーとの接続が切れました",
                                 code: "transport"
@@ -195,7 +198,10 @@ actor RealtimeSourceTranscriptionConnection {
         }
     }
 
-    private func makeSessionUpdatePayload(tuning: RealtimeSessionTuning) -> [String: Any] {
+    private func makeSessionUpdatePayload(
+        tuning: RealtimeSessionTuning,
+        pair: LanguagePair
+    ) -> [String: Any] {
         [
             "type": "session.update",
             "session": [
@@ -208,7 +214,14 @@ actor RealtimeSourceTranscriptionConnection {
                         ],
                         "transcription": [
                             "model": "gpt-live-transcribe",
-                            "languages": ["ja", "en"],
+                            "languages": pair.languages.map { language in
+                                switch language {
+                                case .japanese: return "ja"
+                                case .english: return "en"
+                                case .spanish: return "es"
+                                case .unknown: return ""
+                                }
+                            },
                             "delay": tuning.transcriptionDelay.rawValue,
                             "prompt": tuning.transcriptionPrompt,
                             "keywords": tuning.transcriptionKeywords,

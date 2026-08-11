@@ -25,6 +25,28 @@ struct RealtimeSessionTuning: Sendable, Equatable {
         "モデル",
     ]
 
+    static func defaultPrompt(for pair: LanguagePair) -> String {
+        switch pair {
+        case .jaEn:
+            return defaultPrompt
+        case .jaEs:
+            return "Japanese and Spanish conversation about software development, programming, and hackathons."
+        case .enEs:
+            return "English and Spanish conversation about software development, programming, and hackathons."
+        }
+    }
+
+    static func defaultKeywords(for pair: LanguagePair) -> [String] {
+        switch pair {
+        case .jaEn:
+            return defaultKeywords
+        case .jaEs:
+            return defaultKeywords + ["español", "español"]
+        case .enEs:
+            return defaultKeywords + ["Spanish", "English"]
+        }
+    }
+
     static let `default` = RealtimeSessionTuning(
         noiseReduction: .farField,
         transcriptionDelay: .low,
