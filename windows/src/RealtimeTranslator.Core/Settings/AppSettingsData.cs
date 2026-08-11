@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
 
 namespace RealtimeTranslator.Core.Settings;
@@ -18,7 +19,8 @@ public sealed record AppSettingsData(
     string TranscriptionKeywordsText,
     RealtimeTranslationNoiseReduction NoiseReduction,
     RealtimeTranscriptionDelay TranscriptionDelay,
-    bool RecordSubtitles)
+    bool RecordSubtitles,
+    LanguagePair LanguagePair = LanguagePair.JaEn)
 {
     /// <summary>同意文言を変えたら上げる。上げると再同意を求める。</summary>
     public const int CurrentConsentVersion = 1;
@@ -35,9 +37,10 @@ public sealed record AppSettingsData(
         AcceptedConsentVersion: 0,
         RealtimeSessionTuning.DefaultPrompt,
         RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywords),
-        RealtimeTranslationNoiseReduction.FarField,
-        RealtimeTranscriptionDelay.Low,
-        RecordSubtitles: false);
+            RealtimeTranslationNoiseReduction.FarField,
+            RealtimeTranscriptionDelay.Low,
+        RecordSubtitles: false,
+        LanguagePair.JaEn);
 
     public bool HasAcceptedCurrentConsent => AcceptedConsentVersion >= CurrentConsentVersion;
 
@@ -70,6 +73,7 @@ public static class AppSettingsCodec
             writer.WriteString("noiseReduction", settings.NoiseReduction.ToWireValue());
             writer.WriteString("transcriptionDelay", settings.TranscriptionDelay.ToWireValue());
             writer.WriteBoolean("recordSubtitles", settings.RecordSubtitles);
+            writer.WriteString("languagePair", settings.LanguagePair.ToWireValue());
             writer.WriteEndObject();
         }
 
@@ -106,7 +110,8 @@ public static class AppSettingsCodec
             Text(dictionary, "transcriptionKeywordsText") ?? defaults.TranscriptionKeywordsText,
             NoiseReduction(dictionary) ?? defaults.NoiseReduction,
             TranscriptionDelay(dictionary) ?? defaults.TranscriptionDelay,
-            Boolean(dictionary, "recordSubtitles") ?? false);
+            Boolean(dictionary, "recordSubtitles") ?? false,
+            Pair(dictionary) ?? defaults.LanguagePair);
     }
 
     public static double ClampFontSize(double value) =>
@@ -154,6 +159,24 @@ public static class AppSettingsCodec
         try
         {
             return RealtimeTranslationWireValues.ParseTranscriptionDelay(wireValue);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
+    private static LanguagePair? Pair(JsonObject dictionary)
+    {
+        var wireValue = Text(dictionary, "languagePair");
+        if (wireValue is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return LanguagePairExtensions.ParseLanguagePair(wireValue);
         }
         catch (ArgumentOutOfRangeException)
         {

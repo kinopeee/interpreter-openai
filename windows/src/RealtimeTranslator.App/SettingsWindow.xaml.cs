@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
+using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Settings;
 using RealtimeTranslator.Platform.Security;
@@ -43,6 +44,12 @@ public partial class SettingsWindow : Window
         {
             new ComboOption<RealtimeTranslationNoiseReduction>(RealtimeTranslationNoiseReduction.NearField, "近距離マイク"),
             new ComboOption<RealtimeTranslationNoiseReduction>(RealtimeTranslationNoiseReduction.FarField, "遠距離マイク"),
+        };
+        LanguagePairBox.ItemsSource = new[]
+        {
+            new ComboOption<LanguagePair>(LanguagePair.JaEn, "日本語 ↔ 英語"),
+            new ComboOption<LanguagePair>(LanguagePair.JaEs, "日本語 ↔ スペイン語"),
+            new ComboOption<LanguagePair>(LanguagePair.EnEs, "英語 ↔ スペイン語"),
         };
         TranscriptionDelayBox.ItemsSource = new[]
         {
@@ -89,6 +96,7 @@ public partial class SettingsWindow : Window
         var settings = Settings;
         ConsentCheckBox.IsChecked = settings.HasAcceptedCurrentConsent;
         SelectOption(NoiseReductionBox, settings.NoiseReduction);
+        SelectOption(LanguagePairBox, settings.LanguagePair);
         SelectOption(TranscriptionDelayBox, settings.TranscriptionDelay);
         PromptBox.Text = settings.TranscriptionPrompt;
         KeywordsBox.Text = settings.TranscriptionKeywordsText;
@@ -170,6 +178,16 @@ public partial class SettingsWindow : Window
 
         // ノイズ低減は session.update では変えられないため、次回の録音開始から反映する。
         Publish(Settings with { NoiseReduction = value });
+    }
+
+    private void OnLanguagePairChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || SelectedEnum<LanguagePair>(LanguagePairBox) is not { } value)
+        {
+            return;
+        }
+
+        Publish(Settings with { LanguagePair = value });
     }
 
     private void OnTranscriptionDelayChanged(object sender, SelectionChangedEventArgs e)
