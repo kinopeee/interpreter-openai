@@ -249,7 +249,6 @@ struct RealtimeSubtitleAssembler: Sendable {
     }
 
     private var currentTranslation: String {
-        switch selectedLane {
         selectedLane.flatMap { translationText[$0] } ?? ""
     }
 
@@ -275,7 +274,7 @@ struct RealtimeSubtitleAssembler: Sendable {
 
     private func shouldStartNewSegmentForSourceUpdate() -> Bool {
         // 直前segment確定後、空のまま次の原文が来たら新segmentとして扱う。
-        sourceText.isEmpty && selectedLane == nil && (!englishText.isEmpty || !japaneseText.isEmpty)
+        sourceText.isEmpty && selectedLane == nil && !translationText.isEmpty
     }
 
 }

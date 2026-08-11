@@ -36,7 +36,7 @@ actor RealtimeSourceTranscriptionConnection {
     func start(
         apiKey: String,
         tuning: RealtimeSessionTuning = .default,
-        pair: LanguagePair = .jaEn
+        pair: LanguagePair
     ) async throws {
         await forceClose()
         recreateEventStream()

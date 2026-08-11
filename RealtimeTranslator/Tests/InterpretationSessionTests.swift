@@ -1018,7 +1018,11 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
     }
 
-    func start(apiKey: String, tuning: RealtimeSessionTuning) async throws {
+    func start(
+        apiKey: String,
+        tuning: RealtimeSessionTuning,
+        pair: LanguagePair
+    ) async throws {
         startCallCount += 1
         lastTuning = tuning
         if let startGate {
@@ -1061,8 +1065,11 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
     }
 
-    func setSpokenLanguage(_ language: SpokenLanguage) async throws {
-        spokenLanguages.append(language)
+    func selectTranslationTarget(_ target: RealtimeTranslationOutputLanguage?) async throws {
+        guard let target else { return }
+        if let language = LanguagePair.jaEn.counterpart(of: target) {
+            spokenLanguages.append(language)
+        }
     }
 
     func updateTranscriptionTuning(_ tuning: RealtimeSessionTuning) async throws {

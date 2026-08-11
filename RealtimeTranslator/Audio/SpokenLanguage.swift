@@ -46,9 +46,3 @@ enum LanguagePair: String, CaseIterable, Codable, Sendable, Equatable, Hashable 
         languages.first { translationTarget(for: $0) == target }
     }
 }
-
-enum RealtimeTranslationOutputLanguage: String, Sendable, Equatable {
-    case english = "en"
-    case japanese = "ja"
-    case spanish = "es"
-}

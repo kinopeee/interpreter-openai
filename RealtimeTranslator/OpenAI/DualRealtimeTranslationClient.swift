@@ -2,10 +2,8 @@ import Foundation
 
 protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
     var events: AsyncStream<RealtimeTranslationStreamEvent> { get async }
-    func start(apiKey: String, tuning: RealtimeSessionTuning) async throws
     func start(apiKey: String, tuning: RealtimeSessionTuning, pair: LanguagePair) async throws
     func appendAudioFrame(_ pcm16LE: Data) async throws
-    func setSpokenLanguage(_ language: SpokenLanguage) async throws
     func selectTranslationTarget(_ target: RealtimeTranslationOutputLanguage?) async throws
     func updateTranscriptionTuning(_ tuning: RealtimeSessionTuning) async throws
     func resetAudioRouting() async
@@ -17,30 +15,6 @@ protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
     func closeGracefully() async -> [RealtimeTranslationStreamEvent]
     func forceClose() async
     var connectionEpoch: Int { get async }
-}
-
-extension DualRealtimeTranslationClienting {
-    func start(apiKey: String, tuning: RealtimeSessionTuning, pair: LanguagePair) async throws {
-        try await start(apiKey: apiKey, tuning: tuning)
-    }
-
-    func selectTranslationTarget(_ target: RealtimeTranslationOutputLanguage?) async throws {
-        guard let target else { return }
-        switch target {
-        case .english: try await setSpokenLanguage(.japanese)
-        case .japanese: try await setSpokenLanguage(.english)
-        case .spanish: try await setSpokenLanguage(.spanish)
-        }
-    }
-
-    func setSpokenLanguage(_ language: SpokenLanguage) async throws {
-        switch language {
-        case .japanese: try await selectTranslationTarget(.english)
-        case .english: try await selectTranslationTarget(.japanese)
-        case .spanish: try await selectTranslationTarget(.spanish)
-        case .unknown: return
-        }
-    }
 }
 
 actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
@@ -171,10 +145,6 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         startEventMerge(epoch: epoch)
     }
 
-    func start(apiKey: String, tuning: RealtimeSessionTuning = .default) async throws {
-        try await start(apiKey: apiKey, tuning: tuning, pair: .jaEn)
-    }
-
     func appendAudioFrame(_ pcm16LE: Data) async throws {
         guard isRunning else {
             throw RealtimeTranslationError.notConnected
@@ -219,12 +189,6 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         for frame in preroll {
             enqueueTranslationFrame(frame, target: target)
         }
-    }
-
-    func setSpokenLanguage(_ language: SpokenLanguage) async throws {
-        try await selectTranslationTarget(
-            language == .unknown ? nil : LanguagePair.jaEn.translationTarget(for: language)
-        )
     }
 
     func updateTranscriptionTuning(_ tuning: RealtimeSessionTuning) async throws {

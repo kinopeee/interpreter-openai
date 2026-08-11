@@ -100,7 +100,7 @@ final class CodecFixtureTests: XCTestCase {
                 let tuning = transcriptionTuning(eventObject)
                 try await transport.enqueueJSON(["type": "session.created"])
                 let startTask = Task {
-                    try await connection.start(apiKey: "sk-test", tuning: tuning)
+                    try await connection.start(apiKey: "sk-test", tuning: tuning, pair: .jaEn)
                 }
                 try await waitUntilSent(transport, minimum: 1)
                 try await transport.enqueueJSON(["type": "session.updated"])
@@ -293,7 +293,7 @@ final class CodecFixtureTests: XCTestCase {
     ) async throws {
         try await transport.enqueueJSON(["type": "session.created"])
         let startTask = Task {
-            try await connection.start(apiKey: "sk-test", tuning: tuning)
+            try await connection.start(apiKey: "sk-test", tuning: tuning, pair: .jaEn)
         }
         try await waitUntilSent(transport, minimum: 1)
         try await transport.enqueueJSON(["type": "session.updated"])

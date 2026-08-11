@@ -1,6 +1,6 @@
 import Foundation
 
-enum RealtimeTranslationOutputLanguage: String, Sendable, Equatable {
+enum RealtimeTranslationOutputLanguage: String, Sendable, Equatable, Hashable {
     case english = "en"
     case japanese = "ja"
     case spanish = "es"
