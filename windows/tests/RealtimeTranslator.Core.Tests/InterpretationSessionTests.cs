@@ -373,9 +373,9 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
-    // Given: en-es で、scalar 上限を超える長い 8 語のスペイン語 exclusive 列
-    // When: routing buffer を切り詰めながら原文 delta を取り込む
-    // Then: 語窓を保ち spanish target（英語入力言語）へルーティングできる
+    // Given: en-es で英語 target 確定後、scalar 上限を超える長いスペイン語語窓
+    // When: 逆方向ヒステリシス分の Spanish delta を送る
+    // Then: 語窓を保ち English target へ切り替わる（scalar 切り詰めだと切り替わらない）
     [Fact]
     public async Task EnEsLongWordWindowIsPreservedForRouting()
     {
@@ -387,16 +387,31 @@ public sealed class InterpretationSessionTests
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
+        client.PublishSourceDelta("the and is are of to it that");
+        await WaitUntilAsync(() =>
+            client.SelectedTargets.SequenceEqual(
+                [RealtimeTranslationOutputLanguage.Spanish]));
+
         // 先頭側にだけスペイン語証拠があり、後ろは長い filler。scalar 切り詰めだと証拠が消える。
         var longToken = new string('x', 40);
         var filler = string.Join(
             ' ',
             Enumerable.Repeat(longToken, SpokenLanguageDetector.EnEsWindow - 2));
-        client.PublishSourceDelta("está aquí " + filler);
-        await WaitUntilAsync(() => client.SelectedTargets.Count > 0);
+        var spanishWindow = "está aquí " + filler;
+        client.PublishSourceDelta(spanishWindow);
+        client.PublishSourceDelta(" " + spanishWindow);
+        await WaitUntilAsync(() =>
+            client.SelectedTargets.SequenceEqual(
+            [
+                RealtimeTranslationOutputLanguage.Spanish,
+                RealtimeTranslationOutputLanguage.English,
+            ]));
 
         Assert.Equal(
-            [RealtimeTranslationOutputLanguage.English],
+            [
+                RealtimeTranslationOutputLanguage.Spanish,
+                RealtimeTranslationOutputLanguage.English,
+            ],
             client.SelectedTargets);
         await session.StopAsync();
     }
