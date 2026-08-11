@@ -129,23 +129,24 @@ final class AppSettings {
         panelOriginX = defaults.double(forKey: Keys.panelOriginX)
         panelOriginY = defaults.double(forKey: Keys.panelOriginY)
         acceptedOpenAIConsentVersion = defaults.integer(forKey: Keys.openAIConsentVersion)
-        languagePair = LanguagePair(
+        let pair = LanguagePair(
             rawValue: defaults.string(forKey: Keys.languagePair) ?? ""
         ) ?? .jaEn
+        languagePair = pair
 
         if let storedPrompt = defaults.string(forKey: Keys.transcriptionPrompt),
            !storedPrompt.isEmpty
         {
             transcriptionPrompt = storedPrompt
         } else {
-            transcriptionPrompt = RealtimeSessionTuning.defaultPrompt(for: languagePair)
+            transcriptionPrompt = RealtimeSessionTuning.defaultPrompt(for: pair)
         }
 
         if let storedKeywords = defaults.string(forKey: Keys.transcriptionKeywordsText) {
             transcriptionKeywordsText = storedKeywords
         } else {
             transcriptionKeywordsText = RealtimeSessionTuning.keywordsText(
-                from: RealtimeSessionTuning.defaultKeywords(for: languagePair)
+                from: RealtimeSessionTuning.defaultKeywords(for: pair)
             )
         }
 
