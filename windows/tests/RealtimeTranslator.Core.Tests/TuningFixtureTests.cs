@@ -31,8 +31,8 @@ public sealed class TuningFixtureTests
             RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEs),
             jaEs.TranscriptionPrompt);
         Assert.Equal(
-            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEs),
-            jaEs.TranscriptionKeywords);
+            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEs).ToArray(),
+            jaEs.TranscriptionKeywords.ToArray());
 
         var custom = RealtimeSessionTuning.Default with
         {
