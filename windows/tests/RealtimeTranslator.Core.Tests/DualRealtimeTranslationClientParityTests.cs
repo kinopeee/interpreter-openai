@@ -200,6 +200,41 @@ public sealed class DualRealtimeTranslationClientParityTests
         Assert.True(japanese.CloseCount >= 1);
     }
 
+    // Given: ready な Dual で先頭の原文 CloseAsync だけが失敗する
+    // When: ForceCloseAsync する
+    // Then: 先頭の失敗を伝播しつつ翻訳両 lane も閉じ、Events は完了する
+    [Fact]
+    public async Task ForceCloseContinuesWhenOneConnectionThrows()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        var epochBefore = dual.ConnectionEpoch;
+        var closeCountBefore = (
+            Source: source.CloseCount,
+            English: english.CloseCount,
+            Japanese: japanese.CloseCount);
+        // Start 内の初期 ForceClose を避け、ready 後にだけ Close 失敗を注入する。
+        source.CloseError = new InvalidOperationException("source close boom");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => dual.ForceCloseAsync());
+
+        Assert.Equal("source close boom", error.Message);
+        Assert.True(dual.ConnectionEpoch > epochBefore);
+        Assert.True(source.CloseCount > closeCountBefore.Source);
+        Assert.True(english.CloseCount > closeCountBefore.English);
+        Assert.True(japanese.CloseCount > closeCountBefore.Japanese);
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
     private static DualRealtimeTranslationClient CreateDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,

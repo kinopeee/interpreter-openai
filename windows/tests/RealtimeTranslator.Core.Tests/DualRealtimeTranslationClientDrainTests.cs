@@ -185,6 +185,43 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.False(await dual.Events.WaitToReadAsync());
     }
 
+    // Given: 英語 lane の CloseAsync だけが失敗する ready Dual
+    // When: CloseGracefullyAsync する
+    // Then: 例外を伝播しても原文・日本語 lane は閉じ、Events は完了する
+    [Fact]
+    public async Task CloseGracefullyContinuesWhenOneConnectionThrows()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(source, english, japanese, ShortCloseTimeout);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+        var closeCountBefore = (
+            Source: source.CloseCount,
+            English: english.CloseCount,
+            Japanese: japanese.CloseCount);
+        // Start 内の初期 ForceClose を避け、ready 後にだけ Close 失敗を注入する。
+        english.CloseError = new InvalidOperationException("english close boom");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => dual.CloseGracefullyAsync());
+
+        Assert.Equal("english close boom", error.Message);
+        Assert.Contains("session.close", SentTypes(english));
+        Assert.Contains("session.close", SentTypes(japanese));
+        Assert.Contains("input_audio_buffer.commit", SentTypes(source));
+        Assert.True(source.CloseCount > closeCountBefore.Source);
+        Assert.True(english.CloseCount > closeCountBefore.English);
+        Assert.True(japanese.CloseCount > closeCountBefore.Japanese);
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
     // Given: 翻訳送信が停滞して pending frame が drain できない dual
     // When: CloseGracefullyAsync する（短い translationDrainTimeout）
     // Then: TimeoutException を外へ出さず session.close / commit へ進む
