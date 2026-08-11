@@ -34,9 +34,11 @@ final class InterpretationSessionTests: XCTestCase {
     func testPairIsCachedForTheActiveConnection() async {
         // Given: 接続後に変更された言語ペア provider
         var pair = LanguagePair.jaEn
+        let audio = FakeRealtimeAudioCaptureService()
         let dual = FakeDualRealtimeTranslationClient()
         let session = InterpretationSession(
             apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: audio,
             dualClient: dual,
             languagePairProvider: { pair }
         )
@@ -1021,6 +1023,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     private(set) var resetAudioRoutingCallCount = 0
     private(set) var updateTranscriptionTuningCallCount = 0
     private(set) var lastTuning: RealtimeSessionTuning?
+    private(set) var lastLanguagePair: LanguagePair = .jaEn
     var startGate: CheckedContinuationBox?
     var startFailuresRemaining = 0
     var startError: Error?
@@ -1049,6 +1052,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     ) async throws {
         startCallCount += 1
         lastTuning = tuning
+        lastLanguagePair = pair
         if let startGate {
             try await withTaskCancellationHandler {
                 try await withCheckedThrowingContinuation {
@@ -1091,7 +1095,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
 
     func selectTranslationTarget(_ target: RealtimeTranslationOutputLanguage?) async throws {
         guard let target else { return }
-        if let language = LanguagePair.jaEn.counterpart(of: target) {
+        if let language = lastLanguagePair.counterpart(of: target) {
             spokenLanguages.append(language)
         }
     }

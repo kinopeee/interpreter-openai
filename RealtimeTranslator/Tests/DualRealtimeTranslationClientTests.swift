@@ -664,7 +664,8 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
             japaneseTransport: japaneseTransport
         )
         try await dual.selectTranslationTarget(.english)
-        await englishTransport.setSendHangNanoseconds(30_000_000_000)
+        // drain timeout より長く、かつテスト後始末を長引かせない程度の停滞にする。
+        await englishTransport.setSendHangNanoseconds(2_000_000_000)
         let frame = Data(repeating: 0x11, count: PCM16FramePacketizer.bytesPerFrame)
         try await dual.appendAudioFrame(frame)
 
