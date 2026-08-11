@@ -186,4 +186,25 @@ public sealed class SubtitleSnapshotBuilderTests
 
         Assert.False(snapshot.Current.IsFinalized);
     }
+
+    // Given: 未確定字幕を Reset（停止後約 5 秒クリア）した builder
+    // When: 同じ SegmentGeneration の更新が届く
+    // Then: Reset は世代を進めないので同一 gen でスロットが再充填される
+    // （世代を 0 クリアすると新セグメントまで拒否する別契約になる）
+    [Fact]
+    public void ResetLeavesSegmentGenerationSoSameGenerationCanRefill()
+    {
+        var builder = new SubtitleSnapshotBuilder();
+        builder.Apply(
+            new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
+            TranslationState.Listening);
+        builder.Reset(TranslationState.Idle);
+
+        var snapshot = builder.Apply(
+            new RealtimeSubtitleUpdate("遅延原文", "Late", IsTranslationCurrent: true, ShouldFinalize: false, 0),
+            TranslationState.Listening);
+
+        Assert.Equal("遅延原文", snapshot.Current.SourceText);
+        Assert.Equal("Late", snapshot.Current.TranslatedText);
+    }
 }

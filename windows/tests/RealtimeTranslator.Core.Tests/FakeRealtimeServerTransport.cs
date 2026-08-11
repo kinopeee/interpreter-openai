@@ -94,7 +94,10 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
 
     public async Task SendAsync(ReadOnlyMemory<byte> utf8Json, CancellationToken cancellationToken)
     {
-        if (SendDelay > TimeSpan.Zero)
+        var payload = utf8Json.ToArray();
+        var type = TypeOf(payload);
+        // append だけ遅延させ、session.close / commit の停止経路を巻き込まない。
+        if (SendDelay > TimeSpan.Zero && IsAudioAppendType(type))
         {
             await Task.Delay(SendDelay, cancellationToken).ConfigureAwait(false);
         }
@@ -118,13 +121,11 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
             throw new InvalidOperationException("injected send failure");
         }
 
-        var payload = utf8Json.ToArray();
         lock (_sync)
         {
             _sent.Add(payload);
         }
 
-        var type = TypeOf(payload);
         if (AutoHandshake && type == "session.update")
         {
             EnqueueJson("""{"type":"session.updated"}""");
@@ -180,4 +181,7 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
 
     private static string? TypeOf(byte[] payload) =>
         JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>();
+
+    private static bool IsAudioAppendType(string? type) =>
+        type is "input_audio_buffer.append" or "session.input_audio_buffer.append";
 }
