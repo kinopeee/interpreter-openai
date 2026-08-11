@@ -29,7 +29,7 @@
         "additionalProperties": false,
         "properties": {
           "name": { "type": "string" },
-          "pair": { "$ref": "#/$defs/pair" },
+          "pair": { "enum": ["ja-en", "ja-es", "en-es"] },
           "input": { "type": "string" },
           "evidence": { "$ref": "#/$defs/evidence" },
           "detect": { "$ref": "#/$defs/language" }
@@ -45,7 +45,7 @@
         "additionalProperties": false,
         "properties": {
           "name": { "type": "string" },
-          "pair": { "$ref": "#/$defs/pair" },
+          "pair": { "enum": ["ja-en", "ja-es", "en-es"] },
           "input": { "type": "string" },
           "window": { "type": "integer", "minimum": 0 },
           "expected": { "$ref": "#/$defs/evidence" },
@@ -58,37 +58,18 @@
       "minItems": 3,
       "items": {
         "type": "object",
-        "required": ["pair", "languages", "mappings"],
+        "required": ["pair", "language", "translationTarget", "counterpart"],
         "additionalProperties": false,
         "properties": {
-          "pair": { "$ref": "#/$defs/pair" },
-          "languages": {
-            "type": "array",
-            "minItems": 2,
-            "maxItems": 2,
-            "items": { "enum": ["ja", "en", "es"] }
-          },
-          "mappings": {
-            "type": "array",
-            "minItems": 2,
-            "maxItems": 2,
-            "items": {
-              "type": "object",
-              "required": ["language", "translationTarget", "counterpart"],
-              "additionalProperties": false,
-              "properties": {
-                "language": { "$ref": "#/$defs/language" },
-                "translationTarget": { "enum": ["en", "ja", "es", null] },
-                "counterpart": { "$ref": "#/$defs/language" }
-              }
-            }
-          }
+          "language": { "$ref": "#/$defs/language" },
+          "pair": { "enum": ["ja-en", "ja-es", "en-es"] },
+          "translationTarget": { "enum": ["en", "ja", "es", null] },
+          "counterpart": { "$ref": "#/$defs/language" }
         }
       }
     }
   },
   "$defs": {
-    "pair": { "enum": ["ja-en", "ja-es", "en-es"] },
     "evidence": { "enum": ["japanese", "english", "spanish", "ambiguousLatin", "none"] },
     "language": { "enum": ["japanese", "english", "spanish", "unknown"] }
   }

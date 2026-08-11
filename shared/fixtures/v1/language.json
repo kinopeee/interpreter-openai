@@ -3,25 +3,15 @@
   "version": 1,
   "description": "SpokenLanguageDetector の期待値。pair 省略時は ja-en。evidence は japanese/english/spanish/ambiguousLatin/none、detect は japanese/english/spanish/unknown。",
   "recentEvidenceWindow": 16,
+  "enEsWindow": 8,
+  "exclusiveWords": {
+    "es": ["el", "la", "los", "las", "es", "está", "que", "y", "de", "del", "con", "por", "para", "pero", "más", "sí"],
+    "en": ["the", "and", "is", "are", "of", "to", "it", "that", "this", "with", "for", "you", "they"]
+  },
   "evidence": [
-    {
-      "name": "hiragana",
-      "input": "こんにちは",
-      "evidence": "japanese",
-      "detect": "japanese"
-    },
-    {
-      "name": "katakana",
-      "input": "カタカナ",
-      "evidence": "japanese",
-      "detect": "japanese"
-    },
-    {
-      "name": "kanji",
-      "input": "東京",
-      "evidence": "japanese",
-      "detect": "japanese"
-    },
+    { "name": "hiragana", "input": "こんにちは", "evidence": "japanese", "detect": "japanese" },
+    { "name": "katakana", "input": "カタカナ", "evidence": "japanese", "detect": "japanese" },
+    { "name": "kanji", "input": "東京", "evidence": "japanese", "detect": "japanese" },
     {
       "name": "japanese wins over latin words",
       "input": "こんにちは world today",
@@ -52,24 +42,9 @@
       "evidence": "english",
       "detect": "english"
     },
-    {
-      "name": "digits only",
-      "input": "123 456",
-      "evidence": "none",
-      "detect": "unknown"
-    },
-    {
-      "name": "empty",
-      "input": "",
-      "evidence": "none",
-      "detect": "unknown"
-    },
-    {
-      "name": "whitespace only",
-      "input": "   ",
-      "evidence": "none",
-      "detect": "unknown"
-    },
+    { "name": "digits only", "input": "123 456", "evidence": "none", "detect": "unknown" },
+    { "name": "empty", "input": "", "evidence": "none", "detect": "unknown" },
+    { "name": "whitespace only", "input": "   ", "evidence": "none", "detect": "unknown" },
     {
       "name": "fullwidth punctuation only",
       "input": "、。！",
@@ -171,98 +146,12 @@
     }
   ],
   "targets": [
-    {
-      "pair": "ja-en",
-      "languages": [
-        "ja",
-        "en"
-      ],
-      "mappings": [
-        {
-          "language": "japanese",
-          "translationTarget": "en",
-          "counterpart": "english"
-        },
-        {
-          "language": "english",
-          "translationTarget": "ja",
-          "counterpart": "japanese"
-        }
-      ]
-    },
-    {
-      "pair": "ja-es",
-      "languages": [
-        "ja",
-        "es"
-      ],
-      "mappings": [
-        {
-          "language": "japanese",
-          "translationTarget": "es",
-          "counterpart": "spanish"
-        },
-        {
-          "language": "spanish",
-          "translationTarget": "ja",
-          "counterpart": "japanese"
-        }
-      ]
-    },
-    {
-      "pair": "en-es",
-      "languages": [
-        "en",
-        "es"
-      ],
-      "mappings": [
-        {
-          "language": "english",
-          "translationTarget": "es",
-          "counterpart": "spanish"
-        },
-        {
-          "language": "spanish",
-          "translationTarget": "en",
-          "counterpart": "english"
-        }
-      ]
-    }
-  ],
-  "enEsWindow": 8,
-  "exclusiveWords": {
-    "es": [
-      "el",
-      "la",
-      "los",
-      "las",
-      "es",
-      "está",
-      "que",
-      "y",
-      "de",
-      "del",
-      "con",
-      "por",
-      "para",
-      "pero",
-      "más",
-      "sí"
-    ],
-    "en": [
-      "the",
-      "and",
-      "is",
-      "are",
-      "of",
-      "to",
-      "it",
-      "that",
-      "this",
-      "with",
-      "for",
-      "you",
-      "they"
-    ]
-  }
+    { "pair": "ja-en", "language": "japanese", "translationTarget": "en", "counterpart": "english" },
+    { "pair": "ja-en", "language": "english", "translationTarget": "ja", "counterpart": "japanese" },
+    { "pair": "ja-en", "language": "unknown", "translationTarget": null, "counterpart": "unknown" },
+    { "pair": "ja-es", "language": "japanese", "translationTarget": "es", "counterpart": "spanish" },
+    { "pair": "ja-es", "language": "spanish", "translationTarget": "ja", "counterpart": "japanese" },
+    { "pair": "en-es", "language": "english", "translationTarget": "es", "counterpart": "spanish" },
+    { "pair": "en-es", "language": "spanish", "translationTarget": "en", "counterpart": "english" }
+  ]
 }

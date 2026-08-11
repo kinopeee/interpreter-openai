@@ -15,16 +15,10 @@
         "type": "session.update",
         "session": {
           "audio": {
-            "output": {
-              "language": "en"
-            },
+            "output": { "language": "en" },
             "input": {
-              "transcription": {
-                "model": "gpt-realtime-whisper"
-              },
-              "noise_reduction": {
-                "type": "far_field"
-              }
+              "transcription": { "model": "gpt-realtime-whisper" },
+              "noise_reduction": { "type": "far_field" }
             }
           }
         }
@@ -42,13 +36,9 @@
         "type": "session.update",
         "session": {
           "audio": {
-            "output": {
-              "language": "ja"
-            },
+            "output": { "language": "ja" },
             "input": {
-              "noise_reduction": {
-                "type": "near_field"
-              }
+              "noise_reduction": { "type": "near_field" }
             }
           }
         }
@@ -66,13 +56,9 @@
         "type": "session.update",
         "session": {
           "audio": {
-            "output": {
-              "language": "es"
-            },
+            "output": { "language": "es" },
             "input": {
-              "noise_reduction": {
-                "type": "far_field"
-              }
+              "noise_reduction": { "type": "far_field" }
             }
           }
         }
@@ -90,9 +76,7 @@
         "type": "session.update",
         "session": {
           "audio": {
-            "output": {
-              "language": "en"
-            },
+            "output": { "language": "en" },
             "input": {
               "noise_reduction": null
             }
@@ -113,28 +97,20 @@
     },
     {
       "name": "session close",
-      "event": {
-        "kind": "sessionClose"
-      },
-      "expected": {
-        "type": "session.close"
-      }
+      "event": { "kind": "sessionClose" },
+      "expected": { "type": "session.close" }
     }
   ],
   "decode": [
     {
       "name": "session.created",
       "json": "{\"type\":\"session.created\"}",
-      "expected": {
-        "kind": "sessionCreated"
-      }
+      "expected": { "kind": "sessionCreated" }
     },
     {
       "name": "session.updated",
       "json": "{\"type\":\"session.updated\"}",
-      "expected": {
-        "kind": "sessionUpdated"
-      }
+      "expected": { "kind": "sessionUpdated" }
     },
     {
       "name": "input transcript delta with metadata",
@@ -179,43 +155,27 @@
     {
       "name": "output audio delta is a marker only",
       "json": "{\"type\":\"session.output_audio.delta\",\"audio\":\"AAECAwQF\"}",
-      "expected": {
-        "kind": "outputAudioDelta"
-      }
+      "expected": { "kind": "outputAudioDelta" }
     },
     {
       "name": "session.closed",
       "json": "{\"type\":\"session.closed\"}",
-      "expected": {
-        "kind": "sessionClosed"
-      }
+      "expected": { "kind": "sessionClosed" }
     },
     {
       "name": "error with nested error object",
       "json": "{\"type\":\"error\",\"error\":{\"message\":\"boom\",\"code\":\"server_error\"}}",
-      "expected": {
-        "kind": "error",
-        "message": "boom",
-        "code": "server_error"
-      }
+      "expected": { "kind": "error", "message": "boom", "code": "server_error" }
     },
     {
       "name": "error falls back to error.type when code is absent",
       "json": "{\"type\":\"error\",\"error\":{\"message\":\"boom\",\"type\":\"invalid_request_error\"}}",
-      "expected": {
-        "kind": "error",
-        "message": "boom",
-        "code": "invalid_request_error"
-      }
+      "expected": { "kind": "error", "message": "boom", "code": "invalid_request_error" }
     },
     {
       "name": "error falls back to top level message",
       "json": "{\"type\":\"error\",\"message\":\"top level\"}",
-      "expected": {
-        "kind": "error",
-        "message": "top level",
-        "code": null
-      }
+      "expected": { "kind": "error", "message": "top level", "code": null }
     },
     {
       "name": "error without any message uses default text",
@@ -229,10 +189,7 @@
     {
       "name": "unknown event keeps its type",
       "json": "{\"type\":\"session.something_new\",\"foo\":1}",
-      "expected": {
-        "kind": "unknown",
-        "type": "session.something_new"
-      }
+      "expected": { "kind": "unknown", "type": "session.something_new" }
     }
   ],
   "transcriptionEncode": [
@@ -242,15 +199,9 @@
         "kind": "sessionUpdate",
         "noiseReduction": "far_field",
         "transcriptionDelay": "low",
+        "languages": ["ja", "en"],
         "prompt": "Japanese and English conversation.",
-        "keywords": [
-          "ハッカソン",
-          "hackathon"
-        ],
-        "languages": [
-          "ja",
-          "en"
-        ]
+        "keywords": ["ハッカソン", "hackathon"]
       },
       "expected": {
         "type": "session.update",
@@ -258,50 +209,19 @@
           "type": "transcription",
           "audio": {
             "input": {
-              "format": {
-                "type": "audio/pcm",
-                "rate": 24000
-              },
+              "format": { "type": "audio/pcm", "rate": 24000 },
               "transcription": {
                 "model": "gpt-live-transcribe",
-                "languages": [
-                  "ja",
-                  "en"
-                ],
+                "languages": ["ja", "en"],
                 "delay": "low",
                 "prompt": "Japanese and English conversation.",
-                "keywords": [
-                  "ハッカソン",
-                  "hackathon"
-                ]
+                "keywords": ["ハッカソン", "hackathon"]
               },
-              "noise_reduction": {
-                "type": "far_field"
-              },
+              "noise_reduction": { "type": "far_field" },
               "turn_detection": null
             }
           }
         }
-      }
-    },
-    {
-      "name": "transcription audio append has no session prefix",
-      "event": {
-        "kind": "inputAudioBufferAppend",
-        "base64Audio": "AAECAwQF"
-      },
-      "expected": {
-        "type": "input_audio_buffer.append",
-        "audio": "AAECAwQF"
-      }
-    },
-    {
-      "name": "transcription stops with a commit instead of session.close",
-      "event": {
-        "kind": "commit"
-      },
-      "expected": {
-        "type": "input_audio_buffer.commit"
       }
     },
     {
@@ -310,15 +230,9 @@
         "kind": "sessionUpdate",
         "noiseReduction": "far_field",
         "transcriptionDelay": "low",
-        "prompt": "Japanese and English conversation.",
-        "keywords": [
-          "ハッカソン",
-          "hackathon"
-        ],
-        "languages": [
-          "en",
-          "es"
-        ]
+        "languages": ["en", "es"],
+        "prompt": "English and Spanish conversation.",
+        "keywords": ["meeting"]
       },
       "expected": {
         "type": "session.update",
@@ -326,26 +240,15 @@
           "type": "transcription",
           "audio": {
             "input": {
-              "format": {
-                "type": "audio/pcm",
-                "rate": 24000
-              },
+              "format": { "type": "audio/pcm", "rate": 24000 },
               "transcription": {
                 "model": "gpt-live-transcribe",
-                "languages": [
-                  "en",
-                  "es"
-                ],
+                "languages": ["en", "es"],
                 "delay": "low",
-                "prompt": "Japanese and English conversation.",
-                "keywords": [
-                  "ハッカソン",
-                  "hackathon"
-                ]
+                "prompt": "English and Spanish conversation.",
+                "keywords": ["meeting"]
               },
-              "noise_reduction": {
-                "type": "far_field"
-              },
+              "noise_reduction": { "type": "far_field" },
               "turn_detection": null
             }
           }
@@ -358,15 +261,9 @@
         "kind": "sessionUpdate",
         "noiseReduction": "far_field",
         "transcriptionDelay": "low",
-        "prompt": "Japanese and English conversation.",
-        "keywords": [
-          "ハッカソン",
-          "hackathon"
-        ],
-        "languages": [
-          "ja",
-          "es"
-        ]
+        "languages": ["ja", "es"],
+        "prompt": "Japanese and Spanish conversation.",
+        "keywords": ["会議"]
       },
       "expected": {
         "type": "session.update",
@@ -374,31 +271,33 @@
           "type": "transcription",
           "audio": {
             "input": {
-              "format": {
-                "type": "audio/pcm",
-                "rate": 24000
-              },
+              "format": { "type": "audio/pcm", "rate": 24000 },
               "transcription": {
                 "model": "gpt-live-transcribe",
-                "languages": [
-                  "ja",
-                  "es"
-                ],
+                "languages": ["ja", "es"],
                 "delay": "low",
-                "prompt": "Japanese and English conversation.",
-                "keywords": [
-                  "ハッカソン",
-                  "hackathon"
-                ]
+                "prompt": "Japanese and Spanish conversation.",
+                "keywords": ["会議"]
               },
-              "noise_reduction": {
-                "type": "far_field"
-              },
+              "noise_reduction": { "type": "far_field" },
               "turn_detection": null
             }
           }
         }
       }
+    },
+    {
+      "name": "transcription audio append has no session prefix",
+      "event": { "kind": "inputAudioBufferAppend", "base64Audio": "AAECAwQF" },
+      "expected": {
+        "type": "input_audio_buffer.append",
+        "audio": "AAECAwQF"
+      }
+    },
+    {
+      "name": "transcription stops with a commit instead of session.close",
+      "event": { "kind": "commit" },
+      "expected": { "type": "input_audio_buffer.commit" }
     }
   ],
   "transcriptionDecode": [
@@ -415,32 +314,22 @@
     {
       "name": "empty source delta is dropped",
       "json": "{\"type\":\"conversation.item.input_audio_transcription.delta\",\"delta\":\"\",\"event_id\":\"evt_2\"}",
-      "expected": {
-        "kind": "ignored"
-      }
+      "expected": { "kind": "ignored" }
     },
     {
       "name": "completed marks the commit as drained",
       "json": "{\"type\":\"conversation.item.input_audio_transcription.completed\"}",
-      "expected": {
-        "kind": "transcriptionCompleted"
-      }
+      "expected": { "kind": "transcriptionCompleted" }
     },
     {
       "name": "transcription errors are tagged with the transcription code",
       "json": "{\"type\":\"error\",\"error\":{\"message\":\"boom\",\"code\":\"server_error\"}}",
-      "expected": {
-        "kind": "error",
-        "message": "boom",
-        "code": "transcription"
-      }
+      "expected": { "kind": "error", "message": "boom", "code": "transcription" }
     },
     {
       "name": "translation event names are not understood here",
       "json": "{\"type\":\"session.input_transcript.delta\",\"delta\":\"x\"}",
-      "expected": {
-        "kind": "ignored"
-      }
+      "expected": { "kind": "ignored" }
     }
   ],
   "decodeFailures": [
