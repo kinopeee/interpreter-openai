@@ -13,6 +13,10 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
     private var failNextSend = false
     /// セットするとsendがこの時間だけ待機してから通常処理へ進む。
     var sendHangNanoseconds: UInt64 = 0
+    /// audio append だけ遅延させ、session.close / commit の停止経路を巻き込まない。
+    var audioAppendHangNanoseconds: UInt64 = 0
+    /// graceful close 用の完了イベントを自動応答する。
+    var autoCloseResponses = false
 
     func enqueueInbound(_ data: Data) {
         if let waiter = waiters.first {
@@ -43,7 +47,12 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
 
     func send(_ data: Data) async throws {
         sendAttemptCount += 1
-        if sendHangNanoseconds > 0 {
+        let type = Self.messageType(of: data)
+        let isAudioAppend = type == "session.input_audio_buffer.append"
+            || type == "input_audio_buffer.append"
+        if isAudioAppend, audioAppendHangNanoseconds > 0 {
+            try await Task.sleep(nanoseconds: audioAppendHangNanoseconds)
+        } else if sendHangNanoseconds > 0 {
             try await Task.sleep(nanoseconds: sendHangNanoseconds)
         }
         if failNextSend {
@@ -54,6 +63,24 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
             throw sendError
         }
         sent.append(data)
+        if autoCloseResponses {
+            if type == "session.close" {
+                try enqueueJSON(["type": "session.closed"])
+            } else if type == "input_audio_buffer.commit" {
+                try enqueueJSON([
+                    "type": "conversation.item.input_audio_transcription.completed",
+                ])
+            }
+        }
+    }
+
+    private static func messageType(of data: Data) -> String? {
+        guard
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return nil
+        }
+        return object["type"] as? String
     }
 
     func receive() async throws -> Data {

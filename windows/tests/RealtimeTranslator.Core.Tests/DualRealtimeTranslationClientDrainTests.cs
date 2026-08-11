@@ -222,6 +222,63 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.False(await dual.Events.WaitToReadAsync());
     }
 
+    // Given: base drain timeout だけでは送り切れない程度の pending と緩い送信遅延
+    // When: CloseGracefullyAsync する（pending 比例で予算が伸びる）
+    // Then: session.close より前に全 frame が翻訳 lane へ届く（短い固定 timeout だと欠落する）
+    [Fact]
+    public async Task CloseGracefullyScalesDrainTimeoutWithPendingFrames()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(
+            source,
+            english,
+            japanese,
+            ShortCloseTimeout,
+            translationDrainTimeout: TimeSpan.FromMilliseconds(200));
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+        english.SendDelay = TimeSpan.FromMilliseconds(80);
+        for (var index = 0; index < 6; index += 1)
+        {
+            await dual.AppendAudioFrameAsync(Frame((byte)(0x40 + index)));
+        }
+
+        await dual.CloseGracefullyAsync();
+
+        Assert.Equal(6, english.AppendedFrameTexts().Count);
+        var englishTypes = SentTypes(english);
+        var lastAppendIndex = englishTypes.FindLastIndex(type => type == "session.input_audio_buffer.append");
+        var closeIndex = englishTypes.FindLastIndex(type => type == "session.close");
+        Assert.True(lastAppendIndex >= 0);
+        Assert.True(closeIndex > lastAppendIndex);
+    }
+
+    // Given: ResolveTranslationDrainTimeout の base / pending / cap
+    // When: 各境界値で計算する
+    // Then: base を下限、cap を上限、pending 比例の加算になる
+    [Fact]
+    public void ResolveTranslationDrainTimeoutScalesAndCaps()
+    {
+        var baseTimeout = TimeSpan.FromSeconds(5);
+        Assert.Equal(
+            baseTimeout,
+            DualRealtimeTranslationClient.ResolveTranslationDrainTimeout(baseTimeout, pendingFrameCount: 0));
+        Assert.Equal(
+            TimeSpan.FromMilliseconds(5_000 + (40 * 250)),
+            DualRealtimeTranslationClient.ResolveTranslationDrainTimeout(baseTimeout, pendingFrameCount: 40));
+        Assert.Equal(
+            DualRealtimeTranslationClient.TranslationDrainTimeoutCap,
+            DualRealtimeTranslationClient.ResolveTranslationDrainTimeout(baseTimeout, pendingFrameCount: 200));
+        Assert.Equal(
+            TimeSpan.FromMilliseconds(50),
+            DualRealtimeTranslationClient.ResolveTranslationDrainTimeout(
+                TimeSpan.FromMilliseconds(50),
+                pendingFrameCount: 0));
+    }
+
     // Given: 翻訳送信が停滞して pending frame が drain できない dual
     // When: CloseGracefullyAsync する（短い translationDrainTimeout）
     // Then: TimeoutException を外へ出さず session.close / commit へ進む
