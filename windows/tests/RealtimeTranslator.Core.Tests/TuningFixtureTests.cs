@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
 using Xunit;
 
