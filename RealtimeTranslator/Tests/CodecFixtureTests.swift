@@ -98,9 +98,10 @@ final class CodecFixtureTests: XCTestCase {
             switch SharedFixtures.text(eventObject["kind"]) {
             case "sessionUpdate":
                 let tuning = transcriptionTuning(eventObject)
+                let pair = try transcriptionPair(eventObject)
                 try await transport.enqueueJSON(["type": "session.created"])
                 let startTask = Task {
-                    try await connection.start(apiKey: "sk-test", tuning: tuning, pair: .jaEn)
+                    try await connection.start(apiKey: "sk-test", tuning: tuning, pair: pair)
                 }
                 try await waitUntilSent(transport, minimum: 1)
                 try await transport.enqueueJSON(["type": "session.updated"])
@@ -284,6 +285,24 @@ final class CodecFixtureTests: XCTestCase {
             transcriptionPrompt: SharedFixtures.text(fixture["prompt"]),
             transcriptionKeywords: keywords
         )
+    }
+
+    private func transcriptionPair(_ fixture: [String: Any]) throws -> LanguagePair {
+        let languages = try XCTUnwrap(fixture["languages"] as? [String])
+        switch languages {
+        case ["ja", "en"]:
+            return .jaEn
+        case ["ja", "es"]:
+            return .jaEs
+        case ["en", "es"]:
+            return .enEs
+        default:
+            throw NSError(
+                domain: "CodecFixtureTests",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "unsupported transcription languages"]
+            )
+        }
     }
 
     private func startTranscription(

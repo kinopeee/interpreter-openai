@@ -33,7 +33,9 @@ final class LanguageFixtureTests: XCTestCase {
         for name in try SharedFixtures.caseNames("language", "evidence") {
                         let fixture = try SharedFixtures.case("language", "evidence", name)
             let input = SharedFixtures.text(fixture["input"])
-            let pair = LanguagePair(rawValue: SharedFixtures.text(fixture["pair"])) ?? .jaEn
+            let pair = SharedFixtures.optionalText(fixture["pair"])
+                .flatMap(LanguagePair.init(rawValue:))
+                ?? .jaEn
             XCTAssertEqual(
                 parseEvidence(SharedFixtures.text(fixture["evidence"])),
                 SpokenLanguageDetector.evidence(in: input, pair: pair)
@@ -52,7 +54,9 @@ final class LanguageFixtureTests: XCTestCase {
         for name in try SharedFixtures.caseNames("language", "recentEvidence") {
                         let fixture = try SharedFixtures.case("language", "recentEvidence", name)
             let input = SharedFixtures.text(fixture["input"])
-            let pair = LanguagePair(rawValue: SharedFixtures.text(fixture["pair"])) ?? .jaEn
+            let pair = SharedFixtures.optionalText(fixture["pair"])
+                .flatMap(LanguagePair.init(rawValue:))
+                ?? .jaEn
             XCTAssertEqual(
                 parseEvidence(SharedFixtures.text(fixture["expected"])),
                 SpokenLanguageDetector.recentEvidence(
