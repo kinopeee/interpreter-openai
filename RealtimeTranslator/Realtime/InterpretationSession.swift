@@ -57,7 +57,6 @@ final class InterpretationSession {
     private var assembler = RealtimeSubtitleAssembler()
     private var reconnectAttempt = 0
     private var routingSourceText = ""
-    private var routedSpokenLanguage = SpokenLanguage.unknown
     private var selectedTranslationTarget: RealtimeTranslationOutputLanguage?
     private var reverseEvidenceCount = 0
 
@@ -273,7 +272,6 @@ final class InterpretationSession {
         flushPendingFinalizeIfNeeded()
         assembler.beginNewEpoch(epoch)
         routingSourceText = ""
-        routedSpokenLanguage = .unknown
         selectedTranslationTarget = nil
         reverseEvidenceCount = 0
         assembler.setLanguagePair(pair)
@@ -568,7 +566,6 @@ final class InterpretationSession {
 
     private func resetAudioRoutingForNextSegment() async {
         routingSourceText = ""
-        routedSpokenLanguage = .unknown
         selectedTranslationTarget = nil
         reverseEvidenceCount = 0
         assembler.expectLane(nil)
