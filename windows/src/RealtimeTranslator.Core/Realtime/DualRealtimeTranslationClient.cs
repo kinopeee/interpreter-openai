@@ -29,22 +29,7 @@ public interface IDualRealtimeTranslationClient
 
     Task SelectTranslationTargetAsync(
         RealtimeTranslationOutputLanguage? target,
-        CancellationToken cancellationToken = default) =>
-        target switch
-        {
-            RealtimeTranslationOutputLanguage.English => SetSpokenLanguageAsync(
-                SpokenLanguage.Japanese,
-                cancellationToken),
-            RealtimeTranslationOutputLanguage.Japanese => SetSpokenLanguageAsync(
-                SpokenLanguage.English,
-                cancellationToken),
-            RealtimeTranslationOutputLanguage.Spanish => SetSpokenLanguageAsync(
-                SpokenLanguage.Spanish,
-                cancellationToken),
-            _ => Task.CompletedTask,
-        };
-
-    Task SetSpokenLanguageAsync(SpokenLanguage language, CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default);
 
     Task UpdateTranscriptionTuningAsync(RealtimeSessionTuning tuning, CancellationToken cancellationToken = default);
 
@@ -319,14 +304,6 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
 
         return Task.CompletedTask;
-    }
-
-    public Task SetSpokenLanguageAsync(
-        SpokenLanguage language,
-        CancellationToken cancellationToken = default)
-    {
-        var target = LanguagePair.JaEn.TranslationTarget(language);
-        return SelectTranslationTargetAsync(target, cancellationToken);
     }
 
     public async Task CloseGracefullyAsync(CancellationToken cancellationToken = default)

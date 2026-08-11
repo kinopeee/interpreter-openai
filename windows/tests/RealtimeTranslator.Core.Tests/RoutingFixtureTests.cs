@@ -236,7 +236,7 @@ public sealed class RoutingFixtureTests
                 _ => SelectedTarget,
             };
 
-            await Dual.SetSpokenLanguageAsync(spoken);
+            await Dual.SelectTranslationTargetAsync(SelectedTarget);
             await Dual.WaitForTranslationDrainAsync();
         }
 

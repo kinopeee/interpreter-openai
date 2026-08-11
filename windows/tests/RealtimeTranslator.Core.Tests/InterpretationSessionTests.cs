@@ -1507,13 +1507,20 @@ public sealed class InterpretationSessionTests
             ReadOnlyMemory<byte> pcm16LittleEndian,
             CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task SetSpokenLanguageAsync(
-            SpokenLanguage language,
+        public Task SelectTranslationTargetAsync(
+            RealtimeTranslationOutputLanguage? target,
             CancellationToken cancellationToken = default)
         {
             lock (_sync)
             {
-                _spokenLanguages.Add(language);
+                var spoken = target switch
+                {
+                    RealtimeTranslationOutputLanguage.English => SpokenLanguage.Japanese,
+                    RealtimeTranslationOutputLanguage.Japanese => SpokenLanguage.English,
+                    RealtimeTranslationOutputLanguage.Spanish => SpokenLanguage.Spanish,
+                    _ => SpokenLanguage.Unknown,
+                };
+                _spokenLanguages.Add(spoken);
             }
 
             return Task.CompletedTask;

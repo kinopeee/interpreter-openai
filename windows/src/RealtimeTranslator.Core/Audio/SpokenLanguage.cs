@@ -36,9 +36,6 @@ public enum LanguagePair
 
 public static class LanguagePairExtensions
 {
-    public static RealtimeTranslationOutputLanguage? TranslationTarget(this SpokenLanguage language) =>
-        LanguagePair.JaEn.TranslationTarget(language);
-
     public static ImmutableArray<SpokenLanguage> Languages(this LanguagePair pair) => pair switch
     {
         LanguagePair.JaEn => [SpokenLanguage.Japanese, SpokenLanguage.English],
