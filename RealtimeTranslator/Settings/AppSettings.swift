@@ -26,6 +26,7 @@ final class AppSettings {
         static let noiseReductionMode = "noiseReductionMode"
         static let transcriptionDelayMode = "transcriptionDelayMode"
         static let recordSubtitles = "recordSubtitles"
+        static let languagePair = "languagePair"
     }
 
     /// 現在有効な同意バージョン。文言変更時にインクリメントする。
@@ -87,6 +88,10 @@ final class AppSettings {
         didSet { UserDefaults.standard.set(recordSubtitles, forKey: Keys.recordSubtitles) }
     }
 
+    var languagePair: LanguagePair {
+        didSet { UserDefaults.standard.set(languagePair.rawValue, forKey: Keys.languagePair) }
+    }
+
     var hasAcceptedCurrentOpenAIConsent: Bool {
         acceptedOpenAIConsentVersion >= Self.currentOpenAIConsentVersion
     }
@@ -121,6 +126,9 @@ final class AppSettings {
         panelOriginX = defaults.double(forKey: Keys.panelOriginX)
         panelOriginY = defaults.double(forKey: Keys.panelOriginY)
         acceptedOpenAIConsentVersion = defaults.integer(forKey: Keys.openAIConsentVersion)
+        languagePair = LanguagePair(
+            rawValue: defaults.string(forKey: Keys.languagePair) ?? ""
+        ) ?? .jaEn
 
         if let storedPrompt = defaults.string(forKey: Keys.transcriptionPrompt),
            !storedPrompt.isEmpty

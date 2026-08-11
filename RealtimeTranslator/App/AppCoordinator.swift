@@ -16,6 +16,9 @@ final class AppCoordinator: NSObject {
         apiKeyStore: apiKeyStore,
         tuningProvider: { [settings] in
             settings.sessionTuning()
+        },
+        languagePairProvider: { [settings] in
+            settings.languagePair
         }
     )
     private lazy var transcriptStore: SubtitleTranscriptStore = {
@@ -38,6 +41,10 @@ final class AppCoordinator: NSObject {
 
     var hasRecordedSubtitles: Bool {
         transcriptStore.hasEntries
+    }
+
+    var languagePair: LanguagePair {
+        settings.languagePair
     }
 
     func start() {
