@@ -192,40 +192,64 @@
       }
     }
   ],
+  "targetSelectionDescription": "target は話者言語ではなく出力言語。話者言語は pair.counterpart(target) で求める。",
   "targetSelection": [
     {
-      "name": "en-es initial spanish evidence selects spanish immediately",
+      "name": "en-es initial spanish evidence selects english target",
       "pair": "en-es",
       "evidence": [
         { "evidence": "spanish", "expectedTarget": "en" }
       ]
     },
     {
-      "name": "en-es one reverse evidence does not switch target",
+      "name": "en-es initial english evidence selects spanish target",
       "pair": "en-es",
-      "initialTarget": "es",
       "evidence": [
         { "evidence": "english", "expectedTarget": "es" }
       ]
     },
     {
+      "name": "en-es initial ambiguous latin selects nothing",
+      "pair": "en-es",
+      "evidence": [
+        { "evidence": "ambiguousLatin", "expectedTarget": null }
+      ]
+    },
+    {
+      "name": "en-es one reverse evidence does not switch target",
+      "pair": "en-es",
+      "initialTarget": "en",
+      "evidence": [
+        { "evidence": "english", "expectedTarget": "en" }
+      ]
+    },
+    {
       "name": "en-es two consecutive reverse evidence switches target",
       "pair": "en-es",
-      "initialTarget": "es",
+      "initialTarget": "en",
       "evidence": [
-        { "evidence": "english", "expectedTarget": "es" },
-        { "evidence": "english", "expectedTarget": "en" }
+        { "evidence": "english", "expectedTarget": "en" },
+        { "evidence": "english", "expectedTarget": "es" }
       ]
     },
     {
       "name": "en-es ambiguous evidence resets reverse counter",
       "pair": "en-es",
-      "initialTarget": "es",
+      "initialTarget": "en",
       "evidence": [
-        { "evidence": "english", "expectedTarget": "es" },
-        { "evidence": "ambiguousLatin", "expectedTarget": "es" },
-        { "evidence": "english", "expectedTarget": "es" },
-        { "evidence": "english", "expectedTarget": "en" }
+        { "evidence": "english", "expectedTarget": "en" },
+        { "evidence": "ambiguousLatin", "expectedTarget": "en" },
+        { "evidence": "english", "expectedTarget": "en" },
+        { "evidence": "english", "expectedTarget": "es" }
+      ]
+    },
+    {
+      "name": "en-es same language evidence keeps target",
+      "pair": "en-es",
+      "initialTarget": "en",
+      "evidence": [
+        { "evidence": "spanish", "expectedTarget": "en" },
+        { "evidence": "spanish", "expectedTarget": "en" }
       ]
     },
     {
@@ -233,8 +257,8 @@
       "pair": "ja-en",
       "initialTarget": "en",
       "evidence": [
-        { "evidence": "english", "expectedTarget": "en" },
-        { "evidence": "japanese", "expectedTarget": "ja" }
+        { "evidence": "japanese", "expectedTarget": "en" },
+        { "evidence": "english", "expectedTarget": "ja" }
       ]
     },
     {
@@ -242,22 +266,38 @@
       "pair": "ja-es",
       "initialTarget": "es",
       "evidence": [
-        { "evidence": "spanish", "expectedTarget": "es" },
-        { "evidence": "japanese", "expectedTarget": "ja" }
+        { "evidence": "japanese", "expectedTarget": "es" },
+        { "evidence": "spanish", "expectedTarget": "ja" }
       ]
     },
     {
-      "name": "ja-en initial ambiguous latin uses special case",
+      "name": "ja-en initial ambiguous latin selects japanese target",
       "pair": "ja-en",
+      "evidence": [
+        { "evidence": "ambiguousLatin", "expectedTarget": "ja" }
+      ]
+    },
+    {
+      "name": "ja-es initial ambiguous latin selects japanese target",
+      "pair": "ja-es",
+      "evidence": [
+        { "evidence": "ambiguousLatin", "expectedTarget": "ja" }
+      ]
+    },
+    {
+      "name": "ja-en mid stream ambiguous latin does not flip",
+      "pair": "ja-en",
+      "initialTarget": "en",
       "evidence": [
         { "evidence": "ambiguousLatin", "expectedTarget": "en" }
       ]
     },
     {
-      "name": "ja-es initial ambiguous latin uses special case",
-      "pair": "ja-es",
+      "name": "none evidence never changes target",
+      "pair": "en-es",
+      "initialTarget": "en",
       "evidence": [
-        { "evidence": "ambiguousLatin", "expectedTarget": "es" }
+        { "evidence": "none", "expectedTarget": "en" }
       ]
     }
   ],
