@@ -32,6 +32,83 @@ public sealed class InterpretationSessionTests
         Assert.Contains(TranslationState.Error, states);
     }
 
+    // Given: 既に Listening のセッション
+    // When: StartAsync を再度呼ぶ
+    // Then: Dual を二重に Start せず Listening のまま
+    [Fact]
+    public async Task StartWhileListeningIsNoOp()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        var startCount = client.StartCount;
+
+        await session.StartAsync();
+
+        Assert.Equal(TranslationState.Listening, session.State);
+        Assert.Equal(startCount, client.StartCount);
+        await session.StopAsync();
+    }
+
+    // Given: Dual.StartAsync 待ちで Connecting のセッション
+    // When: その間に StartAsync を再度呼ぶ
+    // Then: 受理せず Dual Start は 1 回のまま
+    [Fact]
+    public async Task StartWhileConnectingIsNoOp()
+    {
+        var client = new FakeDualClient();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StartGate = gate;
+        using var session = NewSession(client);
+
+        var firstStart = session.StartAsync();
+        await WaitUntilAsync(() =>
+            client.StartCount == 1 && session.State == TranslationState.Connecting);
+
+        await session.StartAsync();
+        Assert.Equal(1, client.StartCount);
+
+        client.StartGate = null;
+        gate.SetResult();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        await firstStart;
+        await session.StopAsync();
+    }
+
+    // Given: Dual.StartAsync 待ちで止まっているセッション
+    // When: Stop 中に旧 Start を進め、排水後に再 Start する
+    // Then: 旧 sessionTask の世代不一致 ForceClose が新セッションへ飛ばない
+    [Fact]
+    public async Task StopDrainsSessionTaskBeforeReturningSoRestartIsStable()
+    {
+        var client = new FakeDualClient();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StartGate = gate;
+        using var session = NewSession(client);
+
+        var firstStart = session.StartAsync();
+        await WaitUntilAsync(() => client.StartCount == 1);
+
+        var stopTask = session.StopAsync();
+        await WaitUntilAsync(() =>
+            session.State is TranslationState.Closing or TranslationState.Idle);
+        client.StartGate = null;
+        gate.SetResult();
+        await stopTask;
+        await firstStart;
+        Assert.Equal(TranslationState.Idle, session.State);
+
+        var forceCloseAfterStop = client.ForceCloseCallCount;
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        await Task.Delay(100);
+        Assert.Equal(TranslationState.Listening, session.State);
+        Assert.Equal(forceCloseAfterStop, client.ForceCloseCallCount);
+        await session.StopAsync();
+    }
+
     // Given: 日本語の原文 delta
     // When: セッションが routing を更新する
     // Then: 話者を日本語と判定し、音声を英語 target へ切り替える
@@ -1025,6 +1102,9 @@ public sealed class InterpretationSessionTests
         /// <summary>CloseGracefully 時に close drain イベントを流すテスト用フック。</summary>
         public Func<Task>? OnCloseGracefully { get; set; }
 
+        /// <summary>StartAsync 入口で待つゲート（Stop 排水・Connecting 再入用）。</summary>
+        public TaskCompletionSource? StartGate { get; set; }
+
         public IReadOnlyList<SpokenLanguage> SpokenLanguages
         {
             get
@@ -1036,11 +1116,12 @@ public sealed class InterpretationSessionTests
             }
         }
 
-        public Task StartAsync(
+        public async Task StartAsync(
             string apiKey,
             RealtimeSessionTuning tuning,
             CancellationToken cancellationToken = default)
         {
+            Task? gateTask;
             lock (_sync)
             {
                 StartCount += 1;
@@ -1056,6 +1137,16 @@ public sealed class InterpretationSessionTests
                     throw new InvalidOperationException("repeated device failure");
                 }
 
+                gateTask = StartGate?.Task;
+            }
+
+            if (gateTask is not null)
+            {
+                await gateTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            lock (_sync)
+            {
                 _epoch += 1;
                 _spokenLanguages.Clear();
                 ResetAudioRoutingCount = 0;
@@ -1064,8 +1155,6 @@ public sealed class InterpretationSessionTests
                 OnCloseGracefully = null;
                 _events = Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
             }
-
-            return Task.CompletedTask;
         }
 
         public Task AppendAudioFrameAsync(
