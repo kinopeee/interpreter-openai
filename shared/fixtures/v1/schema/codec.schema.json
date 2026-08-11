@@ -141,6 +141,7 @@
               "type": "array",
               "minItems": 2,
               "maxItems": 2,
+              "uniqueItems": true,
               "items": { "enum": ["ja", "en", "es"] }
             },
             "prompt": { "type": "string" },

@@ -49,7 +49,7 @@
             "properties": {
               "name": { "type": "string" },
               "epoch": { "type": "integer" },
-              "expectLane": { "enum": ["source", "en", "ja", "es", null] },
+              "expectLane": { "enum": ["en", "ja", "es", null] },
               "steps": {
                 "type": "array",
                 "minItems": 1,
@@ -119,8 +119,22 @@
           "additionalProperties": false,
           "properties": {
             "at": { "type": "number", "minimum": 0 },
-            "kind": { "enum": ["sourceDelta", "translationDelta"] },
-            "lane": { "enum": ["source", "en", "ja", "es"] },
+            "kind": { "const": "sourceDelta" },
+            "lane": { "const": "source" },
+            "text": { "type": "string" },
+            "eventId": { "type": ["string", "null"] },
+            "elapsedMs": { "type": ["integer", "null"] },
+            "epoch": { "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["at", "kind", "lane", "text", "eventId", "elapsedMs"],
+          "additionalProperties": false,
+          "properties": {
+            "at": { "type": "number", "minimum": 0 },
+            "kind": { "const": "translationDelta" },
+            "lane": { "enum": ["en", "ja", "es"] },
             "text": { "type": "string" },
             "eventId": { "type": ["string", "null"] },
             "elapsedMs": { "type": ["integer", "null"] },

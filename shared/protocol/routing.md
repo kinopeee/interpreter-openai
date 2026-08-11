@@ -6,17 +6,21 @@
 
 | 証拠 | 条件 |
 |---|---|
-| `Japanese` | ひらがな/カタカナ `U+3040–U+30FF`、CJK 拡張A `U+3400–U+4DBF`、CJK 統合漢字 `U+4E00–U+9FFF` を 1 文字でも含む |
-| `English` | 日本語文字を含まず、ラテン語（`A–Z`/`a–z` の連続を 1 語と数える）が **2 語以上**。`ja-es` では Spanish |
+| `Japanese` | ひらがな/カタカナ `U+3040–U+30FF`、CJK 拡張A `U+3400–U+4DBF`、CJK 統合漢字 `U+4E00–U+9FFF` を 1 文字でも含む（`en-es` では無視） |
+| `English` / `Spanish` | ペアのラテン側。`ja-en` はラテン 2 語以上を `English`、`ja-es` は同じ条件を `Spanish` とする |
 | `AmbiguousLatin` | 日本語文字を含まず、ラテン語が **ちょうど 1 語** |
 | `None` | ラテン語 0 語 |
 
-`Detect` は `Japanese`→日本語、`English`→英語、それ以外→`Unknown`。
-`AmbiguousLatin` を英語と断定しない（日本語話者のローマ字発話・固有名詞のため）。
+`Detect` の対応はペアごとに異なる。
 
-`ja-en` は既定ペア、`ja-es` はラテン側を Spanish として扱う。`en-es` は下記の
-スコアリング規則を使い、証拠値は `japanese` / `english` / `spanish` /
-`ambiguousLatin` / `none` で表す。
+| pair | Evidence → Detect |
+|---|---|
+| `ja-en` | `Japanese`→日本語、`English`→英語、それ以外→`Unknown` |
+| `ja-es` | `Japanese`→日本語、`Spanish`→スペイン語、それ以外→`Unknown` |
+| `en-es` | 下記スコアリングの結果だけを英語 / スペイン語 / `Unknown`（CJK は証拠にしない） |
+
+`AmbiguousLatin` を英語やスペイン語と断定しない（ローマ字発話・固有名詞のため）。
+証拠値は `japanese` / `english` / `spanish` / `ambiguousLatin` / `none` で表す。
 
 ### 末尾ウィンドウ判定
 
