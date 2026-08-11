@@ -147,6 +147,36 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 文字種の反転を起こさない英語 delta がサーバから連続で流れ続ける
+    // When: 同一セグメント内で delta を大量に取り込む
+    // Then: routing 判定バッファは上限までで打ち切られ、その後の反転検出も壊れない
+    [Fact]
+    public async Task NonFlippingSourceDeltaStreamDoesNotGrowRoutingBufferWithoutBound()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("we keep talking in english ");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        for (var i = 0; i < 200; i += 1)
+        {
+            client.PublishSourceDelta("and we never flip the script ");
+        }
+
+        // When: 反転 delta を最後に流し、直前までの delta が処理済みであることを観測する
+        client.PublishSourceDelta("ここで日本語へ反転します");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
+
+        Assert.Equal([SpokenLanguage.English, SpokenLanguage.Japanese], client.SpokenLanguages);
+        Assert.True(
+            session.RoutingSourceTextLengthForTests <= InterpretationSession.RoutingSourceTextMaxLength,
+            $"routing buffer length {session.RoutingSourceTextLengthForTests} exceeded the cap");
+        await session.StopAsync();
+    }
+
     // Given: 訳文がまだ無い日本語原文だけのセグメント
     // When: 英語へ文字種が反転する
     // Then: 不完全ペアを ShouldFinalize せず、routing だけ切り替える

@@ -38,6 +38,12 @@ public sealed class InterpretationSession : IDisposable
 {
     public const int MaxReconnectAttempts = 5;
 
+    /// <summary>
+    /// ルーティング判定用に保持する原文の上限 (UTF-16 char)。判定は末尾ウィンドウだけを見るため、
+    /// それを十分に覆う長さで打ち切る。サーバ delta が反転を起こさないまま流れ続けても無制限に伸びない。
+    /// </summary>
+    internal const int RoutingSourceTextMaxLength = 16 * SpokenLanguageDetector.RecentEvidenceWindow;
+
     private static readonly TimeSpan DefaultInitialReconnectDelay = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan DefaultTickInterval = TimeSpan.FromMilliseconds(200);
 
@@ -62,6 +68,18 @@ public sealed class InterpretationSession : IDisposable
 
     /// <summary>テスト用。generation 確認後・assembler 更新前に差し込む。</summary>
     internal Action? BeforeAssemblerIngestForTests { get; set; }
+
+    /// <summary>テスト用。ルーティング判定バッファの保持長。</summary>
+    internal int RoutingSourceTextLengthForTests
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _routingSourceText.Length;
+            }
+        }
+    }
 
     public InterpretationSession(
         IApiKeyStore apiKeyStore,
@@ -571,7 +589,7 @@ public sealed class InterpretationSession : IDisposable
             SpokenLanguageEvidence evidence;
             lock (_sync)
             {
-                _routingSourceText += delta;
+                _routingSourceText = TrimRoutingSourceText(_routingSourceText + delta);
                 evidence = SpokenLanguageDetector.RecentEvidence(_routingSourceText);
                 current = _routedSpokenLanguage;
             }
@@ -630,7 +648,7 @@ public sealed class InterpretationSession : IDisposable
             lock (_sync)
             {
                 // 切替を起こした delta は新しい segment の先頭として持ち越す。
-                _routingSourceText = delta;
+                _routingSourceText = TrimRoutingSourceText(delta);
                 _routedSpokenLanguage = flipped;
                 _assembler.ExpectLane(ExpectedTranslationLane(flipped));
             }
@@ -641,6 +659,23 @@ public sealed class InterpretationSession : IDisposable
         {
             _routingGate.Release();
         }
+    }
+
+    /// <summary>末尾の判定ウィンドウを残して保持長を上限へ切り詰める。サロゲートペアは割らない。</summary>
+    private static string TrimRoutingSourceText(string text)
+    {
+        if (text.Length <= RoutingSourceTextMaxLength)
+        {
+            return text;
+        }
+
+        var start = text.Length - RoutingSourceTextMaxLength;
+        if (char.IsLowSurrogate(text[start]))
+        {
+            start += 1;
+        }
+
+        return text[start..];
     }
 
     private async Task ResetAudioRoutingForNextSegmentAsync()
