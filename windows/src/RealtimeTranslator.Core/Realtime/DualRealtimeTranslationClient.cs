@@ -44,6 +44,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     private readonly RealtimeSourceTranscriptionConnection _sourceConnection;
     private readonly RealtimeTranslationConnection _englishConnection;
     private readonly RealtimeTranslationConnection _japaneseConnection;
+    private readonly TimeSpan _translationDrainTimeout;
     private readonly object _sync = new();
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly Queue<PendingTranslationFrame> _pendingTranslationFrames = new();
@@ -66,7 +67,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     public DualRealtimeTranslationClient(
         RealtimeSourceTranscriptionConnection sourceConnection,
         RealtimeTranslationConnection englishConnection,
-        RealtimeTranslationConnection japaneseConnection)
+        RealtimeTranslationConnection japaneseConnection,
+        TimeSpan? translationDrainTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(sourceConnection);
         ArgumentNullException.ThrowIfNull(englishConnection);
@@ -75,6 +77,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         _sourceConnection = sourceConnection;
         _englishConnection = englishConnection;
         _japaneseConnection = japaneseConnection;
+        // 既定 5 秒。送信停滞でも CloseGracefully が session.close へ進める上限。
+        _translationDrainTimeout = translationDrainTimeout ?? TimeSpan.FromSeconds(5);
     }
 
     public ChannelReader<RealtimeTranslationStreamEvent> Events
@@ -288,7 +292,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         // 送信が停滞しても close 自体は進める。
         try
         {
-            await WaitForTranslationDrainAsync(TimeSpan.FromSeconds(5), cancellationToken)
+            await WaitForTranslationDrainAsync(_translationDrainTimeout, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (TimeoutException)

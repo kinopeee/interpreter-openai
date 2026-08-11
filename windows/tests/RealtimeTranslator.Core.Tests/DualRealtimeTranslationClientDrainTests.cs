@@ -185,11 +185,49 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.False(await dual.Events.WaitToReadAsync());
     }
 
+    // Given: 翻訳送信が停滞して pending frame が drain できない dual
+    // When: CloseGracefullyAsync する（短い translationDrainTimeout）
+    // Then: TimeoutException を外へ出さず session.close / commit へ進む
+    [Fact]
+    public async Task CloseGracefullyProceedsWhenTranslationDrainTimesOut()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(
+            source,
+            english,
+            japanese,
+            ShortCloseTimeout,
+            translationDrainTimeout: TimeSpan.FromMilliseconds(50));
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+        english.SendDelay = TimeSpan.FromSeconds(30);
+        await dual.AppendAudioFrameAsync(Frame(0x31));
+        await dual.AppendAudioFrameAsync(Frame(0x32));
+
+        var closeTask = dual.CloseGracefullyAsync();
+        var winner = await Task.WhenAny(closeTask, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(closeTask, winner);
+        await closeTask;
+
+        Assert.Contains("session.close", SentTypes(english));
+        Assert.Contains("session.close", SentTypes(japanese));
+        Assert.Contains("input_audio_buffer.commit", SentTypes(source));
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
     private static DualRealtimeTranslationClient CreateDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,
         FakeRealtimeServerTransport japanese,
-        TimeSpan closeTimeout) =>
+        TimeSpan closeTimeout,
+        TimeSpan? translationDrainTimeout = null) =>
         new(
             new RealtimeSourceTranscriptionConnection(source, "test-safety", closeTimeout: closeTimeout),
             new RealtimeTranslationConnection(
@@ -201,7 +239,8 @@ public sealed class DualRealtimeTranslationClientDrainTests
                 RealtimeTranslationOutputLanguage.Japanese,
                 japanese,
                 "test-safety",
-                closeTimeout: closeTimeout));
+                closeTimeout: closeTimeout),
+            translationDrainTimeout: translationDrainTimeout);
 
     private static byte[] Frame(byte fill)
     {
