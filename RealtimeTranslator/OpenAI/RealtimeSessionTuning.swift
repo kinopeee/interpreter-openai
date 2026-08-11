@@ -41,10 +41,41 @@ struct RealtimeSessionTuning: Sendable, Equatable {
         case .jaEn:
             return defaultKeywords
         case .jaEs:
-            return defaultKeywords + ["español", "español"]
+            return ["hackathon", "software", "programming", "desarrollo", "programación"]
         case .enEs:
-            return defaultKeywords + ["Spanish", "English"]
+            return ["hackathon", "software", "programming", "desarrollo", "programación"]
         }
+    }
+
+    func forPair(_ pair: LanguagePair) -> RealtimeSessionTuning {
+        let prompt = Self.isKnownDefaultPrompt(transcriptionPrompt)
+            ? Self.defaultPrompt(for: pair)
+            : transcriptionPrompt
+        let keywords = Self.isKnownDefaultKeywords(transcriptionKeywords)
+            ? Self.defaultKeywords(for: pair)
+            : transcriptionKeywords
+        return RealtimeSessionTuning(
+            noiseReduction: noiseReduction,
+            transcriptionDelay: transcriptionDelay,
+            transcriptionPrompt: prompt,
+            transcriptionKeywords: keywords
+        )
+    }
+
+    private static func isKnownDefaultPrompt(_ prompt: String) -> Bool {
+        [
+            defaultPrompt(for: .jaEn),
+            defaultPrompt(for: .jaEs),
+            defaultPrompt(for: .enEs),
+        ].contains(prompt)
+    }
+
+    private static func isKnownDefaultKeywords(_ keywords: [String]) -> Bool {
+        [
+            defaultKeywords(for: .jaEn),
+            defaultKeywords(for: .jaEs),
+            defaultKeywords(for: .enEs),
+        ].contains(keywords)
     }
 
     static let `default` = RealtimeSessionTuning(

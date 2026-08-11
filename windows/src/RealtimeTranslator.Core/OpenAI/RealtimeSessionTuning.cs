@@ -53,6 +53,27 @@ public sealed record RealtimeSessionTuning(
         ? DefaultKeywords
         : ["hackathon", "software", "programming", "desarrollo", "programación"];
 
+    public RealtimeSessionTuning ForPair(LanguagePair pair)
+    {
+        var prompt = IsKnownDefaultPrompt(TranscriptionPrompt)
+            ? DefaultPromptForPair(pair)
+            : TranscriptionPrompt;
+        var keywords = IsKnownDefaultKeywords(TranscriptionKeywords)
+            ? DefaultKeywordsForPair(pair)
+            : TranscriptionKeywords;
+        return this with { TranscriptionPrompt = prompt, TranscriptionKeywords = keywords };
+    }
+
+    private static bool IsKnownDefaultPrompt(string prompt) =>
+        prompt == DefaultPromptForPair(LanguagePair.JaEn)
+        || prompt == DefaultPromptForPair(LanguagePair.JaEs)
+        || prompt == DefaultPromptForPair(LanguagePair.EnEs);
+
+    private static bool IsKnownDefaultKeywords(ImmutableArray<string> keywords) =>
+        keywords.AsSpan().SequenceEqual(DefaultKeywordsForPair(LanguagePair.JaEn).AsSpan())
+        || keywords.AsSpan().SequenceEqual(DefaultKeywordsForPair(LanguagePair.JaEs).AsSpan())
+        || keywords.AsSpan().SequenceEqual(DefaultKeywordsForPair(LanguagePair.EnEs).AsSpan());
+
     /// <summary>用途別の認識ヒントプリセット。</summary>
     public sealed record Preset(string Id, string DisplayName, string Prompt, ImmutableArray<string> Keywords)
     {

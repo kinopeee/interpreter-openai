@@ -2,6 +2,32 @@ import XCTest
 @testable import RealtimeTranslator
 
 final class RealtimeSessionTuningTests: XCTestCase {
+    func testForPairUsesMatchingDefaultsAndPreservesCustomValues() {
+        // Given: 保存済み既定 tuning と選択された言語ペア
+        let jaEs = RealtimeSessionTuning.default.forPair(.jaEs)
+
+        // When: ペア向け tuning を解決する
+        // Then: 既定値だけが現在のペア向けに置き換わる
+        XCTAssertEqual(
+            jaEs.transcriptionPrompt,
+            RealtimeSessionTuning.defaultPrompt(for: .jaEs)
+        )
+        XCTAssertEqual(
+            jaEs.transcriptionKeywords,
+            RealtimeSessionTuning.defaultKeywords(for: .jaEs)
+        )
+
+        let custom = RealtimeSessionTuning(
+            noiseReduction: .farField,
+            transcriptionDelay: .low,
+            transcriptionPrompt: "Custom prompt",
+            transcriptionKeywords: ["Custom keyword"]
+        )
+        let preserved = custom.forPair(.enEs)
+        XCTAssertEqual(preserved.transcriptionPrompt, "Custom prompt")
+        XCTAssertEqual(preserved.transcriptionKeywords, ["Custom keyword"])
+    }
+
     func testParseKeywordsTrimsAndDropsEmptyLines() {
         // Given: 空行と前後空白を含むキーワードテキスト
         let text = """
