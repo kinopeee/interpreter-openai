@@ -1,12 +1,27 @@
 {
   "$schema": "./schema/language.schema.json",
   "version": 1,
-  "description": "SpokenLanguageDetector の期待値。evidence は japanese/english/ambiguousLatin/none、detect は japanese/english/unknown。",
+  "description": "SpokenLanguageDetector の期待値。pair 省略時は ja-en。evidence は japanese/english/spanish/ambiguousLatin/none、detect は japanese/english/spanish/unknown。",
   "recentEvidenceWindow": 16,
   "evidence": [
-    { "name": "hiragana", "input": "こんにちは", "evidence": "japanese", "detect": "japanese" },
-    { "name": "katakana", "input": "カタカナ", "evidence": "japanese", "detect": "japanese" },
-    { "name": "kanji", "input": "東京", "evidence": "japanese", "detect": "japanese" },
+    {
+      "name": "hiragana",
+      "input": "こんにちは",
+      "evidence": "japanese",
+      "detect": "japanese"
+    },
+    {
+      "name": "katakana",
+      "input": "カタカナ",
+      "evidence": "japanese",
+      "detect": "japanese"
+    },
+    {
+      "name": "kanji",
+      "input": "東京",
+      "evidence": "japanese",
+      "detect": "japanese"
+    },
     {
       "name": "japanese wins over latin words",
       "input": "こんにちは world today",
@@ -37,14 +52,78 @@
       "evidence": "english",
       "detect": "english"
     },
-    { "name": "digits only", "input": "123 456", "evidence": "none", "detect": "unknown" },
-    { "name": "empty", "input": "", "evidence": "none", "detect": "unknown" },
-    { "name": "whitespace only", "input": "   ", "evidence": "none", "detect": "unknown" },
+    {
+      "name": "digits only",
+      "input": "123 456",
+      "evidence": "none",
+      "detect": "unknown"
+    },
+    {
+      "name": "empty",
+      "input": "",
+      "evidence": "none",
+      "detect": "unknown"
+    },
+    {
+      "name": "whitespace only",
+      "input": "   ",
+      "evidence": "none",
+      "detect": "unknown"
+    },
     {
       "name": "fullwidth punctuation only",
       "input": "、。！",
       "evidence": "none",
       "detect": "unknown"
+    },
+    {
+      "name": "en-es exclusive spanish words confirm spanish",
+      "pair": "en-es",
+      "input": "el tren está aquí",
+      "evidence": "spanish",
+      "detect": "spanish"
+    },
+    {
+      "name": "en-es exclusive english words confirm english",
+      "pair": "en-es",
+      "input": "the train is here",
+      "evidence": "english",
+      "detect": "english"
+    },
+    {
+      "name": "en-es common words stay ambiguous",
+      "pair": "en-es",
+      "input": "no a me he son sin un",
+      "evidence": "ambiguousLatin",
+      "detect": "unknown"
+    },
+    {
+      "name": "en-es accent vowels confirm spanish",
+      "pair": "en-es",
+      "input": "está aquí más",
+      "evidence": "spanish",
+      "detect": "spanish"
+    },
+    {
+      "name": "en-es inverted punctuation confirms spanish",
+      "pair": "en-es",
+      "input": "¿Dónde estás?",
+      "evidence": "spanish",
+      "detect": "spanish"
+    },
+    {
+      "name": "en-es cjk noise is ignored",
+      "pair": "en-es",
+      "input": "東京 hello world",
+      "evidence": "ambiguousLatin",
+      "detect": "unknown"
+    },
+    {
+      "name": "ja-es latin words are spanish",
+      "pair": "ja-es",
+      "input": "こんにちは mundo ahora",
+      "evidence": "spanish",
+      "detect": "spanish"
     }
   ],
   "recentEvidence": [
@@ -92,8 +171,98 @@
     }
   ],
   "targets": [
-    { "language": "japanese", "translationTarget": "en", "counterpart": "english" },
-    { "language": "english", "translationTarget": "ja", "counterpart": "japanese" },
-    { "language": "unknown", "translationTarget": null, "counterpart": "unknown" }
-  ]
+    {
+      "pair": "ja-en",
+      "languages": [
+        "ja",
+        "en"
+      ],
+      "mappings": [
+        {
+          "language": "japanese",
+          "translationTarget": "en",
+          "counterpart": "english"
+        },
+        {
+          "language": "english",
+          "translationTarget": "ja",
+          "counterpart": "japanese"
+        }
+      ]
+    },
+    {
+      "pair": "ja-es",
+      "languages": [
+        "ja",
+        "es"
+      ],
+      "mappings": [
+        {
+          "language": "japanese",
+          "translationTarget": "es",
+          "counterpart": "spanish"
+        },
+        {
+          "language": "spanish",
+          "translationTarget": "ja",
+          "counterpart": "japanese"
+        }
+      ]
+    },
+    {
+      "pair": "en-es",
+      "languages": [
+        "en",
+        "es"
+      ],
+      "mappings": [
+        {
+          "language": "english",
+          "translationTarget": "es",
+          "counterpart": "spanish"
+        },
+        {
+          "language": "spanish",
+          "translationTarget": "en",
+          "counterpart": "english"
+        }
+      ]
+    }
+  ],
+  "enEsWindow": 8,
+  "exclusiveWords": {
+    "es": [
+      "el",
+      "la",
+      "los",
+      "las",
+      "es",
+      "está",
+      "que",
+      "y",
+      "de",
+      "del",
+      "con",
+      "por",
+      "para",
+      "pero",
+      "más",
+      "sí"
+    ],
+    "en": [
+      "the",
+      "and",
+      "is",
+      "are",
+      "of",
+      "to",
+      "it",
+      "that",
+      "this",
+      "with",
+      "for",
+      "you",
+      "they"
+    ]
+  }
 }

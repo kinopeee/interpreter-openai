@@ -3,13 +3,23 @@
   "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v1/schema/language.schema.json",
   "title": "Spoken language detection fixtures",
   "type": "object",
-  "required": ["version", "recentEvidenceWindow", "evidence", "recentEvidence", "targets"],
+  "required": ["version", "recentEvidenceWindow", "enEsWindow", "exclusiveWords", "evidence", "recentEvidence", "targets"],
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
     "version": { "const": 1 },
     "description": { "type": "string" },
     "recentEvidenceWindow": { "const": 16 },
+    "enEsWindow": { "const": 8 },
+    "exclusiveWords": {
+      "type": "object",
+      "required": ["es", "en"],
+      "additionalProperties": false,
+      "properties": {
+        "es": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "en": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
+    },
     "evidence": {
       "type": "array",
       "minItems": 1,
@@ -19,6 +29,7 @@
         "additionalProperties": false,
         "properties": {
           "name": { "type": "string" },
+          "pair": { "$ref": "#/$defs/pair" },
           "input": { "type": "string" },
           "evidence": { "$ref": "#/$defs/evidence" },
           "detect": { "$ref": "#/$defs/language" }
@@ -34,6 +45,7 @@
         "additionalProperties": false,
         "properties": {
           "name": { "type": "string" },
+          "pair": { "$ref": "#/$defs/pair" },
           "input": { "type": "string" },
           "window": { "type": "integer", "minimum": 0 },
           "expected": { "$ref": "#/$defs/evidence" },
@@ -46,18 +58,38 @@
       "minItems": 3,
       "items": {
         "type": "object",
-        "required": ["language", "translationTarget", "counterpart"],
+        "required": ["pair", "languages", "mappings"],
         "additionalProperties": false,
         "properties": {
-          "language": { "$ref": "#/$defs/language" },
-          "translationTarget": { "enum": ["en", "ja", null] },
-          "counterpart": { "$ref": "#/$defs/language" }
+          "pair": { "$ref": "#/$defs/pair" },
+          "languages": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "enum": ["ja", "en", "es"] }
+          },
+          "mappings": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["language", "translationTarget", "counterpart"],
+              "additionalProperties": false,
+              "properties": {
+                "language": { "$ref": "#/$defs/language" },
+                "translationTarget": { "enum": ["en", "ja", "es", null] },
+                "counterpart": { "$ref": "#/$defs/language" }
+              }
+            }
+          }
         }
       }
     }
   },
   "$defs": {
-    "evidence": { "enum": ["japanese", "english", "ambiguousLatin", "none"] },
-    "language": { "enum": ["japanese", "english", "unknown"] }
+    "pair": { "enum": ["ja-en", "ja-es", "en-es"] },
+    "evidence": { "enum": ["japanese", "english", "spanish", "ambiguousLatin", "none"] },
+    "language": { "enum": ["japanese", "english", "spanish", "unknown"] }
   }
 }

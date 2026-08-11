@@ -10,65 +10,34 @@
     "version": { "const": 1 },
     "description": { "type": "string" },
     "limits": {
-      "type": "object",
-      "required": ["japaneseCharacterLimit", "englishCharacterLimit", "ellipsis"],
-      "additionalProperties": false,
+      "type": "object", "required": ["japaneseCharacterLimit", "englishCharacterLimit", "ellipsis"], "additionalProperties": false,
       "properties": {
-        "japaneseCharacterLimit": { "const": 60 },
-        "englishCharacterLimit": { "const": 120 },
-        "ellipsis": { "const": "…" }
+        "japaneseCharacterLimit": { "const": 60 }, "englishCharacterLimit": { "const": 120 }, "ellipsis": { "const": "…" }
       }
     },
     "clip": {
-      "type": "array",
-      "minItems": 1,
+      "type": "array", "minItems": 1,
       "items": {
-        "type": "object",
-        "required": ["name", "input", "expected"],
-        "additionalProperties": false,
-        "properties": {
-          "name": { "type": "string" },
-          "input": { "$ref": "#/$defs/textExpression" },
-          "expected": { "$ref": "#/$defs/textExpression" }
-        }
+        "type": "object", "required": ["name", "input", "expected"], "additionalProperties": false,
+        "properties": { "name": { "type": "string" }, "input": { "$ref": "#/$defs/textExpression" }, "expected": { "$ref": "#/$defs/textExpression" } }
       }
     },
     "assembler": {
-      "type": "object",
-      "required": ["idleFinalizeSeconds", "cases"],
-      "additionalProperties": false,
+      "type": "object", "required": ["idleFinalizeSeconds", "cases"], "additionalProperties": false,
       "properties": {
         "idleFinalizeSeconds": { "const": 8 },
         "cases": {
-          "type": "array",
-          "minItems": 1,
+          "type": "array", "minItems": 1,
           "items": {
-            "type": "object",
-            "required": ["name", "epoch", "steps", "expectedFinal"],
-            "additionalProperties": false,
+            "type": "object", "required": ["name", "epoch", "steps", "expectedFinal"], "additionalProperties": false,
             "properties": {
-              "name": { "type": "string" },
-              "epoch": { "type": "integer" },
-              "expectLane": { "enum": ["en", "ja", null] },
-              "steps": {
-                "type": "array",
-                "minItems": 1,
-                "items": { "$ref": "#/$defs/step" }
-              },
+              "name": { "type": "string" }, "epoch": { "type": "integer" }, "expectLane": { "enum": ["en", "ja", "es", null] },
+              "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } },
               "expectedFinal": {
-                "type": "object",
-                "required": [
-                  "sourceText",
-                  "translatedText",
-                  "isTranslationCurrent",
-                  "shouldFinalize"
-                ],
-                "additionalProperties": false,
+                "type": "object", "required": ["sourceText", "translatedText", "isTranslationCurrent", "shouldFinalize"], "additionalProperties": false,
                 "properties": {
-                  "sourceText": { "type": "string" },
-                  "translatedText": { "type": "string" },
-                  "isTranslationCurrent": { "type": "boolean" },
-                  "shouldFinalize": { "type": "boolean" }
+                  "sourceText": { "type": "string" }, "translatedText": { "type": "string" },
+                  "isTranslationCurrent": { "type": "boolean" }, "shouldFinalize": { "type": "boolean" }
                 }
               }
             }
@@ -80,61 +49,24 @@
   "$defs": {
     "textExpression": {
       "oneOf": [
-        {
-          "type": "object",
-          "required": ["literal"],
-          "additionalProperties": false,
-          "properties": {
-            "literal": { "type": "string" }
-          }
-        },
-        {
-          "type": "object",
-          "required": ["repeat", "count"],
-          "additionalProperties": false,
-          "properties": {
-            "repeat": { "type": "string", "minLength": 1 },
-            "count": { "type": "integer", "minimum": 0 }
-          }
-        },
-        {
-          "type": "object",
-          "required": ["concat"],
-          "additionalProperties": false,
-          "properties": {
-            "concat": {
-              "type": "array",
-              "minItems": 1,
-              "items": { "$ref": "#/$defs/textExpression" }
-            }
-          }
-        }
+        { "type": "object", "required": ["literal"], "additionalProperties": false, "properties": { "literal": { "type": "string" } } },
+        { "type": "object", "required": ["repeat", "count"], "additionalProperties": false, "properties": { "repeat": { "type": "string", "minLength": 1 }, "count": { "type": "integer", "minimum": 0 } } },
+        { "type": "object", "required": ["concat"], "additionalProperties": false, "properties": { "concat": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/textExpression" } } } }
       ]
     },
     "step": {
       "oneOf": [
         {
-          "type": "object",
-          "required": ["at", "kind", "lane", "text", "eventId", "elapsedMs"],
-          "additionalProperties": false,
+          "type": "object", "required": ["at", "kind", "lane", "text", "eventId", "elapsedMs"], "additionalProperties": false,
           "properties": {
-            "at": { "type": "number", "minimum": 0 },
-            "kind": { "enum": ["sourceDelta", "translationDelta"] },
-            "lane": { "enum": ["en", "ja"] },
-            "text": { "type": "string" },
-            "eventId": { "type": ["string", "null"] },
-            "elapsedMs": { "type": ["integer", "null"] },
-            "epoch": { "type": "integer" }
+            "at": { "type": "number", "minimum": 0 }, "kind": { "enum": ["sourceDelta", "translationDelta"] },
+            "lane": { "enum": ["source", "en", "ja", "es"] }, "text": { "type": "string" },
+            "eventId": { "type": ["string", "null"] }, "elapsedMs": { "type": ["integer", "null"] }, "epoch": { "type": "integer" }
           }
         },
         {
-          "type": "object",
-          "required": ["at", "kind"],
-          "additionalProperties": false,
-          "properties": {
-            "at": { "type": "number", "minimum": 0 },
-            "kind": { "enum": ["tick", "finalizeForLanguageSwitch"] }
-          }
+          "type": "object", "required": ["at", "kind"], "additionalProperties": false,
+          "properties": { "at": { "type": "number", "minimum": 0 }, "kind": { "enum": ["tick", "finalizeForLanguageSwitch"] } }
         }
       ]
     }

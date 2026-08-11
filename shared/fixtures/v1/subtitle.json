@@ -10,59 +10,159 @@
   "clip": [
     {
       "name": "short japanese is unchanged",
-      "input": { "literal": "こんにちは、世界。" },
-      "expected": { "literal": "こんにちは、世界。" }
+      "input": {
+        "literal": "こんにちは、世界。"
+      },
+      "expected": {
+        "literal": "こんにちは、世界。"
+      }
     },
     {
       "name": "short english is unchanged",
-      "input": { "literal": "Hello world" },
-      "expected": { "literal": "Hello world" }
+      "input": {
+        "literal": "Hello world"
+      },
+      "expected": {
+        "literal": "Hello world"
+      }
     },
     {
       "name": "surrounding whitespace is trimmed",
-      "input": { "literal": "  Hello world \n" },
-      "expected": { "literal": "Hello world" }
+      "input": {
+        "literal": "  Hello world \n"
+      },
+      "expected": {
+        "literal": "Hello world"
+      }
     },
     {
       "name": "whitespace only input is returned as is",
-      "input": { "literal": "   " },
-      "expected": { "literal": "   " }
+      "input": {
+        "literal": "   "
+      },
+      "expected": {
+        "literal": "   "
+      }
     },
     {
       "name": "empty input is returned as is",
-      "input": { "literal": "" },
-      "expected": { "literal": "" }
+      "input": {
+        "literal": ""
+      },
+      "expected": {
+        "literal": ""
+      }
     },
     {
       "name": "japanese exactly at the limit is unchanged",
-      "input": { "repeat": "あ", "count": 60 },
-      "expected": { "repeat": "あ", "count": 60 }
+      "input": {
+        "repeat": "あ",
+        "count": 60
+      },
+      "expected": {
+        "repeat": "あ",
+        "count": 60
+      }
     },
     {
       "name": "japanese over the limit keeps the tail with an ellipsis",
-      "input": { "repeat": "あ", "count": 70 },
-      "expected": { "concat": [{ "literal": "…" }, { "repeat": "あ", "count": 60 }] }
+      "input": {
+        "repeat": "あ",
+        "count": 70
+      },
+      "expected": {
+        "concat": [
+          {
+            "literal": "…"
+          },
+          {
+            "repeat": "あ",
+            "count": 60
+          }
+        ]
+      }
     },
     {
       "name": "mixed text containing cjk uses the japanese limit",
-      "input": { "concat": [{ "literal": "あ" }, { "repeat": "a", "count": 100 }] },
-      "expected": { "concat": [{ "literal": "…" }, { "repeat": "a", "count": 60 }] }
+      "input": {
+        "concat": [
+          {
+            "literal": "あ"
+          },
+          {
+            "repeat": "a",
+            "count": 100
+          }
+        ]
+      },
+      "expected": {
+        "concat": [
+          {
+            "literal": "…"
+          },
+          {
+            "repeat": "a",
+            "count": 60
+          }
+        ]
+      }
     },
     {
       "name": "english over the limit drops the leading partial word",
-      "input": { "repeat": "abcdefghij ", "count": 15 },
+      "input": {
+        "repeat": "abcdefghij ",
+        "count": 15
+      },
       "expected": {
         "concat": [
-          { "literal": "…" },
-          { "repeat": "abcdefghij ", "count": 9 },
-          { "literal": "abcdefghij" }
+          {
+            "literal": "…"
+          },
+          {
+            "repeat": "abcdefghij ",
+            "count": 9
+          },
+          {
+            "literal": "abcdefghij"
+          }
         ]
       }
     },
     {
       "name": "english single long token has no space to drop",
-      "input": { "repeat": "a", "count": 130 },
-      "expected": { "concat": [{ "literal": "…" }, { "repeat": "a", "count": 120 }] }
+      "input": {
+        "repeat": "a",
+        "count": 130
+      },
+      "expected": {
+        "concat": [
+          {
+            "literal": "…"
+          },
+          {
+            "repeat": "a",
+            "count": 120
+          }
+        ]
+      }
+    },
+    {
+      "name": "short spanish is unchanged",
+      "input": {
+        "literal": "Hola mundo"
+      },
+      "expected": {
+        "literal": "Hola mundo"
+      }
+    },
+    {
+      "name": "spanish accented text is unchanged",
+      "input": {
+        "literal": "¿Cómo estás? ¡Bien!"
+      },
+      "expected": {
+        "literal": "¿Cómo estás? ¡Bien!"
+      }
     }
   ],
   "assembler": {
@@ -73,8 +173,18 @@
         "epoch": 1,
         "expectLane": "en",
         "steps": [
-          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
-          { "at": 9, "kind": "tick" }
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "こんにちは",
+            "eventId": "s1",
+            "elapsedMs": 100
+          },
+          {
+            "at": 9,
+            "kind": "tick"
+          }
         ],
         "expectedFinal": {
           "sourceText": "こんにちは",
@@ -88,9 +198,26 @@
         "epoch": 1,
         "expectLane": "en",
         "steps": [
-          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
-          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
-          { "at": 9, "kind": "tick" }
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "こんにちは",
+            "eventId": "s1",
+            "elapsedMs": 100
+          },
+          {
+            "at": 0.2,
+            "kind": "translationDelta",
+            "lane": "en",
+            "text": "Hello",
+            "eventId": "t1",
+            "elapsedMs": 200
+          },
+          {
+            "at": 9,
+            "kind": "tick"
+          }
         ],
         "expectedFinal": {
           "sourceText": "こんにちは",
@@ -104,9 +231,30 @@
         "epoch": 1,
         "expectLane": "ja",
         "steps": [
-          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "Hello there", "eventId": "s1", "elapsedMs": 100 },
-          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "Hello there", "eventId": "t-echo", "elapsedMs": 150 },
-          { "at": 0.2, "kind": "translationDelta", "lane": "ja", "text": "こんにちは", "eventId": "t1", "elapsedMs": 200 }
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "Hello there",
+            "eventId": "s1",
+            "elapsedMs": 100
+          },
+          {
+            "at": 0.1,
+            "kind": "translationDelta",
+            "lane": "en",
+            "text": "Hello there",
+            "eventId": "t-echo",
+            "elapsedMs": 150
+          },
+          {
+            "at": 0.2,
+            "kind": "translationDelta",
+            "lane": "ja",
+            "text": "こんにちは",
+            "eventId": "t1",
+            "elapsedMs": 200
+          }
         ],
         "expectedFinal": {
           "sourceText": "Hello there",
@@ -120,8 +268,23 @@
         "epoch": 2,
         "expectLane": "en",
         "steps": [
-          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "stale", "eventId": "s0", "elapsedMs": 10, "epoch": 1 },
-          { "at": 0.1, "kind": "sourceDelta", "lane": "en", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 }
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "stale",
+            "eventId": "s0",
+            "elapsedMs": 10,
+            "epoch": 1
+          },
+          {
+            "at": 0.1,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "こんにちは",
+            "eventId": "s1",
+            "elapsedMs": 100
+          }
         ],
         "expectedFinal": {
           "sourceText": "こんにちは",
@@ -135,8 +298,22 @@
         "epoch": 1,
         "expectLane": "en",
         "steps": [
-          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "あい", "eventId": "s1", "elapsedMs": 100 },
-          { "at": 0.1, "kind": "sourceDelta", "lane": "en", "text": "あい", "eventId": "s1", "elapsedMs": 100 }
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "あい",
+            "eventId": "s1",
+            "elapsedMs": 100
+          },
+          {
+            "at": 0.1,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "あい",
+            "eventId": "s1",
+            "elapsedMs": 100
+          }
         ],
         "expectedFinal": {
           "sourceText": "あい",
@@ -150,9 +327,26 @@
         "epoch": 1,
         "expectLane": "en",
         "steps": [
-          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
-          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
-          { "at": 0.3, "kind": "finalizeForLanguageSwitch" }
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "こんにちは",
+            "eventId": "s1",
+            "elapsedMs": 100
+          },
+          {
+            "at": 0.2,
+            "kind": "translationDelta",
+            "lane": "en",
+            "text": "Hello",
+            "eventId": "t1",
+            "elapsedMs": 200
+          },
+          {
+            "at": 0.3,
+            "kind": "finalizeForLanguageSwitch"
+          }
         ],
         "expectedFinal": {
           "sourceText": "こんにちは",
@@ -166,9 +360,26 @@
         "epoch": 1,
         "expectLane": "en",
         "steps": [
-          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
-          { "at": 0.1, "kind": "finalizeForLanguageSwitch" },
-          { "at": 0.2, "kind": "sourceDelta", "lane": "en", "text": "Hello there", "eventId": "s2", "elapsedMs": 200 }
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "こんにちは",
+            "eventId": "s1",
+            "elapsedMs": 100
+          },
+          {
+            "at": 0.1,
+            "kind": "finalizeForLanguageSwitch"
+          },
+          {
+            "at": 0.2,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "Hello there",
+            "eventId": "s2",
+            "elapsedMs": 200
+          }
         ],
         "expectedFinal": {
           "sourceText": "Hello there",
@@ -182,10 +393,34 @@
         "epoch": 1,
         "expectLane": "en",
         "steps": [
-          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "こんにちは。", "eventId": "s1", "elapsedMs": 100 },
-          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello.", "eventId": "t1", "elapsedMs": 200 },
-          { "at": 9, "kind": "tick" },
-          { "at": 9.1, "kind": "translationDelta", "lane": "en", "text": " Late", "eventId": "t2", "elapsedMs": 300 }
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "こんにちは。",
+            "eventId": "s1",
+            "elapsedMs": 100
+          },
+          {
+            "at": 0.2,
+            "kind": "translationDelta",
+            "lane": "en",
+            "text": "Hello.",
+            "eventId": "t1",
+            "elapsedMs": 200
+          },
+          {
+            "at": 9,
+            "kind": "tick"
+          },
+          {
+            "at": 9.1,
+            "kind": "translationDelta",
+            "lane": "en",
+            "text": " Late",
+            "eventId": "t2",
+            "elapsedMs": 300
+          }
         ],
         "expectedFinal": {
           "sourceText": "こんにちは。",
@@ -199,9 +434,26 @@
         "epoch": 1,
         "expectLane": "ja",
         "steps": [
-          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "hello world", "eventId": "s1", "elapsedMs": 100 },
-          { "at": 0.2, "kind": "translationDelta", "lane": "ja", "text": "こんにちは世界", "eventId": "t1", "elapsedMs": 200 },
-          { "at": 5.5, "kind": "tick" }
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "hello world",
+            "eventId": "s1",
+            "elapsedMs": 100
+          },
+          {
+            "at": 0.2,
+            "kind": "translationDelta",
+            "lane": "ja",
+            "text": "こんにちは世界",
+            "eventId": "t1",
+            "elapsedMs": 200
+          },
+          {
+            "at": 5.5,
+            "kind": "tick"
+          }
         ],
         "expectedFinal": {
           "sourceText": "hello world",
@@ -214,9 +466,30 @@
         "name": "first output lane wins when both eventually emit",
         "epoch": 1,
         "steps": [
-          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "Tokyo", "eventId": "s1", "elapsedMs": 100 },
-          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "Tokyo", "eventId": "e1", "elapsedMs": 150 },
-          { "at": 0.2, "kind": "translationDelta", "lane": "ja", "text": "東京", "eventId": "j1", "elapsedMs": 200 }
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "Tokyo",
+            "eventId": "s1",
+            "elapsedMs": 100
+          },
+          {
+            "at": 0.1,
+            "kind": "translationDelta",
+            "lane": "en",
+            "text": "Tokyo",
+            "eventId": "e1",
+            "elapsedMs": 150
+          },
+          {
+            "at": 0.2,
+            "kind": "translationDelta",
+            "lane": "ja",
+            "text": "東京",
+            "eventId": "j1",
+            "elapsedMs": 200
+          }
         ],
         "expectedFinal": {
           "sourceText": "Tokyo",
@@ -230,10 +503,38 @@
         "epoch": 1,
         "expectLane": "en",
         "steps": [
-          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "今日は", "eventId": "s1", "elapsedMs": 100 },
-          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "Today", "eventId": "t1", "elapsedMs": 150 },
-          { "at": 0.2, "kind": "sourceDelta", "lane": "en", "text": " meeting", "eventId": "s2", "elapsedMs": 200 },
-          { "at": 0.3, "kind": "translationDelta", "lane": "ja", "text": "会議", "eventId": "j1", "elapsedMs": 250 }
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "今日は",
+            "eventId": "s1",
+            "elapsedMs": 100
+          },
+          {
+            "at": 0.1,
+            "kind": "translationDelta",
+            "lane": "en",
+            "text": "Today",
+            "eventId": "t1",
+            "elapsedMs": 150
+          },
+          {
+            "at": 0.2,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": " meeting",
+            "eventId": "s2",
+            "elapsedMs": 200
+          },
+          {
+            "at": 0.3,
+            "kind": "translationDelta",
+            "lane": "ja",
+            "text": "会議",
+            "eventId": "j1",
+            "elapsedMs": 250
+          }
         ],
         "expectedFinal": {
           "sourceText": "今日は meeting",
@@ -247,8 +548,22 @@
         "epoch": 1,
         "expectLane": "en",
         "steps": [
-          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "Hi", "eventId": "s1", "elapsedMs": 5 },
-          { "at": 0.1, "kind": "sourceDelta", "lane": "en", "text": " there", "eventId": "s2", "elapsedMs": 5 }
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "Hi",
+            "eventId": "s1",
+            "elapsedMs": 5
+          },
+          {
+            "at": 0.1,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": " there",
+            "eventId": "s2",
+            "elapsedMs": 5
+          }
         ],
         "expectedFinal": {
           "sourceText": "Hi there",
@@ -262,13 +577,59 @@
         "epoch": 1,
         "expectLane": "en",
         "steps": [
-          { "at": 0, "kind": "sourceDelta", "lane": "en", "text": "こんにちは。", "eventId": "s1", "elapsedMs": 1 },
-          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "Hello.", "eventId": "t1", "elapsedMs": 2 },
-          { "at": 0.5, "kind": "tick" }
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "こんにちは。",
+            "eventId": "s1",
+            "elapsedMs": 1
+          },
+          {
+            "at": 0.1,
+            "kind": "translationDelta",
+            "lane": "en",
+            "text": "Hello.",
+            "eventId": "t1",
+            "elapsedMs": 2
+          },
+          {
+            "at": 0.5,
+            "kind": "tick"
+          }
         ],
         "expectedFinal": {
           "sourceText": "こんにちは。",
           "translatedText": "Hello.",
+          "isTranslationCurrent": true,
+          "shouldFinalize": false
+        }
+      },
+      {
+        "name": "spanish translation lane is selected explicitly",
+        "epoch": 1,
+        "expectLane": "es",
+        "steps": [
+          {
+            "at": 0,
+            "kind": "sourceDelta",
+            "lane": "source",
+            "text": "こんにちは",
+            "eventId": "s-es",
+            "elapsedMs": 100
+          },
+          {
+            "at": 0.2,
+            "kind": "translationDelta",
+            "lane": "es",
+            "text": "Hola",
+            "eventId": "t-es",
+            "elapsedMs": 200
+          }
+        ],
+        "expectedFinal": {
+          "sourceText": "こんにちは",
+          "translatedText": "Hola",
           "isTranslationCurrent": true,
           "shouldFinalize": false
         }
