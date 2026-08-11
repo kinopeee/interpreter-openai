@@ -54,6 +54,20 @@ public sealed class LanguageFixtureTests
                 SpokenLanguageDetector.EnEsWindow));
     }
 
+    // Given: 非 BMP 文字を含む単語境界
+    // When: en-es の recent evidence を評価する
+    // Then: UTF-16 の下位サロゲートを Rune として誤読せず判定できる
+    [Fact]
+    public void RecentEvidenceHandlesNonBmpTextBeforeWord()
+    {
+        var evidence = SpokenLanguageDetector.RecentEvidence(
+            "😀hola",
+            LanguagePair.EnEs,
+            window: 1);
+
+        Assert.Equal(SpokenLanguageEvidence.AmbiguousLatin, evidence);
+    }
+
     // Given: fixture の日英混在・曖昧・不明テキスト
     // When: 言語証拠を集計し言語を判定する
     // Then: 期待する証拠と検出結果になる

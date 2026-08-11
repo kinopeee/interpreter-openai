@@ -230,13 +230,12 @@ public static class SpokenLanguageDetector
         var start = words[^window].Start;
         while (start > 0)
         {
-            var rune = Rune.GetRuneAt(text, start - 1);
-            if (rune.Value is not ('¿' or '¡'))
+            if (text[start - 1] is not ('¿' or '¡'))
             {
                 break;
             }
 
-            start -= rune.Utf16SequenceLength;
+            start -= 1;
         }
 
         return start;
