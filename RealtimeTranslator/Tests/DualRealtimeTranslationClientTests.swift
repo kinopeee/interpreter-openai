@@ -602,6 +602,51 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         XCTAssertTrue(sourceTexts.contains("drain前の原文"))
     }
 
+    func testStopDrainIgnoresOutputAudioAndKeepsTranscript() async throws {
+        // Given: stop drain 武装済み。Windows DropOldest 相当の洪水でも訳文を守る
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        await dual.beginStopDrainCapture()
+
+        // When: output_audio.delta 洪水のあと訳文 delta が届く
+        for _ in 0..<300 {
+            try await englishTransport.enqueueJSON([
+                "type": "session.output_audio.delta",
+                "delta": "AAAA",
+            ])
+        }
+        try await englishTransport.enqueueJSON([
+            "type": "session.output_transcript.delta",
+            "delta": "drain survivor",
+            "event_id": "drain-1",
+        ])
+        try await Task.sleep(nanoseconds: 80_000_000)
+        let drained = await dual.closeGracefully()
+
+        // Then: 音声は drain に載らず、訳文だけが残る
+        XCTAssertFalse(drained.contains { event in
+            if case .outputAudioDelta = event.event { return true }
+            return false
+        })
+        let translations = drained.compactMap { event -> String? in
+            guard case .outputTranscriptDelta(let delta, _, _) = event.event else { return nil }
+            return delta
+        }
+        XCTAssertTrue(translations.contains("drain survivor"))
+    }
+
     func testWaitForTranslationDrainTimesOutWhenSendStalls() async throws {
         // Given: 翻訳送信が完了しないdual（言語判定済みで翻訳laneへ流れる）
         let sourceTransport = FakeRealtimeWebSocketTransport()

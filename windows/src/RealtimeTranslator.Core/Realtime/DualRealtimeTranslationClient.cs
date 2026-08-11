@@ -632,21 +632,31 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             writer = _events.Writer;
         }
 
-        var readers = new[]
-        {
-            _sourceConnection.Events,
-            _englishConnection.Events,
-            _japaneseConnection.Events,
-        };
-
         _mergeTask = Task.Run(
             async () =>
             {
-                var pumps = new Task[readers.Length];
-                for (var index = 0; index < readers.Length; index += 1)
+                // 原文 connection だけ input transcript を通し、翻訳側は接続フィルタと二重化する。
+                var pumps = new[]
                 {
-                    pumps[index] = MergeOneAsync(readers[index], writer, epoch, token);
-                }
+                    MergeOneAsync(
+                        _sourceConnection.Events,
+                        writer,
+                        epoch,
+                        acceptInputTranscript: true,
+                        token),
+                    MergeOneAsync(
+                        _englishConnection.Events,
+                        writer,
+                        epoch,
+                        acceptInputTranscript: false,
+                        token),
+                    MergeOneAsync(
+                        _japaneseConnection.Events,
+                        writer,
+                        epoch,
+                        acceptInputTranscript: false,
+                        token),
+                };
 
                 await Task.WhenAll(pumps).ConfigureAwait(false);
 
@@ -663,6 +673,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         ChannelReader<RealtimeTranslationStreamEvent> reader,
         ChannelWriter<RealtimeTranslationStreamEvent> writer,
         int epoch,
+        bool acceptInputTranscript,
         CancellationToken cancellationToken)
     {
         try
@@ -672,6 +683,19 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                 if (ConnectionEpoch != epoch)
                 {
                     return;
+                }
+
+                // MVP は翻訳音声を再生しない。念のため merge でも落とす（接続側のフィルタと二重化）。
+                if (streamEvent.Event is RealtimeTranslationServerEvent.OutputAudioDelta)
+                {
+                    continue;
+                }
+
+                // 翻訳接続の input_transcript は原文 authority にしない。
+                if (!acceptInputTranscript
+                    && streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta)
+                {
+                    continue;
                 }
 
                 // Dual 側の epoch で貼り直し、接続内部の epoch と揃える。
