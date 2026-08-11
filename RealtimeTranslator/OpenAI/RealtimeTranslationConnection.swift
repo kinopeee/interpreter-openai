@@ -26,6 +26,16 @@ struct RealtimeTranslationStreamEvent: Sendable, Equatable {
         self.event = event
         self.epoch = epoch
     }
+
+    init(
+        lane: RealtimeTranslationLane,
+        event: RealtimeTranslationServerEvent,
+        epoch: Int
+    ) {
+        self.lane = lane
+        self.event = event
+        self.epoch = epoch
+    }
 }
 
 actor RealtimeTranslationConnection {

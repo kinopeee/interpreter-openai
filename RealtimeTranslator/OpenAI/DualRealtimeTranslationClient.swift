@@ -178,6 +178,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         }
         guard selectedTranslationTarget != target else { return }
         selectedTranslationTarget = target
+        guard let target else { return }
         // 旧target向けの未送信frameは破棄し、rolling prerollを新targetへflushする。
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         let preroll = translationPrerollFrames

@@ -216,7 +216,7 @@ struct RealtimeSubtitleAssembler: Sendable {
     }
 
     private mutating func evaluateFinalize(now: Date) -> RealtimeSubtitleUpdate? {
-        guard !sourceText.isEmpty, let selectedLane else { return nil }
+        guard !sourceText.isEmpty, selectedLane != nil else { return nil }
         let translation = currentTranslation
         guard !translation.isEmpty else { return nil }
 
