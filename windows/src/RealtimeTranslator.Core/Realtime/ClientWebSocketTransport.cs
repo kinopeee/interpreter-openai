@@ -11,6 +11,9 @@ namespace RealtimeTranslator.Core.Realtime;
 /// <summary><see cref="ClientWebSocket"/> による本番 transport。送信は無期限待ちしないよう timeout を掛ける。</summary>
 public sealed class ClientWebSocketTransport : IRealtimeWebSocketTransport, IDisposable
 {
+    /// <summary>1 メッセージの累積上限。字幕記録の 10 MB 上限に揃え、巨大応答による OOM を防ぐ。</summary>
+    public const int MaxMessageBytes = 10 * 1024 * 1024;
+
     private static readonly TimeSpan DefaultSendTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DefaultConnectTimeout = TimeSpan.FromSeconds(30);
 
@@ -126,6 +129,7 @@ public sealed class ClientWebSocketTransport : IRealtimeWebSocketTransport, IDis
                         RealtimeTranslationErrorKind.RecoverableTransportFailure);
                 }
 
+                EnsureWithinMessageLimit(message.WrittenCount, result.Count);
                 message.Write(buffer.AsSpan(0, result.Count));
                 if (result.EndOfMessage)
                 {
@@ -169,6 +173,16 @@ public sealed class ClientWebSocketTransport : IRealtimeWebSocketTransport, IDis
         }
 
         _sendGate.Dispose();
+    }
+
+    /// <summary>上限超過は確保・parse 前に回復可能な transport error として捨てる。</summary>
+    internal static void EnsureWithinMessageLimit(int writtenCount, int incomingCount)
+    {
+        if (incomingCount > MaxMessageBytes - writtenCount)
+        {
+            throw new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.RecoverableTransportFailure);
+        }
     }
 
     private ClientWebSocket RequireSocket()

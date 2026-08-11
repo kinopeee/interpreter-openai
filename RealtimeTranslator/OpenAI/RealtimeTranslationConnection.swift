@@ -221,12 +221,18 @@ actor RealtimeTranslationConnection {
                 )
             }
             #endif
+            // MVP は翻訳音声を再生しない。AsyncStream(bufferingNewest) へ入れると
+            // Stop の close-drain 待ちで字幕 delta が落ちうるので受信カウントのみにする。
+            return
         case .inputTranscriptDelta:
             #if DEBUG
             AppLogger.realtime.notice(
                 "DBG_TRANSCRIPT_EVENT target=\(self.target.rawValue, privacy: .public) kind=input epoch=\(currentEpoch, privacy: .public)"
             )
             #endif
+            // 翻訳接続の input_transcript は原文 authority にしない（専用 transcription のみ）。
+            // target=en 翻訳セッションの delta を通すと assembler が原文として取り込む。
+            return
         case .outputTranscriptDelta:
             #if DEBUG
             AppLogger.realtime.notice(

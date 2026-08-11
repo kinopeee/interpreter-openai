@@ -385,6 +385,10 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                     let stream = await englishConnection.events
                     for await event in stream {
                         guard await self.connectionEpoch == epoch else { return }
+                        // 翻訳接続の input_transcript は原文 authority にしない（接続側フィルタと二重化）。
+                        if case .inputTranscriptDelta = event.event {
+                            continue
+                        }
                         // Dual側のepochで再ラベルし、接続内部epochと揃える。
                         await self.forwardMergedEvent(
                             RealtimeTranslationStreamEvent(
@@ -399,6 +403,9 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                     let stream = await japaneseConnection.events
                     for await event in stream {
                         guard await self.connectionEpoch == epoch else { return }
+                        if case .inputTranscriptDelta = event.event {
+                            continue
+                        }
                         await self.forwardMergedEvent(
                             RealtimeTranslationStreamEvent(
                                 target: event.target,
@@ -417,6 +424,10 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     }
 
     private func forwardMergedEvent(_ event: RealtimeTranslationStreamEvent) {
+        // 接続側で落とすのが正攻法だが、stopDrainBuffer のメモリ肥大も防ぐ。
+        if case .outputAudioDelta = event.event {
+            return
+        }
         if stopDrainBuffer != nil {
             stopDrainBuffer?.append(event)
         }
