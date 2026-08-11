@@ -23,6 +23,10 @@ final class InterpretationSession {
     private static let initialReconnectDelayNanoseconds: UInt64 = 500_000_000
     /// 録音停止後、最後の字幕ペアを読み取れるよう残す時間。
     static let defaultPostStopSubtitleRetentionNanoseconds: UInt64 = 5_000_000_000
+    /// ルーティング判定用に保持する原文の上限 (UTF-16)。
+    /// 通常は末尾の非空白 scalar ウィンドウへ切り詰めるが、ウィンドウ内の空白が異常に長い場合の
+    /// 安全弁として使い、空白 run を圧縮してこの長さへ収める。
+    static let routingSourceTextMaxLength = 16 * SpokenLanguageDetector.recentEvidenceWindow
 
     weak var delegate: InterpretationSessionDelegate?
 
@@ -57,6 +61,14 @@ final class InterpretationSession {
     private var reconnectAttempt = 0
     private var routingSourceText = ""
     private var routedSpokenLanguage = SpokenLanguage.unknown
+
+    /// テスト用。generation 確認後・assembler 更新前に差し込む。
+    var beforeAssemblerIngestForTests: (() -> Void)?
+
+    /// テスト用。ルーティング判定バッファの保持長 (UTF-16)。
+    var routingSourceTextLengthForTests: Int {
+        routingSourceText.utf16.count
+    }
 
     init(
         apiKeyStore: any APIKeyStore,
@@ -366,6 +378,7 @@ final class InterpretationSession {
                 try await updateAudioRouting(withSourceDelta: delta)
             }
 
+            beforeAssemblerIngestForTests?()
             if let update = assembler.ingest(streamEvent) {
                 #if DEBUG
                 AppLogger.session.notice(
@@ -531,7 +544,7 @@ final class InterpretationSession {
     }
 
     private func updateAudioRouting(withSourceDelta delta: String) async throws {
-        routingSourceText += delta
+        routingSourceText = Self.trimRoutingSourceText(routingSourceText + delta)
         let evidence = SpokenLanguageDetector.recentEvidence(in: routingSourceText)
 
         if routedSpokenLanguage == .unknown {
@@ -566,10 +579,60 @@ final class InterpretationSession {
             enqueueRender(finalized)
         }
         await resetAudioRoutingForNextSegment()
-        routingSourceText = delta
+        routingSourceText = Self.trimRoutingSourceText(delta)
         routedSpokenLanguage = flipped
         assembler.expectLane(Self.expectedTranslationLane(for: flipped))
         try await dualClient.setSpokenLanguage(flipped)
+    }
+
+    /// `SpokenLanguageDetector.recentEvidence` と同じ末尾非空白 scalar ウィンドウを残す。
+    /// ウィンドウ内の空白が異常に長く上限を超える場合だけ空白 run を U+0020 1 個へ圧縮する。
+    static func trimRoutingSourceText(_ text: String) -> String {
+        guard !text.isEmpty else { return text }
+        let window = recentEvidenceWindowSubstring(
+            text,
+            window: SpokenLanguageDetector.recentEvidenceWindow
+        )
+        if window.utf16.count <= routingSourceTextMaxLength {
+            return window
+        }
+        return collapseWhitespaceRuns(window)
+    }
+
+    /// 末尾から空白以外の Unicode scalar を `window` 個含む範囲の部分文字列。
+    private static func recentEvidenceWindowSubstring(_ text: String, window: Int) -> String {
+        guard window > 0, !text.isEmpty else { return text }
+        let scalars = text.unicodeScalars
+        var nonWhitespaceCount = 0
+        var start = scalars.endIndex
+        while start > scalars.startIndex, nonWhitespaceCount < window {
+            start = scalars.index(before: start)
+            if !CharacterSet.whitespacesAndNewlines.contains(scalars[start]) {
+                nonWhitespaceCount += 1
+            }
+        }
+        guard nonWhitespaceCount > 0 else { return "" }
+        return String(scalars[start...])
+    }
+
+    /// 連続する空白 scalar を U+0020 1 個へ潰す。ラテン語境界を残しつつ保持長を抑える。
+    private static func collapseWhitespaceRuns(_ text: String) -> String {
+        var collapsed = ""
+        collapsed.reserveCapacity(min(text.utf16.count, routingSourceTextMaxLength))
+        var previousWasWhitespace = false
+        for scalar in text.unicodeScalars {
+            if CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                if previousWasWhitespace {
+                    continue
+                }
+                previousWasWhitespace = true
+                collapsed.unicodeScalars.append(" ")
+                continue
+            }
+            previousWasWhitespace = false
+            collapsed.unicodeScalars.append(scalar)
+        }
+        return collapsed
     }
 
     private static func expectedTranslationLane(
