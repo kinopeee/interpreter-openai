@@ -96,9 +96,16 @@
     {
       "name": "ja-es latin words are spanish",
       "pair": "ja-es",
-      "input": "こんにちは mundo ahora",
+      "input": "mundo ahora",
       "evidence": "spanish",
       "detect": "spanish"
+    },
+    {
+      "name": "ja-es cjk is japanese",
+      "pair": "ja-es",
+      "input": "こんにちは mundo",
+      "evidence": "japanese",
+      "detect": "japanese"
     }
   ],
   "recentEvidence": [
@@ -143,6 +150,22 @@
       "window": 16,
       "expected": "english",
       "fullEvidence": "english"
+    },
+    {
+      "name": "en-es trailing eight spanish words ignore earlier english",
+      "pair": "en-es",
+      "input": "the and is are of to it that el la los las es está que y",
+      "window": 8,
+      "expected": "spanish",
+      "fullEvidence": "spanish"
+    },
+    {
+      "name": "en-es trailing eight english words ignore earlier spanish",
+      "pair": "en-es",
+      "input": "el la los las es está que y the and is are of to it that",
+      "window": 8,
+      "expected": "english",
+      "fullEvidence": "spanish"
     }
   ],
   "targets": [
@@ -152,6 +175,7 @@
     { "pair": "ja-es", "language": "japanese", "translationTarget": "es", "counterpart": "spanish" },
     { "pair": "ja-es", "language": "spanish", "translationTarget": "ja", "counterpart": "japanese" },
     { "pair": "en-es", "language": "english", "translationTarget": "es", "counterpart": "spanish" },
-    { "pair": "en-es", "language": "spanish", "translationTarget": "en", "counterpart": "english" }
+    { "pair": "en-es", "language": "spanish", "translationTarget": "en", "counterpart": "english" },
+    { "pair": "ja-en", "language": "spanish", "translationTarget": null, "counterpart": "unknown" }
   ]
 }

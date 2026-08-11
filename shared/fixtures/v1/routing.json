@@ -190,35 +190,75 @@
         "sourceFrames": ["f1", "f2", "f3"],
         "frames": { "en": [], "es": ["f1", "f2", "f3"] }
       }
+    }
+  ],
+  "targetSelection": [
+    {
+      "name": "en-es initial spanish evidence selects spanish immediately",
+      "pair": "en-es",
+      "evidence": [
+        { "evidence": "spanish", "expectedTarget": "en" }
+      ]
     },
     {
       "name": "en-es one reverse evidence does not switch target",
       "pair": "en-es",
-      "steps": [
-        { "kind": "selectTranslationTarget", "target": "es" },
-        { "kind": "evaluateEvidence", "evidence": "english" },
-        { "kind": "appendFrame", "frame": "still-es" }
-      ],
-      "expected": {
-        "sourceFrames": ["still-es"],
-        "frames": { "en": [], "es": ["still-es"] },
-        "selectedTarget": "es"
-      }
+      "initialTarget": "es",
+      "evidence": [
+        { "evidence": "english", "expectedTarget": "es" }
+      ]
     },
     {
       "name": "en-es two consecutive reverse evidence switches target",
       "pair": "en-es",
-      "steps": [
-        { "kind": "selectTranslationTarget", "target": "es" },
-        { "kind": "evaluateEvidence", "evidence": "english" },
-        { "kind": "evaluateEvidence", "evidence": "english" },
-        { "kind": "appendFrame", "frame": "now-en" }
-      ],
-      "expected": {
-        "sourceFrames": ["now-en"],
-        "frames": { "en": ["now-en"], "es": [] },
-        "selectedTarget": "en"
-      }
+      "initialTarget": "es",
+      "evidence": [
+        { "evidence": "english", "expectedTarget": "es" },
+        { "evidence": "english", "expectedTarget": "en" }
+      ]
+    },
+    {
+      "name": "en-es ambiguous evidence resets reverse counter",
+      "pair": "en-es",
+      "initialTarget": "es",
+      "evidence": [
+        { "evidence": "english", "expectedTarget": "es" },
+        { "evidence": "ambiguousLatin", "expectedTarget": "es" },
+        { "evidence": "english", "expectedTarget": "es" },
+        { "evidence": "english", "expectedTarget": "en" }
+      ]
+    },
+    {
+      "name": "ja-en one reverse evidence switches immediately",
+      "pair": "ja-en",
+      "initialTarget": "en",
+      "evidence": [
+        { "evidence": "english", "expectedTarget": "en" },
+        { "evidence": "japanese", "expectedTarget": "ja" }
+      ]
+    },
+    {
+      "name": "ja-es one reverse evidence switches immediately",
+      "pair": "ja-es",
+      "initialTarget": "es",
+      "evidence": [
+        { "evidence": "spanish", "expectedTarget": "es" },
+        { "evidence": "japanese", "expectedTarget": "ja" }
+      ]
+    },
+    {
+      "name": "ja-en initial ambiguous latin uses special case",
+      "pair": "ja-en",
+      "evidence": [
+        { "evidence": "ambiguousLatin", "expectedTarget": "en" }
+      ]
+    },
+    {
+      "name": "ja-es initial ambiguous latin uses special case",
+      "pair": "ja-es",
+      "evidence": [
+        { "evidence": "ambiguousLatin", "expectedTarget": "es" }
+      ]
     }
   ],
   "prerollWindow": {
