@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -39,8 +41,9 @@ public sealed class InterpretationSession : IDisposable
     public const int MaxReconnectAttempts = 5;
 
     /// <summary>
-    /// ルーティング判定用に保持する原文の上限 (UTF-16 char)。判定は末尾ウィンドウだけを見るため、
-    /// それを十分に覆う長さで打ち切る。サーバ delta が反転を起こさないまま流れ続けても無制限に伸びない。
+    /// ルーティング判定用に保持する原文の上限 (UTF-16 char)。
+    /// 通常は末尾の非空白 scalar ウィンドウへ切り詰めるが、ウィンドウ内の空白が異常に長い場合の
+    /// 安全弁として使い、空白 run を圧縮してこの長さへ収める。
     /// </summary>
     internal const int RoutingSourceTextMaxLength = 16 * SpokenLanguageDetector.RecentEvidenceWindow;
 
@@ -661,21 +664,86 @@ public sealed class InterpretationSession : IDisposable
         }
     }
 
-    /// <summary>末尾の判定ウィンドウを残して保持長を上限へ切り詰める。サロゲートペアは割らない。</summary>
+    /// <summary>
+    /// <see cref="SpokenLanguageDetector.RecentEvidence"/> と同じ末尾非空白 scalar ウィンドウを残す。
+    /// ウィンドウ内の空白が異常に長く上限を超える場合だけ空白 run を U+0020 1 個へ圧縮し、語境界を保ったまま収める。
+    /// </summary>
     private static string TrimRoutingSourceText(string text)
     {
-        if (text.Length <= RoutingSourceTextMaxLength)
+        if (text.Length == 0)
         {
             return text;
         }
 
-        var start = text.Length - RoutingSourceTextMaxLength;
-        if (char.IsLowSurrogate(text[start]))
+        var start = RecentEvidenceWindowStart(text, SpokenLanguageDetector.RecentEvidenceWindow);
+        var window = text[start..];
+        if (window.Length <= RoutingSourceTextMaxLength)
         {
-            start += 1;
+            return window;
         }
 
-        return text[start..];
+        return CollapseWhitespaceRuns(window);
+    }
+
+    /// <summary>
+    /// 末尾から空白以外の Unicode scalar を <paramref name="window"/> 個含む範囲の開始 UTF-16 オフセット。
+    /// <see cref="SpokenLanguageDetector.RecentEvidence"/> と同じ走査契約。
+    /// </summary>
+    private static int RecentEvidenceWindowStart(string text, int window)
+    {
+        if (window <= 0 || text.Length == 0)
+        {
+            return 0;
+        }
+
+        var starts = new List<int>(text.Length);
+        var offset = 0;
+        while (offset < text.Length)
+        {
+            starts.Add(offset);
+            offset += Rune.GetRuneAt(text, offset).Utf16SequenceLength;
+        }
+
+        var nonWhitespaceCount = 0;
+        var position = starts.Count;
+        var start = 0;
+        while (position > 0 && nonWhitespaceCount < window)
+        {
+            position -= 1;
+            start = starts[position];
+            if (!Rune.IsWhiteSpace(Rune.GetRuneAt(text, start)))
+            {
+                nonWhitespaceCount += 1;
+            }
+        }
+
+        return start;
+    }
+
+    /// <summary>連続する空白 scalar を U+0020 1 個へ潰す。ラテン語境界を残しつつ保持長を抑える。</summary>
+    private static string CollapseWhitespaceRuns(string text)
+    {
+        var builder = new StringBuilder(Math.Min(text.Length, RoutingSourceTextMaxLength));
+        var previousWasWhitespace = false;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (Rune.IsWhiteSpace(rune))
+            {
+                if (previousWasWhitespace)
+                {
+                    continue;
+                }
+
+                previousWasWhitespace = true;
+                builder.Append(' ');
+                continue;
+            }
+
+            previousWasWhitespace = false;
+            builder.Append(rune.ToString());
+        }
+
+        return builder.ToString();
     }
 
     private async Task ResetAudioRoutingForNextSegmentAsync()
