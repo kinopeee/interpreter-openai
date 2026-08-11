@@ -37,8 +37,8 @@ public sealed record AppSettingsData(
         AcceptedConsentVersion: 0,
         RealtimeSessionTuning.DefaultPrompt,
         RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywords),
-            RealtimeTranslationNoiseReduction.FarField,
-            RealtimeTranscriptionDelay.Low,
+        RealtimeTranslationNoiseReduction.FarField,
+        RealtimeTranscriptionDelay.Low,
         RecordSubtitles: false,
         LanguagePair.JaEn);
 

@@ -199,6 +199,36 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 初回の日本語原文 delta
+    // When: 初回 target を選択する
+    // Then: 言語切替 finalize を実行せず、初回 routing を開始する
+    [Fact]
+    public async Task InitialJapaneseDetectionDoesNotFinalize()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        client.PublishSourceDelta("こんにちは、初回です");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
+
+        await session.StopAsync();
+    }
+
     // Given: 英語の原文 delta と日本語 lane の訳文
     // When: 原文と訳文が揃う
     // Then: 原文 authority と訳文をペアにした字幕を発行する

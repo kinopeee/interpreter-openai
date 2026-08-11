@@ -19,7 +19,7 @@ public static class SpokenLanguageDetector
     public static readonly ImmutableArray<string> EnglishExclusiveWords =
         ["the", "and", "is", "are", "of", "to", "it", "that", "this", "with", "for", "you", "they"];
 
-    public static SpokenLanguage Detect(string text, LanguagePair pair = LanguagePair.JaEn) =>
+    public static SpokenLanguage Detect(string text, LanguagePair pair) =>
         Evidence(text, pair) switch
     {
         SpokenLanguageEvidence.Japanese => SpokenLanguage.Japanese,
@@ -35,7 +35,7 @@ public static class SpokenLanguageDetector
     /// </summary>
     public static SpokenLanguageEvidence RecentEvidence(
         string text,
-        LanguagePair pair = LanguagePair.JaEn,
+        LanguagePair pair,
         int? window = null)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -48,10 +48,12 @@ public static class SpokenLanguageDetector
 
         if (pair == LanguagePair.EnEs)
         {
-            var words = TokenizeWords(text);
+            var words = TokenizeWordSpans(text);
             return words.Count <= effectiveWindow
                 ? Evidence(text, pair)
-                : Evidence(string.Join(' ', words.TakeLast(effectiveWindow)), pair);
+                : Evidence(
+                    text[WordWindowStart(text, words, effectiveWindow)..words[^1].End],
+                    pair);
         }
 
         var starts = ScalarStarts(text);
@@ -71,12 +73,9 @@ public static class SpokenLanguageDetector
         return nonWhitespaceCount == 0 ? SpokenLanguageEvidence.None : Evidence(text[start..], pair);
     }
 
-    public static SpokenLanguageEvidence RecentEvidence(string text, int window) =>
-        RecentEvidence(text, LanguagePair.JaEn, window);
-
     public static SpokenLanguageEvidence Evidence(
         string text,
-        LanguagePair pair = LanguagePair.JaEn)
+        LanguagePair pair)
     {
         ArgumentNullException.ThrowIfNull(text);
 
@@ -195,10 +194,60 @@ public static class SpokenLanguageDetector
         return words;
     }
 
+    private static List<(int Start, int End)> TokenizeWordSpans(string text)
+    {
+        var words = new List<(int Start, int End)>();
+        var start = -1;
+        var index = 0;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (IsLatinWordRune(rune))
+            {
+                start = start < 0 ? index : start;
+            }
+            else if (start >= 0)
+            {
+                words.Add((start, index));
+                start = -1;
+            }
+
+            index += rune.Utf16SequenceLength;
+        }
+
+        if (start >= 0)
+        {
+            words.Add((start, text.Length));
+        }
+
+        return words;
+    }
+
+    private static int WordWindowStart(
+        string text,
+        List<(int Start, int End)> words,
+        int window)
+    {
+        var start = words[^window].Start;
+        while (start > 0)
+        {
+            var rune = Rune.GetRuneAt(text, start - 1);
+            if (rune.Value is not ('¿' or '¡'))
+            {
+                break;
+            }
+
+            start -= rune.Utf16SequenceLength;
+        }
+
+        return start;
+    }
+
     private static bool IsLatinWordRune(Rune rune) =>
         rune.Value is >= 0x0041 and <= 0x005A
             or >= 0x0061 and <= 0x007A
-            or >= 0x00C0 and <= 0x00FF;
+            or >= 0x00C0 and <= 0x00D6
+            or >= 0x00D8 and <= 0x00F6
+            or >= 0x00F8 and <= 0x00FF;
 
     /// <summary>Unicode scalar 単位で末尾から走査するための開始 UTF-16 オフセット列。</summary>
     private static List<int> ScalarStarts(string text)

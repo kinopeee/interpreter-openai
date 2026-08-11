@@ -47,7 +47,10 @@ public static class TranslationTargetSelector
             && isInitial
             && pair != LanguagePair.EnEs)
         {
-            return pair.TranslationTarget(pair.Languages()[1]);
+            var latinLanguage = pair.Counterpart(SpokenLanguage.Japanese);
+            return latinLanguage is { } language
+                ? pair.TranslationTarget(language)
+                : null;
         }
 
         return evidence switch

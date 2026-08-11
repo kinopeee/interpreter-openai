@@ -40,6 +40,20 @@ public sealed class LanguageFixtureTests
             SpokenLanguageDetector.EnglishExclusiveWords);
     }
 
+    // Given: 長い英語列の後ろにスペイン語の逆疑問文がある
+    // When: en-es の8語窓で recent evidence を求める
+    // Then: 窓の句読点を保持して spanish を即時確定する
+    [Fact]
+    public void EnEsRecentEvidencePreservesInvertedPunctuation()
+    {
+        Assert.Equal(
+            SpokenLanguageEvidence.Spanish,
+            SpokenLanguageDetector.RecentEvidence(
+                "the and is are this with for ¿Dónde estás?",
+                LanguagePair.EnEs,
+                SpokenLanguageDetector.EnEsWindow));
+    }
+
     // Given: fixture の日英混在・曖昧・不明テキスト
     // When: 言語証拠を集計し言語を判定する
     // Then: 期待する証拠と検出結果になる

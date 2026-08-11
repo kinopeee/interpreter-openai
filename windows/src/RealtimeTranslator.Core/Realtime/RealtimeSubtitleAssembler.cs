@@ -29,9 +29,21 @@ public sealed class RealtimeSubtitleAssembler
     private RealtimeTranslationOutputLanguage? _selectedLane;
     private RealtimeTranslationOutputLanguage? _expectedLane;
     private readonly HashSet<string> _seenEventIds = new(StringComparer.Ordinal);
+    private readonly Func<LanguagePair> _languagePairProvider;
     private DateTimeOffset _lastActivityAt = DateTimeOffset.MinValue;
     private int? _finalizedCutoffElapsedMs;
     private bool _awaitingSourceAfterFinalize;
+
+    public RealtimeSubtitleAssembler(LanguagePair languagePair = LanguagePair.JaEn)
+        : this(() => languagePair)
+    {
+    }
+
+    public RealtimeSubtitleAssembler(Func<LanguagePair> languagePairProvider)
+    {
+        ArgumentNullException.ThrowIfNull(languagePairProvider);
+        _languagePairProvider = languagePairProvider;
+    }
 
     public void Reset(int epoch)
     {
@@ -203,7 +215,9 @@ public sealed class RealtimeSubtitleAssembler
         }
 
         // 補助: 原文の文字種。
-        _selectedLane = LanguagePair.JaEn.TranslationTarget(SpokenLanguageDetector.Detect(_sourceText));
+        var pair = _languagePairProvider();
+        _selectedLane = pair.TranslationTarget(
+            SpokenLanguageDetector.Detect(_sourceText, pair));
     }
 
     private RealtimeSubtitleUpdate? EvaluateFinalize(DateTimeOffset now)

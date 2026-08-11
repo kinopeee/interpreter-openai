@@ -58,7 +58,7 @@ public sealed class InterpretationSession : IDisposable
     private readonly TimeSpan _initialReconnectDelay;
     private readonly TimeSpan _tickInterval;
     private readonly Func<LanguagePair> _languagePairProvider;
-    private readonly RealtimeSubtitleAssembler _assembler = new();
+    private readonly RealtimeSubtitleAssembler _assembler;
     private readonly object _sync = new();
     private readonly SemaphoreSlim _routingGate = new(1, 1);
 
@@ -94,7 +94,6 @@ public sealed class InterpretationSession : IDisposable
         TimeProvider? timeProvider = null,
         TimeSpan? initialReconnectDelay = null,
         TimeSpan? tickInterval = null,
-        LanguagePair languagePair = LanguagePair.JaEn,
         Func<LanguagePair>? languagePairProvider = null)
     {
         ArgumentNullException.ThrowIfNull(apiKeyStore);
@@ -108,7 +107,8 @@ public sealed class InterpretationSession : IDisposable
         _timeProvider = timeProvider ?? TimeProvider.System;
         _initialReconnectDelay = initialReconnectDelay ?? DefaultInitialReconnectDelay;
         _tickInterval = tickInterval ?? DefaultTickInterval;
-        _languagePairProvider = languagePairProvider ?? (() => languagePair);
+        _languagePairProvider = languagePairProvider ?? (() => LanguagePair.JaEn);
+        _assembler = new RealtimeSubtitleAssembler(_languagePairProvider);
     }
 
     public event EventHandler<TranslationState>? StateChanged;
@@ -603,27 +603,37 @@ public sealed class InterpretationSession : IDisposable
                 currentTarget,
                 reverseEvidenceCount,
                 evidence);
+            if (currentTarget is null)
+            {
+                if (selection.Target is null)
+                {
+                    lock (_sync)
+                    {
+                        _reverseEvidenceCount = selection.ReverseEvidenceCount;
+                    }
+
+                    return;
+                }
+
+                await _dualClient.SelectTranslationTargetAsync(selection.Target, cancellationToken)
+                    .ConfigureAwait(false);
+                lock (_sync)
+                {
+                    _selectedTranslationTarget = selection.Target;
+                    _reverseEvidenceCount = selection.ReverseEvidenceCount;
+                    _assembler.ExpectLane(selection.Target);
+                }
+
+                return;
+            }
+
             if (selection.Target == currentTarget)
             {
                 lock (_sync)
                 {
                     _reverseEvidenceCount = selection.ReverseEvidenceCount;
                 }
-                if (currentTarget is null)
-                {
-                    if (selection.Target is null)
-                    {
-                        return;
-                    }
 
-                    await _dualClient.SelectTranslationTargetAsync(selection.Target, cancellationToken)
-                        .ConfigureAwait(false);
-                    lock (_sync)
-                    {
-                        _selectedTranslationTarget = selection.Target;
-                        _assembler.ExpectLane(selection.Target);
-                    }
-                }
                 return;
             }
 
