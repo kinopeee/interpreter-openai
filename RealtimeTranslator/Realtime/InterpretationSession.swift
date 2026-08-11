@@ -57,6 +57,7 @@ final class InterpretationSession {
     private var assembler = RealtimeSubtitleAssembler()
     private var reconnectAttempt = 0
     private var routingSourceText = ""
+    private var activeLanguagePair: LanguagePair?
     private var selectedTranslationTarget: RealtimeTranslationOutputLanguage?
     private var reverseEvidenceCount = 0
 
@@ -126,7 +127,7 @@ final class InterpretationSession {
     /// 録音中に設定画面から変更されたprompt/keywordsを原文セッションへ反映する。
     func applyTuningChange() async {
         guard state == .listening else { return }
-        let tuning = tuningProvider()
+        let tuning = tuningProvider().forPair(activeLanguagePair ?? .jaEn)
         do {
             try await dualClient.updateTranscriptionTuning(tuning)
         } catch {
@@ -258,9 +259,12 @@ final class InterpretationSession {
         aggregator.setStatusBanner("OpenAI Realtimeへ接続中…")
         publishSubtitles()
 
-        let tuning = tuningProvider()
         let pair = languagePairProvider()
-        try await dualClient.start(apiKey: apiKey, tuning: tuning, pair: pair)
+        try await dualClient.start(
+            apiKey: apiKey,
+            tuning: tuningProvider().forPair(pair),
+            pair: pair
+        )
         guard generation == lifecycleGeneration else {
             await dualClient.forceClose()
             return
@@ -272,6 +276,7 @@ final class InterpretationSession {
         flushPendingFinalizeIfNeeded()
         assembler.beginNewEpoch(epoch)
         routingSourceText = ""
+        activeLanguagePair = pair
         selectedTranslationTarget = nil
         reverseEvidenceCount = 0
         assembler.setLanguagePair(pair)
@@ -470,6 +475,7 @@ final class InterpretationSession {
     private func tearDownStreaming(keepSubtitles: Bool = false) async {
         await audioCapture.stop()
         await dualClient.forceClose()
+        activeLanguagePair = nil
         stopTicker()
         if !keepSubtitles {
             renderTask?.cancel()
@@ -538,7 +544,7 @@ final class InterpretationSession {
 
     private func updateAudioRouting(withSourceDelta delta: String) async throws {
         routingSourceText += delta
-        let pair = languagePairProvider()
+        guard let pair = activeLanguagePair else { return }
         let evidence = SpokenLanguageDetector.recentEvidence(
             in: routingSourceText,
             pair: pair

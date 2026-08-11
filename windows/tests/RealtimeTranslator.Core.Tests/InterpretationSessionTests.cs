@@ -465,6 +465,28 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 接続後に変更された言語ペア provider
+    // When: 録音中に原文の言語反転を検出する
+    // Then: 接続開始時のペアで routing し、provider の変更を反映しない
+    [Fact]
+    public async Task PairIsCachedForTheActiveConnection()
+    {
+        var client = new FakeDualClient();
+        var pair = LanguagePair.JaEn;
+        using var session = NewSession(client, languagePairProvider: () => pair);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("これは接続時ペアです");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count == 1);
+        pair = LanguagePair.JaEs;
+        client.PublishSourceDelta(" this remains the same pair");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count == 2);
+
+        Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
+        await session.StopAsync();
+    }
+
     // Given: 日本語 routing が確定したあとのセグメント
     // When: 末尾ウィンドウが AmbiguousLatin（ラテン 1 語）だけになる
     // Then: segment 境界として反転せず、英語 lane へ切り替えない
@@ -1335,14 +1357,16 @@ public sealed class InterpretationSessionTests
         FakeDualClient client,
         string? apiKey = "sk-test",
         Func<RealtimeSessionTuning>? tuningProvider = null,
-        FakeAudioCapture? audio = null) =>
+        FakeAudioCapture? audio = null,
+        Func<LanguagePair>? languagePairProvider = null) =>
         new(
             new FakeApiKeyStore(apiKey),
             audio ?? new FakeAudioCapture(),
             client,
             tuningProvider,
             initialReconnectDelay: TimeSpan.FromMilliseconds(1),
-            tickInterval: TimeSpan.FromMilliseconds(20));
+            tickInterval: TimeSpan.FromMilliseconds(20),
+            languagePairProvider: languagePairProvider);
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {

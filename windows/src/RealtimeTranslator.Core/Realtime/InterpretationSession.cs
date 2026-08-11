@@ -68,6 +68,7 @@ public sealed class InterpretationSession : IDisposable
     private int _reconnectAttempt;
     private TranslationState _state = TranslationState.Idle;
     private string _routingSourceText = string.Empty;
+    private LanguagePair? _activeLanguagePair;
     private RealtimeTranslationOutputLanguage? _selectedTranslationTarget;
     private int _reverseEvidenceCount;
 
@@ -108,7 +109,7 @@ public sealed class InterpretationSession : IDisposable
         _initialReconnectDelay = initialReconnectDelay ?? DefaultInitialReconnectDelay;
         _tickInterval = tickInterval ?? DefaultTickInterval;
         _languagePairProvider = languagePairProvider ?? (() => LanguagePair.JaEn);
-        _assembler = new RealtimeSubtitleAssembler(_languagePairProvider);
+        _assembler = new RealtimeSubtitleAssembler();
     }
 
     public event EventHandler<TranslationState>? StateChanged;
@@ -263,7 +264,14 @@ public sealed class InterpretationSession : IDisposable
 
         try
         {
-            await _dualClient.UpdateTranscriptionTuningAsync(_tuningProvider()).ConfigureAwait(false);
+            LanguagePair? activePair;
+            lock (_sync)
+            {
+                activePair = _activeLanguagePair;
+            }
+
+            await _dualClient.UpdateTranscriptionTuningAsync(
+                _tuningProvider().ForPair(activePair ?? LanguagePair.JaEn)).ConfigureAwait(false);
         }
         catch (RealtimeTranslationException)
         {
@@ -397,7 +405,11 @@ public sealed class InterpretationSession : IDisposable
         SetState(TranslationState.Connecting);
 
         var languagePair = _languagePairProvider();
-        await _dualClient.StartAsync(apiKey, _tuningProvider(), languagePair, cancellationToken).ConfigureAwait(false);
+        await _dualClient.StartAsync(
+            apiKey,
+            _tuningProvider().ForPair(languagePair),
+            languagePair,
+            cancellationToken).ConfigureAwait(false);
         if (!IsCurrentGeneration(generation))
         {
             await _dualClient.ForceCloseAsync().ConfigureAwait(false);
@@ -410,6 +422,8 @@ public sealed class InterpretationSession : IDisposable
         FlushPendingFinalizeIfNeeded();
         lock (_sync)
         {
+            _activeLanguagePair = languagePair;
+            _assembler.SetLanguagePair(languagePair);
             _assembler.BeginNewEpoch(epoch);
             _routingSourceText = string.Empty;
             _selectedTranslationTarget = null;
@@ -588,18 +602,25 @@ public sealed class InterpretationSession : IDisposable
         try
         {
             SpokenLanguageEvidence evidence;
+            LanguagePair activePair;
             RealtimeTranslationOutputLanguage? currentTarget;
             int reverseEvidenceCount;
             lock (_sync)
             {
                 _routingSourceText = TrimRoutingSourceText(_routingSourceText + delta);
-                evidence = SpokenLanguageDetector.RecentEvidence(_routingSourceText, _languagePairProvider());
+                if (_activeLanguagePair is not { } cachedPair)
+                {
+                    return;
+                }
+
+                activePair = cachedPair;
+                evidence = SpokenLanguageDetector.RecentEvidence(_routingSourceText, activePair);
                 currentTarget = _selectedTranslationTarget;
                 reverseEvidenceCount = _reverseEvidenceCount;
             }
 
             var selection = TranslationTargetSelector.Select(
-                _languagePairProvider(),
+                activePair,
                 currentTarget,
                 reverseEvidenceCount,
                 evidence);
@@ -777,6 +798,11 @@ public sealed class InterpretationSession : IDisposable
 
     private async Task TearDownStreamingAsync()
     {
+        lock (_sync)
+        {
+            _activeLanguagePair = null;
+        }
+
         try
         {
             await _audioCapture.StopAsync().ConfigureAwait(false);
