@@ -44,17 +44,32 @@ struct PCM16FramePacketizer: Sendable {
 
 enum PCM16LittleEndianEncoder {
     /// Float32 interleaved / non-interleaved mono buffer を PCM16 LE へ変換する。
+    ///
+    /// NaN は無音 (0) にする。`Int16(Float.nan)` は Swift で trap するため、
+    /// AGC が NaN をスキップした同一バッファをここで再走査しても録音経路を落とさない。
+    /// ±Infinity は従来どおり ±1 へクリップする。
     static func encode(
         floatSamples: UnsafePointer<Float>,
         frameCount: Int,
         gain: Float = 1
     ) -> Data {
         var data = Data(count: frameCount * 2)
+        let safeGain = gain.isFinite ? gain : 1
         data.withUnsafeMutableBytes { rawBuffer in
             let output = rawBuffer.bindMemory(to: Int16.self)
             for index in 0..<frameCount {
-                let amplified = floatSamples[index] * gain
-                let clipped = max(-1.0, min(1.0, amplified))
+                let sample = floatSamples[index]
+                if sample.isNaN {
+                    output[index] = 0
+                    continue
+                }
+                let amplified = sample * safeGain
+                if amplified.isNaN {
+                    // 例: Infinity * 0。trap を避けて無音にする。
+                    output[index] = 0
+                    continue
+                }
+                let clipped = max(-1.0 as Float, min(1.0 as Float, amplified))
                 let scaled = clipped * Float(Int16.max)
                 output[index] = Int16(scaled.rounded())
             }

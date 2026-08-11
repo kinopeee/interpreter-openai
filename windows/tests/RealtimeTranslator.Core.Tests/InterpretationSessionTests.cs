@@ -32,6 +32,78 @@ public sealed class InterpretationSessionTests
         Assert.Contains(TranslationState.Error, states);
     }
 
+    // Given: Dual client の Start が完了するまで待機できる fake
+    // When: StartAsync を呼び、Dual Start 完了前を観測する
+    // Then: Dual Start 解放後にだけ capture が始まる
+    [Fact]
+    public async Task StartDoesNotCaptureBeforeDualClientReady()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StartGate = gate;
+        using var session = NewSession(client, audio: audio);
+
+        var startTask = session.StartAsync();
+        await WaitUntilAsync(() => client.StartCount == 1);
+        Assert.Equal(0, audio.StartCallCount);
+
+        gate.SetResult();
+        client.StartGate = null;
+        await WaitUntilAsync(() => audio.StartCallCount == 1);
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        await startTask;
+
+        await session.StopAsync();
+    }
+
+    // Given: Dual Start 待ちで止まっているセッション
+    // When: Start 直後に Stop する
+    // Then: Idle に戻り、capture は開始されないか停止済みになる
+    [Fact]
+    public async Task StopDuringStartDoesNotLeaveListening()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StartGate = gate;
+        using var session = NewSession(client, audio: audio);
+
+        var startTask = session.StartAsync();
+        await WaitUntilAsync(() => client.StartCount == 1);
+
+        var stopTask = session.StopAsync();
+        await WaitUntilAsync(() =>
+            session.State is TranslationState.Closing or TranslationState.Idle);
+        client.StartGate = null;
+        gate.SetResult();
+        await stopTask;
+        await startTask;
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        Assert.False(audio.IsRunning);
+    }
+
+    // Given: 録音中のセッション
+    // When: Stop を二重に呼ぶ
+    // Then: 2 回目は no-op で Idle のまま壊れない
+    [Fact]
+    public async Task DoubleStopIsIdempotent()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        await session.StopAsync();
+        Assert.Equal(TranslationState.Idle, session.State);
+        var closeCount = client.CloseGracefullyCallCount;
+
+        await session.StopAsync();
+        Assert.Equal(TranslationState.Idle, session.State);
+        Assert.Equal(closeCount, client.CloseGracefullyCallCount);
+    }
+
     // Given: 既に Listening のセッション
     // When: StartAsync を再度呼ぶ
     // Then: Dual を二重に Start せず Listening のまま
@@ -363,6 +435,31 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 日本語 routing が確定したあとのセグメント
+    // When: 末尾ウィンドウが AmbiguousLatin（ラテン 1 語）だけになる
+    // Then: segment 境界として反転せず、英語 lane へ切り替えない
+    [Fact]
+    public async Task AmbiguousLatinDoesNotFlipEstablishedJapaneseRouting()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("これはテストですよ今日は良い天気ですね本当に");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count == 1);
+        Assert.Equal(SpokenLanguage.Japanese, client.SpokenLanguages[0]);
+
+        // 末尾ウィンドウから日本語を追い出し、ラテン 1 語だけを残す。
+        client.PublishSourceDelta("................");
+        await Task.Delay(40);
+        client.PublishSourceDelta("Tokyo");
+        await Task.Delay(80);
+
+        Assert.Equal([SpokenLanguage.Japanese], client.SpokenLanguages);
+        await session.StopAsync();
+    }
+
     // Given: Listening 中の現行 epoch
     // When: 古い epoch の原文 delta が届く
     // Then: routing も字幕も更新しない
@@ -437,6 +534,29 @@ public sealed class InterpretationSessionTests
         Assert.Equal(0, client.UpdateTranscriptionTuningCount);
     }
 
+    // Given: Listening 中に dual の tuning 更新が RealtimeTranslationException を投げる
+    // When: ApplyTuningChangeAsync する
+    // Then: 例外を握りつぶして Listening を維持し、Error へ落とさない
+    [Fact]
+    public async Task ApplyTuningChangeKeepsListeningWhenUpdateFails()
+    {
+        var client = new FakeDualClient { ThrowRealtimeOnUpdateTuning = true };
+        using var session = NewSession(client);
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        await session.ApplyTuningChangeAsync();
+        await Task.Delay(40);
+
+        Assert.Equal(TranslationState.Listening, session.State);
+        Assert.Null(message);
+        Assert.Equal(1, client.UpdateTranscriptionTuningCount);
+        await session.StopAsync();
+    }
+
     // Given: 翻訳送信の連続失敗による transport error
     // When: セッションがイベントを受け取る
     // Then: 再接続して新しい epoch で再開する
@@ -449,6 +569,43 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
         client.PublishTransportError();
+        await WaitUntilAsync(() => client.StartCount >= 2);
+
+        Assert.True(client.StartCount >= 2);
+        await session.StopAsync();
+    }
+
+    // Given: Listening 中にイベント channel が完了する
+    // When: ConsumeEventsAsync が終端を検出する
+    // Then: recoverable として再接続し、新しい epoch で再開する
+    [Fact]
+    public async Task EventChannelCompletionTriggersReconnect()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.Complete();
+        await WaitUntilAsync(() => client.StartCount >= 2);
+
+        Assert.True(client.StartCount >= 2);
+        await session.StopAsync();
+    }
+
+    // Given: Listening 中に音声 frame channel が完了する
+    // When: FeedAudioAsync が終端を検出する
+    // Then: recoverable として再接続する（次 Start で frame channel を張り直す）
+    [Fact]
+    public async Task AudioFrameChannelCompletionTriggersReconnect()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        using var session = NewSession(client, audio: audio);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        audio.Complete();
         await WaitUntilAsync(() => client.StartCount >= 2);
 
         Assert.True(client.StartCount >= 2);
@@ -1056,6 +1213,77 @@ public sealed class InterpretationSessionTests
         Assert.Equal(1, client.StartCount);
     }
 
+    // Given: Listening 中のセッション
+    // When: キー断片を含む invalid_api_key エラーが届く
+    // Then: 認証エラー文言になり、sk- や原文メッセージは MessageEncountered へ出ない
+    [Fact]
+    public async Task InvalidApiKeyRuntimeErrorDoesNotLeakKeyMaterial()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishServerError("Incorrect API key provided: sk-leak-example", "invalid_api_key");
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+        await WaitUntilAsync(() => message is not null);
+
+        Assert.Equal("OpenAI APIキーが無効です", message);
+        Assert.DoesNotContain("sk-", message, StringComparison.Ordinal);
+        Assert.Equal(1, client.StartCount);
+    }
+
+    // Given: Listening 中のセッション
+    // When: code は非認証だが文言に API キー断片が含まれる
+    // Then: 汎用エラー文言に置換され秘密情報は出ない
+    [Fact]
+    public async Task NonAuthServerErrorRedactsApiKeyLikePayload()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishServerError("Provider echo included sk-should-not-appear", "server_error");
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+        await WaitUntilAsync(() => message is not null);
+
+        Assert.Equal(RealtimeTranslationException.GenericServerMessage, message);
+        Assert.DoesNotContain("sk-", message, StringComparison.Ordinal);
+        Assert.Equal(1, client.StartCount);
+    }
+
+    // Given: Listening 中のセッション
+    // When: auth 部分文字列を含むが非認証のエラーが届く
+    // Then: 無効 API キー扱いではなく、サーバー文言経路になる
+    [Fact]
+    public async Task AuthorityLikeServerErrorIsNotTreatedAsInvalidApiKey()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishServerError(
+            "certificate authority rejected the peer (code 4010)",
+            "authority_mismatch");
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+        await WaitUntilAsync(() => message is not null);
+
+        Assert.NotEqual("OpenAI APIキーが無効です", message);
+        Assert.Equal("certificate authority rejected the peer (code 4010)", message);
+        Assert.Equal(1, client.StartCount);
+    }
+
     // Given: 翻訳とは無関係な想定外の失敗 (音声デバイス障害など)
     // When: セッション中にその例外が投げられる
     // Then: session task を落とさず再接続して録音を継続する
@@ -1076,10 +1304,11 @@ public sealed class InterpretationSessionTests
     private static InterpretationSession NewSession(
         FakeDualClient client,
         string? apiKey = "sk-test",
-        Func<RealtimeSessionTuning>? tuningProvider = null) =>
+        Func<RealtimeSessionTuning>? tuningProvider = null,
+        FakeAudioCapture? audio = null) =>
         new(
             new FakeApiKeyStore(apiKey),
-            new FakeAudioCapture(),
+            audio ?? new FakeAudioCapture(),
             client,
             tuningProvider,
             initialReconnectDelay: TimeSpan.FromMilliseconds(1),
@@ -1108,14 +1337,61 @@ public sealed class InterpretationSessionTests
 
     private sealed class FakeAudioCapture : IRealtimeAudioCapture
     {
-        private readonly Channel<ReadOnlyMemory<byte>> _frames =
+        private readonly object _sync = new();
+        private Channel<ReadOnlyMemory<byte>> _frames =
             Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
 
-        public ChannelReader<ReadOnlyMemory<byte>> Frames => _frames.Reader;
+        public int StartCallCount { get; private set; }
 
-        public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public int StopCallCount { get; private set; }
 
-        public Task StopAsync() => Task.CompletedTask;
+        public bool IsRunning { get; private set; }
+
+        public ChannelReader<ReadOnlyMemory<byte>> Frames
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _frames.Reader;
+                }
+            }
+        }
+
+        public Task StartAsync(CancellationToken cancellationToken = default)
+        {
+            lock (_sync)
+            {
+                StartCallCount += 1;
+                IsRunning = true;
+                // 再接続時に完了済み channel を使い回すと即 recoverable になるため張り直す。
+                if (_frames.Reader.Completion.IsCompleted)
+                {
+                    _frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+                }
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task StopAsync()
+        {
+            lock (_sync)
+            {
+                StopCallCount += 1;
+                IsRunning = false;
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public void Complete()
+        {
+            lock (_sync)
+            {
+                _frames.Writer.TryComplete();
+            }
+        }
     }
 
     private sealed class FakeDualClient : IDualRealtimeTranslationClient
@@ -1163,13 +1439,16 @@ public sealed class InterpretationSessionTests
 
         public bool ThrowOnNextStart { get; set; }
 
+        /// <summary>UpdateTranscriptionTuningAsync で RealtimeTranslationException を投げる。</summary>
+        public bool ThrowRealtimeOnUpdateTuning { get; set; }
+
         /// <summary>StartAsync を指定回数だけ失敗させる（再接続上限テスト用）。</summary>
         public int RemainingStartFailures { get; set; }
 
         /// <summary>CloseGracefully 時に close drain イベントを流すテスト用フック。</summary>
         public Func<Task>? OnCloseGracefully { get; set; }
 
-        /// <summary>StartAsync 入口で待つゲート（Stop 排水・Connecting 再入用）。</summary>
+        /// <summary>StartAsync 入口で待つゲート（capture 順序・Stop 排水・Connecting 再入用）。</summary>
         public TaskCompletionSource? StartGate { get; set; }
 
         public IReadOnlyList<SpokenLanguage> SpokenLanguages
@@ -1247,6 +1526,12 @@ public sealed class InterpretationSessionTests
             lock (_sync)
             {
                 UpdateTranscriptionTuningCount += 1;
+                if (ThrowRealtimeOnUpdateTuning)
+                {
+                    throw new RealtimeTranslationException(
+                        RealtimeTranslationErrorKind.SessionUpdateTimeout);
+                }
+
                 LastTuning = tuning;
             }
 
