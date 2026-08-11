@@ -607,13 +607,13 @@ public sealed class InterpretationSession : IDisposable
             int reverseEvidenceCount;
             lock (_sync)
             {
-                _routingSourceText = TrimRoutingSourceText(_routingSourceText + delta);
                 if (_activeLanguagePair is not { } cachedPair)
                 {
                     return;
                 }
 
                 activePair = cachedPair;
+                _routingSourceText = TrimRoutingSourceText(_routingSourceText + delta, activePair);
                 evidence = SpokenLanguageDetector.RecentEvidence(_routingSourceText, activePair);
                 currentTarget = _selectedTranslationTarget;
                 reverseEvidenceCount = _reverseEvidenceCount;
@@ -674,7 +674,7 @@ public sealed class InterpretationSession : IDisposable
             lock (_sync)
             {
                 // 切替を起こした delta は新しい segment の先頭として持ち越す。
-                _routingSourceText = TrimRoutingSourceText(delta);
+                _routingSourceText = TrimRoutingSourceText(delta, activePair);
                 _selectedTranslationTarget = selection.Target;
                 _reverseEvidenceCount = selection.ReverseEvidenceCount;
                 _assembler.ExpectLane(selection.Target);
@@ -689,14 +689,22 @@ public sealed class InterpretationSession : IDisposable
     }
 
     /// <summary>
-    /// <see cref="SpokenLanguageDetector.RecentEvidence"/> と同じ末尾非空白 scalar ウィンドウを残す。
-    /// ウィンドウ内の空白が異常に長く上限を超える場合だけ空白 run を U+0020 1 個へ圧縮し、語境界を保ったまま収める。
+    /// <see cref="SpokenLanguageDetector.RecentEvidence"/> と同じ判定窓を残す。
+    /// `en-es` は語窓、それ以外は末尾非空白 scalar 窓。空白 run が異常に長い場合だけ圧縮する。
     /// </summary>
-    private static string TrimRoutingSourceText(string text)
+    private static string TrimRoutingSourceText(string text, LanguagePair pair)
     {
         if (text.Length == 0)
         {
             return text;
+        }
+
+        if (pair == LanguagePair.EnEs)
+        {
+            var wordStart = SpokenLanguageDetector.RecentWordWindowStart(
+                text,
+                SpokenLanguageDetector.EnEsWindow);
+            return text[wordStart..];
         }
 
         var start = RecentEvidenceWindowStart(text, SpokenLanguageDetector.RecentEvidenceWindow);

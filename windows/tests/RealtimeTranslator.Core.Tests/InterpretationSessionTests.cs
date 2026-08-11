@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -369,6 +370,34 @@ public sealed class InterpretationSessionTests
         Assert.True(
             session.RoutingSourceTextLengthForTests <= InterpretationSession.RoutingSourceTextMaxLength,
             $"routing buffer length {session.RoutingSourceTextLengthForTests} exceeded the cap after flip");
+        await session.StopAsync();
+    }
+
+    // Given: en-es で、scalar 上限を超える長い 8 語のスペイン語 exclusive 列
+    // When: routing buffer を切り詰めながら原文 delta を取り込む
+    // Then: 語窓を保ち spanish target（英語入力言語）へルーティングできる
+    [Fact]
+    public async Task EnEsLongWordWindowIsPreservedForRouting()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(
+            client,
+            languagePairProvider: () => LanguagePair.EnEs);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        // 先頭側にだけスペイン語証拠があり、後ろは長い filler。scalar 切り詰めだと証拠が消える。
+        var longToken = new string('x', 40);
+        var filler = string.Join(
+            ' ',
+            Enumerable.Repeat(longToken, SpokenLanguageDetector.EnEsWindow - 2));
+        client.PublishSourceDelta("está aquí " + filler);
+        await WaitUntilAsync(() => client.SelectedTargets.Count > 0);
+
+        Assert.Equal(
+            [RealtimeTranslationOutputLanguage.English],
+            client.SelectedTargets);
         await session.StopAsync();
     }
 
@@ -1459,6 +1488,7 @@ public sealed class InterpretationSessionTests
     {
         private readonly object _sync = new();
         private readonly List<SpokenLanguage> _spokenLanguages = [];
+        private readonly List<RealtimeTranslationOutputLanguage> _selectedTargets = [];
         private Channel<RealtimeTranslationStreamEvent> _events =
             Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
 
@@ -1523,6 +1553,17 @@ public sealed class InterpretationSessionTests
             }
         }
 
+        public IReadOnlyList<RealtimeTranslationOutputLanguage> SelectedTargets
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return [.. _selectedTargets];
+                }
+            }
+        }
+
         public LanguagePair? LastStartedPair { get; private set; }
 
         public Task StartAsync(
@@ -1566,6 +1607,7 @@ public sealed class InterpretationSessionTests
             {
                 _epoch += 1;
                 _spokenLanguages.Clear();
+                _selectedTargets.Clear();
                 ResetAudioRoutingCount = 0;
                 UpdateTranscriptionTuningCount = 0;
                 LastTuning = null;
@@ -1584,6 +1626,11 @@ public sealed class InterpretationSessionTests
         {
             lock (_sync)
             {
+                if (target is { } selected)
+                {
+                    _selectedTargets.Add(selected);
+                }
+
                 var spoken = target switch
                 {
                     RealtimeTranslationOutputLanguage.English => SpokenLanguage.Japanese,

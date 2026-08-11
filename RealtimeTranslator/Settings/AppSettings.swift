@@ -132,7 +132,6 @@ final class AppSettings {
         let pair = LanguagePair(
             rawValue: defaults.string(forKey: Keys.languagePair) ?? ""
         ) ?? .jaEn
-        languagePair = pair
 
         if let storedPrompt = defaults.string(forKey: Keys.transcriptionPrompt),
            !storedPrompt.isEmpty
@@ -167,6 +166,8 @@ final class AppSettings {
         }
 
         recordSubtitles = defaults.bool(forKey: Keys.recordSubtitles)
+        // 他プロパティ初期化後に代入し、init 中の self 参照を避ける。
+        languagePair = pair
     }
 
     func acceptOpenAIConsent() {

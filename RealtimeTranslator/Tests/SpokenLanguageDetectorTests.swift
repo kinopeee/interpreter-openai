@@ -111,4 +111,15 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         // Then: 日本語切替を検出する
         XCTAssertEqual(recent, .japanese)
     }
+
+    func testJaEsEvidenceTreatsAccentedLatinAsSpanishWords() {
+        // Given: アクセント付きスペイン語の複数語
+        let text = "está aquí"
+
+        // When: ja-es で証拠を求める
+        let evidence = SpokenLanguageDetector.evidence(in: text, pair: .jaEs)
+
+        // Then: ASCII のみの語分割に落ちず spanish になる
+        XCTAssertEqual(evidence, .spanish)
+    }
 }

@@ -68,6 +68,17 @@ public sealed class LanguageFixtureTests
         Assert.Equal(SpokenLanguageEvidence.AmbiguousLatin, evidence);
     }
 
+    // Given: アクセント付きスペイン語の複数語
+    // When: ja-es で証拠を求める
+    // Then: ASCII のみの語分割に落ちず spanish になる
+    [Fact]
+    public void JaEsEvidenceTreatsAccentedLatinAsSpanishWords()
+    {
+        Assert.Equal(
+            SpokenLanguageEvidence.Spanish,
+            SpokenLanguageDetector.Evidence("está aquí", LanguagePair.JaEs));
+    }
+
     // Given: fixture の日英混在・曖昧・不明テキスト
     // When: 言語証拠を集計し言語を判定する
     // Then: 期待する証拠と検出結果になる

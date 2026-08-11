@@ -99,18 +99,20 @@ public static class SpokenLanguageDetector
                     isInsideLatinWord = false;
                     break;
 
-                case >= 0x0041 and <= 0x005A:
-                case >= 0x0061 and <= 0x007A:
-                    if (!isInsideLatinWord)
+                default:
+                    if (IsLatinWordRune(rune))
                     {
-                        latinWordCount += 1;
-                        isInsideLatinWord = true;
+                        if (!isInsideLatinWord)
+                        {
+                            latinWordCount += 1;
+                            isInsideLatinWord = true;
+                        }
+                    }
+                    else
+                    {
+                        isInsideLatinWord = false;
                     }
 
-                    break;
-
-                default:
-                    isInsideLatinWord = false;
                     break;
             }
         }
@@ -220,6 +222,24 @@ public static class SpokenLanguageDetector
         }
 
         return words;
+    }
+
+    /// <summary>en-es RecentEvidence と同じ語窓の開始 UTF-16 オフセット。</summary>
+    public static int RecentWordWindowStart(string text, int window = EnEsWindow)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        if (window <= 0 || text.Length == 0)
+        {
+            return 0;
+        }
+
+        var words = TokenizeWordSpans(text);
+        if (words.Count <= window)
+        {
+            return 0;
+        }
+
+        return WordWindowStart(text, words, window);
     }
 
     private static int WordWindowStart(

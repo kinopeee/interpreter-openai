@@ -64,6 +64,9 @@ struct SettingsView: View {
         .onChange(of: settings.transcriptionDelayMode) { _, _ in
             scheduleTuningChangeNotification()
         }
+        .onChange(of: settings.languagePair) { _, _ in
+            onSave?()
+        }
     }
 
     private func scheduleTuningChangeNotification() {

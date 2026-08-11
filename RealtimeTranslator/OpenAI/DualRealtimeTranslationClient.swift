@@ -53,15 +53,16 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         spanishConnection: RealtimeTranslationConnection? = nil
     ) {
         if let sourceConnection, let englishConnection, let japaneseConnection {
+            // 明示注入時は渡された接続だけを使い、欠けた Spanish を実ソケットで補完しない。
             self.sourceConnection = sourceConnection
-            self.connections = [
+            var injected: [RealtimeTranslationOutputLanguage: RealtimeTranslationConnection] = [
                 .english: englishConnection,
                 .japanese: japaneseConnection,
-                .spanish: spanishConnection ?? RealtimeTranslationConnection(
-                    target: .spanish,
-                    safetyIdentifier: OpenAISafetyIdentifier.hashedValue()
-                ),
             ]
+            if let spanishConnection {
+                injected[.spanish] = spanishConnection
+            }
+            self.connections = injected
         } else {
             let safetyIdentifier = OpenAISafetyIdentifier.hashedValue()
             self.sourceConnection = sourceConnection

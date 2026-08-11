@@ -105,13 +105,15 @@ enum SpokenLanguageDetector {
             case 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF:
                 hasJapanese = true
                 isInsideLatinWord = false
-            case 0x0041...0x005A, 0x0061...0x007A:
-                if !isInsideLatinWord {
-                    latinWordCount += 1
-                    isInsideLatinWord = true
-                }
             default:
-                isInsideLatinWord = false
+                if isLatinWordScalar(scalar) {
+                    if !isInsideLatinWord {
+                        latinWordCount += 1
+                        isInsideLatinWord = true
+                    }
+                } else {
+                    isInsideLatinWord = false
+                }
             }
         }
 
