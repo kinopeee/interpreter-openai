@@ -28,6 +28,44 @@ final class RealtimeSessionTuningTests: XCTestCase {
         XCTAssertEqual(preserved.transcriptionKeywords, ["Custom keyword"])
     }
 
+    @MainActor
+    func testAppSettingsLanguagePairChangeRefreshesDefaultHintsOnly() {
+        // Given: 既定ヒントのままの設定
+        let settings = AppSettings()
+        let previousPair = settings.languagePair
+        let previousPrompt = settings.transcriptionPrompt
+        let previousKeywords = settings.transcriptionKeywordsText
+        defer {
+            settings.languagePair = previousPair
+            settings.transcriptionPrompt = previousPrompt
+            settings.transcriptionKeywordsText = previousKeywords
+        }
+        settings.languagePair = .jaEn
+        settings.restoreDefaultTranscriptionHints()
+
+        // When: 言語ペアを ja-es へ変える
+        settings.languagePair = .jaEs
+
+        // Then: 既定ヒントは新ペア向けへ更新される
+        XCTAssertEqual(
+            settings.transcriptionPrompt,
+            RealtimeSessionTuning.defaultPrompt(for: .jaEs)
+        )
+        XCTAssertEqual(
+            settings.transcriptionKeywords,
+            RealtimeSessionTuning.defaultKeywords(for: .jaEs)
+        )
+
+        // When: カスタムヒントのまま別ペアへ変える
+        settings.transcriptionPrompt = "custom prompt"
+        settings.transcriptionKeywordsText = "custom\nwords"
+        settings.languagePair = .enEs
+
+        // Then: カスタム値は上書きされない
+        XCTAssertEqual(settings.transcriptionPrompt, "custom prompt")
+        XCTAssertEqual(settings.transcriptionKeywordsText, "custom\nwords")
+    }
+
     func testParseKeywordsTrimsAndDropsEmptyLines() {
         // Given: 空行と前後空白を含むキーワードテキスト
         let text = """

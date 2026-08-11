@@ -89,7 +89,10 @@ final class AppSettings {
     }
 
     var languagePair: LanguagePair {
-        didSet { UserDefaults.standard.set(languagePair.rawValue, forKey: Keys.languagePair) }
+        didSet {
+            UserDefaults.standard.set(languagePair.rawValue, forKey: Keys.languagePair)
+            refreshDefaultTranscriptionHintsIfNeeded(from: oldValue, to: languagePair)
+        }
     }
 
     var hasAcceptedCurrentOpenAIConsent: Bool {
@@ -135,14 +138,14 @@ final class AppSettings {
         {
             transcriptionPrompt = storedPrompt
         } else {
-            transcriptionPrompt = RealtimeSessionTuning.defaultPrompt
+            transcriptionPrompt = RealtimeSessionTuning.defaultPrompt(for: languagePair)
         }
 
         if let storedKeywords = defaults.string(forKey: Keys.transcriptionKeywordsText) {
             transcriptionKeywordsText = storedKeywords
         } else {
             transcriptionKeywordsText = RealtimeSessionTuning.keywordsText(
-                from: RealtimeSessionTuning.defaultKeywords
+                from: RealtimeSessionTuning.defaultKeywords(for: languagePair)
             )
         }
 
@@ -195,6 +198,31 @@ final class AppSettings {
     }
 
     func restoreDefaultTranscriptionHints() {
-        applyPreset(.softwareDevelopment)
+        transcriptionPrompt = RealtimeSessionTuning.defaultPrompt(for: languagePair)
+        transcriptionKeywordsText = RealtimeSessionTuning.keywordsText(
+            from: RealtimeSessionTuning.defaultKeywords(for: languagePair)
+        )
+    }
+
+    /// 既定ヒントのままなら、言語ペア変更に合わせて prompt/keywords を更新する。
+    private func refreshDefaultTranscriptionHintsIfNeeded(
+        from oldPair: LanguagePair,
+        to newPair: LanguagePair
+    ) {
+        guard oldPair != newPair else { return }
+        let knownDefaultPrompts = LanguagePair.allCases.map {
+            RealtimeSessionTuning.defaultPrompt(for: $0)
+        }
+        let knownDefaultKeywords = LanguagePair.allCases.map {
+            RealtimeSessionTuning.keywordsText(from: RealtimeSessionTuning.defaultKeywords(for: $0))
+        }
+        if knownDefaultPrompts.contains(transcriptionPrompt) {
+            transcriptionPrompt = RealtimeSessionTuning.defaultPrompt(for: newPair)
+        }
+        if knownDefaultKeywords.contains(transcriptionKeywordsText) {
+            transcriptionKeywordsText = RealtimeSessionTuning.keywordsText(
+                from: RealtimeSessionTuning.defaultKeywords(for: newPair)
+            )
+        }
     }
 }

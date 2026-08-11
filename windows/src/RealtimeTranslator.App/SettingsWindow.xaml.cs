@@ -187,8 +187,51 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        Publish(Settings with { LanguagePair = value });
+        var next = Settings with { LanguagePair = value };
+        var refreshedHints = false;
+        if (IsKnownDefaultPrompt(Settings.TranscriptionPrompt))
+        {
+            next = next with { TranscriptionPrompt = RealtimeSessionTuning.DefaultPromptForPair(value) };
+            refreshedHints = true;
+        }
+
+        if (IsKnownDefaultKeywordsText(Settings.TranscriptionKeywordsText))
+        {
+            next = next with
+            {
+                TranscriptionKeywordsText = RealtimeSessionTuning.KeywordsText(
+                    RealtimeSessionTuning.DefaultKeywordsForPair(value)),
+            };
+            refreshedHints = true;
+        }
+
+        if (refreshedHints)
+        {
+            _loading = true;
+            PromptBox.Text = next.TranscriptionPrompt;
+            KeywordsBox.Text = next.TranscriptionKeywordsText;
+            _loading = false;
+            Publish(next);
+            UpdateHintCounters();
+            ScheduleTuningChange();
+            return;
+        }
+
+        Publish(next);
     }
+
+    private static bool IsKnownDefaultPrompt(string prompt) =>
+        prompt == RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEn)
+        || prompt == RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEs)
+        || prompt == RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.EnEs);
+
+    private static bool IsKnownDefaultKeywordsText(string keywordsText) =>
+        keywordsText == RealtimeSessionTuning.KeywordsText(
+            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEn))
+        || keywordsText == RealtimeSessionTuning.KeywordsText(
+            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEs))
+        || keywordsText == RealtimeSessionTuning.KeywordsText(
+            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.EnEs));
 
     private void OnTranscriptionDelayChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -257,8 +300,9 @@ public partial class SettingsWindow : Window
     }
 
     private void OnRestoreDefaults(object sender, RoutedEventArgs e) => ApplyHints(
-        RealtimeSessionTuning.DefaultPrompt,
-        RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywords));
+        RealtimeSessionTuning.DefaultPromptForPair(Settings.LanguagePair),
+        RealtimeSessionTuning.KeywordsText(
+            RealtimeSessionTuning.DefaultKeywordsForPair(Settings.LanguagePair)));
 
     private void ApplyHints(string prompt, string keywordsText)
     {
