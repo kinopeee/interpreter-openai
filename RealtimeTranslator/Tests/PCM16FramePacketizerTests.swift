@@ -87,6 +87,61 @@ final class PCM16FramePacketizerTests: XCTestCase {
         XCTAssertEqual(values, [13107, -13107, Int16.max, -32767])
     }
 
+    func testLittleEndianEncoderMapsNaNToSilenceAndClipsInfinity() {
+        // Given: AGC と同じく NaN / ±Infinity が混在する float バッファ
+        let samples: [Float] = [.nan, 0.5, .infinity, -.infinity]
+
+        // When: encode する（旧実装は Int16(Float.nan) で trap する）
+        let data = samples.withUnsafeBufferPointer { buffer in
+            PCM16LittleEndianEncoder.encode(
+                floatSamples: buffer.baseAddress!,
+                frameCount: buffer.count,
+                gain: 1
+            )
+        }
+
+        // Then: NaN は無音、有限と ±Infinity はクリップ済み PCM16
+        let values = data.withUnsafeBytes { raw -> [Int16] in
+            Array(raw.bindMemory(to: Int16.self))
+        }
+        XCTAssertEqual(values, [0, 16384, Int16.max, -32767])
+
+        // Given/When: Infinity * 0 は IEEE で NaN になる
+        let infinityTimesZero: [Float] = [.infinity]
+        let silenced = infinityTimesZero.withUnsafeBufferPointer { buffer in
+            PCM16LittleEndianEncoder.encode(
+                floatSamples: buffer.baseAddress!,
+                frameCount: buffer.count,
+                gain: 0
+            )
+        }
+        // Then: trap せず無音
+        let silencedValues = silenced.withUnsafeBytes { raw -> [Int16] in
+            Array(raw.bindMemory(to: Int16.self))
+        }
+        XCTAssertEqual(silencedValues, [0])
+    }
+
+    func testLittleEndianEncoderIgnoresNonFiniteGain() {
+        // Given: 有限サンプルと非有限ゲイン
+        let samples: [Float] = [0.5]
+
+        // When: NaN ゲインで encode する
+        let data = samples.withUnsafeBufferPointer { buffer in
+            PCM16LittleEndianEncoder.encode(
+                floatSamples: buffer.baseAddress!,
+                frameCount: buffer.count,
+                gain: .nan
+            )
+        }
+
+        // Then: ゲイン 1.0 相当として符号化される
+        let values = data.withUnsafeBytes { raw -> [Int16] in
+            Array(raw.bindMemory(to: Int16.self))
+        }
+        XCTAssertEqual(values, [16384])
+    }
+
     func testSilenceFrameHasExpectedSize() {
         // Given: 無音PCM
         var packetizer = PCM16FramePacketizer()

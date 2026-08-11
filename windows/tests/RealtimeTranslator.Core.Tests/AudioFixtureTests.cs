@@ -192,6 +192,20 @@ public sealed class AudioFixtureTests
         Assert.Equal(last, gain.Gain);
     }
 
+    // Given: AGC と同じく NaN / ±Infinity が混在する float サンプル
+    // When: PCM16 へ変換する
+    // Then: NaN は無音、±Infinity は ±full scale へクリップされ、例外にしない
+    [Fact]
+    public void EncodeSampleMapsNaNToSilenceAndClipsInfinity()
+    {
+        Assert.Equal(0, Pcm16LittleEndianEncoder.EncodeSample(float.NaN, 1f));
+        Assert.Equal(16384, Pcm16LittleEndianEncoder.EncodeSample(0.5f, 1f));
+        Assert.Equal(short.MaxValue, Pcm16LittleEndianEncoder.EncodeSample(float.PositiveInfinity, 1f));
+        Assert.Equal(-32767, Pcm16LittleEndianEncoder.EncodeSample(float.NegativeInfinity, 1f));
+        Assert.Equal(16384, Pcm16LittleEndianEncoder.EncodeSample(0.5f, float.NaN));
+        Assert.Equal(0, Pcm16LittleEndianEncoder.EncodeSample(float.PositiveInfinity, 0f));
+    }
+
     // Given: 非有限の初期ゲイン
     // When: AdaptiveMicrophoneGain を生成する
     // Then: ArgumentOutOfRangeException になる
