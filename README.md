@@ -1,5 +1,7 @@
 # Realtime Translator
 
+[日本語](README.md) | [English](README.en.md)
+
 常駐型の、OpenAI Realtime Translationによるリアルタイム日英字幕アプリです。macOS版（メニューバー常駐）とWindows版（タスクトレイ常駐）があります。
 
 マイク音声をOpenAIの `gpt-live-transcribe` と `gpt-realtime-translate` へストリーミングし、原文と翻訳字幕をペア表示します。初回MVPでは翻訳音声の再生は行いません。
