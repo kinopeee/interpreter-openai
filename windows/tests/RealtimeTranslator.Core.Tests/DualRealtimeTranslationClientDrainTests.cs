@@ -114,6 +114,49 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.False(await dual.Events.WaitToReadAsync());
     }
 
+    // Given: 購読停止中に output_audio.delta が大量到着したあと訳文 delta が届く（#42 stop-drain 窓）
+    // When: CloseGracefullyAsync して Events を吸い取る
+    // Then: 音声 delta は dual channel に残らず、訳文 delta が DropOldest で消えない
+    [Fact]
+    public async Task CloseDrainPreservesTranscriptDespiteOutputAudioFlood()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(source, english, japanese, ShortCloseTimeout);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+
+        for (var index = 0; index < 600; index += 1)
+        {
+            english.EnqueueJson("""{"type":"session.output_audio.delta","delta":"AAAA"}""");
+        }
+
+        english.EnqueueJson(
+            """{"type":"session.output_transcript.delta","delta":"drain survivor","event_id":"drain-1"}""");
+
+        // merge が洪水を処理する猶予。購読側は意図的に読まない（Stop 後の世代フェンス相当）。
+        await Task.Delay(200);
+
+        await dual.CloseGracefullyAsync();
+
+        var transcripts = new List<string>();
+        while (await dual.Events.WaitToReadAsync())
+        {
+            while (dual.Events.TryRead(out var streamEvent))
+            {
+                Assert.IsNotType<RealtimeTranslationServerEvent.OutputAudioDelta>(streamEvent.Event);
+                if (streamEvent.Event is RealtimeTranslationServerEvent.OutputTranscriptDelta transcript)
+                {
+                    transcripts.Add(transcript.Delta);
+                }
+            }
+        }
+
+        Assert.Contains("drain survivor", transcripts);
+    }
+
     // Given: session.closed / transcription completed を返さない dual
     // When: CloseGracefullyAsync が CloseTimeout になる
     // Then: 例外を返しても Events channel は完了し、停止側の drain 待ちが固まらない

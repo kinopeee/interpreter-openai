@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -38,6 +40,13 @@ public sealed class InterpretationSession : IDisposable
 {
     public const int MaxReconnectAttempts = 5;
 
+    /// <summary>
+    /// ルーティング判定用に保持する原文の上限 (UTF-16 char)。
+    /// 通常は末尾の非空白 scalar ウィンドウへ切り詰めるが、ウィンドウ内の空白が異常に長い場合の
+    /// 安全弁として使い、空白 run を圧縮してこの長さへ収める。
+    /// </summary>
+    internal const int RoutingSourceTextMaxLength = 16 * SpokenLanguageDetector.RecentEvidenceWindow;
+
     private static readonly TimeSpan DefaultInitialReconnectDelay = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan DefaultTickInterval = TimeSpan.FromMilliseconds(200);
 
@@ -62,6 +71,18 @@ public sealed class InterpretationSession : IDisposable
 
     /// <summary>テスト用。generation 確認後・assembler 更新前に差し込む。</summary>
     internal Action? BeforeAssemblerIngestForTests { get; set; }
+
+    /// <summary>テスト用。ルーティング判定バッファの保持長。</summary>
+    internal int RoutingSourceTextLengthForTests
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _routingSourceText.Length;
+            }
+        }
+    }
 
     public InterpretationSession(
         IApiKeyStore apiKeyStore,
@@ -571,7 +592,7 @@ public sealed class InterpretationSession : IDisposable
             SpokenLanguageEvidence evidence;
             lock (_sync)
             {
-                _routingSourceText += delta;
+                _routingSourceText = TrimRoutingSourceText(_routingSourceText + delta);
                 evidence = SpokenLanguageDetector.RecentEvidence(_routingSourceText);
                 current = _routedSpokenLanguage;
             }
@@ -630,7 +651,7 @@ public sealed class InterpretationSession : IDisposable
             lock (_sync)
             {
                 // 切替を起こした delta は新しい segment の先頭として持ち越す。
-                _routingSourceText = delta;
+                _routingSourceText = TrimRoutingSourceText(delta);
                 _routedSpokenLanguage = flipped;
                 _assembler.ExpectLane(ExpectedTranslationLane(flipped));
             }
@@ -641,6 +662,88 @@ public sealed class InterpretationSession : IDisposable
         {
             _routingGate.Release();
         }
+    }
+
+    /// <summary>
+    /// <see cref="SpokenLanguageDetector.RecentEvidence"/> と同じ末尾非空白 scalar ウィンドウを残す。
+    /// ウィンドウ内の空白が異常に長く上限を超える場合だけ空白 run を U+0020 1 個へ圧縮し、語境界を保ったまま収める。
+    /// </summary>
+    private static string TrimRoutingSourceText(string text)
+    {
+        if (text.Length == 0)
+        {
+            return text;
+        }
+
+        var start = RecentEvidenceWindowStart(text, SpokenLanguageDetector.RecentEvidenceWindow);
+        var window = text[start..];
+        if (window.Length <= RoutingSourceTextMaxLength)
+        {
+            return window;
+        }
+
+        return CollapseWhitespaceRuns(window);
+    }
+
+    /// <summary>
+    /// 末尾から空白以外の Unicode scalar を <paramref name="window"/> 個含む範囲の開始 UTF-16 オフセット。
+    /// <see cref="SpokenLanguageDetector.RecentEvidence"/> と同じ走査契約。
+    /// </summary>
+    private static int RecentEvidenceWindowStart(string text, int window)
+    {
+        if (window <= 0 || text.Length == 0)
+        {
+            return 0;
+        }
+
+        var starts = new List<int>(text.Length);
+        var offset = 0;
+        while (offset < text.Length)
+        {
+            starts.Add(offset);
+            offset += Rune.GetRuneAt(text, offset).Utf16SequenceLength;
+        }
+
+        var nonWhitespaceCount = 0;
+        var position = starts.Count;
+        var start = 0;
+        while (position > 0 && nonWhitespaceCount < window)
+        {
+            position -= 1;
+            start = starts[position];
+            if (!Rune.IsWhiteSpace(Rune.GetRuneAt(text, start)))
+            {
+                nonWhitespaceCount += 1;
+            }
+        }
+
+        return start;
+    }
+
+    /// <summary>連続する空白 scalar を U+0020 1 個へ潰す。ラテン語境界を残しつつ保持長を抑える。</summary>
+    private static string CollapseWhitespaceRuns(string text)
+    {
+        var builder = new StringBuilder(Math.Min(text.Length, RoutingSourceTextMaxLength));
+        var previousWasWhitespace = false;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (Rune.IsWhiteSpace(rune))
+            {
+                if (previousWasWhitespace)
+                {
+                    continue;
+                }
+
+                previousWasWhitespace = true;
+                builder.Append(' ');
+                continue;
+            }
+
+            previousWasWhitespace = false;
+            builder.Append(rune.ToString());
+        }
+
+        return builder.ToString();
     }
 
     private async Task ResetAudioRoutingForNextSegmentAsync()

@@ -224,6 +224,73 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 文字種の反転を起こさない英語 delta がサーバから連続で流れ続ける
+    // When: 同一セグメント内で delta を大量に取り込む
+    // Then: routing 判定バッファは上限までで打ち切られ、その後の反転検出も壊れない
+    [Fact]
+    public async Task NonFlippingSourceDeltaStreamDoesNotGrowRoutingBufferWithoutBound()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("we keep talking in english ");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+
+        var processedDeltaCount = 0;
+        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
+        const int nonFlippingDeltaCount = 200;
+        for (var i = 0; i < nonFlippingDeltaCount; i += 1)
+        {
+            client.PublishSourceDelta("and we never flip the script ");
+        }
+
+        // When: 反転前に大量 delta の取り込み完了を待ち、その時点で上限を検証する
+        await WaitUntilAsync(() => Volatile.Read(ref processedDeltaCount) >= nonFlippingDeltaCount);
+        Assert.True(
+            session.RoutingSourceTextLengthForTests <= InterpretationSession.RoutingSourceTextMaxLength,
+            $"routing buffer length {session.RoutingSourceTextLengthForTests} exceeded the cap before flip");
+
+        client.PublishSourceDelta("ここで日本語へ反転します");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
+
+        Assert.Equal([SpokenLanguage.English, SpokenLanguage.Japanese], client.SpokenLanguages);
+        Assert.True(
+            session.RoutingSourceTextLengthForTests <= InterpretationSession.RoutingSourceTextMaxLength,
+            $"routing buffer length {session.RoutingSourceTextLengthForTests} exceeded the cap after flip");
+        await session.StopAsync();
+    }
+
+    // Given: 日本語セグメントのあと、長い空白 run で隔てられた複数語の英語 delta
+    // When: UTF-16 文字数キャップだけだと末尾 1 語しか残らない入力を取り込む
+    // Then: RecentEvidence ウィンドウを保ち英語反転できる
+    [Fact]
+    public async Task WideWhitespaceBetweenLatinWordsStillFlipsJapaneseToEnglish()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("これはテストです");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        Assert.Equal(SpokenLanguage.Japanese, client.SpokenLanguages[0]);
+
+        // 非空白 16 scalar / 2 語以上を満たしつつ、語間空白だけが上限を超える入力。
+        var gap = new string(' ', InterpretationSession.RoutingSourceTextMaxLength + 32);
+        client.PublishSourceDelta("aa bb cc dd ee ff gg" + gap + " hh");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
+
+        Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
+        Assert.True(
+            session.RoutingSourceTextLengthForTests <= InterpretationSession.RoutingSourceTextMaxLength,
+            $"routing buffer length {session.RoutingSourceTextLengthForTests} exceeded the cap");
+        await session.StopAsync();
+    }
+
     // Given: 訳文がまだ無い日本語原文だけのセグメント
     // When: 英語へ文字種が反転する
     // Then: 不完全ペアを ShouldFinalize せず、routing だけ切り替える

@@ -390,6 +390,16 @@ public sealed class RealtimeTranslationConnection : IDisposable
                 }
             }
 
+            // MVP は翻訳音声を再生しない。output_audio.delta を bounded channel へ入れると
+            // Stop の close-drain 待ち（購読停止中）に DropOldest で字幕 delta を押し出す。
+            // 翻訳接続の input_transcript は原文 authority にしない（専用 transcription のみ）。
+            // target=en 翻訳セッションの delta を通すと assembler が原文として取り込む。
+            if (serverEvent is RealtimeTranslationServerEvent.OutputAudioDelta
+                or RealtimeTranslationServerEvent.InputTranscriptDelta)
+            {
+                continue;
+            }
+
             writer.TryWrite(new RealtimeTranslationStreamEvent(_target, serverEvent, currentEpoch));
 
             if (serverEvent is RealtimeTranslationServerEvent.SessionClosed)
