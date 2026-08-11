@@ -44,8 +44,8 @@ open RealtimeTranslator.xcodeproj
 
 Register your API key in one of these ways:
 
-1. Set `OPENAI_API_KEY` in the Xcode scheme environment and launch once (imported into Keychain automatically)
-2. Enter and save it in the app Settings via `SecureField`
+1. Enter and save it in the app Settings via `SecureField` (recommended)
+2. For local development only, set `OPENAI_API_KEY` in a non-shared user scheme, launch once, then remove the variable after Keychain import
 
 To build and launch from the CLI:
 
@@ -53,7 +53,7 @@ To build and launch from the CLI:
 ./scripts/run.sh
 ```
 
-Note: `run.sh` launches via `open`, so shell environment variables may not reach the app. In that case, import the key from Xcode or enter it in Settings. Passing the key with `open --args` is not allowed.
+Note: `run.sh` launches via `open`, so shell environment variables may not reach the app. In that case, enter the key in Settings (or import once from a non-shared user scheme). Passing the key with `open --args` is not allowed.
 
 ## Usage
 
@@ -126,7 +126,7 @@ xcodebuild test \
 
 ## Notes
 
-- Microphone audio, source text, and translations are sent to the OpenAI API.
+- Microphone audio is sent to the OpenAI API. Source text and translations are received from the API.
 - Offline translation is not supported.
 - The API key is stored in Keychain and never written to logs.
 - The MVP does not speak translated audio aloud.
@@ -213,6 +213,6 @@ Microphone
 
 ### Notes (Windows)
 
-- Microphone audio, source text, and translations are sent to the OpenAI API.
+- Microphone audio is sent to the OpenAI API. Source text and translations are received from the API.
 - The API key is stored in Credential Manager and never written to logs or the settings file.
 - For on-device checks, see the **Windows** section in `VALIDATION.md`.

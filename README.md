@@ -43,8 +43,8 @@ open RealtimeTranslator.xcodeproj
 
 APIキーは次のいずれかで登録します。
 
-1. Xcode schemeの環境変数に `OPENAI_API_KEY` を設定して一度起動する（Keychainへ自動取り込み）
-2. アプリの設定画面から `SecureField` で入力して保存する
+1. アプリの設定画面から `SecureField` で入力して保存する（推奨）
+2. ローカル開発時のみ、共有されていない User scheme の環境変数に `OPENAI_API_KEY` を設定して一度起動し、Keychain取り込み後に変数を削除する
 
 CLIからビルド・起動する場合:
 
@@ -52,7 +52,7 @@ CLIからビルド・起動する場合:
 ./scripts/run.sh
 ```
 
-注意: `run.sh` は `open` 経由で起動するため、シェルの環境変数はアプリへ届かないことがあります。その場合はXcodeから取り込むか、設定画面で入力してください。`open --args` でキーを渡すのは禁止です。
+注意: `run.sh` は `open` 経由で起動するため、シェルの環境変数はアプリへ届かないことがあります。その場合は設定画面で入力してください（または共有されていない User scheme から一度取り込む）。`open --args` でキーを渡すのは禁止です。
 
 ## 使い方
 
@@ -125,7 +125,7 @@ xcodebuild test \
 
 ## 注意
 
-- マイク音声、原文、訳文はOpenAI APIへ送信されます。
+- OpenAI APIへ送信されるのはマイク音声です。原文と訳文はAPIから受信します。
 - オフラインでは翻訳できません。
 - APIキーはKeychainへ保存し、ログへ出力しません。
 - MVPでは翻訳音声の読み上げは行いません。
@@ -212,6 +212,6 @@ git tag v0.1.0; git push origin v0.1.0
 
 ### 注意（Windows）
 
-- マイク音声、原文、訳文はOpenAI APIへ送信されます。
+- OpenAI APIへ送信されるのはマイク音声です。原文と訳文はAPIから受信します。
 - APIキーは資格情報マネージャーへ保存し、ログ・設定ファイルへ出力しません。
 - 実機での確認項目は `VALIDATION.md` の「Windows版」を参照してください。
