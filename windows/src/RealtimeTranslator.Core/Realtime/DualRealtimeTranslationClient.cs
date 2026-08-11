@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -17,7 +18,31 @@ public interface IDualRealtimeTranslationClient
 
     Task StartAsync(string apiKey, RealtimeSessionTuning tuning, CancellationToken cancellationToken = default);
 
+    Task StartAsync(
+        string apiKey,
+        RealtimeSessionTuning tuning,
+        LanguagePair pair,
+        CancellationToken cancellationToken = default) =>
+        StartAsync(apiKey, tuning, cancellationToken);
+
     Task AppendAudioFrameAsync(ReadOnlyMemory<byte> pcm16LittleEndian, CancellationToken cancellationToken = default);
+
+    Task SelectTranslationTargetAsync(
+        RealtimeTranslationOutputLanguage? target,
+        CancellationToken cancellationToken = default) =>
+        target switch
+        {
+            RealtimeTranslationOutputLanguage.English => SetSpokenLanguageAsync(
+                SpokenLanguage.Japanese,
+                cancellationToken),
+            RealtimeTranslationOutputLanguage.Japanese => SetSpokenLanguageAsync(
+                SpokenLanguage.English,
+                cancellationToken),
+            RealtimeTranslationOutputLanguage.Spanish => SetSpokenLanguageAsync(
+                SpokenLanguage.Spanish,
+                cancellationToken),
+            _ => Task.CompletedTask,
+        };
 
     Task SetSpokenLanguageAsync(SpokenLanguage language, CancellationToken cancellationToken = default);
 
@@ -42,8 +67,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     public const string TransportErrorCode = "transport";
 
     private readonly RealtimeSourceTranscriptionConnection _sourceConnection;
-    private readonly RealtimeTranslationConnection _englishConnection;
-    private readonly RealtimeTranslationConnection _japaneseConnection;
+    private readonly Dictionary<RealtimeTranslationOutputLanguage, RealtimeTranslationConnection> _connections;
     private readonly TimeSpan _translationDrainTimeout;
     private readonly object _sync = new();
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
@@ -68,15 +92,23 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         RealtimeSourceTranscriptionConnection sourceConnection,
         RealtimeTranslationConnection englishConnection,
         RealtimeTranslationConnection japaneseConnection,
-        TimeSpan? translationDrainTimeout = null)
+        TimeSpan? translationDrainTimeout = null,
+        RealtimeTranslationConnection? spanishConnection = null)
     {
         ArgumentNullException.ThrowIfNull(sourceConnection);
         ArgumentNullException.ThrowIfNull(englishConnection);
         ArgumentNullException.ThrowIfNull(japaneseConnection);
 
         _sourceConnection = sourceConnection;
-        _englishConnection = englishConnection;
-        _japaneseConnection = japaneseConnection;
+        _connections = new()
+        {
+            [RealtimeTranslationOutputLanguage.English] = englishConnection,
+            [RealtimeTranslationOutputLanguage.Japanese] = japaneseConnection,
+        };
+        if (spanishConnection is not null)
+        {
+            _connections[RealtimeTranslationOutputLanguage.Spanish] = spanishConnection;
+        }
         // 既定 5 秒。送信停滞でも CloseGracefully が session.close へ進める上限。
         _translationDrainTimeout = translationDrainTimeout ?? TimeSpan.FromSeconds(5);
     }
@@ -106,6 +138,13 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     public async Task StartAsync(
         string apiKey,
         RealtimeSessionTuning tuning,
+        CancellationToken cancellationToken = default) =>
+        await StartAsync(apiKey, tuning, LanguagePair.JaEn, cancellationToken).ConfigureAwait(false);
+
+    public async Task StartAsync(
+        string apiKey,
+        RealtimeSessionTuning tuning,
+        LanguagePair pair,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(tuning);
@@ -133,18 +172,28 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await Task.WhenAll(
-                    _sourceConnection.StartAsync(apiKey, tuning, cancellationToken),
-                    _englishConnection.StartAsync(
-                        apiKey,
-                        RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription(
-                            tuning.NoiseReduction),
-                        cancellationToken),
-                    _japaneseConnection.StartAsync(
-                        apiKey,
-                        RealtimeTranslationSessionConfig.JapaneseTargetWithoutSourceTranscription(
-                            tuning.NoiseReduction),
-                        cancellationToken)).ConfigureAwait(false);
+                var starts = new List<Task>
+                {
+                    _sourceConnection.StartAsync(apiKey, tuning, pair, cancellationToken),
+                };
+                starts.AddRange(pair.Languages().Select(language =>
+                    {
+                        var target = language switch
+                        {
+                            SpokenLanguage.English => RealtimeTranslationOutputLanguage.English,
+                            SpokenLanguage.Japanese => RealtimeTranslationOutputLanguage.Japanese,
+                            SpokenLanguage.Spanish => RealtimeTranslationOutputLanguage.Spanish,
+                            _ => throw new ArgumentOutOfRangeException(nameof(pair), pair, null),
+                        };
+                        return _connections[target].StartAsync(
+                            apiKey,
+                            new RealtimeTranslationSessionConfig(
+                                target,
+                                null,
+                                tuning.NoiseReduction),
+                            cancellationToken);
+                    }));
+                await Task.WhenAll(starts).ConfigureAwait(false);
             }
             finally
             {
@@ -208,7 +257,9 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
     }
 
-    public Task SetSpokenLanguageAsync(SpokenLanguage language, CancellationToken cancellationToken = default)
+    public Task SelectTranslationTargetAsync(
+        RealtimeTranslationOutputLanguage? target,
+        CancellationToken cancellationToken = default)
     {
         _ = cancellationToken;
 
@@ -217,19 +268,6 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             if (!_isRunning)
             {
                 throw new RealtimeTranslationException(RealtimeTranslationErrorKind.NotConnected);
-            }
-
-            RealtimeTranslationOutputLanguage target;
-            switch (language)
-            {
-                case SpokenLanguage.Japanese:
-                    target = RealtimeTranslationOutputLanguage.English;
-                    break;
-                case SpokenLanguage.English:
-                    target = RealtimeTranslationOutputLanguage.Japanese;
-                    break;
-                default:
-                    return Task.CompletedTask;
             }
 
             if (_selectedTranslationTarget == target)
@@ -241,9 +279,14 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
             // 旧 target 向けの未送信 frame は破棄し、rolling preroll を新 target へ flush する。
             _pendingTranslationFrames.Clear();
+            if (target is not { } selected)
+            {
+                return Task.CompletedTask;
+            }
+
             foreach (var frame in _translationPrerollFrames)
             {
-                EnqueueTranslationFrameLocked(frame, target);
+                EnqueueTranslationFrameLocked(frame, selected);
             }
         }
 
@@ -269,13 +312,21 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     {
         lock (_sync)
         {
-            // rolling preroll は維持し、次の SetSpokenLanguageAsync で flush できるようにする。
+            // rolling preroll は維持し、次の target 選択で flush できるようにする。
             _selectedTranslationTarget = null;
             _pendingTranslationFrames.Clear();
             _consecutiveTranslationFailures = 0;
         }
 
         return Task.CompletedTask;
+    }
+
+    public Task SetSpokenLanguageAsync(
+        SpokenLanguage language,
+        CancellationToken cancellationToken = default)
+    {
+        var target = LanguagePair.JaEn.TranslationTarget(language);
+        return SelectTranslationTargetAsync(target, cancellationToken);
     }
 
     public async Task CloseGracefullyAsync(CancellationToken cancellationToken = default)
@@ -326,9 +377,9 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         try
         {
             await Task.WhenAll(
-                _sourceConnection.CloseGracefullyAsync(cancellationToken),
-                _englishConnection.CloseGracefullyAsync(cancellationToken),
-                _japaneseConnection.CloseGracefullyAsync(cancellationToken)).ConfigureAwait(false);
+                new[] { _sourceConnection.CloseGracefullyAsync(cancellationToken) }
+                    .Concat(_connections.Values.Select(connection => connection.CloseGracefullyAsync(cancellationToken))))
+                .ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // 最初の close 失敗だけを呼び出し元へ返し、残りの解放は必ず行う。
         catch (Exception error)
@@ -366,12 +417,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         await AwaitPumpAsync(pump).ConfigureAwait(false);
 
         Exception? firstError = null;
-        foreach (var close in new Func<Task>[]
-                 {
-                     _sourceConnection.ForceCloseAsync,
-                     _englishConnection.ForceCloseAsync,
-                     _japaneseConnection.ForceCloseAsync,
-                 })
+        foreach (var close in new Func<Task>[] { _sourceConnection.ForceCloseAsync }
+                     .Concat(_connections.Values.Select(connection => (Func<Task>)connection.ForceCloseAsync)))
         {
             try
             {
@@ -430,8 +477,10 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
         _lifecycleGate.Dispose();
         _sourceConnection.Dispose();
-        _englishConnection.Dispose();
-        _japaneseConnection.Dispose();
+        foreach (var connection in _connections.Values.Distinct())
+        {
+            connection.Dispose();
+        }
     }
 
     private static async Task AwaitPumpAsync(Task? pump)
@@ -556,9 +605,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
             try
             {
-                var connection = pending.Target == RealtimeTranslationOutputLanguage.English
-                    ? _englishConnection
-                    : _japaneseConnection;
+                var connection = _connections[pending.Target];
                 await connection.AppendAudioFrameAsync(pending.Frame, pumpToken).ConfigureAwait(false);
 
                 lock (_sync)
@@ -640,7 +687,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             async () =>
             {
                 // 原文 connection だけ input transcript を通し、翻訳側は接続フィルタと二重化する。
-                var pumps = new[]
+                var pumps = new List<Task>
                 {
                     MergeOneAsync(
                         _sourceConnection.Events,
@@ -648,19 +695,13 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                         epoch,
                         acceptInputTranscript: true,
                         token),
-                    MergeOneAsync(
-                        _englishConnection.Events,
-                        writer,
-                        epoch,
-                        acceptInputTranscript: false,
-                        token),
-                    MergeOneAsync(
-                        _japaneseConnection.Events,
-                        writer,
-                        epoch,
-                        acceptInputTranscript: false,
-                        token),
                 };
+                pumps.AddRange(_connections.Values.Distinct().Select(connection => MergeOneAsync(
+                        connection.Events,
+                        writer,
+                        epoch,
+                        acceptInputTranscript: false,
+                        token)));
 
                 await Task.WhenAll(pumps).ConfigureAwait(false);
 

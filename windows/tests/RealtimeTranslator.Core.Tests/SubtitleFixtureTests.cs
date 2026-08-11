@@ -94,7 +94,7 @@ public sealed class SubtitleFixtureTests
                 "finalizeForLanguageSwitch" => assembler.FinalizeForLanguageSwitch(now),
                 "sourceDelta" or "translationDelta" => assembler.Ingest(
                     new RealtimeTranslationStreamEvent(
-                        RealtimeTranslationWireValues.ParseOutputLanguage(SharedFixtures.Text(step["lane"])),
+                        ParseLane(SharedFixtures.Text(step["lane"])),
                         ServerEvent(kind, step),
                         SharedFixtures.OptionalNumber(step["epoch"]) ?? epoch),
                     now),
@@ -123,6 +123,11 @@ public sealed class SubtitleFixtureTests
             ? new RealtimeTranslationServerEvent.InputTranscriptDelta(text, eventId, elapsedMs)
             : new RealtimeTranslationServerEvent.OutputTranscriptDelta(text, eventId, elapsedMs);
     }
+
+    private static RealtimeTranslationLane ParseLane(string value) =>
+        value == "source"
+            ? RealtimeTranslationLane.Source
+            : RealtimeTranslationLane.Translation(RealtimeTranslationWireValues.ParseOutputLanguage(value));
 
     /// <summary>literal / repeat / concat 記法を展開する。</summary>
     private static string Expand(JsonNode node)

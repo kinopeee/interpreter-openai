@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 using System.Text;
 
 namespace RealtimeTranslator.Core.Audio;
@@ -9,11 +11,20 @@ public static class SpokenLanguageDetector
 {
     /// <summary>言語切替検出用の末尾 Unicode scalar 数 (空白除く)。</summary>
     public const int RecentEvidenceWindow = 16;
+    public const int EnEsWindow = 8;
 
-    public static SpokenLanguage Detect(string text) => Evidence(text) switch
+    public static readonly ImmutableArray<string> SpanishExclusiveWords =
+        ["el", "la", "los", "las", "es", "está", "que", "y", "de", "del", "con", "por", "para", "pero", "más", "sí"];
+
+    public static readonly ImmutableArray<string> EnglishExclusiveWords =
+        ["the", "and", "is", "are", "of", "to", "it", "that", "this", "with", "for", "you", "they"];
+
+    public static SpokenLanguage Detect(string text, LanguagePair pair = LanguagePair.JaEn) =>
+        Evidence(text, pair) switch
     {
         SpokenLanguageEvidence.Japanese => SpokenLanguage.Japanese,
         SpokenLanguageEvidence.English => SpokenLanguage.English,
+        SpokenLanguageEvidence.Spanish => SpokenLanguage.Spanish,
         _ => SpokenLanguage.Unknown,
     };
 
@@ -22,20 +33,32 @@ public static class SpokenLanguageDetector
     /// 空白 scalar は語境界判定のため残す。日本語がウィンドウ外へ流れ出ると英語切替を検出できる。
     /// 単位は UTF-16 <see cref="char"/> でも書記素クラスタでもない (shared/protocol/routing.md 正本)。
     /// </summary>
-    public static SpokenLanguageEvidence RecentEvidence(string text, int window = RecentEvidenceWindow)
+    public static SpokenLanguageEvidence RecentEvidence(
+        string text,
+        LanguagePair pair = LanguagePair.JaEn,
+        int? window = null)
     {
         ArgumentNullException.ThrowIfNull(text);
 
-        if (window <= 0 || text.Length == 0)
+        var effectiveWindow = window ?? (pair == LanguagePair.EnEs ? EnEsWindow : RecentEvidenceWindow);
+        if (effectiveWindow <= 0 || text.Length == 0)
         {
-            return Evidence(text);
+            return Evidence(text, pair);
+        }
+
+        if (pair == LanguagePair.EnEs)
+        {
+            var words = TokenizeWords(text);
+            return words.Count <= effectiveWindow
+                ? Evidence(text, pair)
+                : Evidence(string.Join(' ', words.TakeLast(effectiveWindow)), pair);
         }
 
         var starts = ScalarStarts(text);
         var nonWhitespaceCount = 0;
         var position = starts.Count;
         var start = text.Length;
-        while (position > 0 && nonWhitespaceCount < window)
+        while (position > 0 && nonWhitespaceCount < effectiveWindow)
         {
             position -= 1;
             start = starts[position];
@@ -45,12 +68,22 @@ public static class SpokenLanguageDetector
             }
         }
 
-        return nonWhitespaceCount == 0 ? SpokenLanguageEvidence.None : Evidence(text[start..]);
+        return nonWhitespaceCount == 0 ? SpokenLanguageEvidence.None : Evidence(text[start..], pair);
     }
 
-    public static SpokenLanguageEvidence Evidence(string text)
+    public static SpokenLanguageEvidence RecentEvidence(string text, int window) =>
+        RecentEvidence(text, LanguagePair.JaEn, window);
+
+    public static SpokenLanguageEvidence Evidence(
+        string text,
+        LanguagePair pair = LanguagePair.JaEn)
     {
         ArgumentNullException.ThrowIfNull(text);
+
+        if (pair == LanguagePair.EnEs)
+        {
+            return EvidenceEnEs(text);
+        }
 
         var hasJapanese = false;
         var latinWordCount = 0;
@@ -92,9 +125,80 @@ public static class SpokenLanguageDetector
         {
             0 => SpokenLanguageEvidence.None,
             1 => SpokenLanguageEvidence.AmbiguousLatin,
-            _ => SpokenLanguageEvidence.English,
+            _ => pair == LanguagePair.JaEs
+                ? SpokenLanguageEvidence.Spanish
+                : SpokenLanguageEvidence.English,
         };
     }
+
+    private static SpokenLanguageEvidence EvidenceEnEs(string text)
+    {
+        var words = TokenizeWords(text);
+        if (text.IndexOfAny(['¿', '¡', 'ñ', 'Ñ']) >= 0)
+        {
+            return SpokenLanguageEvidence.Spanish;
+        }
+
+        var spanishScore = 0;
+        var englishScore = 0;
+        foreach (var word in words)
+        {
+            var lower = word.ToLowerInvariant();
+            if (SpanishExclusiveWords.Contains(lower))
+            {
+                spanishScore += 1;
+            }
+
+            if (EnglishExclusiveWords.Contains(lower))
+            {
+                englishScore += 1;
+            }
+
+            if (word.Any(character => "áéíóúüÁÉÍÓÚÜ".Contains(character)))
+            {
+                spanishScore += 2;
+            }
+        }
+
+        if (Math.Abs(spanishScore - englishScore) < 2)
+        {
+            return SpokenLanguageEvidence.AmbiguousLatin;
+        }
+
+        return spanishScore > englishScore
+            ? SpokenLanguageEvidence.Spanish
+            : SpokenLanguageEvidence.English;
+    }
+
+    private static List<string> TokenizeWords(string text)
+    {
+        var words = new List<string>();
+        var builder = new StringBuilder();
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (IsLatinWordRune(rune))
+            {
+                builder.Append(rune.ToString());
+            }
+            else if (builder.Length > 0)
+            {
+                words.Add(builder.ToString());
+                builder.Clear();
+            }
+        }
+
+        if (builder.Length > 0)
+        {
+            words.Add(builder.ToString());
+        }
+
+        return words;
+    }
+
+    private static bool IsLatinWordRune(Rune rune) =>
+        rune.Value is >= 0x0041 and <= 0x005A
+            or >= 0x0061 and <= 0x007A
+            or >= 0x00C0 and <= 0x00FF;
 
     /// <summary>Unicode scalar 単位で末尾から走査するための開始 UTF-16 オフセット列。</summary>
     private static List<int> ScalarStarts(string text)

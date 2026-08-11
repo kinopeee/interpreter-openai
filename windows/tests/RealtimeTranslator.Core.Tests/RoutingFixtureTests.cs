@@ -23,7 +23,10 @@ public sealed class RoutingFixtureTests
     public async Task RoutingCasesMatchFixture(string name)
     {
         var fixtureCase = SharedFixtures.Case("routing", "cases", name);
-        await using var harness = await RoutingHarness.StartAsync();
+        var pair = fixtureCase["pair"] is { } pairNode
+            ? LanguagePairExtensions.ParseLanguagePair(SharedFixtures.Text(pairNode))
+            : LanguagePair.JaEn;
+        await using var harness = await RoutingHarness.StartAsync(pair);
 
         foreach (var step in fixtureCase["steps"]!.AsArray())
         {
@@ -32,8 +35,10 @@ public sealed class RoutingFixtureTests
 
         var expected = fixtureCase["expected"]!.AsObject();
         Assert.Equal(FrameNames(expected["sourceFrames"]), harness.Source.AppendedFrameTexts());
-        Assert.Equal(FrameNames(expected["englishFrames"]), harness.English.AppendedFrameTexts());
-        Assert.Equal(FrameNames(expected["japaneseFrames"]), harness.Japanese.AppendedFrameTexts());
+        var frames = expected["frames"]!.AsObject();
+        Assert.Equal(FrameNames(frames["en"]), harness.English.AppendedFrameTexts());
+        Assert.Equal(FrameNames(frames["ja"]), harness.Japanese.AppendedFrameTexts());
+        Assert.Equal(FrameNames(frames["es"]), harness.Spanish.AppendedFrameTexts());
 
         var expectedTransportErrors = SharedFixtures.OptionalNumber(expected["transportErrorCount"]) ?? 0;
         Assert.Equal(expectedTransportErrors, harness.DrainTransportErrorCount());
@@ -73,7 +78,9 @@ public sealed class RoutingFixtureTests
             await harness.AppendFrameAsync("frame-" + index.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
-        await harness.SetSpokenLanguageAsync(SharedFixtures.Text(window["thenSetSpokenLanguage"]));
+        await harness.SelectTranslationTargetAsync(
+            SharedFixtures.OptionalText(window["thenSelectTranslationTarget"])
+            ?? SharedFixtures.Text(window["thenSetSpokenLanguage"]));
 
         var flushed = harness.English.AppendedFrameTexts();
         Assert.Equal(expectedCount, flushed.Count);
@@ -121,6 +128,10 @@ public sealed class RoutingFixtureTests
     private static List<string> FrameNames(JsonNode? node)
     {
         var names = new List<string>();
+        if (node is null)
+        {
+            return names;
+        }
         foreach (var item in node!.AsArray())
         {
             names.Add(SharedFixtures.Text(item));
@@ -135,11 +146,13 @@ public sealed class RoutingFixtureTests
             FakeRealtimeServerTransport source,
             FakeRealtimeServerTransport english,
             FakeRealtimeServerTransport japanese,
+            FakeRealtimeServerTransport spanish,
             DualRealtimeTranslationClient dual)
         {
             Source = source;
             English = english;
             Japanese = japanese;
+            Spanish = spanish;
             Dual = dual;
         }
 
@@ -149,22 +162,29 @@ public sealed class RoutingFixtureTests
 
         public FakeRealtimeServerTransport Japanese { get; }
 
+        public FakeRealtimeServerTransport Spanish { get; }
+
         public DualRealtimeTranslationClient Dual { get; }
 
         private RealtimeTranslationOutputLanguage? SelectedTarget { get; set; }
 
-        public static async Task<RoutingHarness> StartAsync()
+        public static async Task<RoutingHarness> StartAsync(LanguagePair pair = LanguagePair.JaEn)
         {
             var source = new FakeRealtimeServerTransport();
             var english = new FakeRealtimeServerTransport();
             var japanese = new FakeRealtimeServerTransport();
+            var spanish = new FakeRealtimeServerTransport();
             var dual = new DualRealtimeTranslationClient(
                 new RealtimeSourceTranscriptionConnection(source, "test-safety"),
                 new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
-                new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"));
+                new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"),
+                spanishConnection: new RealtimeTranslationConnection(
+                    RealtimeTranslationOutputLanguage.Spanish,
+                    spanish,
+                    "test-safety"));
 
-            await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
-            return new RoutingHarness(source, english, japanese, dual);
+            await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, pair);
+            return new RoutingHarness(source, english, japanese, spanish, dual);
         }
 
         public async Task ApplyAsync(JsonObject step)
@@ -175,8 +195,8 @@ public sealed class RoutingFixtureTests
                     await AppendFrameAsync(SharedFixtures.Text(step["frame"]));
                     break;
 
-                case "setSpokenLanguage":
-                    await SetSpokenLanguageAsync(SharedFixtures.Text(step["language"]));
+                case "selectTranslationTarget":
+                    await SelectTranslationTargetAsync(SharedFixtures.OptionalText(step["target"]));
                     break;
 
                 case "resetAudioRouting":
@@ -220,6 +240,15 @@ public sealed class RoutingFixtureTests
             await Dual.WaitForTranslationDrainAsync();
         }
 
+        public async Task SelectTranslationTargetAsync(string? target)
+        {
+            SelectedTarget = target is null
+                ? null
+                : RealtimeTranslationWireValues.ParseOutputLanguage(target);
+            await Dual.SelectTranslationTargetAsync(SelectedTarget);
+            await Dual.WaitForTranslationDrainAsync();
+        }
+
         public int DrainTransportErrorCount()
         {
             var count = 0;
@@ -236,7 +265,11 @@ public sealed class RoutingFixtureTests
 
         public async ValueTask DisposeAsync() => await Dual.ForceCloseAsync();
 
-        private FakeRealtimeServerTransport TargetTransport() =>
-            SelectedTarget == RealtimeTranslationOutputLanguage.Japanese ? Japanese : English;
+        private FakeRealtimeServerTransport TargetTransport() => SelectedTarget switch
+        {
+            RealtimeTranslationOutputLanguage.Japanese => Japanese,
+            RealtimeTranslationOutputLanguage.Spanish => Spanish,
+            _ => English,
+        };
     }
 }

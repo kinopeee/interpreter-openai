@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
 
@@ -12,7 +13,7 @@ public readonly record struct RealtimeSubtitleUpdate(
     bool ShouldFinalize,
     int SegmentGeneration);
 
-/// <summary>原文 authority と日英 2 出力を時間整列し、自動 lane 選択する。</summary>
+/// <summary>原文 authority と複数出力言語を時間整列し、自動 lane 選択する。</summary>
 public sealed class RealtimeSubtitleAssembler
 {
     /// <summary>
@@ -24,8 +25,7 @@ public sealed class RealtimeSubtitleAssembler
     private int _epoch;
     private int _segmentGeneration;
     private string _sourceText = string.Empty;
-    private string _englishText = string.Empty;
-    private string _japaneseText = string.Empty;
+    private readonly Dictionary<RealtimeTranslationOutputLanguage, string> _translationText = new();
     private RealtimeTranslationOutputLanguage? _selectedLane;
     private RealtimeTranslationOutputLanguage? _expectedLane;
     private readonly HashSet<string> _seenEventIds = new(StringComparer.Ordinal);
@@ -85,8 +85,8 @@ public sealed class RealtimeSubtitleAssembler
         switch (streamEvent.Event)
         {
             case RealtimeTranslationServerEvent.InputTranscriptDelta source:
-                // 原文は英語 target 接続 (原文 transcription) だけを authority とする。
-                return streamEvent.Target == RealtimeTranslationOutputLanguage.English
+                // 原文 transcription 接続の source lane だけを authority とする。
+                return streamEvent.Lane.IsSource
                     ? AppendSource(source.Delta, source.EventId, source.ElapsedMs, now)
                     : null;
 
@@ -141,14 +141,7 @@ public sealed class RealtimeSubtitleAssembler
             return null;
         }
 
-        if (target == RealtimeTranslationOutputLanguage.English)
-        {
-            _englishText += delta;
-        }
-        else
-        {
-            _japaneseText += delta;
-        }
+        _translationText[target] = _translationText.GetValueOrDefault(target, string.Empty) + delta;
 
         _lastActivityAt = now;
 
@@ -159,12 +152,9 @@ public sealed class RealtimeSubtitleAssembler
                 // 期待 lane の出力を優先。旧 target からの同言語 echo で誤選択しない。
                 _selectedLane = expectedLane;
             }
-            else if (_expectedLane is null && (_englishText.Length == 0) != (_japaneseText.Length == 0))
+            else if (_expectedLane is null && _translationText.Count(text => text.Value.Length > 0) == 1)
             {
-                // 一次信号: どちらのセッションが訳文を出したか。
-                _selectedLane = _englishText.Length == 0
-                    ? RealtimeTranslationOutputLanguage.Japanese
-                    : RealtimeTranslationOutputLanguage.English;
+                _selectedLane = _translationText.First(text => text.Value.Length > 0).Key;
             }
             else
             {
@@ -196,33 +186,24 @@ public sealed class RealtimeSubtitleAssembler
         if (_expectedLane is { } expectedLane)
         {
             // 期待 lane がまだ出力していない間は、他 lane の first-output で確定しない。
-            if (expectedLane == RealtimeTranslationOutputLanguage.English && _englishText.Length > 0)
+            if (_translationText.GetValueOrDefault(expectedLane, string.Empty).Length > 0)
             {
-                _selectedLane = RealtimeTranslationOutputLanguage.English;
-            }
-            else if (expectedLane == RealtimeTranslationOutputLanguage.Japanese && _japaneseText.Length > 0)
-            {
-                _selectedLane = RealtimeTranslationOutputLanguage.Japanese;
+                _selectedLane = expectedLane;
             }
 
             return;
         }
 
         // 一次: 片側だけが出力していればそれを選ぶ。
-        if (_englishText.Length > 0 && _japaneseText.Length == 0)
+        var populated = _translationText.Where(text => text.Value.Length > 0).ToArray();
+        if (populated.Length == 1)
         {
-            _selectedLane = RealtimeTranslationOutputLanguage.English;
-            return;
-        }
-
-        if (_japaneseText.Length > 0 && _englishText.Length == 0)
-        {
-            _selectedLane = RealtimeTranslationOutputLanguage.Japanese;
+            _selectedLane = populated[0].Key;
             return;
         }
 
         // 補助: 原文の文字種。
-        _selectedLane = SpokenLanguageDetector.Detect(_sourceText).TranslationTarget();
+        _selectedLane = LanguagePair.JaEn.TranslationTarget(SpokenLanguageDetector.Detect(_sourceText));
     }
 
     private RealtimeSubtitleUpdate? EvaluateFinalize(DateTimeOffset now)
@@ -258,8 +239,7 @@ public sealed class RealtimeSubtitleAssembler
 
     private string CurrentTranslation => _selectedLane switch
     {
-        RealtimeTranslationOutputLanguage.English => _englishText,
-        RealtimeTranslationOutputLanguage.Japanese => _japaneseText,
+        { } lane => _translationText.GetValueOrDefault(lane, string.Empty),
         _ => string.Empty,
     };
 
@@ -277,8 +257,7 @@ public sealed class RealtimeSubtitleAssembler
     private void ClearSegmentBuffers(bool advancingGeneration)
     {
         _sourceText = string.Empty;
-        _englishText = string.Empty;
-        _japaneseText = string.Empty;
+        _translationText.Clear();
         _selectedLane = null;
         if (advancingGeneration)
         {
@@ -290,5 +269,5 @@ public sealed class RealtimeSubtitleAssembler
     private bool ShouldStartNewSegmentForSourceUpdate() =>
         _sourceText.Length == 0
         && _selectedLane is null
-        && (_englishText.Length > 0 || _japaneseText.Length > 0);
+        && _translationText.Any(text => text.Value.Length > 0);
 }

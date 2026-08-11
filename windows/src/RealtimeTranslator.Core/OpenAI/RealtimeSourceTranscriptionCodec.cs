@@ -1,8 +1,10 @@
 using System;
 using System.Buffers;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using RealtimeTranslator.Core.Audio;
 
 namespace RealtimeTranslator.Core.OpenAI;
 
@@ -13,7 +15,9 @@ public abstract record RealtimeSourceTranscriptionClientEvent
     {
     }
 
-    public sealed record SessionUpdate(RealtimeSessionTuning Tuning) : RealtimeSourceTranscriptionClientEvent;
+    public sealed record SessionUpdate(
+        RealtimeSessionTuning Tuning,
+        LanguagePair Pair = LanguagePair.JaEn) : RealtimeSourceTranscriptionClientEvent;
 
     public sealed record InputAudioBufferAppend(string Base64Audio) : RealtimeSourceTranscriptionClientEvent;
 
@@ -52,7 +56,14 @@ public static class RealtimeSourceTranscriptionCodec
     public const string ErrorCode = "transcription";
 
     /// <summary>認識対象言語。相手言語を確定する前から両方受け付ける。</summary>
-    public static readonly ImmutableArray<string> Languages = ["ja", "en"];
+    public static ImmutableArray<string> Languages(LanguagePair pair) =>
+        [.. pair.Languages().Select(language => language switch
+        {
+            SpokenLanguage.Japanese => "ja",
+            SpokenLanguage.English => "en",
+            SpokenLanguage.Spanish => "es",
+            _ => throw new ArgumentOutOfRangeException(nameof(pair), pair, null),
+        })];
 
     private const string DefaultErrorMessage = "原文字幕セッションでエラーが発生しました";
 
@@ -63,7 +74,7 @@ public static class RealtimeSourceTranscriptionCodec
         JsonObject payload = clientEvent switch
         {
             RealtimeSourceTranscriptionClientEvent.SessionUpdate sessionUpdate =>
-                SessionUpdatePayload(sessionUpdate.Tuning),
+                SessionUpdatePayload(sessionUpdate.Tuning, sessionUpdate.Pair),
             RealtimeSourceTranscriptionClientEvent.InputAudioBufferAppend append => new JsonObject
             {
                 ["type"] = "input_audio_buffer.append",
@@ -160,11 +171,13 @@ public static class RealtimeSourceTranscriptionCodec
                 RealtimeTranslationException.SanitizeServerMessage(message));
     }
 
-    public static JsonObject SessionUpdatePayload(RealtimeSessionTuning tuning)
+    public static JsonObject SessionUpdatePayload(
+        RealtimeSessionTuning tuning,
+        LanguagePair pair = LanguagePair.JaEn)
     {
         ArgumentNullException.ThrowIfNull(tuning);
 
-        var languages = StringArray(Languages);
+        var languages = StringArray(Languages(pair));
         var keywords = StringArray(tuning.TranscriptionKeywords);
 
         return new JsonObject

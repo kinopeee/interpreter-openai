@@ -1567,8 +1567,8 @@ public sealed class InterpretationSessionTests
             return Task.CompletedTask;
         }
 
-        public void PublishSourceDelta(string delta, int? epoch = null) => Publish(
-            RealtimeTranslationOutputLanguage.English,
+        public void PublishSourceDelta(string delta, int? epoch = null) => PublishLane(
+            RealtimeTranslationLane.Source,
             new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
             epoch);
 
@@ -1598,11 +1598,17 @@ public sealed class InterpretationSessionTests
             RealtimeTranslationOutputLanguage target,
             RealtimeTranslationServerEvent serverEvent,
             int? epoch = null)
+            => PublishLane(RealtimeTranslationLane.Translation(target), serverEvent, epoch);
+
+        private void PublishLane(
+            RealtimeTranslationLane lane,
+            RealtimeTranslationServerEvent serverEvent,
+            int? epoch = null)
         {
             lock (_sync)
             {
                 _events.Writer.TryWrite(
-                    new RealtimeTranslationStreamEvent(target, serverEvent, epoch ?? _epoch));
+                    new RealtimeTranslationStreamEvent(lane, serverEvent, epoch ?? _epoch));
             }
         }
     }

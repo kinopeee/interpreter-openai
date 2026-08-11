@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Text;
+using RealtimeTranslator.Core.Audio;
 
 namespace RealtimeTranslator.Core.OpenAI;
 
@@ -39,6 +40,18 @@ public sealed record RealtimeSessionTuning(
         RealtimeTranscriptionDelay.Low,
         DefaultPrompt,
         DefaultKeywords);
+
+    public static string DefaultPromptForPair(LanguagePair pair) => pair switch
+    {
+        LanguagePair.JaEn => DefaultPrompt,
+        LanguagePair.JaEs => "Japanese and Spanish conversation about software development, programming, and hackathons.",
+        LanguagePair.EnEs => "English and Spanish conversation about software development, programming, and hackathons.",
+        _ => throw new ArgumentOutOfRangeException(nameof(pair), pair, null),
+    };
+
+    public static ImmutableArray<string> DefaultKeywordsForPair(LanguagePair pair) => pair == LanguagePair.JaEn
+        ? DefaultKeywords
+        : ["hackathon", "software", "programming", "desarrollo", "programación"];
 
     /// <summary>用途別の認識ヒントプリセット。</summary>
     public sealed record Preset(string Id, string DisplayName, string Prompt, ImmutableArray<string> Keywords)
