@@ -142,6 +142,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         ArgumentNullException.ThrowIfNull(tuning);
 
         RealtimeTranslationNoiseReduction connectedNoiseReduction;
+        LanguagePair pair;
         lock (_sync)
         {
             if (!_isReady)
@@ -150,11 +151,12 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
             }
 
             connectedNoiseReduction = _connectedNoiseReduction;
+            pair = _pair;
         }
 
         var liveTuning = tuning with { NoiseReduction = connectedNoiseReduction };
         return SendAsync(
-            new RealtimeSourceTranscriptionClientEvent.SessionUpdate(liveTuning, _pair),
+            new RealtimeSourceTranscriptionClientEvent.SessionUpdate(liveTuning, pair),
             cancellationToken);
     }
 

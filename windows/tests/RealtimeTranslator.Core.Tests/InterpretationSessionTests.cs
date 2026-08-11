@@ -220,6 +220,13 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
         client.PublishSourceDelta("こんにちは、初回です");
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.SourceText.Length > 0);
+            }
+        });
 
         lock (updates)
         {
@@ -1516,15 +1523,25 @@ public sealed class InterpretationSessionTests
             }
         }
 
+        public LanguagePair? LastStartedPair { get; private set; }
+
+        public Task StartAsync(
+            string apiKey,
+            RealtimeSessionTuning tuning,
+            CancellationToken cancellationToken = default) =>
+            StartAsync(apiKey, tuning, LanguagePair.JaEn, cancellationToken);
+
         public async Task StartAsync(
             string apiKey,
             RealtimeSessionTuning tuning,
+            LanguagePair pair,
             CancellationToken cancellationToken = default)
         {
             Task? gateTask;
             lock (_sync)
             {
                 StartCount += 1;
+                LastStartedPair = pair;
                 if (ThrowOnNextStart)
                 {
                     ThrowOnNextStart = false;

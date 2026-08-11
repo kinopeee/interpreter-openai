@@ -259,6 +259,27 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.False(await dual.Events.WaitToReadAsync());
     }
 
+    // Given: スペイン語接続を渡していない dual
+    // When: ja-es で Start する
+    // Then: KeyNotFoundException ではなく、必要な接続が無い旨の ArgumentException になる
+    [Fact]
+    public async Task StartWithSpanishPairWithoutSpanishConnectionFailsClearly()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(source, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"));
+
+        var error = await Assert.ThrowsAsync<ArgumentException>(() =>
+            dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs));
+
+        Assert.Equal("pair", error.ParamName);
+        Assert.Contains("es", error.Message, StringComparison.Ordinal);
+    }
+
     private static DualRealtimeTranslationClient CreateDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,

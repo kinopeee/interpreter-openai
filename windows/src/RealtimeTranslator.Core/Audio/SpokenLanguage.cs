@@ -93,7 +93,7 @@ public static class LanguagePairExtensions
         _ => throw new ArgumentOutOfRangeException(nameof(wireValue), wireValue, null),
     };
 
-    private static RealtimeTranslationOutputLanguage ToOutputLanguage(this SpokenLanguage language) => language switch
+    public static RealtimeTranslationOutputLanguage ToOutputLanguage(this SpokenLanguage language) => language switch
     {
         SpokenLanguage.English => RealtimeTranslationOutputLanguage.English,
         SpokenLanguage.Japanese => RealtimeTranslationOutputLanguage.Japanese,

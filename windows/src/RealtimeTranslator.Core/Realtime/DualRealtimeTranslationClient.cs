@@ -22,8 +22,7 @@ public interface IDualRealtimeTranslationClient
         string apiKey,
         RealtimeSessionTuning tuning,
         LanguagePair pair,
-        CancellationToken cancellationToken = default) =>
-        StartAsync(apiKey, tuning, cancellationToken);
+        CancellationToken cancellationToken = default);
 
     Task AppendAudioFrameAsync(ReadOnlyMemory<byte> pcm16LittleEndian, CancellationToken cancellationToken = default);
 
@@ -152,6 +151,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             _translationPumpCts = new CancellationTokenSource();
         }
 
+        EnsureConnectionsForPair(pair);
+
         try
         {
             await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -163,13 +164,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                 };
                 starts.AddRange(pair.Languages().Select(language =>
                     {
-                        var target = language switch
-                        {
-                            SpokenLanguage.English => RealtimeTranslationOutputLanguage.English,
-                            SpokenLanguage.Japanese => RealtimeTranslationOutputLanguage.Japanese,
-                            SpokenLanguage.Spanish => RealtimeTranslationOutputLanguage.Spanish,
-                            _ => throw new ArgumentOutOfRangeException(nameof(pair), pair, null),
-                        };
+                        var target = language.ToOutputLanguage();
                         return _connections[target].StartAsync(
                             apiKey,
                             new RealtimeTranslationSessionConfig(
@@ -260,15 +255,22 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                 return Task.CompletedTask;
             }
 
-            _selectedTranslationTarget = target;
-
             // 旧 target 向けの未送信 frame は破棄し、rolling preroll を新 target へ flush する。
             _pendingTranslationFrames.Clear();
             if (target is not { } selected)
             {
+                _selectedTranslationTarget = null;
                 return Task.CompletedTask;
             }
 
+            if (!_connections.ContainsKey(selected))
+            {
+                throw new ArgumentException(
+                    $"Translation connection for '{selected.ToWireValue()}' is not configured.",
+                    nameof(target));
+            }
+
+            _selectedTranslationTarget = selected;
             foreach (var frame in _translationPrerollFrames)
             {
                 EnqueueTranslationFrameLocked(frame, selected);
@@ -727,6 +729,20 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         catch (OperationCanceledException)
         {
             // 停止時のキャンセルは正常終了として扱う。
+        }
+    }
+
+    private void EnsureConnectionsForPair(LanguagePair pair)
+    {
+        foreach (var language in pair.Languages())
+        {
+            var target = language.ToOutputLanguage();
+            if (!_connections.ContainsKey(target))
+            {
+                throw new ArgumentException(
+                    $"Translation connection for '{target.ToWireValue()}' is required for pair '{pair.ToWireValue()}'.",
+                    nameof(pair));
+            }
         }
     }
 
