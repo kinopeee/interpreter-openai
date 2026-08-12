@@ -82,7 +82,7 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         let englishBeforeDetection = try decodeAppendPayloads(
             await englishTransport.sent
         )
-        try await dual.setSpokenLanguage(.english)
+        try await dual.selectTranslationTarget(.japanese)
         try await waitUntilAppendCount(japaneseTransport, minimum: 2)
 
         // Then: 判定前は原文のみ。判定後に日本語targetへprerollが届く
@@ -117,7 +117,7 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         try await dual.appendAudioFrame(frameA)
 
         // When: 日本語発話と判定後に次frameを送る
-        try await dual.setSpokenLanguage(.japanese)
+        try await dual.selectTranslationTarget(.english)
         try await dual.appendAudioFrame(frameB)
         try await waitUntilAppendCount(englishTransport, minimum: 2)
 
@@ -151,12 +151,12 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         let frameB = Data(repeating: 0x22, count: PCM16FramePacketizer.bytesPerFrame)
         let frameC = Data(repeating: 0x33, count: PCM16FramePacketizer.bytesPerFrame)
         try await dual.appendAudioFrame(frameA)
-        try await dual.setSpokenLanguage(.japanese)
+        try await dual.selectTranslationTarget(.english)
         try await dual.appendAudioFrame(frameB)
         try await waitUntilAppendCount(englishTransport, minimum: 2)
 
         // When: 英語へ切り替えて次frameを送る
-        try await dual.setSpokenLanguage(.english)
+        try await dual.selectTranslationTarget(.japanese)
         try await dual.appendAudioFrame(frameC)
         try await waitUntilAppendCount(japaneseTransport, minimum: 3)
 
@@ -197,7 +197,7 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         let frameB = Data(repeating: 0x66, count: PCM16FramePacketizer.bytesPerFrame)
         let frameC = Data(repeating: 0x77, count: PCM16FramePacketizer.bytesPerFrame)
         try await dual.appendAudioFrame(frameA)
-        try await dual.setSpokenLanguage(.japanese)
+        try await dual.selectTranslationTarget(.english)
         await englishTransport.setSendHangNanoseconds(2_000_000_000)
 
         // When: 翻訳停滞中でも原文へ連続送信できる
@@ -361,7 +361,7 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
             frames.append(frame)
             try await dual.appendAudioFrame(frame)
         }
-        try await dual.setSpokenLanguage(.japanese)
+        try await dual.selectTranslationTarget(.english)
         try await waitUntilAppendCount(englishTransport, minimum: 40)
 
         // Then: 直近40 frameだけが英語targetへflushされる
@@ -482,7 +482,7 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
             englishTransport: englishTransport,
             japaneseTransport: japaneseTransport
         )
-        try await dual.setSpokenLanguage(.japanese)
+        try await dual.selectTranslationTarget(.english)
 
         let stream = await dual.events
         let firstError = expectation(description: "first transport error")
@@ -663,8 +663,9 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
             englishTransport: englishTransport,
             japaneseTransport: japaneseTransport
         )
-        try await dual.setSpokenLanguage(.japanese)
-        await englishTransport.setSendHangNanoseconds(30_000_000_000)
+        try await dual.selectTranslationTarget(.english)
+        // drain timeout より長く、かつテスト後始末を長引かせない程度の停滞にする。
+        await englishTransport.setSendHangNanoseconds(2_000_000_000)
         let frame = Data(repeating: 0x11, count: PCM16FramePacketizer.bytesPerFrame)
         try await dual.appendAudioFrame(frame)
 
@@ -723,7 +724,7 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         try await japaneseTransport.enqueueJSON(["type": "session.created"])
 
         let startTask = Task {
-            try await dual.start(apiKey: "sk-test", tuning: tuning)
+            try await dual.start(apiKey: "sk-test", tuning: tuning, pair: .jaEn)
         }
 
         try await waitUntilSent(sourceTransport, minimum: 1)

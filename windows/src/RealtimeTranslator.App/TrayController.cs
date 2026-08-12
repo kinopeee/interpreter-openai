@@ -5,6 +5,7 @@ using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Windows.Forms;
 using RealtimeTranslator.Core.Realtime;
+using RealtimeTranslator.Core.Audio;
 
 namespace RealtimeTranslator.App;
 
@@ -18,11 +19,12 @@ public sealed class TrayController : IDisposable
     private readonly ToolStripMenuItem _exportSubtitlesItem;
     private readonly ToolStripMenuItem _clearSubtitlesItem;
     private readonly ToolStripMenuItem _editPositionItem;
+    private readonly ToolStripMenuItem _languagePairItem;
     private readonly Dictionary<TranslationState, Icon> _icons = new();
 
     private bool _disposed;
 
-    public TrayController()
+    public TrayController(LanguagePair languagePair = LanguagePair.JaEn)
     {
         _startStopItem = new ToolStripMenuItem("翻訳を開始", null, (_, _) => StartStopRequested?.Invoke(this, EventArgs.Empty));
         _exportSubtitlesItem = new ToolStripMenuItem(
@@ -50,7 +52,8 @@ public sealed class TrayController : IDisposable
         var menu = new ContextMenuStrip();
         menu.Items.Add(_startStopItem);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(Disabled("翻訳方向: 自動（日本語 ↔ 英語）"));
+        _languagePairItem = Disabled("翻訳方向: " + DisplayPair(languagePair));
+        menu.Items.Add(_languagePairItem);
         menu.Items.Add(Disabled("字幕表示: 原文＋翻訳"));
         menu.Items.Add(Disabled("翻訳音声: 字幕のみ"));
         menu.Items.Add(new ToolStripSeparator());
@@ -104,6 +107,9 @@ public sealed class TrayController : IDisposable
 
     public void SetEditingPosition(bool isEditing) => _editPositionItem.Checked = isEditing;
 
+    public void SetLanguagePair(LanguagePair pair) =>
+        _languagePairItem.Text = "翻訳方向: " + DisplayPair(pair);
+
     public void SetHasRecordedSubtitles(bool hasEntries)
     {
         _exportSubtitlesItem.Enabled = hasEntries;
@@ -137,6 +143,14 @@ public sealed class TrayController : IDisposable
     }
 
     private static ToolStripMenuItem Disabled(string text) => new(text) { Enabled = false };
+
+    private static string DisplayPair(LanguagePair pair) => pair switch
+    {
+        LanguagePair.JaEn => "日本語 ↔ 英語",
+        LanguagePair.JaEs => "日本語 ↔ スペイン語",
+        LanguagePair.EnEs => "英語 ↔ スペイン語",
+        _ => "日本語 ↔ 英語",
+    };
 
     private Icon IconFor(TranslationState state)
     {

@@ -11,6 +11,19 @@ final class LanguageFixtureTests: XCTestCase {
             SharedFixtures.number(fixture["recentEvidenceWindow"]),
             SpokenLanguageDetector.recentEvidenceWindow
         )
+        XCTAssertEqual(
+            SharedFixtures.number(fixture["enEsWindow"]),
+            SpokenLanguageDetector.enEsWindow
+        )
+        let exclusiveWords = try XCTUnwrap(fixture["exclusiveWords"] as? [String: Any])
+        XCTAssertEqual(
+            exclusiveWords["es"] as? [String],
+            SpokenLanguageDetector.spanishExclusiveWords
+        )
+        XCTAssertEqual(
+            exclusiveWords["en"] as? [String],
+            SpokenLanguageDetector.englishExclusiveWords
+        )
     }
 
     // Given: fixture の日英混在・曖昧・不明テキスト
@@ -20,13 +33,16 @@ final class LanguageFixtureTests: XCTestCase {
         for name in try SharedFixtures.caseNames("language", "evidence") {
                         let fixture = try SharedFixtures.case("language", "evidence", name)
             let input = SharedFixtures.text(fixture["input"])
+            let pair = SharedFixtures.optionalText(fixture["pair"])
+                .flatMap(LanguagePair.init(rawValue:))
+                ?? .jaEn
             XCTAssertEqual(
                 parseEvidence(SharedFixtures.text(fixture["evidence"])),
-                SpokenLanguageDetector.evidence(in: input)
+                SpokenLanguageDetector.evidence(in: input, pair: pair)
             )
             XCTAssertEqual(
                 parseLanguage(SharedFixtures.text(fixture["detect"])),
-                SpokenLanguageDetector.detect(input)
+                SpokenLanguageDetector.detect(input, pair: pair)
             )
         }
     }
@@ -38,16 +54,20 @@ final class LanguageFixtureTests: XCTestCase {
         for name in try SharedFixtures.caseNames("language", "recentEvidence") {
                         let fixture = try SharedFixtures.case("language", "recentEvidence", name)
             let input = SharedFixtures.text(fixture["input"])
+            let pair = SharedFixtures.optionalText(fixture["pair"])
+                .flatMap(LanguagePair.init(rawValue:))
+                ?? .jaEn
             XCTAssertEqual(
                 parseEvidence(SharedFixtures.text(fixture["expected"])),
                 SpokenLanguageDetector.recentEvidence(
                     in: input,
+                    pair: pair,
                     window: SharedFixtures.number(fixture["window"])
                 )
             )
             XCTAssertEqual(
                 parseEvidence(SharedFixtures.text(fixture["fullEvidence"])),
-                SpokenLanguageDetector.evidence(in: input)
+                SpokenLanguageDetector.evidence(in: input, pair: pair)
             )
         }
     }
@@ -58,9 +78,10 @@ final class LanguageFixtureTests: XCTestCase {
     func testTranslationTargetsMatchFixture() throws {
         for item in try SharedFixtures.section("language", "targets") {
             let language = parseLanguage(SharedFixtures.text(item["language"]))
+            let pair = LanguagePair(rawValue: SharedFixtures.text(item["pair"])) ?? .jaEn
             let expectedRaw = SharedFixtures.optionalText(item["translationTarget"])
-            let expected = expectedRaw.flatMap(TranslationTarget.init(rawValue:))
-            XCTAssertEqual(language.translationTarget, expected)
+            let expected = expectedRaw.flatMap(RealtimeTranslationOutputLanguage.init(rawValue:))
+            XCTAssertEqual(pair.translationTarget(for: language), expected)
         }
     }
 
@@ -70,6 +91,8 @@ final class LanguageFixtureTests: XCTestCase {
             return .japanese
         case "english":
             return .english
+        case "spanish":
+            return .spanish
         case "ambiguousLatin":
             return .ambiguousLatin
         case "none":
@@ -85,6 +108,8 @@ final class LanguageFixtureTests: XCTestCase {
             return .japanese
         case "english":
             return .english
+        case "spanish":
+            return .spanish
         case "unknown":
             return .unknown
         default:

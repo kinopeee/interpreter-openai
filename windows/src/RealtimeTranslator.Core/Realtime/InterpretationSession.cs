@@ -57,7 +57,8 @@ public sealed class InterpretationSession : IDisposable
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _initialReconnectDelay;
     private readonly TimeSpan _tickInterval;
-    private readonly RealtimeSubtitleAssembler _assembler = new();
+    private readonly Func<LanguagePair> _languagePairProvider;
+    private readonly RealtimeSubtitleAssembler _assembler;
     private readonly object _sync = new();
     private readonly SemaphoreSlim _routingGate = new(1, 1);
 
@@ -67,7 +68,9 @@ public sealed class InterpretationSession : IDisposable
     private int _reconnectAttempt;
     private TranslationState _state = TranslationState.Idle;
     private string _routingSourceText = string.Empty;
-    private SpokenLanguage _routedSpokenLanguage = SpokenLanguage.Unknown;
+    private LanguagePair? _activeLanguagePair;
+    private RealtimeTranslationOutputLanguage? _selectedTranslationTarget;
+    private int _reverseEvidenceCount;
 
     /// <summary>テスト用。generation 確認後・assembler 更新前に差し込む。</summary>
     internal Action? BeforeAssemblerIngestForTests { get; set; }
@@ -91,7 +94,8 @@ public sealed class InterpretationSession : IDisposable
         Func<RealtimeSessionTuning>? tuningProvider = null,
         TimeProvider? timeProvider = null,
         TimeSpan? initialReconnectDelay = null,
-        TimeSpan? tickInterval = null)
+        TimeSpan? tickInterval = null,
+        Func<LanguagePair>? languagePairProvider = null)
     {
         ArgumentNullException.ThrowIfNull(apiKeyStore);
         ArgumentNullException.ThrowIfNull(audioCapture);
@@ -104,6 +108,8 @@ public sealed class InterpretationSession : IDisposable
         _timeProvider = timeProvider ?? TimeProvider.System;
         _initialReconnectDelay = initialReconnectDelay ?? DefaultInitialReconnectDelay;
         _tickInterval = tickInterval ?? DefaultTickInterval;
+        _languagePairProvider = languagePairProvider ?? (() => LanguagePair.JaEn);
+        _assembler = new RealtimeSubtitleAssembler();
     }
 
     public event EventHandler<TranslationState>? StateChanged;
@@ -258,7 +264,14 @@ public sealed class InterpretationSession : IDisposable
 
         try
         {
-            await _dualClient.UpdateTranscriptionTuningAsync(_tuningProvider()).ConfigureAwait(false);
+            LanguagePair? activePair;
+            lock (_sync)
+            {
+                activePair = _activeLanguagePair;
+            }
+
+            await _dualClient.UpdateTranscriptionTuningAsync(
+                _tuningProvider().ForPair(activePair ?? LanguagePair.JaEn)).ConfigureAwait(false);
         }
         catch (RealtimeTranslationException)
         {
@@ -308,13 +321,6 @@ public sealed class InterpretationSession : IDisposable
         // in-flight の Update/ResetAudioRouting が Wait/Release 中に ObjectDisposedException へ落ちないようにする。
         // StopAsync 後は参照が切れ、SemaphoreSlim は GC で回収される (AvailableWaitHandle 未使用)。
     }
-
-    private static RealtimeTranslationOutputLanguage? ExpectedTranslationLane(SpokenLanguage spoken) => spoken switch
-    {
-        SpokenLanguage.Japanese => RealtimeTranslationOutputLanguage.English,
-        SpokenLanguage.English => RealtimeTranslationOutputLanguage.Japanese,
-        _ => null,
-    };
 
     private async Task RunSessionLoopAsync(int generation, CancellationToken cancellationToken)
     {
@@ -398,7 +404,12 @@ public sealed class InterpretationSession : IDisposable
         var apiKey = RequireApiKey();
         SetState(TranslationState.Connecting);
 
-        await _dualClient.StartAsync(apiKey, _tuningProvider(), cancellationToken).ConfigureAwait(false);
+        var languagePair = _languagePairProvider();
+        await _dualClient.StartAsync(
+            apiKey,
+            _tuningProvider().ForPair(languagePair),
+            languagePair,
+            cancellationToken).ConfigureAwait(false);
         if (!IsCurrentGeneration(generation))
         {
             await _dualClient.ForceCloseAsync().ConfigureAwait(false);
@@ -411,9 +422,12 @@ public sealed class InterpretationSession : IDisposable
         FlushPendingFinalizeIfNeeded();
         lock (_sync)
         {
+            _activeLanguagePair = languagePair;
+            _assembler.SetLanguagePair(languagePair);
             _assembler.BeginNewEpoch(epoch);
             _routingSourceText = string.Empty;
-            _routedSpokenLanguage = SpokenLanguage.Unknown;
+            _selectedTranslationTarget = null;
+            _reverseEvidenceCount = 0;
         }
 
         await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
@@ -500,7 +514,7 @@ public sealed class InterpretationSession : IDisposable
             }
 
             if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta source
-                && streamEvent.Target == RealtimeTranslationOutputLanguage.English)
+                && streamEvent.Lane.IsSource)
             {
                 await UpdateAudioRoutingAsync(source.Delta, cancellationToken).ConfigureAwait(false);
             }
@@ -587,51 +601,60 @@ public sealed class InterpretationSession : IDisposable
         await _routingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            SpokenLanguage detected;
-            SpokenLanguage current;
             SpokenLanguageEvidence evidence;
+            LanguagePair activePair;
+            RealtimeTranslationOutputLanguage? currentTarget;
+            int reverseEvidenceCount;
             lock (_sync)
             {
-                _routingSourceText = TrimRoutingSourceText(_routingSourceText + delta);
-                evidence = SpokenLanguageDetector.RecentEvidence(_routingSourceText);
-                current = _routedSpokenLanguage;
-            }
-
-            if (current == SpokenLanguage.Unknown)
-            {
-                detected = evidence switch
-                {
-                    SpokenLanguageEvidence.Japanese => SpokenLanguage.Japanese,
-                    // 単語 1 個のラテン文字でも、原文が日本語でない以上は英語 lane を先に開く。
-                    SpokenLanguageEvidence.English or SpokenLanguageEvidence.AmbiguousLatin => SpokenLanguage.English,
-                    _ => SpokenLanguage.Unknown,
-                };
-
-                if (detected == SpokenLanguage.Unknown)
+                if (_activeLanguagePair is not { } cachedPair)
                 {
                     return;
                 }
 
-                lock (_sync)
+                activePair = cachedPair;
+                _routingSourceText = TrimRoutingSourceText(_routingSourceText + delta, activePair);
+                evidence = SpokenLanguageDetector.RecentEvidence(_routingSourceText, activePair);
+                currentTarget = _selectedTranslationTarget;
+                reverseEvidenceCount = _reverseEvidenceCount;
+            }
+
+            var selection = TranslationTargetSelector.Select(
+                activePair,
+                currentTarget,
+                reverseEvidenceCount,
+                evidence);
+            if (currentTarget is null)
+            {
+                if (selection.Target is null)
                 {
-                    _routedSpokenLanguage = detected;
-                    _assembler.ExpectLane(ExpectedTranslationLane(detected));
+                    lock (_sync)
+                    {
+                        _reverseEvidenceCount = selection.ReverseEvidenceCount;
+                    }
+
+                    return;
                 }
 
-                await _dualClient.SetSpokenLanguageAsync(detected, cancellationToken).ConfigureAwait(false);
+                await _dualClient.SelectTranslationTargetAsync(selection.Target, cancellationToken)
+                    .ConfigureAwait(false);
+                lock (_sync)
+                {
+                    _selectedTranslationTarget = selection.Target;
+                    _reverseEvidenceCount = selection.ReverseEvidenceCount;
+                    _assembler.ExpectLane(selection.Target);
+                }
+
                 return;
             }
 
-            // 確定的な文字種反転のみを segment 境界とする (ambiguousLatin は除外)。
-            var flipped = evidence switch
+            if (selection.Target == currentTarget)
             {
-                SpokenLanguageEvidence.Japanese when current == SpokenLanguage.English => SpokenLanguage.Japanese,
-                SpokenLanguageEvidence.English when current == SpokenLanguage.Japanese => SpokenLanguage.English,
-                _ => SpokenLanguage.Unknown,
-            };
+                lock (_sync)
+                {
+                    _reverseEvidenceCount = selection.ReverseEvidenceCount;
+                }
 
-            if (flipped == SpokenLanguage.Unknown)
-            {
                 return;
             }
 
@@ -651,12 +674,13 @@ public sealed class InterpretationSession : IDisposable
             lock (_sync)
             {
                 // 切替を起こした delta は新しい segment の先頭として持ち越す。
-                _routingSourceText = TrimRoutingSourceText(delta);
-                _routedSpokenLanguage = flipped;
-                _assembler.ExpectLane(ExpectedTranslationLane(flipped));
+                _routingSourceText = TrimRoutingSourceText(delta, activePair);
+                _selectedTranslationTarget = selection.Target;
+                _reverseEvidenceCount = selection.ReverseEvidenceCount;
+                _assembler.ExpectLane(selection.Target);
             }
 
-            await _dualClient.SetSpokenLanguageAsync(flipped, cancellationToken).ConfigureAwait(false);
+            await _dualClient.SelectTranslationTargetAsync(selection.Target, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -665,14 +689,22 @@ public sealed class InterpretationSession : IDisposable
     }
 
     /// <summary>
-    /// <see cref="SpokenLanguageDetector.RecentEvidence"/> と同じ末尾非空白 scalar ウィンドウを残す。
-    /// ウィンドウ内の空白が異常に長く上限を超える場合だけ空白 run を U+0020 1 個へ圧縮し、語境界を保ったまま収める。
+    /// <see cref="SpokenLanguageDetector.RecentEvidence"/> と同じ判定窓を残す。
+    /// `en-es` は語窓、それ以外は末尾非空白 scalar 窓。空白 run が異常に長い場合だけ圧縮する。
     /// </summary>
-    private static string TrimRoutingSourceText(string text)
+    private static string TrimRoutingSourceText(string text, LanguagePair pair)
     {
         if (text.Length == 0)
         {
             return text;
+        }
+
+        if (pair == LanguagePair.EnEs)
+        {
+            var wordStart = SpokenLanguageDetector.RecentWordWindowStart(
+                text,
+                SpokenLanguageDetector.EnEsWindow);
+            return text[wordStart..];
         }
 
         var start = RecentEvidenceWindowStart(text, SpokenLanguageDetector.RecentEvidenceWindow);
@@ -764,7 +796,8 @@ public sealed class InterpretationSession : IDisposable
         lock (_sync)
         {
             _routingSourceText = string.Empty;
-            _routedSpokenLanguage = SpokenLanguage.Unknown;
+            _selectedTranslationTarget = null;
+            _reverseEvidenceCount = 0;
             _assembler.ExpectLane(null);
         }
 
@@ -773,6 +806,11 @@ public sealed class InterpretationSession : IDisposable
 
     private async Task TearDownStreamingAsync()
     {
+        lock (_sync)
+        {
+            _activeLanguagePair = null;
+        }
+
         try
         {
             await _audioCapture.StopAsync().ConfigureAwait(false);

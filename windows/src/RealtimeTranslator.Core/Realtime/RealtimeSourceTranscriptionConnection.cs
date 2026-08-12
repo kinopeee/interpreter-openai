@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
 
 namespace RealtimeTranslator.Core.Realtime;
@@ -25,6 +26,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
     private int _epoch;
     private bool _isReady;
     private bool _didReceiveCompleted;
+    private LanguagePair _pair = LanguagePair.JaEn;
 
     /// <summary>接続開始時の noise_reduction。live update では変更しない。</summary>
     private RealtimeTranslationNoiseReduction _connectedNoiseReduction = RealtimeTranslationNoiseReduction.FarField;
@@ -61,6 +63,13 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
     public async Task StartAsync(
         string apiKey,
         RealtimeSessionTuning tuning,
+        CancellationToken cancellationToken = default) =>
+        await StartAsync(apiKey, tuning, LanguagePair.JaEn, cancellationToken).ConfigureAwait(false);
+
+    public async Task StartAsync(
+        string apiKey,
+        RealtimeSessionTuning tuning,
+        LanguagePair pair,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(tuning);
@@ -83,6 +92,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 _isReady = false;
                 _didReceiveCompleted = false;
                 _connectedNoiseReduction = tuning.NoiseReduction;
+                _pair = pair;
             }
 
             try
@@ -96,7 +106,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionCreated>(created);
 
                 await SendAsync(
-                    new RealtimeSourceTranscriptionClientEvent.SessionUpdate(tuning),
+                    new RealtimeSourceTranscriptionClientEvent.SessionUpdate(tuning, pair),
                     cancellationToken).ConfigureAwait(false);
 
                 var updated = await ReceiveDirectEventAsync(cancellationToken).ConfigureAwait(false);
@@ -132,6 +142,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         ArgumentNullException.ThrowIfNull(tuning);
 
         RealtimeTranslationNoiseReduction connectedNoiseReduction;
+        LanguagePair pair;
         lock (_sync)
         {
             if (!_isReady)
@@ -140,10 +151,13 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
             }
 
             connectedNoiseReduction = _connectedNoiseReduction;
+            pair = _pair;
         }
 
         var liveTuning = tuning with { NoiseReduction = connectedNoiseReduction };
-        return SendAsync(new RealtimeSourceTranscriptionClientEvent.SessionUpdate(liveTuning), cancellationToken);
+        return SendAsync(
+            new RealtimeSourceTranscriptionClientEvent.SessionUpdate(liveTuning, pair),
+            cancellationToken);
     }
 
     public Task AppendAudioFrameAsync(
@@ -367,7 +381,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 }
 
                 writer.TryWrite(new RealtimeTranslationStreamEvent(
-                    RealtimeTranslationOutputLanguage.English,
+                    RealtimeTranslationLane.Source,
                     new RealtimeTranslationServerEvent.ServerError("原文字幕サーバーとの接続が切れました", "transport"),
                     currentEpoch));
                 writer.TryComplete();
@@ -378,7 +392,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
             {
                 case RealtimeSourceTranscriptionServerEvent.InputTranscriptDelta delta:
                     writer.TryWrite(new RealtimeTranslationStreamEvent(
-                        RealtimeTranslationOutputLanguage.English,
+                        RealtimeTranslationLane.Source,
                         new RealtimeTranslationServerEvent.InputTranscriptDelta(delta.Delta, delta.EventId, null),
                         currentEpoch));
                     break;
@@ -393,7 +407,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
                 case RealtimeSourceTranscriptionServerEvent.ServerError error:
                     writer.TryWrite(new RealtimeTranslationStreamEvent(
-                        RealtimeTranslationOutputLanguage.English,
+                        RealtimeTranslationLane.Source,
                         new RealtimeTranslationServerEvent.ServerError(error.Message, error.Code),
                         currentEpoch));
                     break;

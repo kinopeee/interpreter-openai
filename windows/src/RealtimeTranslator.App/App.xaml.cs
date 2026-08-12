@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using RealtimeTranslator.Core.OpenAI;
+using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.Realtime;
 using RealtimeTranslator.Core.Settings;
 using RealtimeTranslator.Core.Subtitles;
@@ -83,12 +84,13 @@ public partial class App : Application, IDisposable
             _apiKeyStore,
             _capture,
             _dualClient,
-            () => _settings.Tuning());
+            () => _settings.Tuning(),
+            languagePairProvider: () => _settings.LanguagePair);
         _session.StateChanged += OnSessionStateChanged;
         _session.SubtitleUpdated += OnSubtitleUpdated;
         _session.MessageEncountered += OnSessionMessage;
 
-        _tray = new TrayController();
+        _tray = new TrayController(_settings.LanguagePair);
         // NotifyIcon コールバックは UI スレッドとは限らないため Dispatcher へ渡す。
         _tray.StartStopRequested += (_, _) => Dispatcher.InvokeAsync(ToggleTranslation);
         _tray.EditPositionRequested += (_, _) => Dispatcher.InvokeAsync(ToggleEditingPosition);
@@ -128,6 +130,11 @@ public partial class App : Application, IDisposable
                 safetyIdentifier),
             new RealtimeTranslationConnection(
                 RealtimeTranslationOutputLanguage.Japanese,
+                new ClientWebSocketTransport(),
+                safetyIdentifier),
+            translationDrainTimeout: null,
+            spanishConnection: new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Spanish,
                 new ClientWebSocketTransport(),
                 safetyIdentifier));
     }
@@ -328,6 +335,7 @@ public partial class App : Application, IDisposable
         // メモリ上の設定とフォントは即時反映し、ディスク書き込みだけ debounce する。
         var previouslyEnabled = _settings.RecordSubtitles;
         _settings = settings;
+        _tray?.SetLanguagePair(settings.LanguagePair);
         _overlayViewModel.FontSize = settings.FontSize;
         _pendingSettingsSave = settings;
         _settingsSaveDebounce.Stop();

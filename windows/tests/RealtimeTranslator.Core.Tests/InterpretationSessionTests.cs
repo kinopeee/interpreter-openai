@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -199,6 +200,43 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 初回の日本語原文 delta
+    // When: 初回 target を選択する
+    // Then: 言語切替 finalize を実行せず、初回 routing を開始する
+    [Fact]
+    public async Task InitialJapaneseDetectionDoesNotFinalize()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        client.PublishSourceDelta("こんにちは、初回です");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.SourceText.Length > 0);
+            }
+        });
+
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
+
+        await session.StopAsync();
+    }
+
     // Given: 英語の原文 delta と日本語 lane の訳文
     // When: 原文と訳文が揃う
     // Then: 原文 authority と訳文をペアにした字幕を発行する
@@ -335,6 +373,49 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: en-es で英語 target 確定後、scalar 上限を超える長いスペイン語語窓
+    // When: 逆方向ヒステリシス分の Spanish delta を送る
+    // Then: 語窓を保ち English target へ切り替わる（scalar 切り詰めだと切り替わらない）
+    [Fact]
+    public async Task EnEsLongWordWindowIsPreservedForRouting()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(
+            client,
+            languagePairProvider: () => LanguagePair.EnEs);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("the and is are of to it that");
+        await WaitUntilAsync(() =>
+            client.SelectedTargets.SequenceEqual(
+                [RealtimeTranslationOutputLanguage.Spanish]));
+
+        // 先頭側にだけスペイン語証拠があり、後ろは長い filler。scalar 切り詰めだと証拠が消える。
+        var longToken = new string('x', 40);
+        var filler = string.Join(
+            ' ',
+            Enumerable.Repeat(longToken, SpokenLanguageDetector.EnEsWindow - 2));
+        var spanishWindow = "está aquí " + filler;
+        client.PublishSourceDelta(spanishWindow);
+        client.PublishSourceDelta(" " + spanishWindow);
+        await WaitUntilAsync(() =>
+            client.SelectedTargets.SequenceEqual(
+            [
+                RealtimeTranslationOutputLanguage.Spanish,
+                RealtimeTranslationOutputLanguage.English,
+            ]));
+
+        Assert.Equal(
+            [
+                RealtimeTranslationOutputLanguage.Spanish,
+                RealtimeTranslationOutputLanguage.English,
+            ],
+            client.SelectedTargets);
+        await session.StopAsync();
+    }
+
     // Given: 日本語セグメントのあと、長い空白 run で隔てられた複数語の英語 delta
     // When: UTF-16 文字数キャップだけだと末尾 1 語しか残らない入力を取り込む
     // Then: RecentEvidence ウィンドウを保ち英語反転できる
@@ -432,6 +513,28 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
 
         Assert.Equal(SpokenLanguage.English, client.SpokenLanguages[0]);
+        await session.StopAsync();
+    }
+
+    // Given: 接続後に変更された言語ペア provider
+    // When: 録音中に原文の言語反転を検出する
+    // Then: 接続開始時のペアで routing し、provider の変更を反映しない
+    [Fact]
+    public async Task PairIsCachedForTheActiveConnection()
+    {
+        var client = new FakeDualClient();
+        var pair = LanguagePair.JaEn;
+        using var session = NewSession(client, languagePairProvider: () => pair);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("これは接続時ペアです");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count == 1);
+        pair = LanguagePair.JaEs;
+        client.PublishSourceDelta(" this remains the same pair");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count == 2);
+
+        Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
         await session.StopAsync();
     }
 
@@ -1305,14 +1408,16 @@ public sealed class InterpretationSessionTests
         FakeDualClient client,
         string? apiKey = "sk-test",
         Func<RealtimeSessionTuning>? tuningProvider = null,
-        FakeAudioCapture? audio = null) =>
+        FakeAudioCapture? audio = null,
+        Func<LanguagePair>? languagePairProvider = null) =>
         new(
             new FakeApiKeyStore(apiKey),
             audio ?? new FakeAudioCapture(),
             client,
             tuningProvider,
             initialReconnectDelay: TimeSpan.FromMilliseconds(1),
-            tickInterval: TimeSpan.FromMilliseconds(20));
+            tickInterval: TimeSpan.FromMilliseconds(20),
+            languagePairProvider: languagePairProvider);
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
@@ -1398,6 +1503,7 @@ public sealed class InterpretationSessionTests
     {
         private readonly object _sync = new();
         private readonly List<SpokenLanguage> _spokenLanguages = [];
+        private readonly List<RealtimeTranslationOutputLanguage> _selectedTargets = [];
         private Channel<RealtimeTranslationStreamEvent> _events =
             Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
 
@@ -1462,15 +1568,36 @@ public sealed class InterpretationSessionTests
             }
         }
 
+        public IReadOnlyList<RealtimeTranslationOutputLanguage> SelectedTargets
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return [.. _selectedTargets];
+                }
+            }
+        }
+
+        public LanguagePair? LastStartedPair { get; private set; }
+
+        public Task StartAsync(
+            string apiKey,
+            RealtimeSessionTuning tuning,
+            CancellationToken cancellationToken = default) =>
+            StartAsync(apiKey, tuning, LanguagePair.JaEn, cancellationToken);
+
         public async Task StartAsync(
             string apiKey,
             RealtimeSessionTuning tuning,
+            LanguagePair pair,
             CancellationToken cancellationToken = default)
         {
             Task? gateTask;
             lock (_sync)
             {
                 StartCount += 1;
+                LastStartedPair = pair;
                 if (ThrowOnNextStart)
                 {
                     ThrowOnNextStart = false;
@@ -1495,6 +1622,7 @@ public sealed class InterpretationSessionTests
             {
                 _epoch += 1;
                 _spokenLanguages.Clear();
+                _selectedTargets.Clear();
                 ResetAudioRoutingCount = 0;
                 UpdateTranscriptionTuningCount = 0;
                 LastTuning = null;
@@ -1507,13 +1635,25 @@ public sealed class InterpretationSessionTests
             ReadOnlyMemory<byte> pcm16LittleEndian,
             CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task SetSpokenLanguageAsync(
-            SpokenLanguage language,
+        public Task SelectTranslationTargetAsync(
+            RealtimeTranslationOutputLanguage? target,
             CancellationToken cancellationToken = default)
         {
             lock (_sync)
             {
-                _spokenLanguages.Add(language);
+                if (target is { } selected)
+                {
+                    _selectedTargets.Add(selected);
+                }
+
+                var spoken = target switch
+                {
+                    RealtimeTranslationOutputLanguage.English => SpokenLanguage.Japanese,
+                    RealtimeTranslationOutputLanguage.Japanese => SpokenLanguage.English,
+                    RealtimeTranslationOutputLanguage.Spanish => SpokenLanguage.Spanish,
+                    _ => SpokenLanguage.Unknown,
+                };
+                _spokenLanguages.Add(spoken);
             }
 
             return Task.CompletedTask;
@@ -1567,8 +1707,8 @@ public sealed class InterpretationSessionTests
             return Task.CompletedTask;
         }
 
-        public void PublishSourceDelta(string delta, int? epoch = null) => Publish(
-            RealtimeTranslationOutputLanguage.English,
+        public void PublishSourceDelta(string delta, int? epoch = null) => PublishLane(
+            RealtimeTranslationLane.Source,
             new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
             epoch);
 
@@ -1598,11 +1738,17 @@ public sealed class InterpretationSessionTests
             RealtimeTranslationOutputLanguage target,
             RealtimeTranslationServerEvent serverEvent,
             int? epoch = null)
+            => PublishLane(RealtimeTranslationLane.Translation(target), serverEvent, epoch);
+
+        private void PublishLane(
+            RealtimeTranslationLane lane,
+            RealtimeTranslationServerEvent serverEvent,
+            int? epoch = null)
         {
             lock (_sync)
             {
                 _events.Writer.TryWrite(
-                    new RealtimeTranslationStreamEvent(target, serverEvent, epoch ?? _epoch));
+                    new RealtimeTranslationStreamEvent(lane, serverEvent, epoch ?? _epoch));
             }
         }
     }

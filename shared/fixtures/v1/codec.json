@@ -45,6 +45,26 @@
       }
     },
     {
+      "name": "session.update spanish target without source transcription",
+      "event": {
+        "kind": "sessionUpdate",
+        "outputLanguage": "es",
+        "inputTranscriptionModel": null,
+        "noiseReduction": "far_field"
+      },
+      "expected": {
+        "type": "session.update",
+        "session": {
+          "audio": {
+            "output": { "language": "es" },
+            "input": {
+              "noise_reduction": { "type": "far_field" }
+            }
+          }
+        }
+      }
+    },
+    {
       "name": "session.update noise reduction disabled emits explicit null",
       "event": {
         "kind": "sessionUpdate",
@@ -179,6 +199,7 @@
         "kind": "sessionUpdate",
         "noiseReduction": "far_field",
         "transcriptionDelay": "low",
+        "languages": ["ja", "en"],
         "prompt": "Japanese and English conversation.",
         "keywords": ["ハッカソン", "hackathon"]
       },
@@ -195,6 +216,68 @@
                 "delay": "low",
                 "prompt": "Japanese and English conversation.",
                 "keywords": ["ハッカソン", "hackathon"]
+              },
+              "noise_reduction": { "type": "far_field" },
+              "turn_detection": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "transcription session.update accepts en-es languages",
+      "event": {
+        "kind": "sessionUpdate",
+        "noiseReduction": "far_field",
+        "transcriptionDelay": "low",
+        "languages": ["en", "es"],
+        "prompt": "English and Spanish conversation.",
+        "keywords": ["meeting"]
+      },
+      "expected": {
+        "type": "session.update",
+        "session": {
+          "type": "transcription",
+          "audio": {
+            "input": {
+              "format": { "type": "audio/pcm", "rate": 24000 },
+              "transcription": {
+                "model": "gpt-live-transcribe",
+                "languages": ["en", "es"],
+                "delay": "low",
+                "prompt": "English and Spanish conversation.",
+                "keywords": ["meeting"]
+              },
+              "noise_reduction": { "type": "far_field" },
+              "turn_detection": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "transcription session.update accepts ja-es languages",
+      "event": {
+        "kind": "sessionUpdate",
+        "noiseReduction": "far_field",
+        "transcriptionDelay": "low",
+        "languages": ["ja", "es"],
+        "prompt": "Japanese and Spanish conversation.",
+        "keywords": ["会議"]
+      },
+      "expected": {
+        "type": "session.update",
+        "session": {
+          "type": "transcription",
+          "audio": {
+            "input": {
+              "format": { "type": "audio/pcm", "rate": 24000 },
+              "transcription": {
+                "model": "gpt-live-transcribe",
+                "languages": ["ja", "es"],
+                "delay": "low",
+                "prompt": "Japanese and Spanish conversation.",
+                "keywords": ["会議"]
               },
               "noise_reduction": { "type": "far_field" },
               "turn_detection": null

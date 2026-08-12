@@ -1,8 +1,24 @@
 import Foundation
 
-enum RealtimeTranslationOutputLanguage: String, Sendable, Equatable {
+enum RealtimeTranslationOutputLanguage: String, Sendable, Equatable, Hashable {
     case english = "en"
     case japanese = "ja"
+    case spanish = "es"
+}
+
+enum RealtimeTranslationLane: Sendable, Equatable {
+    case source
+    case translation(RealtimeTranslationOutputLanguage)
+
+    var isSource: Bool {
+        if case .source = self { return true }
+        return false
+    }
+
+    var target: RealtimeTranslationOutputLanguage? {
+        if case .translation(let target) = self { return target }
+        return nil
+    }
 }
 
 enum RealtimeTranslationNoiseReduction: String, Sendable, Equatable, CaseIterable {
@@ -51,9 +67,27 @@ struct RealtimeTranslationSessionConfig: Sendable, Equatable {
     static func englishTargetWithSourceTranscription(
         noiseReduction: RealtimeTranslationNoiseReduction = .farField
     ) -> RealtimeTranslationSessionConfig {
+        withSourceTranscription(target: .english, noiseReduction: noiseReduction)
+    }
+
+    static func withSourceTranscription(
+        target: RealtimeTranslationOutputLanguage,
+        noiseReduction: RealtimeTranslationNoiseReduction = .farField
+    ) -> RealtimeTranslationSessionConfig {
         RealtimeTranslationSessionConfig(
-            outputLanguage: .english,
+            outputLanguage: target,
             inputTranscriptionModel: "gpt-realtime-whisper",
+            noiseReduction: noiseReduction
+        )
+    }
+
+    static func withoutSourceTranscription(
+        target: RealtimeTranslationOutputLanguage,
+        noiseReduction: RealtimeTranslationNoiseReduction = .farField
+    ) -> RealtimeTranslationSessionConfig {
+        RealtimeTranslationSessionConfig(
+            outputLanguage: target,
+            inputTranscriptionModel: nil,
             noiseReduction: noiseReduction
         )
     }
@@ -61,21 +95,13 @@ struct RealtimeTranslationSessionConfig: Sendable, Equatable {
     static func englishTargetWithoutSourceTranscription(
         noiseReduction: RealtimeTranslationNoiseReduction = .farField
     ) -> RealtimeTranslationSessionConfig {
-        RealtimeTranslationSessionConfig(
-            outputLanguage: .english,
-            inputTranscriptionModel: nil,
-            noiseReduction: noiseReduction
-        )
+        withoutSourceTranscription(target: .english, noiseReduction: noiseReduction)
     }
 
     static func japaneseTargetWithoutSourceTranscription(
         noiseReduction: RealtimeTranslationNoiseReduction = .farField
     ) -> RealtimeTranslationSessionConfig {
-        RealtimeTranslationSessionConfig(
-            outputLanguage: .japanese,
-            inputTranscriptionModel: nil,
-            noiseReduction: noiseReduction
-        )
+        withoutSourceTranscription(target: .japanese, noiseReduction: noiseReduction)
     }
 }
 

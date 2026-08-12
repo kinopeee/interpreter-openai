@@ -7,11 +7,11 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         let text = "今日はCursorについて説明します"
 
         // When: 発話言語を判定する
-        let result = SpokenLanguageDetector.detect(text)
+        let result = SpokenLanguageDetector.detect(text, pair: .jaEn)
 
         // Then: 日本語と判定し、英語を翻訳先にする
         XCTAssertEqual(result, .japanese)
-        XCTAssertEqual(result.translationTarget, .english)
+        XCTAssertEqual(LanguagePair.jaEn.translationTarget(for: result), .english)
     }
 
     func testDetectsEnglishFromLatinCharacters() {
@@ -19,11 +19,11 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         let text = "Hello, how are you?"
 
         // When: 発話言語を判定する
-        let result = SpokenLanguageDetector.detect(text)
+        let result = SpokenLanguageDetector.detect(text, pair: .jaEn)
 
         // Then: 英語と判定し、日本語を翻訳先にする
         XCTAssertEqual(result, .english)
-        XCTAssertEqual(result.translationTarget, .japanese)
+        XCTAssertEqual(LanguagePair.jaEn.translationTarget(for: result), .japanese)
     }
 
     func testDefersSingleLatinProperNoun() {
@@ -31,13 +31,13 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         let text = "Cursor"
 
         // When: 発話言語の証拠と判定結果を調べる
-        let evidence = SpokenLanguageDetector.evidence(in: text)
-        let result = SpokenLanguageDetector.detect(text)
+        let evidence = SpokenLanguageDetector.evidence(in: text, pair: .jaEn)
+        let result = SpokenLanguageDetector.detect(text, pair: .jaEn)
 
         // Then: Latin一語だけでは英語に固定しない
         XCTAssertEqual(evidence, .ambiguousLatin)
         XCTAssertEqual(result, .unknown)
-        XCTAssertNil(result.translationTarget)
+        XCTAssertNil(LanguagePair.jaEn.translationTarget(for: result))
     }
 
     func testDefersSingleLatinAcronym() {
@@ -45,7 +45,7 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         let text = "MCP"
 
         // When: 発話言語の証拠を調べる
-        let evidence = SpokenLanguageDetector.evidence(in: text)
+        let evidence = SpokenLanguageDetector.evidence(in: text, pair: .jaEn)
 
         // Then: 略語一語だけでは英語の証拠にしない
         XCTAssertEqual(evidence, .ambiguousLatin)
@@ -56,11 +56,11 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         let text = "Open the file"
 
         // When: 発話言語の証拠を調べる
-        let evidence = SpokenLanguageDetector.evidence(in: text)
+        let evidence = SpokenLanguageDetector.evidence(in: text, pair: .jaEn)
 
         // Then: 複数語は英語の証拠として扱う
         XCTAssertEqual(evidence, .english)
-        XCTAssertEqual(SpokenLanguageDetector.detect(text), .english)
+        XCTAssertEqual(SpokenLanguageDetector.detect(text, pair: .jaEn), .english)
     }
 
     func testReturnsUnknownForEmptyText() {
@@ -68,11 +68,11 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         let text = ""
 
         // When: 発話言語を判定する
-        let result = SpokenLanguageDetector.detect(text)
+        let result = SpokenLanguageDetector.detect(text, pair: .jaEn)
 
         // Then: 言語・翻訳先ともに未判定になる
         XCTAssertEqual(result, .unknown)
-        XCTAssertNil(result.translationTarget)
+        XCTAssertNil(LanguagePair.jaEn.translationTarget(for: result))
     }
 
     func testReturnsUnknownForNumbersAndSymbols() {
@@ -80,11 +80,11 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         let text = "1234 / 56%"
 
         // When: 発話言語を判定する
-        let result = SpokenLanguageDetector.detect(text)
+        let result = SpokenLanguageDetector.detect(text, pair: .jaEn)
 
         // Then: 誤って日英どちらにも分類しない
         XCTAssertEqual(result, .unknown)
-        XCTAssertNil(result.translationTarget)
+        XCTAssertNil(LanguagePair.jaEn.translationTarget(for: result))
     }
 
     func testRecentEvidenceDetectsEnglishAfterJapanesePrefix() {
@@ -92,8 +92,8 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         let text = "今日は会議です Hello how are you doing today"
 
         // When: 全文判定と末尾ウィンドウ判定を比較する
-        let full = SpokenLanguageDetector.evidence(in: text)
-        let recent = SpokenLanguageDetector.recentEvidence(in: text, window: 16)
+        let full = SpokenLanguageDetector.evidence(in: text, pair: .jaEn)
+        let recent = SpokenLanguageDetector.recentEvidence(in: text, pair: .jaEn, window: 16)
 
         // Then: 全文は日本語のまま、末尾は英語切替を検出する
         // （空白を残すことでラテン語が1語に潰れず english になる）
@@ -106,9 +106,20 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         let text = "Hello how are you 今日は会議です"
 
         // When: 末尾ウィンドウで判定する
-        let recent = SpokenLanguageDetector.recentEvidence(in: text, window: 16)
+        let recent = SpokenLanguageDetector.recentEvidence(in: text, pair: .jaEn, window: 16)
 
         // Then: 日本語切替を検出する
         XCTAssertEqual(recent, .japanese)
+    }
+
+    func testJaEsEvidenceTreatsAccentedLatinAsSpanishWords() {
+        // Given: アクセント付きスペイン語の複数語
+        let text = "está aquí"
+
+        // When: ja-es で証拠を求める
+        let evidence = SpokenLanguageDetector.evidence(in: text, pair: .jaEs)
+
+        // Then: ASCII のみの語分割に落ちず spanish になる
+        XCTAssertEqual(evidence, .spanish)
     }
 }

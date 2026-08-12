@@ -10,9 +10,10 @@
 | 用途 | URL | モデル |
 |---|---|---|
 | 原文 transcription（原文 authority） | `wss://api.openai.com/v1/realtime?intent=transcription` | `gpt-live-transcribe` |
-| 翻訳（target 別に 2 本） | `wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate` | `gpt-realtime-translate` |
+| 翻訳（pair の target ごとに 1 本） | `wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate` | `gpt-realtime-translate` |
 
-合計 3 本の WebSocket を同時に張る。翻訳側は `target=en` と `target=ja` の 2 セッション。
+選択した pair に対して source transcription 1 本と translation 2 本、合計 3 本の
+WebSocket を同時に張る。翻訳側 target は pair の2言語である。
 
 **2 系統は別プロトコルである。** transcription 接続と translations 接続はイベント名も
 `session.update` の形状も異なる。以下の章はそれぞれ別に読むこと。
@@ -40,6 +41,7 @@
 
 `session.update` の正確な JSON 形状は `shared/fixtures/v1/codec.json` の `encode` ケースが正本。
 特に **`noise_reduction` を無効化する場合は キー省略ではなく `null` を送る**。
+`output.language` は pair の2言語のいずれかであり、`es` も有効な wire 値である。
 
 ### サーバ → クライアント
 
@@ -94,7 +96,7 @@
 }
 ```
 
-- `languages` は `["ja", "en"]` 固定。サーバ側で言語を絞らせない。
+- `languages` は選択した pair の宣言順（`ja-en`、`ja-es`、`en-es`）をそのまま使う。
 - `turn_detection` は明示的 `null`。VAD による無音破棄を避ける。
 - `noise_reduction` は接続時の値を維持する。録音中の live update では
   `delay` / `prompt` / `keywords` だけを差し替える。
@@ -109,6 +111,7 @@
 | `error` | 認証判定後、正規化した文言を流す |
 | 上記以外 | 無視 |
 
+原文イベントの lane は `source` であり、translation target を source の識別子に流用しない。
 原文 delta には `elapsed_ms` が付かない。字幕整列側は `elapsedMs = null` として扱う。
 
 ## タイムアウトと再接続

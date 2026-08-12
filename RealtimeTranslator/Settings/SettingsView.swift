@@ -64,6 +64,9 @@ struct SettingsView: View {
         .onChange(of: settings.transcriptionDelayMode) { _, _ in
             scheduleTuningChangeNotification()
         }
+        .onChange(of: settings.languagePair) { _, _ in
+            onSave?()
+        }
     }
 
     private func scheduleTuningChangeNotification() {
@@ -156,7 +159,14 @@ private struct SettingsGeneralTab: View {
         Form {
             Section("OpenAI Realtime") {
                 LabeledContent("モデル", value: "gpt-realtime-translate")
-                LabeledContent("翻訳方向", value: "自動（日本語 ↔ 英語）")
+                Picker("翻訳方向", selection: $settings.languagePair) {
+                    Text("日本語 ↔ 英語").tag(LanguagePair.jaEn)
+                    Text("日本語 ↔ スペイン語").tag(LanguagePair.jaEs)
+                    Text("英語 ↔ スペイン語").tag(LanguagePair.enEs)
+                }
+                Text("次回録音開始時に反映されます。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 LabeledContent("字幕表示", value: "原文＋翻訳")
                 LabeledContent("翻訳音声", value: "字幕のみ（再生なし）")
 

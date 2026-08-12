@@ -2,9 +2,9 @@ import Foundation
 
 protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
     var events: AsyncStream<RealtimeTranslationStreamEvent> { get async }
-    func start(apiKey: String, tuning: RealtimeSessionTuning) async throws
+    func start(apiKey: String, tuning: RealtimeSessionTuning, pair: LanguagePair) async throws
     func appendAudioFrame(_ pcm16LE: Data) async throws
-    func setSpokenLanguage(_ language: SpokenLanguage) async throws
+    func selectTranslationTarget(_ target: RealtimeTranslationOutputLanguage?) async throws
     func updateTranscriptionTuning(_ tuning: RealtimeSessionTuning) async throws
     func resetAudioRouting() async
     /// session consumer 停止後に呼び、以降の merge イベントを stop drain へ蓄える。
@@ -23,8 +23,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     static let consecutiveTranslationFailureLimit = 3
 
     private let sourceConnection: RealtimeSourceTranscriptionConnection
-    private let englishConnection: RealtimeTranslationConnection
-    private let japaneseConnection: RealtimeTranslationConnection
+    private let connections: [RealtimeTranslationOutputLanguage: RealtimeTranslationConnection]
     private var mergeTask: Task<Void, Never>?
     private var translationPumpTask: Task<Void, Never>?
     private var eventContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation?
@@ -50,26 +49,40 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     init(
         sourceConnection: RealtimeSourceTranscriptionConnection? = nil,
         englishConnection: RealtimeTranslationConnection? = nil,
-        japaneseConnection: RealtimeTranslationConnection? = nil
+        japaneseConnection: RealtimeTranslationConnection? = nil,
+        spanishConnection: RealtimeTranslationConnection? = nil
     ) {
         if let sourceConnection, let englishConnection, let japaneseConnection {
+            // 明示注入時は渡された接続だけを使い、欠けた Spanish を実ソケットで補完しない。
             self.sourceConnection = sourceConnection
-            self.englishConnection = englishConnection
-            self.japaneseConnection = japaneseConnection
+            var injected: [RealtimeTranslationOutputLanguage: RealtimeTranslationConnection] = [
+                .english: englishConnection,
+                .japanese: japaneseConnection,
+            ]
+            if let spanishConnection {
+                injected[.spanish] = spanishConnection
+            }
+            self.connections = injected
         } else {
             let safetyIdentifier = OpenAISafetyIdentifier.hashedValue()
             self.sourceConnection = sourceConnection
                 ?? RealtimeSourceTranscriptionConnection(safetyIdentifier: safetyIdentifier)
-            self.englishConnection = englishConnection
+            let english = englishConnection
                 ?? RealtimeTranslationConnection(
                     target: .english,
                     safetyIdentifier: safetyIdentifier
                 )
-            self.japaneseConnection = japaneseConnection
+            let japanese = japaneseConnection
                 ?? RealtimeTranslationConnection(
                     target: .japanese,
                     safetyIdentifier: safetyIdentifier
                 )
+            let spanish = spanishConnection
+                ?? RealtimeTranslationConnection(
+                    target: .spanish,
+                    safetyIdentifier: safetyIdentifier
+                )
+            self.connections = [.english: english, .japanese: japanese, .spanish: spanish]
         }
         let pair = Self.makeEventStream()
         eventStream = pair.stream
@@ -78,7 +91,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
 
     func start(
         apiKey: String,
-        tuning: RealtimeSessionTuning = .default
+        tuning: RealtimeSessionTuning = .default,
+        pair: LanguagePair
     ) async throws {
         await forceClose()
         recreateEventStream()
@@ -95,25 +109,29 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         pendingTranslationFrames.removeAll(keepingCapacity: true)
 
         do {
+            let translationConnections = connections
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
-                    try await self.sourceConnection.start(apiKey: apiKey, tuning: tuning)
-                }
-                group.addTask {
-                    try await self.englishConnection.start(
+                    try await self.sourceConnection.start(
                         apiKey: apiKey,
-                        config: .englishTargetWithoutSourceTranscription(
-                            noiseReduction: tuning.noiseReduction
-                        )
+                        tuning: tuning,
+                        pair: pair
                     )
                 }
-                group.addTask {
-                    try await self.japaneseConnection.start(
-                        apiKey: apiKey,
-                        config: .japaneseTargetWithoutSourceTranscription(
-                            noiseReduction: tuning.noiseReduction
+                for language in pair.languages {
+                    let target = Self.outputLanguage(for: language)
+                    guard let connection = translationConnections[target] else {
+                        throw RealtimeTranslationError.notConnected
+                    }
+                    group.addTask {
+                        try await connection.start(
+                            apiKey: apiKey,
+                            config: .withoutSourceTranscription(
+                                target: target,
+                                noiseReduction: tuning.noiseReduction
+                            )
                         )
-                    )
+                    }
                 }
                 try await group.waitForAll()
             }
@@ -155,21 +173,13 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         }
     }
 
-    func setSpokenLanguage(_ language: SpokenLanguage) async throws {
+    func selectTranslationTarget(_ target: RealtimeTranslationOutputLanguage?) async throws {
         guard isRunning else {
             throw RealtimeTranslationError.notConnected
         }
-        let target: RealtimeTranslationOutputLanguage
-        switch language {
-        case .japanese:
-            target = .english
-        case .english:
-            target = .japanese
-        case .unknown:
-            return
-        }
         guard selectedTranslationTarget != target else { return }
         selectedTranslationTarget = target
+        guard let target else { return }
         // 旧target向けの未送信frameは破棄し、rolling prerollを新targetへflushする。
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         let preroll = translationPrerollFrames
@@ -191,7 +201,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     }
 
     func resetAudioRouting() {
-        // rolling prerollは維持し、次のsetSpokenLanguageでflushできるようにする。
+        // rolling prerollは維持し、次のtarget選択でflushできるようにする。
         selectedTranslationTarget = nil
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         consecutiveTranslationFailures = 0
@@ -257,10 +267,13 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         var closeFailed = false
         do {
-            async let sourceClose: Void = sourceConnection.closeGracefully()
-            async let englishClose: Void = englishConnection.closeGracefully()
-            async let japaneseClose: Void = japaneseConnection.closeGracefully()
-            _ = try await (sourceClose, englishClose, japaneseClose)
+            let closes = connections.values.map { connection in
+                Task { try await connection.closeGracefully() }
+            }
+            try await sourceConnection.closeGracefully()
+            for close in closes {
+                try await close.value
+            }
         } catch {
             closeFailed = true
             AppLogger.realtime.error(
@@ -294,8 +307,9 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         mergeTask?.cancel()
         mergeTask = nil
         await sourceConnection.forceClose()
-        await englishConnection.forceClose()
-        await japaneseConnection.forceClose()
+        for connection in connections.values {
+            await connection.forceClose()
+        }
         eventContinuation?.finish()
         eventContinuation = nil
     }
@@ -318,12 +332,10 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
             guard !pendingTranslationFrames.isEmpty else { break }
             let (frame, target) = pendingTranslationFrames.removeFirst()
             do {
-                switch target {
-                case .english:
-                    try await englishConnection.appendAudioFrame(frame)
-                case .japanese:
-                    try await japaneseConnection.appendAudioFrame(frame)
+                guard let connection = connections[target] else {
+                    throw RealtimeTranslationError.notConnected
                 }
+                try await connection.appendAudioFrame(frame)
                 consecutiveTranslationFailures = 0
             } catch is CancellationError {
                 break
@@ -336,7 +348,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                     let epoch = connectionEpoch
                     eventContinuation?.yield(
                         RealtimeTranslationStreamEvent(
-                            target: target,
+                            lane: .translation(target),
                             event: .error(
                                 message: "翻訳サーバーへの音声送信が失敗しました",
                                 code: "transport"
@@ -372,47 +384,31 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                         if case .inputTranscriptDelta = event.event {
                             await self.noteSourceDelta()
                         }
-                        await self.forwardMergedEvent(
-                            RealtimeTranslationStreamEvent(
-                                target: event.target,
+                            await self.forwardMergedEvent(
+                                RealtimeTranslationStreamEvent(
+                                lane: event.lane,
                                 event: event.event,
                                 epoch: epoch
                             )
                         )
                     }
                 }
-                group.addTask { [englishConnection] in
-                    let stream = await englishConnection.events
-                    for await event in stream {
-                        guard await self.connectionEpoch == epoch else { return }
-                        // 翻訳接続の input_transcript は原文 authority にしない（接続側フィルタと二重化）。
-                        if case .inputTranscriptDelta = event.event {
-                            continue
-                        }
-                        // Dual側のepochで再ラベルし、接続内部epochと揃える。
-                        await self.forwardMergedEvent(
-                            RealtimeTranslationStreamEvent(
-                                target: event.target,
-                                event: event.event,
-                                epoch: epoch
+                for connection in self.connections.values {
+                    group.addTask {
+                        let stream = await connection.events
+                        for await event in stream {
+                            guard await self.connectionEpoch == epoch else { return }
+                            if case .inputTranscriptDelta = event.event {
+                                continue
+                            }
+                            await self.forwardMergedEvent(
+                                RealtimeTranslationStreamEvent(
+                                    lane: .translation(event.target),
+                                    event: event.event,
+                                    epoch: epoch
+                                )
                             )
-                        )
-                    }
-                }
-                group.addTask { [japaneseConnection] in
-                    let stream = await japaneseConnection.events
-                    for await event in stream {
-                        guard await self.connectionEpoch == epoch else { return }
-                        if case .inputTranscriptDelta = event.event {
-                            continue
                         }
-                        await self.forwardMergedEvent(
-                            RealtimeTranslationStreamEvent(
-                                target: event.target,
-                                event: event.event,
-                                epoch: epoch
-                            )
-                        )
                     }
                 }
             }
@@ -420,6 +416,15 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
             if await self.connectionEpoch == epoch {
                 await self.finishMergedEventStream()
             }
+        }
+    }
+
+    private static func outputLanguage(for language: SpokenLanguage) -> RealtimeTranslationOutputLanguage {
+        switch language {
+        case .japanese: return .japanese
+        case .english: return .english
+        case .spanish: return .spanish
+        case .unknown: return .english
         }
     }
 

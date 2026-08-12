@@ -7,6 +7,7 @@ public enum RealtimeTranslationOutputLanguage
 {
     English,
     Japanese,
+    Spanish,
 }
 
 /// <summary>入力音声のノイズ低減プロファイル。</summary>
@@ -33,6 +34,7 @@ public static class RealtimeTranslationWireValues
     {
         RealtimeTranslationOutputLanguage.English => "en",
         RealtimeTranslationOutputLanguage.Japanese => "ja",
+        RealtimeTranslationOutputLanguage.Spanish => "es",
         _ => throw new ArgumentOutOfRangeException(nameof(value), value, null),
     };
 
@@ -57,6 +59,7 @@ public static class RealtimeTranslationWireValues
     {
         "en" => RealtimeTranslationOutputLanguage.English,
         "ja" => RealtimeTranslationOutputLanguage.Japanese,
+        "es" => RealtimeTranslationOutputLanguage.Spanish,
         _ => throw new ArgumentOutOfRangeException(nameof(wireValue), wireValue, null),
     };
 

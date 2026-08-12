@@ -238,6 +238,12 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         _ serverEvent: RealtimeTranslationServerEvent,
         epoch: Int = 1
     ) -> RealtimeTranslationStreamEvent {
-        RealtimeTranslationStreamEvent(target: target, event: serverEvent, epoch: epoch)
+        let lane: RealtimeTranslationLane
+        if case .inputTranscriptDelta = serverEvent {
+            lane = .source
+        } else {
+            lane = .translation(target)
+        }
+        return RealtimeTranslationStreamEvent(lane: lane, event: serverEvent, epoch: epoch)
     }
 }
