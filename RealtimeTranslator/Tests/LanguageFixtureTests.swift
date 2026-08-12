@@ -73,16 +73,25 @@ final class LanguageFixtureTests: XCTestCase {
     }
 
     // Given: fixture の言語→翻訳先対応表
-    // When: 各言語の翻訳先を求める
-    // Then: 日本語は英語へ、英語は日本語へ向かう
-    func testTranslationTargetsMatchFixture() throws {
+    // When: 各言語の翻訳先と counterpart を求める
+    // Then: target / counterpart が双方向に一致する
+    func testTranslationTargetsAndCounterpartsMatchFixture() throws {
         for item in try SharedFixtures.section("language", "targets") {
             let language = parseLanguage(SharedFixtures.text(item["language"]))
             let pair = LanguagePair(rawValue: SharedFixtures.text(item["pair"])) ?? .jaEn
             let expectedRaw = SharedFixtures.optionalText(item["translationTarget"])
             let expected = expectedRaw.flatMap(RealtimeTranslationOutputLanguage.init(rawValue:))
+            let expectedCounterpart = parseOptionalLanguage(SharedFixtures.text(item["counterpart"]))
             XCTAssertEqual(pair.translationTarget(for: language), expected)
+            XCTAssertEqual(pair.counterpart(of: language), expectedCounterpart)
+            if let expected {
+                XCTAssertEqual(pair.counterpart(of: expected), language)
+            }
         }
+    }
+
+    private func parseOptionalLanguage(_ value: String) -> SpokenLanguage? {
+        value == "unknown" ? nil : parseLanguage(value)
     }
 
     private func parseEvidence(_ value: String) -> SpokenLanguageEvidence {
