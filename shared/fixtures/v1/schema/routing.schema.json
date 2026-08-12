@@ -111,7 +111,8 @@
               "additionalProperties": false,
               "properties": {
                 "evidence": { "enum": ["japanese", "english", "spanish", "ambiguousLatin", "none"] },
-                "expectedTarget": { "enum": ["en", "ja", "es", null] }
+                "expectedTarget": { "enum": ["en", "ja", "es", null] },
+                "expectedReverseEvidenceCount": { "type": "integer", "minimum": 0, "maximum": 1 }
               }
             }
           }

@@ -34,6 +34,10 @@ public sealed class TranslationTargetSelectionFixtureTests
                 ? RealtimeTranslationWireValues.ParseOutputLanguage(SharedFixtures.Text(target))
                 : (RealtimeTranslationOutputLanguage?)null;
             Assert.Equal(expected, current);
+            if (step["expectedReverseEvidenceCount"] is { } expectedCount)
+            {
+                Assert.Equal(SharedFixtures.Number(expectedCount), reverseCount);
+            }
         }
     }
 

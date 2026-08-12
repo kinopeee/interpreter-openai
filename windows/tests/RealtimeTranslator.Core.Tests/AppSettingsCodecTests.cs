@@ -26,6 +26,7 @@ public sealed class AppSettingsCodecTests
             NoiseReduction = RealtimeTranslationNoiseReduction.NearField,
             TranscriptionDelay = RealtimeTranscriptionDelay.High,
             RecordSubtitles = true,
+            LanguagePair = LanguagePair.EnEs,
         };
 
         var restored = AppSettingsCodec.Decode(AppSettingsCodec.Encode(settings));
@@ -33,6 +34,21 @@ public sealed class AppSettingsCodecTests
         Assert.Equal(settings, restored);
         Assert.True(restored.HasAcceptedCurrentConsent);
         Assert.True(restored.RecordSubtitles);
+        Assert.Equal(LanguagePair.EnEs, restored.LanguagePair);
+    }
+
+    // Given: 対応する全言語ペア
+    // When: JSON へ書き出して読み戻す
+    // Then: 各ペアが欠落なく復元される
+    [Theory]
+    [InlineData(LanguagePair.JaEn)]
+    [InlineData(LanguagePair.JaEs)]
+    [InlineData(LanguagePair.EnEs)]
+    public void EncodeDecodeRoundTripsEveryLanguagePair(LanguagePair pair)
+    {
+        var settings = AppSettingsData.Default with { LanguagePair = pair };
+        var restored = AppSettingsCodec.Decode(AppSettingsCodec.Encode(settings));
+        Assert.Equal(pair, restored.LanguagePair);
     }
 
     // Given: API キーを含めてはいけない設定 JSON

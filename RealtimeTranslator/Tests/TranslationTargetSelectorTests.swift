@@ -27,6 +27,9 @@ final class TranslationTargetSelectorTests: XCTestCase {
                     target?.rawValue,
                     SharedFixtures.optionalText(step["expectedTarget"])
                 )
+                if let expectedCount = SharedFixtures.optionalNumber(step["expectedReverseEvidenceCount"]) {
+                    XCTAssertEqual(reverseCount, expectedCount)
+                }
             }
         }
     }

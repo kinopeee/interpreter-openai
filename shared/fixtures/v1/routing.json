@@ -190,6 +190,42 @@
         "sourceFrames": ["f1", "f2", "f3"],
         "frames": { "en": [], "es": ["f1", "f2", "f3"] }
       }
+    },
+    {
+      "name": "ja-es language switch flushes the rolling preroll to the new target",
+      "pair": "ja-es",
+      "steps": [
+        { "kind": "selectTranslationTarget", "target": "es" },
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "appendFrame", "frame": "f2" },
+        { "kind": "selectTranslationTarget", "target": "ja" },
+        { "kind": "appendFrame", "frame": "f3" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2", "f3"],
+        "frames": {
+          "es": ["f1", "f2"],
+          "ja": ["f1", "f2", "f3"]
+        }
+      }
+    },
+    {
+      "name": "en-es language switch flushes the rolling preroll to the new target",
+      "pair": "en-es",
+      "steps": [
+        { "kind": "selectTranslationTarget", "target": "es" },
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "appendFrame", "frame": "f2" },
+        { "kind": "selectTranslationTarget", "target": "en" },
+        { "kind": "appendFrame", "frame": "f3" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2", "f3"],
+        "frames": {
+          "es": ["f1", "f2"],
+          "en": ["f1", "f2", "f3"]
+        }
+      }
     }
   ],
   "targetSelectionDescription": "target は話者言語ではなく出力言語。話者言語は pair.counterpart(target) で求める。",
@@ -248,8 +284,19 @@
       "pair": "en-es",
       "initialTarget": "en",
       "evidence": [
-        { "evidence": "spanish", "expectedTarget": "en" },
-        { "evidence": "spanish", "expectedTarget": "en" }
+        { "evidence": "spanish", "expectedTarget": "en", "expectedReverseEvidenceCount": 0 },
+        { "evidence": "spanish", "expectedTarget": "en", "expectedReverseEvidenceCount": 0 }
+      ]
+    },
+    {
+      "name": "en-es same language evidence resets pending reverse count",
+      "pair": "en-es",
+      "initialTarget": "en",
+      "evidence": [
+        { "evidence": "english", "expectedTarget": "en", "expectedReverseEvidenceCount": 1 },
+        { "evidence": "spanish", "expectedTarget": "en", "expectedReverseEvidenceCount": 0 },
+        { "evidence": "english", "expectedTarget": "en", "expectedReverseEvidenceCount": 1 },
+        { "evidence": "english", "expectedTarget": "es", "expectedReverseEvidenceCount": 0 }
       ]
     },
     {

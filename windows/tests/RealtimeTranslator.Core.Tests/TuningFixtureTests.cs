@@ -45,6 +45,41 @@ public sealed class TuningFixtureTests
         Assert.Equal(["Custom keyword"], preserved.TranscriptionKeywords.ToArray());
     }
 
+    // Given: 3 ペアすべての既定 prompt / keywords
+    // When: 任意の既定値から別ペアへ ForPair する
+    // Then: 遷移先ペアの既定へ置き換わり、カスタム片方は独立に保持される
+    [Theory]
+    [InlineData(LanguagePair.JaEn, LanguagePair.JaEs)]
+    [InlineData(LanguagePair.JaEs, LanguagePair.EnEs)]
+    [InlineData(LanguagePair.EnEs, LanguagePair.JaEn)]
+    public void ForPairMigratesKnownDefaultsAcrossEveryPair(LanguagePair from, LanguagePair to)
+    {
+        var migrated = RealtimeSessionTuning.Default.ForPair(from).ForPair(to);
+
+        Assert.Equal(RealtimeSessionTuning.DefaultPromptForPair(to), migrated.TranscriptionPrompt);
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultKeywordsForPair(to).ToArray(),
+            migrated.TranscriptionKeywords.ToArray());
+
+        var customPromptOnly = RealtimeSessionTuning.Default.ForPair(from) with
+        {
+            TranscriptionPrompt = "Keep this prompt",
+        };
+        var promptPreserved = customPromptOnly.ForPair(to);
+        Assert.Equal("Keep this prompt", promptPreserved.TranscriptionPrompt);
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultKeywordsForPair(to).ToArray(),
+            promptPreserved.TranscriptionKeywords.ToArray());
+
+        var customKeywordsOnly = RealtimeSessionTuning.Default.ForPair(from) with
+        {
+            TranscriptionKeywords = ["Keep", "these"],
+        };
+        var keywordsPreserved = customKeywordsOnly.ForPair(to);
+        Assert.Equal(RealtimeSessionTuning.DefaultPromptForPair(to), keywordsPreserved.TranscriptionPrompt);
+        Assert.Equal(["Keep", "these"], keywordsPreserved.TranscriptionKeywords.ToArray());
+    }
+
     // Given: shared fixture の tuning 上限値
     // When: C# 実装の定数と照合する
     // Then: keyword 上限・prompt 上限・禁止文字が一致する
