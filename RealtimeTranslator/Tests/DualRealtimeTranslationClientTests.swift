@@ -704,7 +704,7 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
             englishTransport: englishTransport,
             japaneseTransport: japaneseTransport
         )
-        try await dual.setSpokenLanguage(.japanese)
+        try await dual.selectTranslationTarget(.english)
         await englishTransport.setAudioAppendHangNanoseconds(80_000_000)
         for index in 0..<6 {
             let frame = Data(repeating: UInt8(0x40 + index), count: PCM16FramePacketizer.bytesPerFrame)
