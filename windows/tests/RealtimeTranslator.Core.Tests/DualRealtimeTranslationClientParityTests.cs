@@ -235,10 +235,39 @@ public sealed class DualRealtimeTranslationClientParityTests
         Assert.False(await dual.Events.WaitToReadAsync());
     }
 
+    // Given: 3 本の翻訳接続を持つ Dual と選択された言語ペア
+    // When: その pair で Start する
+    // Then: source と pair 内 2 lane だけが接続され、未使用 lane は接続されない
+    [Theory]
+    [InlineData(LanguagePair.JaEn, true, true, false)]
+    [InlineData(LanguagePair.JaEs, false, true, true)]
+    [InlineData(LanguagePair.EnEs, true, false, true)]
+    public async Task StartConnectsOnlyTranslationLanesInSelectedPair(
+        LanguagePair pair,
+        bool expectEnglish,
+        bool expectJapanese,
+        bool expectSpanish)
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        var spanish = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese, spanish);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, pair);
+
+        Assert.Equal(1, source.ConnectCount);
+        Assert.Equal(expectEnglish ? 1 : 0, english.ConnectCount);
+        Assert.Equal(expectJapanese ? 1 : 0, japanese.ConnectCount);
+        Assert.Equal(expectSpanish ? 1 : 0, spanish.ConnectCount);
+        await dual.ForceCloseAsync();
+    }
+
     private static DualRealtimeTranslationClient CreateDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,
-        FakeRealtimeServerTransport japanese) =>
+        FakeRealtimeServerTransport japanese,
+        FakeRealtimeServerTransport? spanish = null) =>
         new(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
             new RealtimeTranslationConnection(
@@ -248,7 +277,13 @@ public sealed class DualRealtimeTranslationClientParityTests
             new RealtimeTranslationConnection(
                 RealtimeTranslationOutputLanguage.Japanese,
                 japanese,
-                "test-safety"));
+                "test-safety"),
+            spanishConnection: spanish is null
+                ? null
+                : new RealtimeTranslationConnection(
+                    RealtimeTranslationOutputLanguage.Spanish,
+                    spanish,
+                    "test-safety"));
 
     private static async Task<List<string>> CollectSourceDeltasAsync(
         DualRealtimeTranslationClient dual,

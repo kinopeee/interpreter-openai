@@ -28,6 +28,52 @@ final class RealtimeSessionTuningTests: XCTestCase {
         XCTAssertEqual(preserved.transcriptionKeywords, ["Custom keyword"])
     }
 
+    func testForPairMigratesKnownDefaultsAcrossEveryPair() {
+        // Given: 3 ペアすべての既定 prompt / keywords
+        let transitions: [(LanguagePair, LanguagePair)] = [
+            (.jaEn, .jaEs),
+            (.jaEs, .enEs),
+            (.enEs, .jaEn),
+        ]
+
+        for (from, to) in transitions {
+            // When: 任意の既定値から別ペアへ forPair する
+            let migrated = RealtimeSessionTuning.default.forPair(from).forPair(to)
+
+            // Then: 遷移先ペアの既定へ置き換わる
+            XCTAssertEqual(migrated.transcriptionPrompt, RealtimeSessionTuning.defaultPrompt(for: to))
+            XCTAssertEqual(migrated.transcriptionKeywords, RealtimeSessionTuning.defaultKeywords(for: to))
+
+            var customPromptOnly = RealtimeSessionTuning.default.forPair(from)
+            customPromptOnly = RealtimeSessionTuning(
+                noiseReduction: customPromptOnly.noiseReduction,
+                transcriptionDelay: customPromptOnly.transcriptionDelay,
+                transcriptionPrompt: "Keep this prompt",
+                transcriptionKeywords: customPromptOnly.transcriptionKeywords
+            )
+            let promptPreserved = customPromptOnly.forPair(to)
+            XCTAssertEqual(promptPreserved.transcriptionPrompt, "Keep this prompt")
+            XCTAssertEqual(
+                promptPreserved.transcriptionKeywords,
+                RealtimeSessionTuning.defaultKeywords(for: to)
+            )
+
+            var customKeywordsOnly = RealtimeSessionTuning.default.forPair(from)
+            customKeywordsOnly = RealtimeSessionTuning(
+                noiseReduction: customKeywordsOnly.noiseReduction,
+                transcriptionDelay: customKeywordsOnly.transcriptionDelay,
+                transcriptionPrompt: customKeywordsOnly.transcriptionPrompt,
+                transcriptionKeywords: ["Keep", "these"]
+            )
+            let keywordsPreserved = customKeywordsOnly.forPair(to)
+            XCTAssertEqual(
+                keywordsPreserved.transcriptionPrompt,
+                RealtimeSessionTuning.defaultPrompt(for: to)
+            )
+            XCTAssertEqual(keywordsPreserved.transcriptionKeywords, ["Keep", "these"])
+        }
+    }
+
     @MainActor
     func testAppSettingsLanguagePairChangeRefreshesDefaultHintsOnly() {
         // Given: 既定ヒントのままの設定

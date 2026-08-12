@@ -125,23 +125,32 @@ public sealed class LanguageFixtureTests
     }
 
     // Given: fixture の言語→翻訳先対応表
-    // When: 各言語の翻訳先を求める
-    // Then: 日本語は英語へ、英語は日本語へ向かう
+    // When: 各言語の翻訳先と counterpart を求める
+    // Then: target / counterpart が双方向に一致する
     [Fact]
-    public void TranslationTargetsMatchFixture()
+    public void TranslationTargetsAndCounterpartsMatchFixture()
     {
-        // Given: language → translationTarget 対応表
+        // Given: language → translationTarget / counterpart 対応表
         foreach (var item in SharedFixtures.Section("language", "targets"))
         {
             var fixture = item!.AsObject();
             var pair = LanguagePairExtensions.ParseLanguagePair(SharedFixtures.Text(fixture["pair"]));
             var language = ParseLanguage(SharedFixtures.Text(fixture["language"]));
-            var expected = SharedFixtures.OptionalText(fixture["translationTarget"]);
+            var expectedTarget = SharedFixtures.OptionalText(fixture["translationTarget"]);
+            var expectedCounterpart = ParseOptionalLanguage(SharedFixtures.Text(fixture["counterpart"]));
 
-            // When/Then: TranslationTarget() が一致する
+            // When/Then: TranslationTarget() と Counterpart(language) が一致する
             Assert.Equal(
-                expected is null ? null : RealtimeTranslationWireValues.ParseOutputLanguage(expected),
+                expectedTarget is null ? null : RealtimeTranslationWireValues.ParseOutputLanguage(expectedTarget),
                 pair.TranslationTarget(language));
+            Assert.Equal(expectedCounterpart, pair.Counterpart(language));
+
+            // When/Then: Counterpart(target) は「その target を選ぶ話者言語」を返す
+            if (expectedTarget is { } wire)
+            {
+                var target = RealtimeTranslationWireValues.ParseOutputLanguage(wire);
+                Assert.Equal(language, pair.Counterpart(target));
+            }
         }
     }
 
@@ -162,5 +171,11 @@ public sealed class LanguageFixtureTests
         "spanish" => SpokenLanguage.Spanish,
         "unknown" => SpokenLanguage.Unknown,
         _ => throw new Xunit.Sdk.XunitException("unhandled language " + value),
+    };
+
+    private static SpokenLanguage? ParseOptionalLanguage(string value) => value switch
+    {
+        "unknown" => null,
+        _ => ParseLanguage(value),
     };
 }

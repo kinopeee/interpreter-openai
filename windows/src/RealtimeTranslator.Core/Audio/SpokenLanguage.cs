@@ -62,13 +62,17 @@ public static class LanguagePairExtensions
         return language == languages[0] ? languages[1] : languages[0];
     }
 
+    /// <summary>
+    /// 出力 target に対応する話者言語（source）を返す。
+    /// <c>translationTarget(source) == target</c> となる側であり、target と同名の言語ではない。
+    /// </summary>
     public static SpokenLanguage? Counterpart(
         this LanguagePair pair,
         RealtimeTranslationOutputLanguage target)
     {
         foreach (var language in pair.Languages())
         {
-            if (language.ToOutputLanguage() == target)
+            if (pair.TranslationTarget(language) == target)
             {
                 return language;
             }

@@ -538,6 +538,71 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: ja-es ペアで開始したセッション
+    // When: 日本語のあと、末尾窓から日本語を追い出すスペイン語 delta を受け取る
+    // Then: 日本語→es、スペイン語→ja の target へ即時に切り替える
+    [Fact]
+    public async Task JaEsRoutesJapaneseAndSpanishToOppositeTargets()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, languagePairProvider: () => LanguagePair.JaEs);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("これは日本語の発話です");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 1);
+        Assert.Equal(RealtimeTranslationOutputLanguage.Spanish, client.SelectedTargets[0]);
+        Assert.Equal(SpokenLanguage.Japanese, client.SpokenLanguages[0]);
+
+        // 末尾 16 scalar から日本語を追い出し、ラテン 2 語以上で spanish を確定する。
+        client.PublishSourceDelta("................");
+        await Task.Delay(40);
+        client.PublishSourceDelta(" mundo ahora");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 2);
+        Assert.Equal(
+            [RealtimeTranslationOutputLanguage.Spanish, RealtimeTranslationOutputLanguage.Japanese],
+            client.SelectedTargets);
+        Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.Spanish], client.SpokenLanguages);
+        await session.StopAsync();
+    }
+
+    // Given: en-es で英語 target が確定済み
+    // When: 逆側 evidence が 1 回だけ、続いて同じ側、さらに逆側が連続 2 回来る
+    // Then: 1 回では切り替わらず、連続 2 回でだけ target が反転する
+    [Fact]
+    public async Task EnEsRequiresTwoConsecutiveReverseEvidenceToSwitch()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, languagePairProvider: () => LanguagePair.EnEs);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("el la los las es está que y");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 1);
+        Assert.Equal(RealtimeTranslationOutputLanguage.English, client.SelectedTargets[0]);
+
+        // 逆側 1 回だけでは切替しない。
+        client.PublishSourceDelta(" the and is are of to it that");
+        await Task.Delay(40);
+        Assert.Equal([RealtimeTranslationOutputLanguage.English], client.SelectedTargets);
+
+        // 同一言語 evidence で pending reverse count をリセットする。
+        client.PublishSourceDelta(" el la los las es está que y");
+        await Task.Delay(40);
+        Assert.Equal([RealtimeTranslationOutputLanguage.English], client.SelectedTargets);
+
+        // 連続 2 回の逆側 evidence でのみ es へ切り替える。
+        client.PublishSourceDelta(" the and is are of to it that");
+        await Task.Delay(40);
+        Assert.Equal([RealtimeTranslationOutputLanguage.English], client.SelectedTargets);
+        client.PublishSourceDelta(" this with for you they the and");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 2);
+        Assert.Equal(
+            [RealtimeTranslationOutputLanguage.English, RealtimeTranslationOutputLanguage.Spanish],
+            client.SelectedTargets);
+        await session.StopAsync();
+    }
+
     // Given: 日本語 routing が確定したあとのセグメント
     // When: 末尾ウィンドウが AmbiguousLatin（ラテン 1 語）だけになる
     // Then: segment 境界として反転せず、英語 lane へ切り替えない
@@ -1644,16 +1709,14 @@ public sealed class InterpretationSessionTests
                 if (target is { } selected)
                 {
                     _selectedTargets.Add(selected);
-                }
 
-                var spoken = target switch
-                {
-                    RealtimeTranslationOutputLanguage.English => SpokenLanguage.Japanese,
-                    RealtimeTranslationOutputLanguage.Japanese => SpokenLanguage.English,
-                    RealtimeTranslationOutputLanguage.Spanish => SpokenLanguage.Spanish,
-                    _ => SpokenLanguage.Unknown,
-                };
-                _spokenLanguages.Add(spoken);
+                    // Swift FakeDualClient と同じく pair.counterpart(target) で話者言語を復元する。
+                    if (LastStartedPair is { } pair
+                        && pair.Counterpart(selected) is { } spoken)
+                    {
+                        _spokenLanguages.Add(spoken);
+                    }
+                }
             }
 
             return Task.CompletedTask;

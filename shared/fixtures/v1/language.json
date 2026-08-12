@@ -166,6 +166,14 @@
       "window": 8,
       "expected": "english",
       "fullEvidence": "spanish"
+    },
+    {
+      "name": "ja-es scalar window does not split emoji before spanish",
+      "pair": "ja-es",
+      "input": "日本 aa 😀 bb",
+      "window": 4,
+      "expected": "spanish",
+      "fullEvidence": "japanese"
     }
   ],
   "targets": [
