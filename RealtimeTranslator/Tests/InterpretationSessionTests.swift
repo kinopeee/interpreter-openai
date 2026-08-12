@@ -1072,7 +1072,7 @@ final class InterpretationSessionTests: XCTestCase {
         // Given: 末尾ウィンドウより長い原文
         let prefix = String(repeating: "あ", count: 64)
         let tail = "hello world today"
-        let trimmed = InterpretationSession.trimRoutingSourceText(prefix + tail)
+        let trimmed = InterpretationSession.trimRoutingSourceText(prefix + tail, pair: .jaEn)
 
         // When/Then: 末尾の非空白 scalar ウィンドウ相当が残り、上限を超えない
         XCTAssertTrue(trimmed.hasSuffix(tail) || trimmed.contains("world"))
@@ -1080,6 +1080,40 @@ final class InterpretationSessionTests: XCTestCase {
             trimmed.utf16.count,
             InterpretationSession.routingSourceTextMaxLength
         )
+    }
+
+    func testEnEsLongWordWindowIsPreservedForRouting() async {
+        // Given: en-es で英語 target 確定後、scalar 上限を超える長いスペイン語語窓
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000,
+            languagePairProvider: { .enEs }
+        )
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        dual.publishSourceDelta("the and is are of to it that")
+        await waitUntil { dual.selectedTargets == [.spanish] }
+
+        // When: 先頭側にだけスペイン語証拠があり、後ろは長い filler。scalar 切り詰めだと証拠が消える。
+        let longToken = String(repeating: "x", count: 40)
+        let filler = Array(
+            repeating: longToken,
+            count: SpokenLanguageDetector.enEsWindow - 2
+        ).joined(separator: " ")
+        let spanishWindow = "está aquí " + filler
+        dual.publishSourceDelta(spanishWindow)
+        dual.publishSourceDelta(" " + spanishWindow)
+
+        // Then: 語窓を保ち English target へ切り替わる
+        await waitUntil {
+            dual.selectedTargets == [.spanish, .english]
+        }
+        XCTAssertEqual(dual.selectedTargets, [.spanish, .english])
+        await session.stop()
     }
 }
 
@@ -1152,6 +1186,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     private(set) var closeGracefullyCallCount = 0
     private(set) var forceCloseCallCount = 0
     private(set) var spokenLanguages: [SpokenLanguage] = []
+    private(set) var selectedTargets: [RealtimeTranslationOutputLanguage] = []
     private(set) var resetAudioRoutingCallCount = 0
     private(set) var updateTranscriptionTuningCallCount = 0
     private(set) var lastTuning: RealtimeSessionTuning?
@@ -1227,6 +1262,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
 
     func selectTranslationTarget(_ target: RealtimeTranslationOutputLanguage?) async throws {
         guard let target else { return }
+        selectedTargets.append(target)
         if let language = lastLanguagePair.counterpart(of: target) {
             spokenLanguages.append(language)
         }

@@ -59,14 +59,7 @@ enum SpokenLanguageDetector {
             guard spans.count > effectiveWindow else {
                 return evidence(in: text, pair: pair)
             }
-            var start = spans[spans.count - effectiveWindow].start
-            while start > text.unicodeScalars.startIndex {
-                let previous = text.unicodeScalars.index(before: start)
-                guard text.unicodeScalars[previous].value == 0x00BF
-                    || text.unicodeScalars[previous].value == 0x00A1
-                else { break }
-                start = previous
-            }
+            let start = recentWordWindowStart(in: text, window: effectiveWindow)
             let end = spans[spans.count - 1].end
             return evidence(
                 in: String(text.unicodeScalars[start..<end]),
@@ -160,6 +153,28 @@ enum SpokenLanguageDetector {
             return .ambiguousLatin
         }
         return spanishScore > englishScore ? .spanish : .english
+    }
+
+    /// en-es RecentEvidence と同じ語窓の開始（¿ / ¡ を語前に含める）。
+    /// 語数が window 以下なら文字列先頭を返す。
+    static func recentWordWindowStart(
+        in text: String,
+        window: Int = enEsWindow
+    ) -> String.UnicodeScalarView.Index {
+        let scalars = text.unicodeScalars
+        guard window > 0, !text.isEmpty else { return scalars.startIndex }
+        let spans = wordSpans(in: text)
+        guard spans.count > window else { return scalars.startIndex }
+
+        var start = spans[spans.count - window].start
+        while start > scalars.startIndex {
+            let previous = scalars.index(before: start)
+            guard scalars[previous].value == 0x00BF
+                || scalars[previous].value == 0x00A1
+            else { break }
+            start = previous
+        }
+        return start
     }
 
     private struct WordSpan {

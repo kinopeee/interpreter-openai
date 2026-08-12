@@ -704,6 +704,10 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
             englishTransport: englishTransport,
             japaneseTransport: japaneseTransport
         )
+<<<<<<< HEAD
+=======
+        // 日本語発話 → target=en。pending は英語 lane へ積む。
+>>>>>>> ef4b19d (fix(macos): en-es routing trim + CloseGracefully drain test API)
         try await dual.selectTranslationTarget(.english)
         await englishTransport.setAudioAppendHangNanoseconds(80_000_000)
         for index in 0..<6 {

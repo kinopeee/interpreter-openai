@@ -24,8 +24,8 @@ final class InterpretationSession {
     /// 録音停止後、最後の字幕ペアを読み取れるよう残す時間。
     static let defaultPostStopSubtitleRetentionNanoseconds: UInt64 = 5_000_000_000
     /// ルーティング判定用に保持する原文の上限 (UTF-16)。
-    /// 通常は末尾の非空白 scalar ウィンドウへ切り詰めるが、ウィンドウ内の空白が異常に長い場合の
-    /// 安全弁として使い、空白 run を圧縮してこの長さへ収める。
+    /// ja-* は末尾の非空白 scalar ウィンドウへ切り詰め、ウィンドウ内の空白が異常に長い場合の
+    /// 安全弁として空白 run を圧縮してこの長さへ収める。en-es は語窓へ切り詰める。
     static let routingSourceTextMaxLength = 16 * SpokenLanguageDetector.recentEvidenceWindow
 
     weak var delegate: InterpretationSessionDelegate?
@@ -556,8 +556,8 @@ final class InterpretationSession {
     }
 
     private func updateAudioRouting(withSourceDelta delta: String) async throws {
-        routingSourceText = Self.trimRoutingSourceText(routingSourceText + delta)
         guard let pair = activeLanguagePair else { return }
+        routingSourceText = Self.trimRoutingSourceText(routingSourceText + delta, pair: pair)
         let evidence = SpokenLanguageDetector.recentEvidence(
             in: routingSourceText,
             pair: pair
@@ -576,17 +576,21 @@ final class InterpretationSession {
                 enqueueRender(finalized)
             }
             await resetAudioRoutingForNextSegment()
-            routingSourceText = Self.trimRoutingSourceText(delta)
+            routingSourceText = Self.trimRoutingSourceText(delta, pair: pair)
         }
         selectedTranslationTarget = selection.target
         assembler.expectLane(selection.target)
         try await dualClient.selectTranslationTarget(selection.target)
     }
 
-    /// `SpokenLanguageDetector.recentEvidence` と同じ末尾非空白 scalar ウィンドウを残す。
-    /// ウィンドウ内の空白が異常に長く上限を超える場合だけ空白 run を U+0020 1 個へ圧縮する。
-    static func trimRoutingSourceText(_ text: String) -> String {
+    /// `SpokenLanguageDetector.recentEvidence` と同じ判定窓を残す。
+    /// `en-es` は語窓、それ以外は末尾非空白 scalar 窓。空白 run が異常に長い場合だけ圧縮する。
+    static func trimRoutingSourceText(_ text: String, pair: LanguagePair) -> String {
         guard !text.isEmpty else { return text }
+        if pair == .enEs {
+            let start = SpokenLanguageDetector.recentWordWindowStart(in: text)
+            return String(text.unicodeScalars[start...])
+        }
         let window = recentEvidenceWindowSubstring(
             text,
             window: SpokenLanguageDetector.recentEvidenceWindow
