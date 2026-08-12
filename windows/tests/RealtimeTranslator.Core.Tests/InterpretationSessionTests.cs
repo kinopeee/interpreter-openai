@@ -334,6 +334,99 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: ja-es で日本語→es の完全ペアが揃ったあとスペイン語へ反転する原文
+    // When: 文字種の反転を検出する
+    // Then: 前セグメントを確定し、音声 routing を日本語 target へ切り替え直す
+    [Fact]
+    public async Task JaEsLanguageFlipFinalizesAndReroutes()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, languagePairProvider: () => LanguagePair.JaEs);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("これはテストです");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 1);
+        Assert.Equal(RealtimeTranslationOutputLanguage.Spanish, client.SelectedTargets[0]);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.Spanish, "Esto es una prueba");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.TranslatedText.Length > 0);
+            }
+        });
+        var resetsAfterJapanese = client.ResetAudioRoutingCount;
+
+        // When: 1 delta で末尾窓から日本語を追い出し、スペイン語へ反転する
+        // （padding を先に ingest すると finalize 原文へ混ざる）
+        client.PublishSourceDelta("................ mundo ahora");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 2);
+
+        // Then: 言語切替で再ルーティングし、前セグメントが確定する
+        Assert.Equal(
+            [RealtimeTranslationOutputLanguage.Spanish, RealtimeTranslationOutputLanguage.Japanese],
+            client.SelectedTargets);
+        Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.Spanish], client.SpokenLanguages);
+        Assert.True(client.ResetAudioRoutingCount > resetsAfterJapanese);
+        RealtimeSubtitleUpdate finalized = default;
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                finalized = updates.Find(update => update.ShouldFinalize);
+                return finalized.ShouldFinalize;
+            }
+        });
+        Assert.Equal("これはテストです", finalized.SourceText);
+        Assert.Equal("Esto es una prueba", finalized.TranslatedText);
+        await session.StopAsync();
+    }
+
+    // Given: ja-es ペアと ja-en 既定の tuningProvider
+    // When: Start し、Listening 中に ApplyTuningChangeAsync する
+    // Then: Start / Apply の双方で ForPair(JaEs) の prompt・keywords が dual へ渡る
+    [Fact]
+    public async Task JaEsStartAndApplyTuningUsePairMigratedDefaults()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(
+            client,
+            tuningProvider: () => RealtimeSessionTuning.Default,
+            languagePairProvider: () => LanguagePair.JaEs);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        Assert.Equal(LanguagePair.JaEs, client.LastStartedPair);
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEs),
+            client.LastStartedTuning?.TranscriptionPrompt);
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEs).ToArray(),
+            client.LastStartedTuning?.TranscriptionKeywords.ToArray());
+
+        await session.ApplyTuningChangeAsync();
+
+        Assert.Equal(1, client.UpdateTranscriptionTuningCount);
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEs),
+            client.LastTuning?.TranscriptionPrompt);
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEs).ToArray(),
+            client.LastTuning?.TranscriptionKeywords.ToArray());
+        await session.StopAsync();
+    }
+
     // Given: 文字種の反転を起こさない英語 delta がサーバから連続で流れ続ける
     // When: 同一セグメント内で delta を大量に取り込む
     // Then: routing 判定バッファは上限までで打ち切られ、その後の反転検出も壊れない
@@ -1646,6 +1739,8 @@ public sealed class InterpretationSessionTests
 
         public LanguagePair? LastStartedPair { get; private set; }
 
+        public RealtimeSessionTuning? LastStartedTuning { get; private set; }
+
         public Task StartAsync(
             string apiKey,
             RealtimeSessionTuning tuning,
@@ -1663,6 +1758,7 @@ public sealed class InterpretationSessionTests
             {
                 StartCount += 1;
                 LastStartedPair = pair;
+                LastStartedTuning = tuning;
                 if (ThrowOnNextStart)
                 {
                     ThrowOnNextStart = false;
