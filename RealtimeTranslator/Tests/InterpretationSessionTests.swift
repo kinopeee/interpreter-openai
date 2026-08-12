@@ -57,6 +57,47 @@ final class InterpretationSessionTests: XCTestCase {
         await session.stop()
     }
 
+    func testReconnectKeepsLanguagePairFrozenFromStart() async {
+        // Given: ja-en で開始したあと、録音中に provider を en-es へ変更する
+        var pair = LanguagePair.jaEn
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: audio,
+            dualClient: dual,
+            languagePairProvider: { pair }
+        )
+        await session.start()
+        await waitUntil { session.state == .listening }
+        XCTAssertEqual(dual.lastLanguagePair, .jaEn)
+        let startCountAtListening = dual.startCallCount
+        pair = .enEs
+
+        // When: transport error で再接続する
+        dual.emit(
+            target: .english,
+            event: .error(message: "socket closed", code: "transport")
+        )
+        await waitUntil(timeout: 3) {
+            session.state == .listening && dual.startCallCount > startCountAtListening
+        }
+
+        // Then: 再接続後も Start 時点の ja-en を使い、日本語は英語 target へ載る
+        XCTAssertEqual(dual.lastLanguagePair, .jaEn)
+        await dual.publishSourceDelta("これは再接続後も同じペアです")
+        await waitUntil { dual.spokenLanguages == [.japanese] }
+        XCTAssertEqual(dual.selectedTargets, [.english])
+
+        // And: 停止して次の録音を開始したときだけ新しいペアが反映される
+        await session.stop()
+        await waitUntil { session.state == .idle }
+        await session.start()
+        await waitUntil { session.state == .listening }
+        XCTAssertEqual(dual.lastLanguagePair, .enEs)
+        await session.stop()
+    }
+
     func testStopDuringStartDoesNotLeaveListening() async {
         // Given: 接続中に止められるセッション
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")

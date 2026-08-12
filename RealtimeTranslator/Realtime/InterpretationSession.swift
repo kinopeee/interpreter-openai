@@ -61,6 +61,8 @@ final class InterpretationSession {
     private var assembler = RealtimeSubtitleAssembler()
     private var reconnectAttempt = 0
     private var routingSourceText = ""
+    /// 現在の録音世代で使う言語ペア。Start 時に固定し、再接続でも settings の変更を取り込まない。
+    private var sessionLanguagePair: LanguagePair?
     private var activeLanguagePair: LanguagePair?
     private var selectedTranslationTarget: RealtimeTranslationOutputLanguage?
     private var reverseEvidenceCount = 0
@@ -110,6 +112,9 @@ final class InterpretationSession {
         lifecycleGeneration += 1
         let generation = lifecycleGeneration
         reconnectAttempt = 0
+        // 録音開始時点のペアを世代全体で固定する。録音中の設定変更は再接続でも反映しない
+        // （VALIDATION: 停止→次の録音開始後にだけ新しいペアが反映される）。
+        sessionLanguagePair = languagePairProvider()
         state = .connecting
         aggregator.reset()
         aggregator.setStatusBanner("OpenAI Realtimeへ接続中…")
@@ -271,7 +276,7 @@ final class InterpretationSession {
         aggregator.setStatusBanner("OpenAI Realtimeへ接続中…")
         publishSubtitles()
 
-        let pair = languagePairProvider()
+        let pair = sessionLanguagePair ?? languagePairProvider()
         try await dualClient.start(
             apiKey: apiKey,
             tuning: tuningProvider().forPair(pair),
@@ -446,6 +451,8 @@ final class InterpretationSession {
         let snapshot = aggregator.forceFinalize()
         delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
         aggregator.setStatusBanner(nil)
+        sessionLanguagePair = nil
+        activeLanguagePair = nil
         state = .idle
         publishSubtitles()
         stopTicker()

@@ -122,4 +122,19 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         // Then: ASCII のみの語分割に落ちず spanish になる
         XCTAssertEqual(evidence, .spanish)
     }
+
+    func testEnEsExclusiveWordMatchIsLocaleInvariant() {
+        // Given: title-case の英語 exclusive words（tr_TR の lowercased() だと I→ı で照合不能）
+        let turkish = Locale(identifier: "tr_TR")
+        let posix = Locale(identifier: "en_US_POSIX")
+        XCTAssertEqual("I".lowercased(with: turkish), "ı")
+        XCTAssertEqual("I".lowercased(with: posix), "i")
+        let text = "Is This With It"
+
+        // When: en-es 証拠を求める（実装は POSIX lowercasing）
+        let evidence = SpokenLanguageDetector.evidence(in: text, pair: .enEs)
+
+        // Then: exclusive word が照合でき english になる
+        XCTAssertEqual(evidence, .english)
+    }
 }
