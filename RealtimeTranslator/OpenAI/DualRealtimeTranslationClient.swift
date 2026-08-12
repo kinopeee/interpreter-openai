@@ -21,9 +21,15 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     /// 100 ms frame × 40 = 直近4秒。言語判定遅延でも発話冒頭を翻訳へ届ける。
     static let translationPrerollFrameLimit = 40
     static let consecutiveTranslationFailureLimit = 3
+    /// 停止時 drain で未送信 frame 1 枚あたりに足す予算。preroll flush 後の短い停滞で訳文を落とさない。
+    static let translationDrainTimeoutNanosecondsPerPendingFrame: UInt64 = 250_000_000
+    /// 停止時 drain の上限。Send 停滞でも Stop が無期限待ちしない。
+    static let translationDrainTimeoutCapNanoseconds: UInt64 = 30_000_000_000
+    static let defaultTranslationDrainTimeoutNanoseconds: UInt64 = 5_000_000_000
 
     private let sourceConnection: RealtimeSourceTranscriptionConnection
     private let connections: [RealtimeTranslationOutputLanguage: RealtimeTranslationConnection]
+    private let translationDrainTimeoutNanoseconds: UInt64
     private var mergeTask: Task<Void, Never>?
     private var translationPumpTask: Task<Void, Never>?
     private var eventContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation?
@@ -50,7 +56,9 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         sourceConnection: RealtimeSourceTranscriptionConnection? = nil,
         englishConnection: RealtimeTranslationConnection? = nil,
         japaneseConnection: RealtimeTranslationConnection? = nil,
-        spanishConnection: RealtimeTranslationConnection? = nil
+        spanishConnection: RealtimeTranslationConnection? = nil,
+        translationDrainTimeoutNanoseconds: UInt64 = DualRealtimeTranslationClient
+            .defaultTranslationDrainTimeoutNanoseconds
     ) {
         if let sourceConnection, let englishConnection, let japaneseConnection {
             // 明示注入時は渡された接続だけを使い、欠けた Spanish を実ソケットで補完しない。
@@ -84,6 +92,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                 )
             self.connections = [.english: english, .japanese: japanese, .spanish: spanish]
         }
+        self.translationDrainTimeoutNanoseconds = translationDrainTimeoutNanoseconds
         let pair = Self.makeEventStream()
         eventStream = pair.stream
         eventContinuation = pair.continuation
@@ -207,9 +216,34 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         consecutiveTranslationFailures = 0
     }
 
+    /// 停止時 drain 予算。base（既定5秒）に未送信 frame 分を足し、cap（30秒）で打ち切る。
+    static func resolveTranslationDrainTimeoutNanoseconds(
+        baseNanoseconds: UInt64,
+        pendingFrameCount: Int
+    ) -> UInt64 {
+        let pending = UInt64(max(0, pendingFrameCount))
+        let scaled = baseNanoseconds
+            &+ (pending &* translationDrainTimeoutNanosecondsPerPendingFrame)
+        let cap = max(baseNanoseconds, translationDrainTimeoutCapNanoseconds)
+        return min(max(scaled, baseNanoseconds), cap)
+    }
+
+    private func resolveCloseDrainTimeoutNanoseconds() -> UInt64 {
+        var pending = pendingTranslationFrames.count
+        if translationPumpTask != nil {
+            pending += 1
+        }
+        return Self.resolveTranslationDrainTimeoutNanoseconds(
+            baseNanoseconds: translationDrainTimeoutNanoseconds,
+            pendingFrameCount: pending
+        )
+    }
+
     /// 翻訳ポンプが現在の待ち行列を処理し終えるまで待つ。決定的なテストのために使う。
     /// 送信が停滞しても `timeoutNanoseconds` で待機だけを打ち切り、送信ポンプ自体は停止しない。
-    func waitForTranslationDrain(timeoutNanoseconds: UInt64 = 5_000_000_000) async throws {
+    func waitForTranslationDrain(
+        timeoutNanoseconds: UInt64 = DualRealtimeTranslationClient.defaultTranslationDrainTimeoutNanoseconds
+    ) async throws {
         let deadline = ContinuousClock.now + .nanoseconds(Int64(timeoutNanoseconds))
         let pollInterval = Duration.milliseconds(5)
         while true {
@@ -258,8 +292,9 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         beginStopDrainCapture()
 
         // 未送信の翻訳フレームを先に送り、停止時の訳文欠落を防ぐ。
+        // preroll flush 直後は待ち行列が長いので pending 数に応じて予算を伸ばす。
         // drain 待ち中に届く最終 delta も stopDrainBuffer へ蓄える。
-        try? await waitForTranslationDrain()
+        try? await waitForTranslationDrain(timeoutNanoseconds: resolveCloseDrainTimeoutNanoseconds())
 
         isRunning = false
         translationPumpTask?.cancel()

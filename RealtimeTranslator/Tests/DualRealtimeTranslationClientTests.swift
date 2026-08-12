@@ -683,32 +683,112 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         await dual.forceClose()
     }
 
+    func testCloseGracefullyScalesDrainTimeoutWithPendingFrames() async throws {
+        // Given: base drain timeout だけでは送り切れない pending と緩い送信遅延
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        await sourceTransport.setAutoCloseResponses(true)
+        await englishTransport.setAutoCloseResponses(true)
+        await japaneseTransport.setAutoCloseResponses(true)
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport,
+            translationDrainTimeoutNanoseconds: 200_000_000,
+            closeTimeoutNanoseconds: 500_000_000
+        )
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        // 日本語発話 → target=en。pending は英語 lane へ積む。
+        try await dual.selectTranslationTarget(.english)
+        await englishTransport.setAudioAppendHangNanoseconds(80_000_000)
+        for index in 0..<6 {
+            let frame = Data(repeating: UInt8(0x40 + index), count: PCM16FramePacketizer.bytesPerFrame)
+            try await dual.appendAudioFrame(frame)
+        }
+
+        // When: CloseGracefully（pending 比例で予算が伸びる）
+        _ = await dual.closeGracefully()
+
+        // Then: session.close より前に全 frame が翻訳 lane へ届く
+        let appends = try decodeAppendPayloads(await englishTransport.sent)
+        XCTAssertEqual(appends.count, 6)
+        let types = try decodeSentTypes(await englishTransport.sent)
+        let lastAppend = types.lastIndex(of: "session.input_audio_buffer.append")
+        let closeIndex = types.lastIndex(of: "session.close")
+        XCTAssertNotNil(lastAppend)
+        XCTAssertNotNil(closeIndex)
+        XCTAssertGreaterThan(closeIndex!, lastAppend!)
+    }
+
+    func testResolveTranslationDrainTimeoutScalesAndCaps() {
+        // Given/When/Then: base を下限、cap を上限、pending 比例の加算
+        let base = DualRealtimeTranslationClient.defaultTranslationDrainTimeoutNanoseconds
+        XCTAssertEqual(
+            DualRealtimeTranslationClient.resolveTranslationDrainTimeoutNanoseconds(
+                baseNanoseconds: base,
+                pendingFrameCount: 0
+            ),
+            base
+        )
+        XCTAssertEqual(
+            DualRealtimeTranslationClient.resolveTranslationDrainTimeoutNanoseconds(
+                baseNanoseconds: base,
+                pendingFrameCount: 40
+            ),
+            base + (40 * DualRealtimeTranslationClient.translationDrainTimeoutNanosecondsPerPendingFrame)
+        )
+        XCTAssertEqual(
+            DualRealtimeTranslationClient.resolveTranslationDrainTimeoutNanoseconds(
+                baseNanoseconds: base,
+                pendingFrameCount: 200
+            ),
+            DualRealtimeTranslationClient.translationDrainTimeoutCapNanoseconds
+        )
+        XCTAssertEqual(
+            DualRealtimeTranslationClient.resolveTranslationDrainTimeoutNanoseconds(
+                baseNanoseconds: 50_000_000,
+                pendingFrameCount: 0
+            ),
+            50_000_000
+        )
+    }
+
     private func makeDual(
         sourceTransport: FakeRealtimeWebSocketTransport,
         englishTransport: FakeRealtimeWebSocketTransport,
-        japaneseTransport: FakeRealtimeWebSocketTransport
+        japaneseTransport: FakeRealtimeWebSocketTransport,
+        translationDrainTimeoutNanoseconds: UInt64 = DualRealtimeTranslationClient
+            .defaultTranslationDrainTimeoutNanoseconds,
+        closeTimeoutNanoseconds: UInt64 = 500_000_000
     ) -> DualRealtimeTranslationClient {
         DualRealtimeTranslationClient(
             sourceConnection: RealtimeSourceTranscriptionConnection(
                 transport: sourceTransport,
                 safetyIdentifier: "test-safety",
                 handshakeTimeoutNanoseconds: 1_000_000_000,
-                closeTimeoutNanoseconds: 500_000_000
+                closeTimeoutNanoseconds: closeTimeoutNanoseconds
             ),
             englishConnection: RealtimeTranslationConnection(
                 target: .english,
                 transport: englishTransport,
                 safetyIdentifier: "test-safety",
                 sessionUpdateTimeoutNanoseconds: 1_000_000_000,
-                closeTimeoutNanoseconds: 500_000_000
+                closeTimeoutNanoseconds: closeTimeoutNanoseconds
             ),
             japaneseConnection: RealtimeTranslationConnection(
                 target: .japanese,
                 transport: japaneseTransport,
                 safetyIdentifier: "test-safety",
                 sessionUpdateTimeoutNanoseconds: 1_000_000_000,
-                closeTimeoutNanoseconds: 500_000_000
-            )
+                closeTimeoutNanoseconds: closeTimeoutNanoseconds
+            ),
+            translationDrainTimeoutNanoseconds: translationDrainTimeoutNanoseconds
         )
     }
 
@@ -734,6 +814,15 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         try await englishTransport.enqueueJSON(["type": "session.updated"])
         try await japaneseTransport.enqueueJSON(["type": "session.updated"])
         try await startTask.value
+    }
+
+    private func decodeSentTypes(_ sent: [Data]) throws -> [String] {
+        try sent.compactMap { data in
+            let object = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: data) as? [String: Any]
+            )
+            return object["type"] as? String
+        }
     }
 
     private func decodeAppendPayloads(_ sent: [Data]) throws -> [String] {
@@ -807,5 +896,13 @@ extension FakeRealtimeWebSocketTransport {
 
     func setSendHangNanoseconds(_ nanoseconds: UInt64) {
         sendHangNanoseconds = nanoseconds
+    }
+
+    func setAudioAppendHangNanoseconds(_ nanoseconds: UInt64) {
+        audioAppendHangNanoseconds = nanoseconds
+    }
+
+    func setAutoCloseResponses(_ enabled: Bool) {
+        autoCloseResponses = enabled
     }
 }

@@ -50,6 +50,12 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
     public const string TransportErrorCode = "transport";
 
+    /// <summary>停止時 drain で未送信 frame 1 枚あたりに足す予算。preroll flush 後の短い停滞で訳文を落とさない。</summary>
+    public const int TranslationDrainTimeoutMillisecondsPerPendingFrame = 250;
+
+    /// <summary>停止時 drain の上限。Send 停滞でも Stop が無期限待ちしない。</summary>
+    public static readonly TimeSpan TranslationDrainTimeoutCap = TimeSpan.FromSeconds(30);
+
     private readonly RealtimeSourceTranscriptionConnection _sourceConnection;
     private readonly Dictionary<RealtimeTranslationOutputLanguage, RealtimeTranslationConnection> _connections;
     private readonly TimeSpan _translationDrainTimeout;
@@ -319,10 +325,11 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
 
         // 未送信の翻訳フレームを先に送り、停止時の訳文欠落を防ぐ。
-        // 送信が停滞しても close 自体は進める。
+        // preroll flush 直後は待ち行列が長いので pending 数に応じて予算を伸ばす。
+        // 送信が長時間停滞しても cap で close 自体は進める。
         try
         {
-            await WaitForTranslationDrainAsync(_translationDrainTimeout, cancellationToken)
+            await WaitForTranslationDrainAsync(ResolveCloseDrainTimeout(), cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (TimeoutException)
@@ -479,8 +486,37 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
     }
 
+    /// <summary>
+    /// 停止時 drain 予算。base（既定5秒）に未送信 frame 分を足し、cap（30秒）で打ち切る。
+    /// テストが短い base を注入しているときはその base を下限・基準にする。
+    /// </summary>
+    internal static TimeSpan ResolveTranslationDrainTimeout(TimeSpan baseTimeout, int pendingFrameCount)
+    {
+        var baseMs = Math.Max(0, baseTimeout.TotalMilliseconds);
+        var pending = Math.Max(0, pendingFrameCount);
+        var scaledMs = baseMs + (pending * (double)TranslationDrainTimeoutMillisecondsPerPendingFrame);
+        var capMs = Math.Max(baseMs, TranslationDrainTimeoutCap.TotalMilliseconds);
+        return TimeSpan.FromMilliseconds(Math.Clamp(scaledMs, baseMs, capMs));
+    }
+
+    private TimeSpan ResolveCloseDrainTimeout()
+    {
+        int pending;
+        lock (_sync)
+        {
+            pending = _pendingTranslationFrames.Count;
+            // 送信中の 1 frame も予算に含め、preroll 直後の Stop で足りなくならないようにする。
+            if (_translationPumpTask is not null)
+            {
+                pending += 1;
+            }
+        }
+
+        return ResolveTranslationDrainTimeout(_translationDrainTimeout, pending);
+    }
+
     /// <summary>翻訳ポンプが現在の待ち行列を処理し終えるまで待つ。決定的なテストのために使う。</summary>
-    /// <remarks>送信が停滞しても timeout（既定5秒）で打ち切る（ポンプTaskを無期限待ちしない）。</remarks>
+    /// <remarks>送信が停滞しても timeout（既定5秒、Close時はpending比例）で打ち切る（ポンプTaskを無期限待ちしない）。</remarks>
     internal async Task WaitForTranslationDrainAsync(
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)

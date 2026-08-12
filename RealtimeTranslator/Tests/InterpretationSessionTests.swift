@@ -949,6 +949,172 @@ final class InterpretationSessionTests: XCTestCase {
         )
         await session.stop()
     }
+
+    func testNonFlippingSourceDeltaStreamDoesNotGrowRoutingBufferWithoutBound() async throws {
+        // Given: 文字種の反転を起こさない英語 delta がサーバから連続で流れ続ける
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: "we keep talking in english ",
+                eventID: "s0",
+                elapsedMs: 1
+            )
+        )
+        await waitUntil { dual.spokenLanguages.count > 0 }
+
+        var processedDeltaCount = 0
+        session.beforeAssemblerIngestForTests = {
+            processedDeltaCount += 1
+        }
+        let nonFlippingDeltaCount = 200
+        for index in 0..<nonFlippingDeltaCount {
+            dual.emit(
+                target: .english,
+                event: .inputTranscriptDelta(
+                    delta: "and we never flip the script ",
+                    eventID: "s\(index + 1)",
+                    elapsedMs: index + 2
+                )
+            )
+        }
+
+        // When: 反転前に大量 delta の取り込み完了を待ち、その時点で上限を検証する
+        await waitUntil { processedDeltaCount >= nonFlippingDeltaCount }
+        XCTAssertLessThanOrEqual(
+            session.routingSourceTextLengthForTests,
+            InterpretationSession.routingSourceTextMaxLength,
+            "routing buffer length \(session.routingSourceTextLengthForTests) exceeded the cap before flip"
+        )
+
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: "ここで日本語へ反転します",
+                eventID: "flip",
+                elapsedMs: 999
+            )
+        )
+        await waitUntil { dual.spokenLanguages.count > 1 }
+
+        // Then: routing 判定バッファは上限までで打ち切られ、その後の反転検出も壊れない
+        XCTAssertEqual(dual.spokenLanguages, [.english, .japanese])
+        XCTAssertLessThanOrEqual(
+            session.routingSourceTextLengthForTests,
+            InterpretationSession.routingSourceTextMaxLength,
+            "routing buffer length \(session.routingSourceTextLengthForTests) exceeded the cap after flip"
+        )
+        await session.stop()
+    }
+
+    func testWideWhitespaceBetweenLatinWordsStillFlipsJapaneseToEnglish() async throws {
+        // Given: 日本語セグメントのあと、長い空白 run で隔てられた複数語の英語 delta
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: "これはテストです",
+                eventID: "s1",
+                elapsedMs: 1
+            )
+        )
+        await waitUntil { dual.spokenLanguages.count > 0 }
+        XCTAssertEqual(dual.spokenLanguages.first, .japanese)
+
+        // When: UTF-16 文字数キャップだけだと末尾 1 語しか残らない入力を取り込む
+        let gap = String(
+            repeating: " ",
+            count: InterpretationSession.routingSourceTextMaxLength + 32
+        )
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: "aa bb cc dd ee ff gg" + gap + " hh",
+                eventID: "s2",
+                elapsedMs: 2
+            )
+        )
+        await waitUntil { dual.spokenLanguages.count > 1 }
+
+        // Then: RecentEvidence ウィンドウを保ち英語反転できる
+        XCTAssertEqual(dual.spokenLanguages, [.japanese, .english])
+        XCTAssertLessThanOrEqual(
+            session.routingSourceTextLengthForTests,
+            InterpretationSession.routingSourceTextMaxLength,
+            "routing buffer length \(session.routingSourceTextLengthForTests) exceeded the cap"
+        )
+        await session.stop()
+    }
+
+    func testTrimRoutingSourceTextKeepsRecentEvidenceWindow() {
+        // Given: 末尾ウィンドウより長い原文
+        let prefix = String(repeating: "あ", count: 64)
+        let tail = "hello world today"
+        let trimmed = InterpretationSession.trimRoutingSourceText(prefix + tail, pair: .jaEn)
+
+        // When/Then: 末尾の非空白 scalar ウィンドウ相当が残り、上限を超えない
+        XCTAssertTrue(trimmed.hasSuffix(tail) || trimmed.contains("world"))
+        XCTAssertLessThanOrEqual(
+            trimmed.utf16.count,
+            InterpretationSession.routingSourceTextMaxLength
+        )
+    }
+
+    func testEnEsLongWordWindowIsPreservedForRouting() async {
+        // Given: en-es で英語 target 確定後、scalar 上限を超える長いスペイン語語窓
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000,
+            languagePairProvider: { .enEs }
+        )
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        dual.publishSourceDelta("the and is are of to it that")
+        await waitUntil { dual.selectedTargets == [.spanish] }
+
+        // When: 先頭側にだけスペイン語証拠があり、後ろは長い filler。scalar 切り詰めだと証拠が消える。
+        let longToken = String(repeating: "x", count: 40)
+        let filler = Array(
+            repeating: longToken,
+            count: SpokenLanguageDetector.enEsWindow - 2
+        ).joined(separator: " ")
+        let spanishWindow = "está aquí " + filler
+        dual.publishSourceDelta(spanishWindow)
+        dual.publishSourceDelta(" " + spanishWindow)
+
+        // Then: 語窓を保ち English target へ切り替わる
+        await waitUntil {
+            dual.selectedTargets == [.spanish, .english]
+        }
+        XCTAssertEqual(dual.selectedTargets, [.spanish, .english])
+        await session.stop()
+    }
 }
 
 // MARK: - Fakes
@@ -1020,6 +1186,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     private(set) var closeGracefullyCallCount = 0
     private(set) var forceCloseCallCount = 0
     private(set) var spokenLanguages: [SpokenLanguage] = []
+    private(set) var selectedTargets: [RealtimeTranslationOutputLanguage] = []
     private(set) var resetAudioRoutingCallCount = 0
     private(set) var updateTranscriptionTuningCallCount = 0
     private(set) var lastTuning: RealtimeSessionTuning?
@@ -1095,6 +1262,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
 
     func selectTranslationTarget(_ target: RealtimeTranslationOutputLanguage?) async throws {
         guard let target else { return }
+        selectedTargets.append(target)
         if let language = lastLanguagePair.counterpart(of: target) {
             spokenLanguages.append(language)
         }
