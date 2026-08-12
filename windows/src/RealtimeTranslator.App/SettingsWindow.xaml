@@ -11,7 +11,14 @@
       <StackPanel Margin="16">
         <TextBlock Text="OpenAI Realtime" FontWeight="Bold" Margin="0,0,0,8" />
         <TextBlock Text="モデル: gpt-live-transcribe / gpt-realtime-translate" Margin="0,0,0,2" />
-        <TextBlock Text="翻訳方向: 自動（日本語 ↔ 英語）" Margin="0,0,0,2" />
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+          <TextBlock Text="翻訳ペア:" Width="90" VerticalAlignment="Center" />
+          <ComboBox x:Name="LanguagePairBox"
+                    Width="220"
+                    DisplayMemberPath="DisplayName"
+                    SelectionChanged="OnLanguagePairChanged" />
+        </StackPanel>
+        <TextBlock Text="次回録音開始時に反映されます。" Foreground="Gray" Margin="90,0,0,2" />
         <TextBlock Text="字幕表示: 原文＋翻訳" Margin="0,0,0,2" />
         <TextBlock Text="翻訳音声: 字幕のみ（再生なし）" Margin="0,0,0,10" />
 

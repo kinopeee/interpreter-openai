@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
 using Xunit;
 
@@ -17,6 +18,32 @@ public sealed class TuningFixtureTests
 
     public static TheoryData<string> KeywordOverLimitCases =>
         SharedFixtures.CaseNames("tuning", "isKeywordCountOverLimit");
+
+    // Given: 保存済み既定 tuning と選択された言語ペア
+    // When: ペア向け tuning を解決する
+    // Then: 既定値だけが現在のペア向けに置き換わる
+    [Fact]
+    public void ForPairUsesMatchingDefaultsAndPreservesCustomValues()
+    {
+        var jaEs = RealtimeSessionTuning.Default.ForPair(LanguagePair.JaEs);
+
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEs),
+            jaEs.TranscriptionPrompt);
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEs).ToArray(),
+            jaEs.TranscriptionKeywords.ToArray());
+
+        var custom = RealtimeSessionTuning.Default with
+        {
+            TranscriptionPrompt = "Custom prompt",
+            TranscriptionKeywords = ["Custom keyword"],
+        };
+        var preserved = custom.ForPair(LanguagePair.EnEs);
+
+        Assert.Equal("Custom prompt", preserved.TranscriptionPrompt);
+        Assert.Equal(["Custom keyword"], preserved.TranscriptionKeywords.ToArray());
+    }
 
     // Given: shared fixture の tuning 上限値
     // When: C# 実装の定数と照合する

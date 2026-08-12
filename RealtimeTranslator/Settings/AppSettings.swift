@@ -26,6 +26,7 @@ final class AppSettings {
         static let noiseReductionMode = "noiseReductionMode"
         static let transcriptionDelayMode = "transcriptionDelayMode"
         static let recordSubtitles = "recordSubtitles"
+        static let languagePair = "languagePair"
     }
 
     /// 現在有効な同意バージョン。文言変更時にインクリメントする。
@@ -87,6 +88,13 @@ final class AppSettings {
         didSet { UserDefaults.standard.set(recordSubtitles, forKey: Keys.recordSubtitles) }
     }
 
+    var languagePair: LanguagePair {
+        didSet {
+            UserDefaults.standard.set(languagePair.rawValue, forKey: Keys.languagePair)
+            refreshDefaultTranscriptionHintsIfNeeded(from: oldValue, to: languagePair)
+        }
+    }
+
     var hasAcceptedCurrentOpenAIConsent: Bool {
         acceptedOpenAIConsentVersion >= Self.currentOpenAIConsentVersion
     }
@@ -121,20 +129,23 @@ final class AppSettings {
         panelOriginX = defaults.double(forKey: Keys.panelOriginX)
         panelOriginY = defaults.double(forKey: Keys.panelOriginY)
         acceptedOpenAIConsentVersion = defaults.integer(forKey: Keys.openAIConsentVersion)
+        let pair = LanguagePair(
+            rawValue: defaults.string(forKey: Keys.languagePair) ?? ""
+        ) ?? .jaEn
 
         if let storedPrompt = defaults.string(forKey: Keys.transcriptionPrompt),
            !storedPrompt.isEmpty
         {
             transcriptionPrompt = storedPrompt
         } else {
-            transcriptionPrompt = RealtimeSessionTuning.defaultPrompt
+            transcriptionPrompt = RealtimeSessionTuning.defaultPrompt(for: pair)
         }
 
         if let storedKeywords = defaults.string(forKey: Keys.transcriptionKeywordsText) {
             transcriptionKeywordsText = storedKeywords
         } else {
             transcriptionKeywordsText = RealtimeSessionTuning.keywordsText(
-                from: RealtimeSessionTuning.defaultKeywords
+                from: RealtimeSessionTuning.defaultKeywords(for: pair)
             )
         }
 
@@ -155,6 +166,8 @@ final class AppSettings {
         }
 
         recordSubtitles = defaults.bool(forKey: Keys.recordSubtitles)
+        // 他プロパティ初期化後に代入し、init 中の self 参照を避ける。
+        languagePair = pair
     }
 
     func acceptOpenAIConsent() {
@@ -187,6 +200,31 @@ final class AppSettings {
     }
 
     func restoreDefaultTranscriptionHints() {
-        applyPreset(.softwareDevelopment)
+        transcriptionPrompt = RealtimeSessionTuning.defaultPrompt(for: languagePair)
+        transcriptionKeywordsText = RealtimeSessionTuning.keywordsText(
+            from: RealtimeSessionTuning.defaultKeywords(for: languagePair)
+        )
+    }
+
+    /// 既定ヒントのままなら、言語ペア変更に合わせて prompt/keywords を更新する。
+    private func refreshDefaultTranscriptionHintsIfNeeded(
+        from oldPair: LanguagePair,
+        to newPair: LanguagePair
+    ) {
+        guard oldPair != newPair else { return }
+        let knownDefaultPrompts = LanguagePair.allCases.map {
+            RealtimeSessionTuning.defaultPrompt(for: $0)
+        }
+        let knownDefaultKeywords = LanguagePair.allCases.map {
+            RealtimeSessionTuning.keywordsText(from: RealtimeSessionTuning.defaultKeywords(for: $0))
+        }
+        if knownDefaultPrompts.contains(transcriptionPrompt) {
+            transcriptionPrompt = RealtimeSessionTuning.defaultPrompt(for: newPair)
+        }
+        if knownDefaultKeywords.contains(transcriptionKeywordsText) {
+            transcriptionKeywordsText = RealtimeSessionTuning.keywordsText(
+                from: RealtimeSessionTuning.defaultKeywords(for: newPair)
+            )
+        }
     }
 }

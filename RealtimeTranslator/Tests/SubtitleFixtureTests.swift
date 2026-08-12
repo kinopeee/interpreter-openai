@@ -85,13 +85,15 @@ final class SubtitleFixtureTests: XCTestCase {
                 case "finalizeForLanguageSwitch":
                     update = assembler.finalizeForLanguageSwitch(now: now)
                 case "sourceDelta", "translationDelta":
+                    let lane = SharedFixtures.text(step["lane"])
+                    let eventLane: RealtimeTranslationLane = kind == "sourceDelta"
+                        ? .source
+                        : .translation(
+                            try XCTUnwrap(RealtimeTranslationOutputLanguage(rawValue: lane))
+                        )
                     update = assembler.ingest(
                         RealtimeTranslationStreamEvent(
-                            target: try XCTUnwrap(
-                                RealtimeTranslationOutputLanguage(
-                                    rawValue: SharedFixtures.text(step["lane"])
-                                )
-                            ),
+                            lane: eventLane,
                             event: serverEvent(kind: kind, step: step),
                             epoch: SharedFixtures.optionalNumber(step["epoch"]) ?? epoch
                         ),

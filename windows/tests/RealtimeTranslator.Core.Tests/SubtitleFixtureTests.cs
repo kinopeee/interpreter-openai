@@ -1,6 +1,7 @@
 using System;
 using System.Text;
 using System.Text.Json.Nodes;
+using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Realtime;
 using RealtimeTranslator.Core.Subtitles;
@@ -62,6 +63,39 @@ public sealed class SubtitleFixtureTests
             RealtimeSubtitleAssembler.IdleFinalizeInterval);
     }
 
+    // Given: en-es pair の英語原文と未選択の翻訳 lane
+    // When: assembler が原文の文字種を補助信号として使う
+    // Then: 話者英語の相手側であるスペイン語 lane を選ぶ
+    [Fact]
+    public void EnEsFallbackSelectsSpanishLaneForEnglishSource()
+    {
+        var assembler = new RealtimeSubtitleAssembler(LanguagePair.EnEs);
+        assembler.Reset(1);
+
+        assembler.Ingest(
+            new RealtimeTranslationStreamEvent(
+                RealtimeTranslationLane.Source,
+                new RealtimeTranslationServerEvent.InputTranscriptDelta(
+                    "the meeting is today",
+                    "source-1",
+                    null),
+                1),
+            Origin);
+
+        var update = assembler.Ingest(
+            new RealtimeTranslationStreamEvent(
+                RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.Spanish),
+                new RealtimeTranslationServerEvent.OutputTranscriptDelta(
+                    "la reunión es hoy",
+                    "translation-1",
+                    null),
+                1),
+            Origin);
+
+        Assert.NotNull(update);
+        Assert.Equal("la reunión es hoy", update.Value.TranslatedText);
+    }
+
     // Given: fixture の原文・翻訳 delta シナリオ（epoch / 重複 ID / lane 期待値を含む）
     // When: assembler へ順に投入し時間を進める
     // Then: finalize タイミングと字幕内容が期待どおりになる
@@ -94,7 +128,7 @@ public sealed class SubtitleFixtureTests
                 "finalizeForLanguageSwitch" => assembler.FinalizeForLanguageSwitch(now),
                 "sourceDelta" or "translationDelta" => assembler.Ingest(
                     new RealtimeTranslationStreamEvent(
-                        RealtimeTranslationWireValues.ParseOutputLanguage(SharedFixtures.Text(step["lane"])),
+                        ParseLane(SharedFixtures.Text(step["lane"])),
                         ServerEvent(kind, step),
                         SharedFixtures.OptionalNumber(step["epoch"]) ?? epoch),
                     now),
@@ -123,6 +157,11 @@ public sealed class SubtitleFixtureTests
             ? new RealtimeTranslationServerEvent.InputTranscriptDelta(text, eventId, elapsedMs)
             : new RealtimeTranslationServerEvent.OutputTranscriptDelta(text, eventId, elapsedMs);
     }
+
+    private static RealtimeTranslationLane ParseLane(string value) =>
+        value == "source"
+            ? RealtimeTranslationLane.Source
+            : RealtimeTranslationLane.Translation(RealtimeTranslationWireValues.ParseOutputLanguage(value));
 
     /// <summary>literal / repeat / concat 記法を展開する。</summary>
     private static string Expand(JsonNode node)

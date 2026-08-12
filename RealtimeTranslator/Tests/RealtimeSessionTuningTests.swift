@@ -2,6 +2,70 @@ import XCTest
 @testable import RealtimeTranslator
 
 final class RealtimeSessionTuningTests: XCTestCase {
+    func testForPairUsesMatchingDefaultsAndPreservesCustomValues() {
+        // Given: 保存済み既定 tuning と選択された言語ペア
+        let jaEs = RealtimeSessionTuning.default.forPair(.jaEs)
+
+        // When: ペア向け tuning を解決する
+        // Then: 既定値だけが現在のペア向けに置き換わる
+        XCTAssertEqual(
+            jaEs.transcriptionPrompt,
+            RealtimeSessionTuning.defaultPrompt(for: .jaEs)
+        )
+        XCTAssertEqual(
+            jaEs.transcriptionKeywords,
+            RealtimeSessionTuning.defaultKeywords(for: .jaEs)
+        )
+
+        let custom = RealtimeSessionTuning(
+            noiseReduction: .farField,
+            transcriptionDelay: .low,
+            transcriptionPrompt: "Custom prompt",
+            transcriptionKeywords: ["Custom keyword"]
+        )
+        let preserved = custom.forPair(.enEs)
+        XCTAssertEqual(preserved.transcriptionPrompt, "Custom prompt")
+        XCTAssertEqual(preserved.transcriptionKeywords, ["Custom keyword"])
+    }
+
+    @MainActor
+    func testAppSettingsLanguagePairChangeRefreshesDefaultHintsOnly() {
+        // Given: 既定ヒントのままの設定
+        let settings = AppSettings()
+        let previousPair = settings.languagePair
+        let previousPrompt = settings.transcriptionPrompt
+        let previousKeywords = settings.transcriptionKeywordsText
+        defer {
+            settings.languagePair = previousPair
+            settings.transcriptionPrompt = previousPrompt
+            settings.transcriptionKeywordsText = previousKeywords
+        }
+        settings.languagePair = .jaEn
+        settings.restoreDefaultTranscriptionHints()
+
+        // When: 言語ペアを ja-es へ変える
+        settings.languagePair = .jaEs
+
+        // Then: 既定ヒントは新ペア向けへ更新される
+        XCTAssertEqual(
+            settings.transcriptionPrompt,
+            RealtimeSessionTuning.defaultPrompt(for: .jaEs)
+        )
+        XCTAssertEqual(
+            settings.transcriptionKeywords,
+            RealtimeSessionTuning.defaultKeywords(for: .jaEs)
+        )
+
+        // When: カスタムヒントのまま別ペアへ変える
+        settings.transcriptionPrompt = "custom prompt"
+        settings.transcriptionKeywordsText = "custom\nwords"
+        settings.languagePair = .enEs
+
+        // Then: カスタム値は上書きされない
+        XCTAssertEqual(settings.transcriptionPrompt, "custom prompt")
+        XCTAssertEqual(settings.transcriptionKeywordsText, "custom\nwords")
+    }
+
     func testParseKeywordsTrimsAndDropsEmptyLines() {
         // Given: 空行と前後空白を含むキーワードテキスト
         let text = """

@@ -10,7 +10,8 @@ final class RoutingFixtureTests: XCTestCase {
     func testRoutingCasesMatchFixture() async throws {
         for name in try SharedFixtures.caseNames("routing", "cases") {
             let fixtureCase = try SharedFixtures.case("routing", "cases", name)
-            let harness = try await RoutingHarness.start()
+            let pair = fixtureCase["pair"].flatMap { LanguagePair(rawValue: SharedFixtures.text($0)) } ?? .jaEn
+            let harness = try await RoutingHarness.start(pair: pair)
 
             do {
                 let steps = try XCTUnwrap(fixtureCase["steps"] as? [Any])
@@ -21,23 +22,26 @@ final class RoutingFixtureTests: XCTestCase {
 
                 let expected = try XCTUnwrap(fixtureCase["expected"] as? [String: Any])
                 let sourceFrames = await harness.appendedFrameTexts(from: harness.sourceTransport)
+                let frames = try XCTUnwrap(expected["frames"] as? [String: Any])
                 let englishFrames = await harness.appendedFrameTexts(from: harness.englishTransport)
                 let japaneseFrames = await harness.appendedFrameTexts(from: harness.japaneseTransport)
+                let spanishFrames = await harness.appendedFrameTexts(from: harness.spanishTransport)
                 XCTAssertEqual(
                     frameNames(expected["sourceFrames"]),
                     sourceFrames,
                     name
                 )
                 XCTAssertEqual(
-                    frameNames(expected["englishFrames"]),
+                    frameNames(frames["en"]),
                     englishFrames,
                     name
                 )
                 XCTAssertEqual(
-                    frameNames(expected["japaneseFrames"]),
+                    frameNames(frames["ja"]),
                     japaneseFrames,
                     name
                 )
+                XCTAssertEqual(frameNames(frames["es"]), spanishFrames, name)
 
                 let expectedTransportErrors =
                     SharedFixtures.optionalNumber(expected["transportErrorCount"]) ?? 0
@@ -47,11 +51,14 @@ final class RoutingFixtureTests: XCTestCase {
                 if let halted = expected["translationPumpHalted"], SharedFixtures.flag(halted) {
                     let englishBefore = await harness.appendedFrameTexts(from: harness.englishTransport)
                     let japaneseBefore = await harness.appendedFrameTexts(from: harness.japaneseTransport)
+                    let spanishBefore = await harness.appendedFrameTexts(from: harness.spanishTransport)
                     try await harness.appendFrame("probeAfterHalt")
                     let englishAfter = await harness.appendedFrameTexts(from: harness.englishTransport)
                     let japaneseAfter = await harness.appendedFrameTexts(from: harness.japaneseTransport)
+                    let spanishAfter = await harness.appendedFrameTexts(from: harness.spanishTransport)
                     XCTAssertEqual(englishBefore, englishAfter, name)
                     XCTAssertEqual(japaneseBefore, japaneseAfter, name)
+                    XCTAssertEqual(spanishBefore, spanishAfter, name)
                 }
 
                 if let reconnect = expected["signalsSessionReconnect"] {
@@ -85,7 +92,9 @@ final class RoutingFixtureTests: XCTestCase {
         for index in 0..<appendCount {
             try await harness.appendFrame("frame-\(index)")
         }
-        try await harness.setSpokenLanguage(SharedFixtures.text(window["thenSetSpokenLanguage"]))
+        try await harness.selectTranslationTarget(
+            SharedFixtures.optionalText(window["thenSelectTranslationTarget"])
+        )
 
         let flushed = await harness.appendedFrameTexts(from: harness.englishTransport)
         XCTAssertEqual(expectedCount, flushed.count)
@@ -107,7 +116,7 @@ final class RoutingFixtureTests: XCTestCase {
             buffer[index] = mutated[index]
         }
 
-        try await harness.setSpokenLanguage("japanese")
+        try await harness.selectTranslationTarget("en")
 
         let flushed = await harness.appendedFrameTexts(from: harness.englishTransport)
         XCTAssertEqual(flushed, ["frame-original"])
@@ -139,6 +148,7 @@ private final class RoutingHarness {
     let sourceTransport: FakeRealtimeWebSocketTransport
     let englishTransport: FakeRealtimeWebSocketTransport
     let japaneseTransport: FakeRealtimeWebSocketTransport
+    let spanishTransport: FakeRealtimeWebSocketTransport
     let dual: DualRealtimeTranslationClient
 
     private let transportErrors = TransportErrorCounter()
@@ -149,18 +159,21 @@ private final class RoutingHarness {
         sourceTransport: FakeRealtimeWebSocketTransport,
         englishTransport: FakeRealtimeWebSocketTransport,
         japaneseTransport: FakeRealtimeWebSocketTransport,
+        spanishTransport: FakeRealtimeWebSocketTransport,
         dual: DualRealtimeTranslationClient
     ) {
         self.sourceTransport = sourceTransport
         self.englishTransport = englishTransport
         self.japaneseTransport = japaneseTransport
+        self.spanishTransport = spanishTransport
         self.dual = dual
     }
 
-    static func start() async throws -> RoutingHarness {
+    static func start(pair: LanguagePair = .jaEn) async throws -> RoutingHarness {
         let sourceTransport = FakeRealtimeWebSocketTransport()
         let englishTransport = FakeRealtimeWebSocketTransport()
         let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let spanishTransport = FakeRealtimeWebSocketTransport()
         let dual = DualRealtimeTranslationClient(
             sourceConnection: RealtimeSourceTranscriptionConnection(
                 transport: sourceTransport,
@@ -181,6 +194,13 @@ private final class RoutingHarness {
                 safetyIdentifier: "test-safety",
                 sessionUpdateTimeoutNanoseconds: 1_000_000_000,
                 closeTimeoutNanoseconds: 500_000_000
+            ),
+            spanishConnection: RealtimeTranslationConnection(
+                target: .spanish,
+                transport: spanishTransport,
+                safetyIdentifier: "test-safety",
+                sessionUpdateTimeoutNanoseconds: 1_000_000_000,
+                closeTimeoutNanoseconds: 500_000_000
             )
         )
 
@@ -188,13 +208,16 @@ private final class RoutingHarness {
             dual,
             sourceTransport: sourceTransport,
             englishTransport: englishTransport,
-            japaneseTransport: japaneseTransport
+            japaneseTransport: japaneseTransport,
+            spanishTransport: spanishTransport,
+            pair: pair
         )
 
         let harness = RoutingHarness(
             sourceTransport: sourceTransport,
             englishTransport: englishTransport,
             japaneseTransport: japaneseTransport,
+            spanishTransport: spanishTransport,
             dual: dual
         )
         let stream = await dual.events
@@ -213,8 +236,8 @@ private final class RoutingHarness {
         switch SharedFixtures.text(step["kind"]) {
         case "appendFrame":
             try await appendFrame(SharedFixtures.text(step["frame"]))
-        case "setSpokenLanguage":
-            try await setSpokenLanguage(SharedFixtures.text(step["language"]))
+        case "selectTranslationTarget":
+            try await selectTranslationTarget(SharedFixtures.optionalText(step["target"]))
         case "resetAudioRouting":
             await dual.resetAudioRouting()
         case "translationSendFailure":
@@ -233,33 +256,9 @@ private final class RoutingHarness {
         try await dual.waitForTranslationDrain()
     }
 
-    func setSpokenLanguage(_ language: String) async throws {
-        let spoken: SpokenLanguage
-        switch language {
-        case "japanese":
-            spoken = .japanese
-        case "english":
-            spoken = .english
-        case "unknown":
-            spoken = .unknown
-        default:
-            throw NSError(
-                domain: "RoutingFixtureTests",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "unknown spoken language \(language)"]
-            )
-        }
-
-        switch spoken {
-        case .japanese:
-            selectedTarget = .english
-        case .english:
-            selectedTarget = .japanese
-        case .unknown:
-            break
-        }
-
-        try await dual.setSpokenLanguage(spoken)
+    func selectTranslationTarget(_ target: String?) async throws {
+        selectedTarget = target.flatMap(RealtimeTranslationOutputLanguage.init(rawValue:))
+        try await dual.selectTranslationTarget(selectedTarget)
         try await dual.waitForTranslationDrain()
     }
 
@@ -292,29 +291,51 @@ private final class RoutingHarness {
     }
 
     private func targetTransport() -> FakeRealtimeWebSocketTransport {
-        selectedTarget == .japanese ? japaneseTransport : englishTransport
+        switch selectedTarget {
+        case .japanese: return japaneseTransport
+        case .spanish: return spanishTransport
+        case .english, nil: return englishTransport
+        }
     }
 
     private static func startDual(
         _ dual: DualRealtimeTranslationClient,
         sourceTransport: FakeRealtimeWebSocketTransport,
         englishTransport: FakeRealtimeWebSocketTransport,
-        japaneseTransport: FakeRealtimeWebSocketTransport
+        japaneseTransport: FakeRealtimeWebSocketTransport,
+        spanishTransport: FakeRealtimeWebSocketTransport,
+        pair: LanguagePair
     ) async throws {
         try await sourceTransport.enqueueJSON(["type": "session.created"])
         try await englishTransport.enqueueJSON(["type": "session.created"])
         try await japaneseTransport.enqueueJSON(["type": "session.created"])
+        try await spanishTransport.enqueueJSON(["type": "session.created"])
 
         let startTask = Task {
-            try await dual.start(apiKey: "sk-test", tuning: .default)
+            try await dual.start(apiKey: "sk-test", tuning: .default, pair: pair)
         }
 
         try await waitUntilSent(sourceTransport, minimum: 1)
-        try await waitUntilSent(englishTransport, minimum: 1)
-        try await waitUntilSent(japaneseTransport, minimum: 1)
+        let targets = Set(pair.languages.compactMap { pair.translationTarget(for: $0) })
+        if targets.contains(.english) {
+            try await waitUntilSent(englishTransport, minimum: 1)
+        }
+        if targets.contains(.japanese) {
+            try await waitUntilSent(japaneseTransport, minimum: 1)
+        }
+        if targets.contains(.spanish) {
+            try await waitUntilSent(spanishTransport, minimum: 1)
+        }
         try await sourceTransport.enqueueJSON(["type": "session.updated"])
-        try await englishTransport.enqueueJSON(["type": "session.updated"])
-        try await japaneseTransport.enqueueJSON(["type": "session.updated"])
+        if targets.contains(.english) {
+            try await englishTransport.enqueueJSON(["type": "session.updated"])
+        }
+        if targets.contains(.japanese) {
+            try await japaneseTransport.enqueueJSON(["type": "session.updated"])
+        }
+        if targets.contains(.spanish) {
+            try await spanishTransport.enqueueJSON(["type": "session.updated"])
+        }
         try await startTask.value
     }
 

@@ -1,7 +1,9 @@
 ﻿using System.Collections.Immutable;
+using System.Linq;
 using System.Text;
 using System.Text.Json.Nodes;
 using RealtimeTranslator.Core.OpenAI;
+using RealtimeTranslator.Core.Audio;
 using Xunit;
 
 namespace RealtimeTranslator.Core.Tests;
@@ -110,14 +112,15 @@ public sealed class SourceTranscriptionCodecFixtureTests
     private static RealtimeSourceTranscriptionClientEvent ClientEvent(JsonObject fixture) =>
         SharedFixtures.Text(fixture["kind"]) switch
         {
-            "sessionUpdate" => new RealtimeSourceTranscriptionClientEvent.SessionUpdate(
+        "sessionUpdate" => new RealtimeSourceTranscriptionClientEvent.SessionUpdate(
                 new RealtimeSessionTuning(
                     RealtimeTranslationWireValues.ParseNoiseReduction(
                         SharedFixtures.Text(fixture["noiseReduction"])),
                     RealtimeTranslationWireValues.ParseTranscriptionDelay(
                         SharedFixtures.Text(fixture["transcriptionDelay"])),
                     SharedFixtures.Text(fixture["prompt"]),
-                    Keywords(fixture["keywords"]!.AsArray()))),
+                    Keywords(fixture["keywords"]!.AsArray())),
+                PairFromLanguages(fixture["languages"])),
             "inputAudioBufferAppend" => new RealtimeSourceTranscriptionClientEvent.InputAudioBufferAppend(
                 SharedFixtures.Text(fixture["base64Audio"])),
             "commit" => new RealtimeSourceTranscriptionClientEvent.Commit(),
@@ -133,5 +136,16 @@ public sealed class SourceTranscriptionCodecFixtureTests
         }
 
         return builder.ToImmutable();
+    }
+
+    private static LanguagePair PairFromLanguages(JsonNode? node)
+    {
+        if (node is not JsonArray values || values.Count != 2)
+        {
+            return LanguagePair.JaEn;
+        }
+
+        var wire = string.Join("-", values.Select(SharedFixtures.Text));
+        return LanguagePairExtensions.ParseLanguagePair(wire);
     }
 }

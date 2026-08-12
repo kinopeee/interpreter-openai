@@ -29,7 +29,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
         // handshake 後に遅延を入れ、接続確立自体はブロックしない。
         english.SendDelay = TimeSpan.FromSeconds(30);
-        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
         var frame = new byte[Pcm16FramePacketizer.BytesPerFrame];
         Array.Fill(frame, (byte)0x11);
         await dual.AppendAudioFrameAsync(frame);
@@ -61,7 +61,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         var frameB = Frame(0x66);
         var frameC = Frame(0x77);
         await dual.AppendAudioFrameAsync(frameA);
-        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
         english.SendDelay = TimeSpan.FromSeconds(30);
 
         // When: 翻訳停滞中でも原文へ連続送信できる
@@ -89,7 +89,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         using var dual = CreateDual(source, english, japanese, ShortCloseTimeout);
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
-        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
 
         // 送信を少し遅らせて pending を作り、CloseGracefully の drain 待ちに載せる。
         english.SendDelay = TimeSpan.FromMilliseconds(120);
@@ -126,7 +126,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         using var dual = CreateDual(source, english, japanese, ShortCloseTimeout);
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
-        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
 
         for (var index = 0; index < 600; index += 1)
         {
@@ -169,7 +169,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         using var dual = CreateDual(source, english, japanese, ShortCloseTimeout);
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
-        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
 
         var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
             () => dual.CloseGracefullyAsync());
@@ -197,7 +197,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         using var dual = CreateDual(source, english, japanese, ShortCloseTimeout);
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
-        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
         var closeCountBefore = (
             Source: source.CloseCount,
             English: english.CloseCount,
@@ -239,7 +239,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
             translationDrainTimeout: TimeSpan.FromMilliseconds(200));
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
-        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
         english.SendDelay = TimeSpan.FromMilliseconds(80);
         for (var index = 0; index < 6; index += 1)
         {
@@ -296,7 +296,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
             translationDrainTimeout: TimeSpan.FromMilliseconds(50));
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
-        await dual.SetSpokenLanguageAsync(SpokenLanguage.Japanese);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
         english.SendDelay = TimeSpan.FromSeconds(30);
         await dual.AppendAudioFrameAsync(Frame(0x31));
         await dual.AppendAudioFrameAsync(Frame(0x32));
@@ -314,6 +314,27 @@ public sealed class DualRealtimeTranslationClientDrainTests
         }
 
         Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
+    // Given: スペイン語接続を渡していない dual
+    // When: ja-es で Start する
+    // Then: KeyNotFoundException ではなく、必要な接続が無い旨の ArgumentException になる
+    [Fact]
+    public async Task StartWithSpanishPairWithoutSpanishConnectionFailsClearly()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(source, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"));
+
+        var error = await Assert.ThrowsAsync<ArgumentException>(() =>
+            dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs));
+
+        Assert.Equal("pair", error.ParamName);
+        Assert.Contains("es", error.Message, StringComparison.Ordinal);
     }
 
     private static DualRealtimeTranslationClient CreateDual(

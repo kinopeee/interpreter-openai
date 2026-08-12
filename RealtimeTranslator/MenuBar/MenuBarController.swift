@@ -43,7 +43,7 @@ final class MenuBarController: NSObject {
         menu.addItem(.separator())
 
         let directionItem = NSMenuItem(
-            title: "翻訳方向: 自動（OpenAI Realtime、日本語 ↔ 英語）",
+            title: "翻訳方向: \(pairDisplayName())",
             action: nil,
             keyEquivalent: ""
         )
@@ -116,6 +116,14 @@ final class MenuBarController: NSObject {
 
         statusItem.menu = menu
         updateIcon()
+    }
+
+    private func pairDisplayName() -> String {
+        switch coordinator?.languagePair ?? .jaEn {
+        case .jaEn: return "日本語 ↔ 英語"
+        case .jaEs: return "日本語 ↔ スペイン語"
+        case .enEs: return "英語 ↔ スペイン語"
+        }
     }
 
     private func startStopTitle() -> String {

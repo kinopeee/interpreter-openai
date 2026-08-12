@@ -1,4 +1,5 @@
 using System.Linq;
+using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Settings;
 using Xunit;
@@ -70,6 +71,26 @@ public sealed class AppSettingsCodecTests
     {
         var settings = AppSettingsCodec.Decode("{\"fontSize\":32}");
         Assert.False(settings.RecordSubtitles);
+    }
+
+    // Given: 言語ペアを含まない旧 settings.json
+    // When: 読み込む
+    // Then: 既定の ja-en を使う
+    [Fact]
+    public void DecodeMissingLanguagePairDefaultsToJaEn()
+    {
+        Assert.Equal(LanguagePair.JaEn, AppSettingsCodec.Decode("{\"fontSize\":32}").LanguagePair);
+    }
+
+    // Given: 未知の言語ペアを含む settings.json
+    // When: 読み込む
+    // Then: 既定の ja-en へフォールバックする
+    [Fact]
+    public void DecodeUnknownLanguagePairDefaultsToJaEn()
+    {
+        Assert.Equal(
+            LanguagePair.JaEn,
+            AppSettingsCodec.Decode("{\"languagePair\":\"xx-yy\"}").LanguagePair);
     }
 
     // Given: 範囲外のフォントサイズ

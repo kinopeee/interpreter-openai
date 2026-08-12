@@ -101,7 +101,7 @@
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "sessionUpdate" },
-            "outputLanguage": { "enum": ["en", "ja"] },
+            "outputLanguage": { "enum": ["en", "ja", "es"] },
             "inputTranscriptionModel": { "type": ["string", "null"] },
             "noiseReduction": { "enum": ["near_field", "far_field", null] }
           }
@@ -129,13 +129,20 @@
       "oneOf": [
         {
           "type": "object",
-          "required": ["kind", "noiseReduction", "transcriptionDelay"],
+          "required": ["kind", "noiseReduction", "transcriptionDelay", "languages"],
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "sessionUpdate" },
             "noiseReduction": { "enum": ["near_field", "far_field"] },
             "transcriptionDelay": {
               "enum": ["minimal", "low", "medium", "high", "xhigh"]
+            },
+            "languages": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "uniqueItems": true,
+              "items": { "enum": ["ja", "en", "es"] }
             },
             "prompt": { "type": "string" },
             "keywords": { "type": "array", "items": { "type": "string" } }

@@ -3,33 +3,46 @@ import Foundation
 enum SpokenLanguage: Equatable, Hashable, Sendable {
     case japanese
     case english
+    case spanish
     case unknown
+}
 
-    var translationTarget: TranslationTarget? {
+enum LanguagePair: String, CaseIterable, Codable, Sendable, Equatable, Hashable {
+    case jaEn = "ja-en"
+    case jaEs = "ja-es"
+    case enEs = "en-es"
+
+    var languages: [SpokenLanguage] {
         switch self {
+        case .jaEn:
+            return [.japanese, .english]
+        case .jaEs:
+            return [.japanese, .spanish]
+        case .enEs:
+            return [.english, .spanish]
+        }
+    }
+
+    func translationTarget(for language: SpokenLanguage) -> RealtimeTranslationOutputLanguage? {
+        guard let counterpart = counterpart(of: language) else { return nil }
+        switch counterpart {
         case .japanese:
-            return .english
-        case .english:
             return .japanese
+        case .english:
+            return .english
+        case .spanish:
+            return .spanish
         case .unknown:
             return nil
         }
     }
 
-    /// 日英2レーン構成における相手側レーンの言語。
-    var counterpart: SpokenLanguage {
-        switch self {
-        case .japanese:
-            return .english
-        case .english:
-            return .japanese
-        case .unknown:
-            return .unknown
-        }
+    func counterpart(of language: SpokenLanguage) -> SpokenLanguage? {
+        guard let index = languages.firstIndex(of: language) else { return nil }
+        return languages[index == languages.startIndex ? languages.index(after: index) : languages.startIndex]
     }
-}
 
-enum TranslationTarget: String, Equatable, Sendable {
-    case english = "en"
-    case japanese = "ja"
+    func counterpart(of target: RealtimeTranslationOutputLanguage) -> SpokenLanguage? {
+        languages.first { translationTarget(for: $0) == target }
+    }
 }

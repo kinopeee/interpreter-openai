@@ -1,4 +1,6 @@
-﻿namespace RealtimeTranslator.Core.OpenAI;
+﻿using System;
+
+namespace RealtimeTranslator.Core.OpenAI;
 
 /// <summary>session.update で送るセッション設定。</summary>
 public sealed record RealtimeTranslationSessionConfig(
@@ -19,6 +21,10 @@ public sealed record RealtimeTranslationSessionConfig(
     public static RealtimeTranslationSessionConfig JapaneseTargetWithoutSourceTranscription(
         RealtimeTranslationNoiseReduction? noiseReduction = RealtimeTranslationNoiseReduction.FarField) =>
         new(RealtimeTranslationOutputLanguage.Japanese, null, noiseReduction);
+
+    public static RealtimeTranslationSessionConfig SpanishTargetWithoutSourceTranscription(
+        RealtimeTranslationNoiseReduction? noiseReduction = RealtimeTranslationNoiseReduction.FarField) =>
+        new(RealtimeTranslationOutputLanguage.Spanish, null, noiseReduction);
 }
 
 /// <summary>クライアントからサーバーへ送るイベント。</summary>
@@ -63,7 +69,29 @@ public abstract record RealtimeTranslationServerEvent
 }
 
 /// <summary>どの接続から届いたかと接続世代を付与したイベント。</summary>
+public readonly record struct RealtimeTranslationLane(
+    bool IsSource,
+    RealtimeTranslationOutputLanguage? Target)
+{
+    public static RealtimeTranslationLane Source => new(true, null);
+
+    public static RealtimeTranslationLane Translation(RealtimeTranslationOutputLanguage target) =>
+        new(false, target);
+}
+
 public sealed record RealtimeTranslationStreamEvent(
-    RealtimeTranslationOutputLanguage Target,
+    RealtimeTranslationLane Lane,
     RealtimeTranslationServerEvent Event,
-    int Epoch);
+    int Epoch)
+{
+    public RealtimeTranslationStreamEvent(
+        RealtimeTranslationOutputLanguage target,
+        RealtimeTranslationServerEvent @event,
+        int epoch)
+        : this(RealtimeTranslationLane.Translation(target), @event, epoch)
+    {
+    }
+
+    public RealtimeTranslationOutputLanguage Target =>
+        Lane.Target ?? throw new InvalidOperationException("source lane has no translation target");
+}

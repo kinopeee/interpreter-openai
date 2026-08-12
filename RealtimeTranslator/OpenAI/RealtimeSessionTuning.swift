@@ -25,6 +25,59 @@ struct RealtimeSessionTuning: Sendable, Equatable {
         "モデル",
     ]
 
+    static func defaultPrompt(for pair: LanguagePair) -> String {
+        switch pair {
+        case .jaEn:
+            return defaultPrompt
+        case .jaEs:
+            return "Japanese and Spanish conversation about software development, programming, and hackathons."
+        case .enEs:
+            return "English and Spanish conversation about software development, programming, and hackathons."
+        }
+    }
+
+    static func defaultKeywords(for pair: LanguagePair) -> [String] {
+        switch pair {
+        case .jaEn:
+            return defaultKeywords
+        case .jaEs:
+            return ["hackathon", "software", "programming", "desarrollo", "programación"]
+        case .enEs:
+            return ["hackathon", "software", "programming", "desarrollo", "programación"]
+        }
+    }
+
+    func forPair(_ pair: LanguagePair) -> RealtimeSessionTuning {
+        let prompt = Self.isKnownDefaultPrompt(transcriptionPrompt)
+            ? Self.defaultPrompt(for: pair)
+            : transcriptionPrompt
+        let keywords = Self.isKnownDefaultKeywords(transcriptionKeywords)
+            ? Self.defaultKeywords(for: pair)
+            : transcriptionKeywords
+        return RealtimeSessionTuning(
+            noiseReduction: noiseReduction,
+            transcriptionDelay: transcriptionDelay,
+            transcriptionPrompt: prompt,
+            transcriptionKeywords: keywords
+        )
+    }
+
+    private static func isKnownDefaultPrompt(_ prompt: String) -> Bool {
+        [
+            defaultPrompt(for: .jaEn),
+            defaultPrompt(for: .jaEs),
+            defaultPrompt(for: .enEs),
+        ].contains(prompt)
+    }
+
+    private static func isKnownDefaultKeywords(_ keywords: [String]) -> Bool {
+        [
+            defaultKeywords(for: .jaEn),
+            defaultKeywords(for: .jaEs),
+            defaultKeywords(for: .enEs),
+        ].contains(keywords)
+    }
+
     static let `default` = RealtimeSessionTuning(
         noiseReduction: .farField,
         transcriptionDelay: .low,

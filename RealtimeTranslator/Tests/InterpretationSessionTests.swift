@@ -31,6 +31,32 @@ final class InterpretationSessionTests: XCTestCase {
         startTask.cancel()
     }
 
+    func testPairIsCachedForTheActiveConnection() async {
+        // Given: 接続後に変更された言語ペア provider
+        var pair = LanguagePair.jaEn
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: audio,
+            dualClient: dual,
+            languagePairProvider: { pair }
+        )
+
+        // When: 録音中に provider を変更して原文の言語反転を検出する
+        await session.start()
+        await waitUntil { session.state == .listening }
+        await dual.publishSourceDelta("これは接続時ペアです")
+        await waitUntil { dual.spokenLanguages.count == 1 }
+        pair = .jaEs
+        await dual.publishSourceDelta(" this remains the same pair")
+        await waitUntil { dual.spokenLanguages.count == 2 }
+
+        // Then: 接続開始時のペアで routing し、provider の変更を反映しない
+        XCTAssertEqual(dual.spokenLanguages, [.japanese, .english])
+        await session.stop()
+    }
+
     func testStopDuringStartDoesNotLeaveListening() async {
         // Given: 接続中に止められるセッション
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
@@ -1129,6 +1155,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     private(set) var resetAudioRoutingCallCount = 0
     private(set) var updateTranscriptionTuningCallCount = 0
     private(set) var lastTuning: RealtimeSessionTuning?
+    private(set) var lastLanguagePair: LanguagePair = .jaEn
     var startGate: CheckedContinuationBox?
     var startFailuresRemaining = 0
     var startError: Error?
@@ -1150,9 +1177,14 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
     }
 
-    func start(apiKey: String, tuning: RealtimeSessionTuning) async throws {
+    func start(
+        apiKey: String,
+        tuning: RealtimeSessionTuning,
+        pair: LanguagePair
+    ) async throws {
         startCallCount += 1
         lastTuning = tuning
+        lastLanguagePair = pair
         if let startGate {
             try await withTaskCancellationHandler {
                 try await withCheckedThrowingContinuation {
@@ -1193,8 +1225,27 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
     }
 
-    func setSpokenLanguage(_ language: SpokenLanguage) async throws {
-        spokenLanguages.append(language)
+    func selectTranslationTarget(_ target: RealtimeTranslationOutputLanguage?) async throws {
+        guard let target else { return }
+        if let language = lastLanguagePair.counterpart(of: target) {
+            spokenLanguages.append(language)
+        }
+    }
+
+    func publishSourceDelta(_ delta: String) {
+        state.withLock { state in
+            state.eventContinuation?.yield(
+                RealtimeTranslationStreamEvent(
+                    lane: .source,
+                    event: .inputTranscriptDelta(
+                        delta: delta,
+                        eventID: UUID().uuidString,
+                        elapsedMs: nil
+                    ),
+                    epoch: state.connectionEpoch
+                )
+            )
+        }
     }
 
     func updateTranscriptionTuning(_ tuning: RealtimeSessionTuning) async throws {
