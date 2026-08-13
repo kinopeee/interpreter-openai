@@ -44,10 +44,10 @@
 
 1. 外部通信先・音声経路・字幕レーン選択は変えない。
 2. API キー、Authorization、音声、原文、訳文をログ・status・アラート・通知へ出さない。ローカライズ後も同じ。
-3. サーバー生 message の正規化条件（`sk-` / `api key` / `authorization` / `bearer `）は言語非依存のまま。差し替え先の固定文言だけがロケールされる。
+3. サーバー生 message の正規化条件（`sk-` / `api key` / `authorization` / `bearer` + 半角スペース）は言語非依存のまま。差し替え先の固定文言だけがロケールされる。
 4. 字幕記録のプレーンテキスト形式は現行どおり固定する。
 
-```
+```text
 === 録音開始 {timestamp}
 
 --- {timestamp}
@@ -95,7 +95,7 @@
 
 ## 5. アーキテクチャ
 
-```
+```text
 shared/locales/ui.json              ← キーと ja/en の正本
 shared/locales/ui.schema.json
         │
@@ -156,15 +156,16 @@ Windows Core は AOT 対象のため、カタログ読みは既存の `AppSettin
 }
 ```
 
-schema で保証すること:
+`ui.schema.json`（および `shared-contracts` の schema 検査）で保証すること:
 
 - `strings[].key` は一意
 - 各要素に `ja` と `en` が必須で、空文字禁止
-- プレースホルダ名が ja/en で一致する（`{hotkey}` が片方だけ、は不可）
+
+プレースホルダ名が ja/en で一致すること（`{hotkey}` が片方だけ、は不可）は **JSON Schema だけでは表現しない**。両実装のテスト（または schema 検査に続く必須のカスタム検証）で、各 `strings[].key` について ja/en の `{name}` 集合が等しいことを検査する。schema 検査だけを足してプレースホルダ検査を省略してはいけない。
 
 キー命名: `領域.用途`。例: `settings.tab.general`、`menu.startTranslation`、`banner.idle`、`error.authenticationFailed`。
 
-CI（`shared-contracts`）へ `locales/ui.json` の schema 検査ステップを追加する（fixtures の 1:1 ループとは別ステップ）。「ja と en の `{name}` 集合が等しい」検査はテスト側に置く（schema だけでは足りない）。
+CI（`shared-contracts`）へ `locales/ui.json` の schema 検査ステップを追加する（fixtures の 1:1 ループとは別ステップ）。プレースホルダ一致は上記どおりテスト側（または同ジョブ内の必須カスタム検証）に置く。
 
 ## 7. キー棚卸し
 

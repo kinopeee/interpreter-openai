@@ -21,7 +21,8 @@ shared/
 
 ## ルール
 
-- 挙動を変える変更は、まず `protocol/` と `fixtures/v1/` を更新し、その後に各実装を合わせる。
+- fixture-backed な挙動を変える変更は、まず `protocol/` と `fixtures/v1/` を更新し、その後に各実装を合わせる。`shared/fixtures/v1` は両実装の契約正本のまま。
+- UI 文言のみの変更（`shared/locales/`、例: `banner.connecting` の標準化）は `fixtures/v1` 更新の対象外。正本は `protocol/ui-locale.md` と `locales/ui.json`。
 - fixture の破壊的変更はディレクトリを `v2/` として増やす。`v1/` の既存ケースは意味を変えない。
 - fixture を足したら対応する schema も更新する。CI (`shared-contracts`) が 1:1 対応を検査する。
 
