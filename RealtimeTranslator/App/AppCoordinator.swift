@@ -135,7 +135,7 @@ final class AppCoordinator: NSObject {
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
         panel.nameFieldStringValue = SubtitleTranscriptStore.defaultExportFileName()
-        panel.begin { [weak self] response in
+        AccessoryDialogPresenter.present(panel) { [weak self] response in
             guard let self else { return }
             guard response == .OK, let url = panel.url else { return }
             do {
@@ -154,7 +154,7 @@ final class AppCoordinator: NSObject {
         alert.alertStyle = .warning
         alert.addButton(withTitle: UiCopy.text("alert.clearTranscript.confirm"))
         alert.addButton(withTitle: UiCopy.text("alert.clearTranscript.cancel"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard AccessoryDialogPresenter.runModal(alert) == .alertFirstButtonReturn else { return }
 
         do {
             try transcriptStore.clear()
@@ -231,7 +231,7 @@ final class AppCoordinator: NSObject {
         alert.messageText = "Realtime Translator"
         alert.informativeText = message
         alert.alertStyle = .warning
-        alert.runModal()
+        _ = AccessoryDialogPresenter.runModal(alert)
     }
 
     private func recordFinalizedSubtitleIfNeeded(_ subtitle: LiveSubtitle) {

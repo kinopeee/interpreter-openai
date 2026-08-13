@@ -1,0 +1,37 @@
+import AppKit
+import XCTest
+@testable import RealtimeTranslator
+
+final class AccessoryDialogActivationTests: XCTestCase {
+    func testAccessoryPolicyPromotesToRegularAndRestores() {
+        // Given: メニューバー常駐の accessory アプリ
+        let activation = AccessoryDialogActivation.begin(currentPolicy: .accessory)
+
+        // When: 保存パネルやアラートを出す
+        // Then: 表示中だけ regular にし、閉じたら accessory へ戻す
+        XCTAssertEqual(activation.beginPolicy, .regular)
+        XCTAssertEqual(activation.endPolicy, .accessory)
+        XCTAssertTrue(activation.needsRegularPolicy)
+    }
+
+    func testRegularPolicyDoesNotChange() {
+        // Given: すでに regular で前面に出ている
+        let activation = AccessoryDialogActivation.begin(currentPolicy: .regular)
+
+        // When: 同じ活性化を重ねる
+        // Then: Dock アイコンの出し入れをせず、policy は触らない
+        XCTAssertNil(activation.beginPolicy)
+        XCTAssertNil(activation.endPolicy)
+        XCTAssertFalse(activation.needsRegularPolicy)
+    }
+
+    func testProhibitedPolicyAlsoPromotesToRegular() {
+        // Given: 一時的に prohibited になっている
+        let activation = AccessoryDialogActivation.begin(currentPolicy: .prohibited)
+
+        // When: ダイアログを前面へ出す
+        // Then: regular へ上げ、終了時は prohibited へ戻す
+        XCTAssertEqual(activation.beginPolicy, .regular)
+        XCTAssertEqual(activation.endPolicy, .prohibited)
+    }
+}
