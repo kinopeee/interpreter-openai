@@ -213,6 +213,7 @@ CI（`shared-contracts`）へ `locales/ui.json` の schema 検査ステップを
 | `settings.uiLanguage` | 表示言語 |
 | `settings.uiLanguage.system` / `.ja` / `.en` | システムと同じ / 日本語 / English |
 | `settings.uiLanguageRestartHint` | アプリを再起動すると表示言語が変わります。 |
+| `settings.appVersion` | バージョン `{version}` |
 
 OS 差がある説明文は **キーを分ける**。1 キーで `{os}` 分岐しない（テストと翻訳が難しくなる）。
 

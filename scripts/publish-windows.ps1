@@ -13,6 +13,7 @@ pwsh -File scripts/publish-windows.ps1
 pwsh -File scripts/publish-windows.ps1 -Runtime win-arm64
 pwsh -File scripts/publish-windows.ps1 -Output C:\dist\RealtimeTranslator
 pwsh -File scripts/publish-windows.ps1 -Runtime win-x64 -NoRestore
+pwsh -File scripts/publish-windows.ps1 -Runtime win-x64 -Version 0.1.0
 #>
 [CmdletBinding()]
 param(
@@ -20,6 +21,7 @@ param(
     [ValidateSet('win-x64', 'win-arm64')]
     [string]$Runtime = 'win-x64',
     [string]$Configuration = 'Release',
+    [string]$Version,
     [switch]$NoRestore
 )
 
@@ -52,6 +54,14 @@ $publishArgs = @(
 )
 if ($NoRestore) {
     $publishArgs += '--no-restore'
+}
+
+if (-not [string]::IsNullOrWhiteSpace($Version)) {
+    if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9]+)*$') {
+        throw "Version must look like 0.1.0 (no path separators): $Version"
+    }
+    $publishArgs += "-p:Version=$Version"
+    $publishArgs += "-p:InformationalVersion=$Version"
 }
 
 dotnet publish @publishArgs

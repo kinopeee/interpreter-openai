@@ -447,6 +447,7 @@ public partial class SettingsWindow : Window
         ApiKeyStorageHelpText.Text = UiCopy.Text("settings.apiKeyStorageHelp.windows");
         UiLanguageLabel.Text = UiCopy.Text("settings.uiLanguage");
         UiLanguageRestartHint.Text = UiCopy.Text("settings.uiLanguageRestartHint");
+        AppVersionText.Text = UiCopy.Format("settings.appVersion", "version", AppReleaseVersionInfo.CurrentDisplayValue());
         RecognitionSectionTitle.Text = UiCopy.Text("settings.section.recognition");
         NoiseReductionLabel.Text = UiCopy.Text("settings.noiseReduction");
         TranscriptionDelayLabel.Text = UiCopy.Text("settings.transcriptionDelay");
