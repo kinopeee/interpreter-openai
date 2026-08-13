@@ -297,6 +297,22 @@
           "isTranslationCurrent": true,
           "shouldFinalize": false
         }
+      },
+      {
+        "name": "expected spanish lane wins over japanese echo",
+        "epoch": 1,
+        "expectLane": "es",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "これは会議です", "eventId": "s-es-echo", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "translationDelta", "lane": "ja", "text": "これは会議です", "eventId": "t-ja-echo", "elapsedMs": 150 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "es", "text": "Esta es una reunión", "eventId": "t-es-real", "elapsedMs": 200 }
+        ],
+        "expectedFinal": {
+          "sourceText": "これは会議です",
+          "translatedText": "Esta es una reunión",
+          "isTranslationCurrent": true,
+          "shouldFinalize": false
+        }
       }
     ]
   }

@@ -337,12 +337,93 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.Contains("es", error.Message, StringComparison.Ordinal);
     }
 
+    // Given: ja-es で Spanish target に pending frame がある dual（未使用 English lane は未接続）
+    // When: CloseGracefullyAsync する
+    // Then: session.close より前に Spanish lane へ全 frame が届き、未使用 lane で止まらず Events が完了する
+    [Fact]
+    public async Task CloseGracefullyDrainsSpanishPendingFramesForJaEsPair()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var spanish = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(source, english, japanese, ShortCloseTimeout, spanish: spanish);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Spanish);
+
+        spanish.SendDelay = TimeSpan.FromMilliseconds(120);
+        await dual.AppendAudioFrameAsync(Frame(0xA1));
+        await dual.AppendAudioFrameAsync(Frame(0xA2));
+        await dual.AppendAudioFrameAsync(Frame(0xA3));
+        spanish.SendDelay = TimeSpan.Zero;
+
+        var closeTask = dual.CloseGracefullyAsync();
+        var winner = await Task.WhenAny(closeTask, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(closeTask, winner);
+        await closeTask;
+
+        Assert.Equal(0, english.ConnectCount);
+        Assert.Equal(3, spanish.AppendedFrameTexts().Count);
+        var spanishTypes = SentTypes(spanish);
+        var lastAppendIndex = spanishTypes.FindLastIndex(type => type == "session.input_audio_buffer.append");
+        var closeIndex = spanishTypes.FindLastIndex(type => type == "session.close");
+        Assert.True(lastAppendIndex >= 0);
+        Assert.True(closeIndex > lastAppendIndex);
+        Assert.Contains("session.close", SentTypes(japanese));
+        Assert.DoesNotContain("session.close", SentTypes(english));
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
+    // Given: en-es で English target に pending frame がある dual（未使用 Japanese lane は未接続）
+    // When: CloseGracefullyAsync する
+    // Then: English lane へ drain したあと close し、未使用 Japanese へ session.close を送らない
+    [Fact]
+    public async Task CloseGracefullyDrainsEnglishPendingFramesForEnEsPair()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var spanish = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(source, english, japanese, ShortCloseTimeout, spanish: spanish);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.EnEs);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+
+        english.SendDelay = TimeSpan.FromMilliseconds(120);
+        await dual.AppendAudioFrameAsync(Frame(0xB1));
+        await dual.AppendAudioFrameAsync(Frame(0xB2));
+        english.SendDelay = TimeSpan.Zero;
+
+        await dual.CloseGracefullyAsync();
+
+        Assert.Equal(0, japanese.ConnectCount);
+        Assert.Equal(2, english.AppendedFrameTexts().Count);
+        var englishTypes = SentTypes(english);
+        var lastAppendIndex = englishTypes.FindLastIndex(type => type == "session.input_audio_buffer.append");
+        var closeIndex = englishTypes.FindLastIndex(type => type == "session.close");
+        Assert.True(lastAppendIndex >= 0);
+        Assert.True(closeIndex > lastAppendIndex);
+        Assert.Contains("session.close", SentTypes(spanish));
+        Assert.DoesNotContain("session.close", SentTypes(japanese));
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
     private static DualRealtimeTranslationClient CreateDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,
         FakeRealtimeServerTransport japanese,
         TimeSpan closeTimeout,
-        TimeSpan? translationDrainTimeout = null) =>
+        TimeSpan? translationDrainTimeout = null,
+        FakeRealtimeServerTransport? spanish = null) =>
         new(
             new RealtimeSourceTranscriptionConnection(source, "test-safety", closeTimeout: closeTimeout),
             new RealtimeTranslationConnection(
@@ -355,7 +436,14 @@ public sealed class DualRealtimeTranslationClientDrainTests
                 japanese,
                 "test-safety",
                 closeTimeout: closeTimeout),
-            translationDrainTimeout: translationDrainTimeout);
+            translationDrainTimeout: translationDrainTimeout,
+            spanishConnection: spanish is null
+                ? null
+                : new RealtimeTranslationConnection(
+                    RealtimeTranslationOutputLanguage.Spanish,
+                    spanish,
+                    "test-safety",
+                    closeTimeout: closeTimeout));
 
     private static byte[] Frame(byte fill)
     {
