@@ -41,6 +41,9 @@ enum UiCopy {
         guard let url = UserCopyStore.catalogURL(),
             let copy = try? UserCopy.load(from: url, locale: preference.resolve(osLanguageCode: osCode))
         else {
+            #if DEBUG
+            AppLogger.general.debug("UserCopy catalog missing from bundle")
+            #endif
             return
         }
         UserCopyStore.install(copy)

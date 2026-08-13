@@ -72,6 +72,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.realtimetranslator.tests
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSPrincipalClass: JapaneseUserCopyTestObserver
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/RealtimeTranslator.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/RealtimeTranslator"
         BUNDLE_LOADER: "$(TEST_HOST)"
 schemes:

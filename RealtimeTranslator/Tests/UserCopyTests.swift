@@ -1,4 +1,5 @@
 import XCTest
+import os
 @testable import RealtimeTranslator
 
 final class UserCopyTests: XCTestCase {
@@ -119,8 +120,8 @@ final class UserCopyTests: XCTestCase {
     // When: 名前を抽出する
     // Then: Windows / CI と同じ ASCII 識別子だけを認める
     func testPlaceholderNamesRejectNonAsciiIdentifiers() {
-        XCTAssertEqual(UserCopy.placeholderNames("ok {hotkey} and {名前} and {1bad}"), ["hotkey"])
-        XCTAssertEqual(UserCopy.placeholderNames("{_ok} {_} {a1}"), ["_ok", "_", "a1"])
+        XCTAssertEqual(UserCopy.placeholderNames("ok {hotkey} and {名前} and {1bad}"), Set(["hotkey"]))
+        XCTAssertEqual(UserCopy.placeholderNames("{_ok} {_} {a1}"), Set(["_ok", "_", "a1"]))
     }
 
     // Given: OS の UI 言語と保存値

@@ -223,6 +223,9 @@ enum UserCopyStore {
         if let url = catalogURL(), let copy = try? UserCopy.load(from: url, locale: .ja) {
             return copy
         }
+        #if DEBUG
+        AppLogger.general.debug("UserCopy catalog missing from bundle")
+        #endif
         return UserCopy(locale: .ja, primary: [:], english: [:])
     }
 }
