@@ -48,9 +48,11 @@ public sealed class RoutingFixtureTests
             // halt 後は enqueue 自体が止まるので、追加 frame を送っても翻訳 lane は増えない。
             var englishBefore = harness.English.AppendedFrameTexts();
             var japaneseBefore = harness.Japanese.AppendedFrameTexts();
+            var spanishBefore = harness.Spanish.AppendedFrameTexts();
             await harness.AppendFrameAsync("probeAfterHalt");
             Assert.Equal(englishBefore, harness.English.AppendedFrameTexts());
             Assert.Equal(japaneseBefore, harness.Japanese.AppendedFrameTexts());
+            Assert.Equal(spanishBefore, harness.Spanish.AppendedFrameTexts());
         }
 
         if (expected["signalsSessionReconnect"] is { } reconnect)
