@@ -12,13 +12,13 @@
         <TextBlock x:Name="OpenAiSectionTitle" FontWeight="Bold" Margin="0,0,0,8" />
         <TextBlock x:Name="ModelText" Margin="0,0,0,2" />
         <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
-          <TextBlock x:Name="LanguagePairLabel" Width="90" VerticalAlignment="Center" />
+          <TextBlock x:Name="LanguagePairLabel" MinWidth="90" Width="140" VerticalAlignment="Center" TextWrapping="Wrap" />
           <ComboBox x:Name="LanguagePairBox"
                     Width="220"
                     DisplayMemberPath="DisplayName"
                     SelectionChanged="OnLanguagePairChanged" />
         </StackPanel>
-        <TextBlock x:Name="LanguagePairAppliesNextRecordingText" Foreground="Gray" Margin="90,0,0,2" TextWrapping="Wrap" />
+        <TextBlock x:Name="LanguagePairAppliesNextRecordingText" Foreground="Gray" Margin="140,0,0,2" TextWrapping="Wrap" />
         <TextBlock x:Name="SubtitleDisplayText" Margin="0,0,0,2" />
         <TextBlock x:Name="TranslatedAudioText" Margin="0,0,0,10" />
 
@@ -44,7 +44,7 @@
                    Foreground="Gray" />
 
         <StackPanel Orientation="Horizontal" Margin="0,16,0,2">
-          <TextBlock x:Name="UiLanguageLabel" Width="90" VerticalAlignment="Center" />
+          <TextBlock x:Name="UiLanguageLabel" MinWidth="90" Width="140" VerticalAlignment="Center" TextWrapping="Wrap" />
           <ComboBox x:Name="UiLanguageBox"
                     Width="220"
                     DisplayMemberPath="DisplayName"
@@ -52,7 +52,7 @@
         </StackPanel>
         <TextBlock x:Name="UiLanguageRestartHint"
                    Foreground="Gray"
-                   Margin="90,0,0,0"
+                   Margin="140,0,0,0"
                    TextWrapping="Wrap" />
       </StackPanel>
     </TabItem>
@@ -61,11 +61,11 @@
       <StackPanel Margin="16">
         <TextBlock x:Name="RecognitionSectionTitle" FontWeight="Bold" Margin="0,0,0,8" />
         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-          <TextBlock x:Name="NoiseReductionLabel" Width="90" VerticalAlignment="Center" />
+          <TextBlock x:Name="NoiseReductionLabel" MinWidth="90" Width="140" VerticalAlignment="Center" TextWrapping="Wrap" />
           <ComboBox x:Name="NoiseReductionBox" Width="220" DisplayMemberPath="DisplayName" SelectionChanged="OnNoiseReductionChanged" />
         </StackPanel>
         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-          <TextBlock x:Name="TranscriptionDelayLabel" Width="90" VerticalAlignment="Center" />
+          <TextBlock x:Name="TranscriptionDelayLabel" MinWidth="90" Width="140" VerticalAlignment="Center" TextWrapping="Wrap" />
           <ComboBox x:Name="TranscriptionDelayBox" Width="220" DisplayMemberPath="DisplayName" SelectionChanged="OnTranscriptionDelayChanged" />
         </StackPanel>
         <TextBlock x:Name="DelayHelpText"
@@ -105,7 +105,7 @@
       <StackPanel Margin="16">
         <TextBlock x:Name="SubtitlesSectionTitle" FontWeight="Bold" Margin="0,0,0,8" />
         <StackPanel Orientation="Horizontal">
-          <TextBlock x:Name="FontSizeText" Width="180" VerticalAlignment="Center" TextWrapping="Wrap" />
+          <TextBlock x:Name="FontSizeText" Width="220" VerticalAlignment="Center" TextWrapping="Wrap" />
           <Slider x:Name="FontSizeSlider"
                   Width="260"
                   Minimum="18"

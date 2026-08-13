@@ -209,7 +209,7 @@ final class InterpretationSession {
             guard reconnectAttempt < Self.maxReconnectAttempts else {
                 await tearDownStreaming()
                 flushPendingFinalizeIfNeeded()
-                enterError(RealtimeTranslationError.recoverableTransportFailure("再接続上限"))
+                enterErrorMessage(UiCopy.text("error.reconnectLimit"))
                 return
             }
 
@@ -716,10 +716,14 @@ final class InterpretationSession {
     }
 
     private func enterError(_ error: Error) {
+        enterErrorMessage(error.localizedDescription)
+    }
+
+    private func enterErrorMessage(_ message: String) {
         state = .error
-        aggregator.setStatusBanner(error.localizedDescription)
+        aggregator.setStatusBanner(message)
         publishSubtitles()
-        delegate?.interpretationSession(self, didEncounterMessage: error.localizedDescription)
+        delegate?.interpretationSession(self, didEncounterMessage: message)
     }
 
 }

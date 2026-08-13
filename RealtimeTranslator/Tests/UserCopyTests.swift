@@ -129,6 +129,30 @@ final class UserCopyTests: XCTestCase {
         XCTAssertEqual(UiLanguagePreference.parse("en"), .en)
         XCTAssertEqual(UiLanguagePreference.system.rawValue, "system")
     }
+
+    // Given: フェーズ4で埋めた en 文言
+    // When: ja と並べる（Current は切り替えない）
+    // Then: 製品名などの allowlist 以外は ja == en にならない
+    func testEnglishCopyDiffersFromJapaneseExceptAllowlist() throws {
+        let allowlist: Set<String> = [
+            "settings.section.openai",
+            "settings.uiLanguage.en",
+        ]
+        let json = try SharedFixtures.uiCatalogJSON()
+        let catalog = try JSONSerialization.jsonObject(with: json) as? [String: Any]
+        let strings = try XCTUnwrap(catalog?["strings"] as? [[String: Any]])
+        let en = try UserCopy.parse(json: json, locale: .en)
+
+        for item in strings {
+            let key = SharedFixtures.text(item["key"])
+            let jaText = SharedFixtures.text(item["ja"])
+            let enText = SharedFixtures.text(item["en"])
+            if !allowlist.contains(key) {
+                XCTAssertNotEqual(jaText, enText, key)
+            }
+            XCTAssertEqual(enText, en.text(key), key)
+        }
+    }
 }
 
 private final class KeyLog: @unchecked Sendable {

@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Text.Json.Nodes;
 using RealtimeTranslator.Core.Localization;
 using Xunit;
 
@@ -182,5 +184,48 @@ public sealed class UserCopyTests
         Assert.Equal("system", UiLanguagePreference.System.ToWireValue());
         Assert.Equal("ja", UiLanguagePreference.Ja.ToWireValue());
         Assert.Equal("en", UiLanguagePreference.En.ToWireValue());
+    }
+
+    // Given: フェーズ4で埋めた en 文言
+    // When: ja と並べる（Current は切り替えない）
+    // Then: 製品名などの allowlist 以外は ja == en にならない
+    [Fact]
+    public void EnglishCopyDiffersFromJapaneseExceptAllowlist()
+    {
+        var allowlist = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "settings.section.openai",
+            "settings.uiLanguage.en",
+        };
+        var strings = JsonNode.Parse(SharedFixtures.UiCatalogJson)!["strings"]!.AsArray();
+        var en = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.En);
+
+        foreach (var node in strings)
+        {
+            var item = node!.AsObject();
+            var key = SharedFixtures.Text(item["key"]);
+            var jaText = SharedFixtures.Text(item["ja"]);
+            var enText = SharedFixtures.Text(item["en"]);
+            if (!allowlist.Contains(key))
+            {
+                Assert.NotEqual(jaText, enText);
+            }
+
+            Assert.Equal(enText, en.Text(key));
+        }
+    }
+
+    // Given: 英語 UI のトレイツールチップ
+    // When: 製品名と状態名を連結する
+    // Then: NotifyIcon.Text の 63 文字上限に収まる
+    [Fact]
+    public void EnglishTrayTooltipFitsNotifyIconLimit()
+    {
+        Assert.True("Realtime Translator (Idle)".Length <= 63);
+        Assert.True("Realtime Translator (Connecting)".Length <= 63);
+        Assert.True("Realtime Translator (Listening)".Length <= 63);
+        Assert.True("Realtime Translator (Reconnecting)".Length <= 63);
+        Assert.True("Realtime Translator (Closing)".Length <= 63);
+        Assert.True("Realtime Translator (Error)".Length <= 63);
     }
 }
