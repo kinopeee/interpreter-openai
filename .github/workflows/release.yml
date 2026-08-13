@@ -102,11 +102,14 @@ jobs:
           $info = (Get-Item $exe).VersionInfo
           $product = [string]$info.ProductVersion
           $file = [string]$info.FileVersion
-          if (-not $product.StartsWith($env:APP_VERSION)) {
-            throw "ProductVersion '$product' must start with '$($env:APP_VERSION)'"
+          # FileVersion は 0.1.0.0、ProductVersion は 0.1.0 / 0.1.0+meta があり得る。
+          # StartsWith だと 0.1.00 なども通るため、任意の .0 と +metadata だけを許して終端まで合わせる。
+          $versionPattern = '^' + [regex]::Escape($env:APP_VERSION) + '(?:\.0)?(?:\+.*)?$'
+          if ($product -notmatch $versionPattern) {
+            throw "ProductVersion '$product' must match '$($env:APP_VERSION)' (optional .0 or +metadata)"
           }
-          if (-not $file.StartsWith($env:APP_VERSION)) {
-            throw "FileVersion '$file' must start with '$($env:APP_VERSION)'"
+          if ($file -notmatch $versionPattern) {
+            throw "FileVersion '$file' must match '$($env:APP_VERSION)' (optional .0 or +metadata)"
           }
 
       - name: Package
