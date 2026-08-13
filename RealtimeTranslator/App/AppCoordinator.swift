@@ -29,6 +29,8 @@ final class AppCoordinator: NSObject {
     }()
     private let hotKeys = HotKeyManager()
     private var settingsWindow: NSWindow?
+    private var settingsActivationHold = SettingsActivationHold()
+    private var settingsCloseObserver: NSObjectProtocol?
     private var lastSnapshot = SubtitleSnapshot.empty
     private var didAnnounceTranscriptCap = false
     /// 現在の録音区間でセッション開始マーカーを既に書いたか。
@@ -97,13 +99,13 @@ final class AppCoordinator: NSObject {
 
     private func beginTranslation() {
         guard settings.hasAcceptedCurrentOpenAIConsent else {
-            presentMessage(UiCopy.text("alert.needConsent"))
             openSettings()
+            presentMessage(UiCopy.text("alert.needConsent"))
             return
         }
         guard apiKeyStore.hasStoredKey else {
-            presentMessage(UiCopy.text("alert.needApiKey"))
             openSettings()
+            presentMessage(UiCopy.text("alert.needApiKey"))
             return
         }
 
@@ -137,7 +139,7 @@ final class AppCoordinator: NSObject {
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
         panel.nameFieldStringValue = SubtitleTranscriptStore.defaultExportFileName()
-        panel.begin { [weak self] response in
+        AccessoryDialogPresenter.present(panel) { [weak self] response in
             guard let self else { return }
             guard response == .OK, let url = panel.url else { return }
             do {
@@ -156,15 +158,16 @@ final class AppCoordinator: NSObject {
         alert.alertStyle = .warning
         alert.addButton(withTitle: UiCopy.text("alert.clearTranscript.confirm"))
         alert.addButton(withTitle: UiCopy.text("alert.clearTranscript.cancel"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-
-        do {
-            try transcriptStore.clear()
-            didAnnounceTranscriptCap = false
-            menuBarController.refresh()
-        } catch {
-            AppLogger.general.error("subtitle transcript clear failed")
-            presentMessage(SubtitleTranscriptStore.writeFailureBanner)
+        AccessoryDialogPresenter.runModal(alert) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn else { return }
+            do {
+                try self.transcriptStore.clear()
+                self.didAnnounceTranscriptCap = false
+                self.menuBarController.refresh()
+            } catch {
+                AppLogger.general.error("subtitle transcript clear failed")
+                self.presentMessage(SubtitleTranscriptStore.writeFailureBanner)
+            }
         }
     }
 
@@ -199,8 +202,49 @@ final class AppCoordinator: NSObject {
         window.center()
         window.isReleasedWhenClosed = false
         settingsWindow = window
+        retainSettingsActivationIfNeeded()
+        observeSettingsWindowClose(window, token: settingsActivationHold.generation)
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func retainSettingsActivationIfNeeded() {
+        if settingsActivationHold.retain() {
+            AccessoryDialogPresenter.retainActivation()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    private func releaseSettingsActivation(token: Int) {
+        guard settingsActivationHold.release(token: token) else {
+            return
+        }
+        AccessoryDialogPresenter.releaseActivation()
+    }
+
+    private func observeSettingsWindowClose(_ window: NSWindow, token: Int) {
+        if let settingsCloseObserver {
+            NotificationCenter.default.removeObserver(settingsCloseObserver)
+        }
+        settingsCloseObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main,
+            using: { [weak self] _ in
+                AppCoordinator.handleSettingsWindowWillClose(self, token: token)
+            }
+        )
+    }
+
+    /// main キューの willClose から同期で活性化を戻す。Task にすると開き直しより後に走る。
+    /// token は閉じたウィンドウの世代。開き直し後の古い close は一致しない。
+    nonisolated private static func handleSettingsWindowWillClose(
+        _ coordinator: AppCoordinator?,
+        token: Int
+    ) {
+        MainActor.assumeIsolated {
+            coordinator?.releaseSettingsActivation(token: token)
+        }
     }
 
     /// 終了前に録音を止め、完全ペアを字幕記録へ flush する。
@@ -233,7 +277,7 @@ final class AppCoordinator: NSObject {
         alert.messageText = "Realtime Translator"
         alert.informativeText = message
         alert.alertStyle = .warning
-        alert.runModal()
+        _ = AccessoryDialogPresenter.runModal(alert)
     }
 
     private func recordFinalizedSubtitleIfNeeded(_ subtitle: LiveSubtitle) {
