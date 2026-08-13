@@ -63,6 +63,31 @@ struct AccessoryDialogSession: Equatable, Sendable {
     }
 }
 
+/// 設定ウィンドウの活性化を、閉じたあとの非同期 release と開き直しで取り違えないための世代。
+struct SettingsActivationHold: Equatable, Sendable {
+    private(set) var generation = 0
+    private(set) var isHeld = false
+
+    /// 新しい表示。未保持なら presenter の retain が必要。
+    mutating func retain() -> Bool {
+        generation += 1
+        guard !isHeld else {
+            return false
+        }
+        isHeld = true
+        return true
+    }
+
+    /// この世代の表示がまだ現役なら解放する。古い close は無視する。
+    mutating func release(token: Int) -> Bool {
+        guard isHeld, token == generation else {
+            return false
+        }
+        isHeld = false
+        return true
+    }
+}
+
 /// accessory アプリ向けに保存パネル / アラートを前面へ出す。
 @MainActor
 enum AccessoryDialogPresenter {

@@ -112,4 +112,32 @@ final class AccessoryDialogActivationTests: XCTestCase {
         XCTAssertEqual(session.end(), .accessory)
         XCTAssertEqual(session.depth, 0)
     }
+
+    func testStaleSettingsCloseDoesNotReleaseAfterReopen() {
+        // Given: 設定を開いて閉じ、非同期 release の前に開き直す
+        var hold = SettingsActivationHold()
+        XCTAssertTrue(hold.retain())
+        let staleToken = hold.generation
+
+        // When: Cmd+W のあとにすぐ Cmd+, で世代が進む
+        XCTAssertFalse(hold.retain())
+
+        // Then: 古い close では解放せず、新しい世代を閉じたときだけ解放する
+        XCTAssertFalse(hold.release(token: staleToken))
+        XCTAssertTrue(hold.isHeld)
+        XCTAssertTrue(hold.release(token: hold.generation))
+        XCTAssertFalse(hold.isHeld)
+    }
+
+    func testSettingsCloseReleasesMatchingGeneration() {
+        // Given: 設定を1回開いた
+        var hold = SettingsActivationHold()
+        XCTAssertTrue(hold.retain())
+        let token = hold.generation
+
+        // When / Then: 同じ世代の close だけが解放し、二重 close は無視する
+        XCTAssertTrue(hold.release(token: token))
+        XCTAssertFalse(hold.isHeld)
+        XCTAssertFalse(hold.release(token: token))
+    }
 }

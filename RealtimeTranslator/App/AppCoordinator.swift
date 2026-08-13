@@ -29,7 +29,7 @@ final class AppCoordinator: NSObject {
     }()
     private let hotKeys = HotKeyManager()
     private var settingsWindow: NSWindow?
-    private var settingsHoldsActivation = false
+    private var settingsActivationHold = SettingsActivationHold()
     private var settingsCloseObserver: NSObjectProtocol?
     private var lastSnapshot = SubtitleSnapshot.empty
     private var didAnnounceTranscriptCap = false
@@ -172,7 +172,7 @@ final class AppCoordinator: NSObject {
     func openSettings() {
         if let settingsWindow, settingsWindow.isVisible {
             settingsWindow.makeKeyAndOrderFront(nil)
-            retainSettingsActivationIfNeeded()
+            NSApp.activate(ignoringOtherApps: true)
             return
         }
 
@@ -201,32 +201,26 @@ final class AppCoordinator: NSObject {
         window.isReleasedWhenClosed = false
         settingsWindow = window
         retainSettingsActivationIfNeeded()
-        observeSettingsWindowClose(window)
+        observeSettingsWindowClose(window, token: settingsActivationHold.generation)
         window.makeKeyAndOrderFront(nil)
     }
 
     private func retainSettingsActivationIfNeeded() {
-        if !settingsHoldsActivation {
+        if settingsActivationHold.retain() {
             AccessoryDialogPresenter.retainActivation()
-            settingsHoldsActivation = true
         } else {
             NSApp.activate(ignoringOtherApps: true)
         }
     }
 
-    private func releaseSettingsActivationIfNeeded(closedID: ObjectIdentifier?) {
-        guard settingsHoldsActivation else {
-            return
-        }
-        // 古いウィンドウの close が、新しい設定ウィンドウの活性化を落とさない。
-        if let closedID, let settingsWindow, ObjectIdentifier(settingsWindow) != closedID {
+    private func releaseSettingsActivation(token: Int) {
+        guard settingsActivationHold.release(token: token) else {
             return
         }
         AccessoryDialogPresenter.releaseActivation()
-        settingsHoldsActivation = false
     }
 
-    private func observeSettingsWindowClose(_ window: NSWindow) {
+    private func observeSettingsWindowClose(_ window: NSWindow, token: Int) {
         if let settingsCloseObserver {
             NotificationCenter.default.removeObserver(settingsCloseObserver)
         }
@@ -234,20 +228,20 @@ final class AppCoordinator: NSObject {
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main,
-            using: { [weak self] notification in
-                let closedID = (notification.object as AnyObject?).map { ObjectIdentifier($0) }
-                AppCoordinator.handleSettingsWindowWillClose(self, closedID: closedID)
+            using: { [weak self] _ in
+                AppCoordinator.handleSettingsWindowWillClose(self, token: token)
             }
         )
     }
 
     /// main キューの willClose から同期で活性化を戻す。Task にすると開き直しより後に走る。
+    /// token は閉じたウィンドウの世代。開き直し後の古い close は一致しない。
     nonisolated private static func handleSettingsWindowWillClose(
         _ coordinator: AppCoordinator?,
-        closedID: ObjectIdentifier?
+        token: Int
     ) {
         MainActor.assumeIsolated {
-            coordinator?.releaseSettingsActivationIfNeeded(closedID: closedID)
+            coordinator?.releaseSettingsActivation(token: token)
         }
     }
 
