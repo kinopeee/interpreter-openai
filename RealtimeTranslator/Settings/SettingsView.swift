@@ -3,7 +3,8 @@ import SwiftUI
 
 enum SettingsWindowMetrics {
     static let contentWidth: CGFloat = 560
-    static let contentHeight: CGFloat = 560
+    /// 一般タブの表示言語セクションと英語折り返しを、初回表示でスクロールなしに収める。
+    static let contentHeight: CGFloat = 720
 }
 
 struct SettingsView: View {
@@ -207,6 +208,17 @@ private struct SettingsGeneralTab: View {
                 )
             }
 
+            Section(UiCopy.text("settings.uiLanguage")) {
+                Picker(UiCopy.text("settings.uiLanguage"), selection: $settings.uiLanguage) {
+                    Text(UiCopy.text("settings.uiLanguage.system")).tag(UiLanguagePreference.system)
+                    Text(UiCopy.text("settings.uiLanguage.ja")).tag(UiLanguagePreference.ja)
+                    Text(UiCopy.text("settings.uiLanguage.en")).tag(UiLanguagePreference.en)
+                }
+                Text(UiCopy.text("settings.uiLanguageRestartHint"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section(UiCopy.text("settings.section.apiKey")) {
                 SecureField("sk-...", text: $apiKeyDraft)
                     .textFieldStyle(.roundedBorder)
@@ -242,17 +254,6 @@ private struct SettingsGeneralTab: View {
                 Text(UiCopy.text("settings.apiKeyStorageHelp.mac"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            }
-
-            Section(UiCopy.text("settings.uiLanguage")) {
-                Picker(UiCopy.text("settings.uiLanguage"), selection: $settings.uiLanguage) {
-                    Text(UiCopy.text("settings.uiLanguage.system")).tag(UiLanguagePreference.system)
-                    Text(UiCopy.text("settings.uiLanguage.ja")).tag(UiLanguagePreference.ja)
-                    Text(UiCopy.text("settings.uiLanguage.en")).tag(UiLanguagePreference.en)
-                }
-                Text(UiCopy.text("settings.uiLanguageRestartHint"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

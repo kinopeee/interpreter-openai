@@ -290,4 +290,23 @@ final class RealtimeSessionTuningTests: XCTestCase {
         // Then: 送信値からは禁止文字が消える
         XCTAssertEqual(tuning.transcriptionKeywords, ["FooBar"])
     }
+
+    @MainActor
+    func testAppSettingsPersistsUiLanguagePreference() {
+        // Given: 保存済みの表示言語
+        let settings = AppSettings()
+        let previous = settings.uiLanguage
+        defer { settings.uiLanguage = previous }
+
+        // When: English を保存して読み直す
+        settings.uiLanguage = .en
+        let reloaded = AppSettings()
+
+        // Then: wire 値 en が残り、system へ倒れない
+        XCTAssertEqual(reloaded.uiLanguage, .en)
+        XCTAssertEqual(
+            UserDefaults.standard.string(forKey: "uiLanguage"),
+            UiLanguagePreference.en.rawValue
+        )
+    }
 }
