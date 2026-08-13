@@ -68,6 +68,8 @@ public sealed class InterpretationSession : IDisposable
     private int _reconnectAttempt;
     private TranslationState _state = TranslationState.Idle;
     private string _routingSourceText = string.Empty;
+    /// <summary>現在の録音世代で使う言語ペア。Start 時に固定し、再接続でも settings の変更を取り込まない。</summary>
+    private LanguagePair? _sessionLanguagePair;
     private LanguagePair? _activeLanguagePair;
     private RealtimeTranslationOutputLanguage? _selectedTranslationTarget;
     private int _reverseEvidenceCount;
@@ -178,6 +180,9 @@ public sealed class InterpretationSession : IDisposable
             _lifecycleGeneration += 1;
             generation = _lifecycleGeneration;
             _reconnectAttempt = 0;
+            // 録音開始時点のペアを世代全体で固定する。録音中の設定変更は再接続でも反映しない
+            // （VALIDATION: 停止→次の録音開始後にだけ新しいペアが反映される）。
+            _sessionLanguagePair = _languagePairProvider();
             _sessionCts = cts;
         }
 
@@ -250,6 +255,12 @@ public sealed class InterpretationSession : IDisposable
 
         // 停止時点で完全ペアが残っていれば確定して見せる（オプトイン字幕記録も含む）。
         FlushPendingFinalizeIfNeeded();
+
+        lock (_sync)
+        {
+            _sessionLanguagePair = null;
+            _activeLanguagePair = null;
+        }
 
         SetState(TranslationState.Idle);
     }
@@ -404,7 +415,12 @@ public sealed class InterpretationSession : IDisposable
         var apiKey = RequireApiKey();
         SetState(TranslationState.Connecting);
 
-        var languagePair = _languagePairProvider();
+        LanguagePair languagePair;
+        lock (_sync)
+        {
+            languagePair = _sessionLanguagePair ?? _languagePairProvider();
+        }
+
         await _dualClient.StartAsync(
             apiKey,
             _tuningProvider().ForPair(languagePair),

@@ -631,6 +631,39 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: ja-en で開始したあと、録音中に provider を en-es へ変更する
+    // When: transport error で再接続する
+    // Then: 再接続後も Start 時点の ja-en を使い、停止→再開始でのみ新しいペアが反映される
+    [Fact]
+    public async Task ReconnectKeepsLanguagePairFrozenFromStart()
+    {
+        var client = new FakeDualClient();
+        var pair = LanguagePair.JaEn;
+        using var session = NewSession(client, languagePairProvider: () => pair);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        Assert.Equal(LanguagePair.JaEn, client.LastStartedPair);
+        var startCountAtListening = client.StartCount;
+
+        pair = LanguagePair.EnEs;
+        client.PublishTransportError();
+        await WaitUntilAsync(() =>
+            session.State == TranslationState.Listening && client.StartCount > startCountAtListening);
+
+        Assert.Equal(LanguagePair.JaEn, client.LastStartedPair);
+        client.PublishSourceDelta("これは再接続後も同じペアです");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count == 1);
+        Assert.Equal([SpokenLanguage.Japanese], client.SpokenLanguages);
+        Assert.Equal([RealtimeTranslationOutputLanguage.English], client.SelectedTargets);
+
+        await session.StopAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Idle);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        Assert.Equal(LanguagePair.EnEs, client.LastStartedPair);
+        await session.StopAsync();
+    }
+
     // Given: ja-es ペアで開始したセッション
     // When: 日本語のあと、末尾窓から日本語を追い出すスペイン語 delta を受け取る
     // Then: 日本語→es、スペイン語→ja の target へ即時に切り替える

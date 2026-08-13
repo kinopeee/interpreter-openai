@@ -133,8 +133,11 @@ enum SpokenLanguageDetector {
 
         var spanishScore = 0
         var englishScore = 0
+        // ロケール依存の lowercased() だと tr_TR などで I→ı となり exclusive word 照合が壊れる。
+        // Windows の ToLowerInvariant と揃え、POSIX で照合する。
+        let posix = Locale(identifier: "en_US_POSIX")
         for word in words {
-            let lower = word.lowercased()
+            let lower = word.lowercased(with: posix)
             if spanishExclusiveWords.contains(lower) {
                 spanishScore += 1
             }
