@@ -84,4 +84,17 @@ final class AccessoryDialogActivationTests: XCTestCase {
         XCTAssertNil(session.end())
         XCTAssertNil(session.end())
     }
+
+    func testFollowUpAlertNestsBeforeOuterSessionEnds() {
+        // Given: 保存パネルの completion でエラーアラートを出す
+        var session = AccessoryDialogSession()
+        _ = session.begin(currentPolicy: .accessory)
+
+        // When: applyEnd より先に follow-up の begin が走る
+        _ = session.begin(currentPolicy: .regular)
+        XCTAssertNil(session.end())
+
+        // Then: アラートを閉じてから accessory へ戻す
+        XCTAssertEqual(session.end(), .accessory)
+    }
 }

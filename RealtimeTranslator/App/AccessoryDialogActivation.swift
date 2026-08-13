@@ -77,8 +77,9 @@ enum AccessoryDialogPresenter {
         panel.level = .modalPanel
         panel.hidesOnDeactivate = false
         panel.begin { response in
-            applyEnd(to: application)
+            // 失敗時のエラーアラートなどが同じ session に乗るように、先に completion を呼ぶ。
             completion(response)
+            applyEnd(to: application)
         }
     }
 
@@ -89,6 +90,15 @@ enum AccessoryDialogPresenter {
         applyBegin(session.begin(currentPolicy: application.activationPolicy()), to: application)
         defer { applyEnd(to: application) }
         return alert.runModal()
+    }
+
+    /// 設定ウィンドウなど、閉じるまで前面に置きたい modeless UI 用。
+    static func retainActivation(application: NSApplication = .shared) {
+        applyBegin(session.begin(currentPolicy: application.activationPolicy()), to: application)
+    }
+
+    static func releaseActivation(application: NSApplication = .shared) {
+        applyEnd(to: application)
     }
 
     static func applyBegin(

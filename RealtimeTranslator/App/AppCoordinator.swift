@@ -29,6 +29,8 @@ final class AppCoordinator: NSObject {
     }()
     private let hotKeys = HotKeyManager()
     private var settingsWindow: NSWindow?
+    private var settingsHoldsActivation = false
+    private var settingsCloseObserver: NSObjectProtocol?
     private var lastSnapshot = SubtitleSnapshot.empty
     private var didAnnounceTranscriptCap = false
     /// 現在の録音区間でセッション開始マーカーを既に書いたか。
@@ -97,13 +99,13 @@ final class AppCoordinator: NSObject {
 
     private func beginTranslation() {
         guard settings.hasAcceptedCurrentOpenAIConsent else {
-            presentMessage(UiCopy.text("alert.needConsent"))
             openSettings()
+            presentMessage(UiCopy.text("alert.needConsent"))
             return
         }
         guard apiKeyStore.hasStoredKey else {
-            presentMessage(UiCopy.text("alert.needApiKey"))
             openSettings()
+            presentMessage(UiCopy.text("alert.needApiKey"))
             return
         }
 
@@ -169,7 +171,7 @@ final class AppCoordinator: NSObject {
     func openSettings() {
         if let settingsWindow, settingsWindow.isVisible {
             settingsWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            retainSettingsActivationIfNeeded()
             return
         }
 
@@ -197,8 +199,47 @@ final class AppCoordinator: NSObject {
         window.center()
         window.isReleasedWhenClosed = false
         settingsWindow = window
+        observeSettingsWindowClose(window)
+        retainSettingsActivationIfNeeded()
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func retainSettingsActivationIfNeeded() {
+        if !settingsHoldsActivation {
+            AccessoryDialogPresenter.retainActivation()
+            settingsHoldsActivation = true
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    private func releaseSettingsActivationIfNeeded() {
+        guard settingsHoldsActivation else {
+            return
+        }
+        AccessoryDialogPresenter.releaseActivation()
+        settingsHoldsActivation = false
+    }
+
+    private func observeSettingsWindowClose(_ window: NSWindow) {
+        if let settingsCloseObserver {
+            NotificationCenter.default.removeObserver(settingsCloseObserver)
+        }
+        settingsCloseObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main,
+            using: { [weak self] _ in
+                AppCoordinator.enqueueSettingsWindowClose(self)
+            }
+        )
+    }
+
+    /// NotificationCenter コールバックから MainActor 上の活性化解除へ渡す境界。
+    nonisolated private static func enqueueSettingsWindowClose(_ coordinator: AppCoordinator?) {
+        Task { @MainActor in
+            coordinator?.releaseSettingsActivationIfNeeded()
+        }
     }
 
     /// 終了前に録音を止め、完全ペアを字幕記録へ flush する。
