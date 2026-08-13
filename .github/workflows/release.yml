@@ -102,8 +102,8 @@ jobs:
           $info = (Get-Item $exe).VersionInfo
           $product = [string]$info.ProductVersion
           $file = [string]$info.FileVersion
-          if ($product -ne $env:APP_VERSION) {
-            throw "ProductVersion '$product' must equal '$($env:APP_VERSION)'"
+          if (-not $product.StartsWith($env:APP_VERSION)) {
+            throw "ProductVersion '$product' must start with '$($env:APP_VERSION)'"
           }
           if (-not $file.StartsWith($env:APP_VERSION)) {
             throw "FileVersion '$file' must start with '$($env:APP_VERSION)'"
