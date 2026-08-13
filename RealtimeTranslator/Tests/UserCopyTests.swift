@@ -127,6 +127,74 @@ final class UserCopyTests: XCTestCase {
         XCTAssertEqual(UserCopy.placeholderNames("{_ok} {_} {a1}"), Set(["_ok", "_", "a1"]))
     }
 
+    // Given: 重複キーを含むカタログ
+    // When: 検査する
+    // Then: 2回目以降のキーが報告される
+    func testDuplicateKeysAreReported() throws {
+        let json = Data(
+            """
+            {
+              "version": 1,
+              "locales": ["ja", "en"],
+              "fallback": "en",
+              "strings": [
+                { "key": "dup", "ja": "一", "en": "one" },
+                { "key": "ok", "ja": "二", "en": "two" },
+                { "key": "dup", "ja": "三", "en": "three" }
+              ]
+            }
+            """.utf8
+        )
+
+        XCTAssertEqual(try UserCopy.duplicateKeys(in: json), ["dup"])
+    }
+
+    // Given: 壊れたカタログ JSON
+    // When: 読み込む
+    // Then: 起動不能な文言テーブルを作らず例外にする
+    func testParseRejectsInvalidCatalogs() {
+        let payloads = [
+            "{ not json",
+            "{\"version\":1}",
+            "{\"strings\":[{\"key\":\"x\",\"ja\":\"\",\"en\":\"ok\"}]}",
+            "{\"strings\":[{\"key\":\"x\",\"ja\":\"はい\"}]}",
+        ]
+        for payload in payloads {
+            XCTAssertThrowsError(try UserCopy.parse(json: Data(payload.utf8), locale: .ja), payload)
+        }
+    }
+
+    // Given: 置換しなかったプレースホルダ
+    // When: Format する
+    // Then: 残った {name} は消えず、String(format:) の位置指定にも落ちない
+    func testFormatLeavesUnknownPlaceholders() throws {
+        let json = Data(
+            """
+            {
+              "version": 1,
+              "locales": ["ja", "en"],
+              "fallback": "en",
+              "strings": [
+                {
+                  "key": "banner.reconnectingProgress",
+                  "ja": "{detail} 再接続中… ({attempt}/{max})",
+                  "en": "{detail} Reconnecting… ({attempt}/{max})"
+                }
+              ]
+            }
+            """.utf8
+        )
+        let copy = try UserCopy.parse(json: json, locale: .ja)
+
+        XCTAssertEqual(
+            copy.text("banner.reconnectingProgress", [
+                "detail": "",
+                "max": "3",
+            ]),
+            " 再接続中… ({attempt}/3)"
+        )
+    }
+
     // Given: OS の UI 言語と保存値
     // When: 表示言語を解決する
     // Then: ja OS だけ ja、それ以外と未知値は en / system
@@ -137,6 +205,8 @@ final class UserCopyTests: XCTestCase {
         XCTAssertEqual(UiLanguagePreference.system.resolve(osLanguageCode: "en"), .en)
         XCTAssertEqual(UiLanguagePreference.system.resolve(osLanguageCode: "es"), .en)
         XCTAssertEqual(UiLanguagePreference.system.resolve(osLanguageCode: "fr"), .en)
+        XCTAssertEqual(UiLanguagePreference.system.resolve(osLanguageCode: nil), .en)
+        XCTAssertEqual(UiLanguagePreference.system.resolve(osLanguageCode: ""), .en)
     }
 
     // Given: 欠落または未知の wire 値

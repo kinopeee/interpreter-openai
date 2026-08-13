@@ -80,6 +80,58 @@ final class PrivacyFixtureTests: XCTestCase {
         XCTAssertEqual(error.errorDescription, RealtimeTranslationError.genericServerMessage)
     }
 
+    // Given: 各エラー種別
+    // When: 例外メッセージを取る
+    // Then: Current（ja）カタログの対応キーと一致する
+    func testErrorKindMessageMatchesJapaneseCatalog() throws {
+        let json = try SharedFixtures.uiCatalogJSON()
+        let ja = try UserCopy.parse(json: json, locale: .ja)
+        let en = try UserCopy.parse(json: json, locale: .en)
+        let cases: [(RealtimeTranslationError, String)] = [
+            (.missingAPIKey, "error.missingApiKey"),
+            (.notConnected, "error.notConnected"),
+            (.invalidMessage, "error.invalidMessage"),
+            (.authenticationFailed, "error.authenticationFailed"),
+            (.recoverableTransportFailure("test"), "error.transportDisconnected"),
+            (.sessionUpdateTimeout, "error.sessionUpdateTimeout"),
+            (.closeTimeout, "error.closeTimeout"),
+            (.cancelled, "error.cancelled"),
+        ]
+
+        for (error, key) in cases {
+            XCTAssertEqual(error.errorDescription, ja.text(key), key)
+            XCTAssertNotEqual(ja.text(key), en.text(key), key)
+            XCTAssertFalse(en.text(key).localizedCaseInsensitiveContains("sk-"), key)
+        }
+    }
+
+    // Given: 空のサーバー文言、または英語カタログに含まれる "API key"
+    // When: Sanitize する / authenticationFailed を組み立てる
+    // Then: 空は generic になり、カタログ文言は再サニタイズしない
+    func testCatalogErrorCopyIsNotReSanitized() throws {
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage(""),
+            RealtimeTranslationError.genericServerMessage
+        )
+        XCTAssertEqual(
+            RealtimeTranslationError.fatalServerError("").errorDescription,
+            RealtimeTranslationError.genericServerMessage
+        )
+
+        let json = try SharedFixtures.uiCatalogJSON()
+        let en = try UserCopy.parse(json: json, locale: .en)
+        let authenticationFailed = en.text("error.authenticationFailed")
+        XCTAssertTrue(authenticationFailed.localizedCaseInsensitiveContains("API key"))
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage(authenticationFailed),
+            RealtimeTranslationError.genericServerMessage
+        )
+        XCTAssertEqual(
+            RealtimeTranslationError.authenticationFailed.errorDescription,
+            UserCopyStore.current.text("error.authenticationFailed")
+        )
+    }
+
     private func makeError(named name: String) -> RealtimeTranslationError {
         switch name {
         case "missingAPIKey":

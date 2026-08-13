@@ -98,4 +98,24 @@ public sealed class SubtitleTranscriptFormatterTests
             "2026-08-07T16:00:00Z",
             SubtitleTranscriptFormatter.FormatTimestamp(timestamp));
     }
+
+    // Given: 英語 UI カタログが存在する
+    // When: 字幕記録を整形する
+    // Then: ラベルは uiLanguage に依存せず 原文: / 訳文: / === 録音開始 のまま
+    [Fact]
+    public void FormatLabelsStayJapaneseIndependentOfUiLocale()
+    {
+        var en = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.En);
+        Assert.DoesNotContain("原文:", en.Text("menu.exportSubtitles"), StringComparison.Ordinal);
+        Assert.DoesNotContain("訳文:", en.Text("menu.exportSubtitles"), StringComparison.Ordinal);
+
+        var entry = SubtitleTranscriptFormatter.FormatEntry("2026-08-13T10:00:00Z", "hello", "hola");
+        var start = SubtitleTranscriptFormatter.FormatSessionStart("2026-08-13T10:00:00Z");
+
+        Assert.Contains("原文: hello", entry, StringComparison.Ordinal);
+        Assert.Contains("訳文: hola", entry, StringComparison.Ordinal);
+        Assert.StartsWith("=== 録音開始 ", start, StringComparison.Ordinal);
+        Assert.DoesNotContain("Source:", entry, StringComparison.Ordinal);
+        Assert.DoesNotContain("Translation:", entry, StringComparison.Ordinal);
+    }
 }

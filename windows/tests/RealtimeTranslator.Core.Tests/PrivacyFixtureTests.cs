@@ -1,3 +1,4 @@
+using System;
 using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
 using Xunit;
@@ -104,6 +105,52 @@ public sealed class PrivacyFixtureTests
 
         // Then: 表示用 Message は汎用文言になる
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
+    }
+
+    // Given: 各エラー種別
+    // When: 例外メッセージを取る
+    // Then: Current（ja）カタログの対応キーと一致し、未知 kind だけ generic へ倒す
+    [Theory]
+    [InlineData(RealtimeTranslationErrorKind.MissingApiKey, "error.missingApiKey")]
+    [InlineData(RealtimeTranslationErrorKind.NotConnected, "error.notConnected")]
+    [InlineData(RealtimeTranslationErrorKind.InvalidMessage, "error.invalidMessage")]
+    [InlineData(RealtimeTranslationErrorKind.AuthenticationFailed, "error.authenticationFailed")]
+    [InlineData(RealtimeTranslationErrorKind.RecoverableTransportFailure, "error.transportDisconnected")]
+    [InlineData(RealtimeTranslationErrorKind.SessionUpdateTimeout, "error.sessionUpdateTimeout")]
+    [InlineData(RealtimeTranslationErrorKind.CloseTimeout, "error.closeTimeout")]
+    [InlineData(RealtimeTranslationErrorKind.Cancelled, "error.cancelled")]
+    public void ErrorKindMessageMatchesJapaneseCatalog(RealtimeTranslationErrorKind kind, string key)
+    {
+        var ja = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.Ja);
+        var en = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.En);
+
+        Assert.Equal(ja.Text(key), new RealtimeTranslationException(kind).Message);
+        Assert.NotEqual(ja.Text(key), en.Text(key));
+        Assert.DoesNotContain("sk-", en.Text(key), StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Given: 空のサーバー文言、または英語カタログに含まれる "API key"
+    // When: Sanitize する / AuthenticationFailed を組み立てる
+    // Then: 空は generic になり、カタログ文言は再サニタイズしない
+    [Fact]
+    public void CatalogErrorCopyIsNotReSanitized()
+    {
+        Assert.Equal(
+            RealtimeTranslationException.GenericServerMessage,
+            RealtimeTranslationException.SanitizeServerMessage(string.Empty));
+        Assert.Equal(
+            RealtimeTranslationException.GenericServerMessage,
+            new RealtimeTranslationException(RealtimeTranslationErrorKind.FatalServerError, string.Empty).Message);
+
+        var en = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.En);
+        var authenticationFailed = en.Text("error.authenticationFailed");
+        Assert.Contains("API key", authenticationFailed, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            RealtimeTranslationException.GenericServerMessage,
+            RealtimeTranslationException.SanitizeServerMessage(authenticationFailed));
+        Assert.Equal(
+            UserCopy.Current.Text("error.authenticationFailed"),
+            new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed).Message);
     }
 
     private static RealtimeTranslationErrorKind ParseKind(string value) => value switch

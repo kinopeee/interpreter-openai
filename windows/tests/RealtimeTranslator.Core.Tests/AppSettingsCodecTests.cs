@@ -54,6 +54,20 @@ public sealed class AppSettingsCodecTests
         Assert.Equal(pair, restored.LanguagePair);
     }
 
+    // Given: 対応する全表示言語
+    // When: JSON へ書き出して読み戻す
+    // Then: system / ja / en が欠落なく復元される
+    [Theory]
+    [InlineData(UiLanguagePreference.System)]
+    [InlineData(UiLanguagePreference.Ja)]
+    [InlineData(UiLanguagePreference.En)]
+    public void EncodeDecodeRoundTripsEveryUiLanguage(UiLanguagePreference uiLanguage)
+    {
+        var settings = AppSettingsData.Default with { UiLanguage = uiLanguage };
+        var restored = AppSettingsCodec.Decode(AppSettingsCodec.Encode(settings));
+        Assert.Equal(uiLanguage, restored.UiLanguage);
+    }
+
     // Given: API キーを含めてはいけない設定 JSON
     // When: 書き出す
     // Then: キーらしき項目が現れない

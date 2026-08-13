@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json.Nodes;
 using RealtimeTranslator.Core.Localization;
+using RealtimeTranslator.Core.OpenAI;
+using RealtimeTranslator.Core.Realtime;
+using RealtimeTranslator.Core.Subtitles;
 using Xunit;
 
 namespace RealtimeTranslator.Core.Tests;
@@ -138,6 +141,131 @@ public sealed class UserCopyTests
             }));
     }
 
+    // Given: 非 ASCII や不正な開始文字を含む疑似プレースホルダ
+    // When: 名前を抽出する
+    // Then: Swift / CI と同じ ASCII 識別子だけを認める
+    [Fact]
+    public void PlaceholderNamesRejectNonAsciiIdentifiers()
+    {
+        Assert.Equal(
+            new HashSet<string>(StringComparer.Ordinal) { "hotkey" },
+            UserCopy.PlaceholderNames("ok {hotkey} and {名前} and {1bad}"));
+        Assert.Equal(
+            new HashSet<string>(StringComparer.Ordinal) { "_ok", "_", "a1" },
+            UserCopy.PlaceholderNames("{_ok} {_} {a1}"));
+    }
+
+    // Given: 重複キーを含むカタログ
+    // When: 検査する
+    // Then: 2回目以降のキーが報告される
+    [Fact]
+    public void DuplicateKeysAreReported()
+    {
+        var json = """
+            {
+              "version": 1,
+              "locales": ["ja", "en"],
+              "fallback": "en",
+              "strings": [
+                { "key": "dup", "ja": "一", "en": "one" },
+                { "key": "ok", "ja": "二", "en": "two" },
+                { "key": "dup", "ja": "三", "en": "three" }
+              ]
+            }
+            """;
+
+        var duplicates = UserCopy.DuplicateKeys(json);
+        Assert.Single(duplicates);
+        Assert.Equal("dup", duplicates[0]);
+    }
+
+    // Given: 壊れたカタログ JSON
+    // When: 読み込む
+    // Then: 起動不能な文言テーブルを作らず例外にする
+    [Theory]
+    [InlineData("{ not json")]
+    [InlineData("{\"version\":1}")]
+    [InlineData("""{"strings":[{"key":"x","ja":"","en":"ok"}]}""")]
+    [InlineData("""{"strings":[{"key":"x","ja":"はい"}]}""")]
+    public void ParseRejectsInvalidCatalogs(string json)
+    {
+        Assert.Throws<InvalidOperationException>(() => UserCopy.Parse(json, UiLocale.Ja));
+    }
+
+    // Given: 置換しなかったプレースホルダ
+    // When: Format する
+    // Then: 残った {name} は消えず、string.Format の位置指定にも落ちない
+    [Fact]
+    public void FormatLeavesUnknownPlaceholders()
+    {
+        var json = """
+            {
+              "version": 1,
+              "locales": ["ja", "en"],
+              "fallback": "en",
+              "strings": [
+                {
+                  "key": "banner.reconnectingProgress",
+                  "ja": "{detail} 再接続中… ({attempt}/{max})",
+                  "en": "{detail} Reconnecting… ({attempt}/{max})"
+                }
+              ]
+            }
+            """;
+        var copy = UserCopy.Parse(json, UiLocale.Ja);
+
+        Assert.Equal(
+            " 再接続中… ({attempt}/3)",
+            copy.Format("banner.reconnectingProgress", new Dictionary<string, string>
+            {
+                ["detail"] = string.Empty,
+                ["max"] = "3",
+            }));
+    }
+
+    // Given: Core が実行時に引くユーザー向けキー
+    // When: 正本カタログを読む
+    // Then: 欠けたキーをキー名のまま画面へ出さない
+    [Fact]
+    public void CoreProductionKeysExistInCatalog()
+    {
+        var copy = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.Ja);
+        string[] keys =
+        [
+            "error.genericServer",
+            "error.missingApiKey",
+            "error.notConnected",
+            "error.invalidMessage",
+            "error.authenticationFailed",
+            "error.transportDisconnected",
+            "error.sourceDisconnected",
+            "error.audioSendFailed",
+            "error.sourceSessionGeneric",
+            "error.sessionUpdateTimeout",
+            "error.closeTimeout",
+            "error.cancelled",
+            "error.reconnectLimit",
+            "error.audioInputStopped",
+            "error.eventStreamStopped",
+            "transcript.sizeLimitBanner",
+            "transcript.writeFailureBanner",
+            "banner.connecting",
+            "banner.reconnecting",
+            "banner.idle",
+        ];
+
+        foreach (var key in keys)
+        {
+            Assert.NotEqual(key, copy.Text(key));
+            Assert.False(string.IsNullOrWhiteSpace(copy.Text(key)));
+        }
+
+        Assert.Equal(copy.Text("error.audioSendFailed"), DualRealtimeTranslationClient.TransportErrorMessage);
+        Assert.Equal(copy.Text("banner.connecting"), SubtitleSnapshotBuilder.ConnectingBanner);
+        Assert.Equal(copy.Text("banner.reconnecting"), SubtitleSnapshotBuilder.ReconnectingBanner);
+        Assert.Equal(copy.Text("error.genericServer"), RealtimeTranslationException.GenericServerMessage);
+    }
+
     // Given: ja/en でプレースホルダ集合が違うエントリ
     // When: 検査する
     // Then: そのキーが不一致として報告される
@@ -171,9 +299,11 @@ public sealed class UserCopyTests
     [InlineData(UiLanguagePreference.System, "es", UiLocale.En)]
     [InlineData(UiLanguagePreference.System, "fr", UiLocale.En)]
     [InlineData(UiLanguagePreference.System, "JA", UiLocale.Ja)]
+    [InlineData(UiLanguagePreference.System, null, UiLocale.En)]
+    [InlineData(UiLanguagePreference.System, "", UiLocale.En)]
     public void ResolveFollowsPreferenceThenOsLanguage(
         UiLanguagePreference preference,
-        string osLanguage,
+        string? osLanguage,
         UiLocale expected)
     {
         Assert.Equal(expected, UiLanguage.Resolve(preference, osLanguage));

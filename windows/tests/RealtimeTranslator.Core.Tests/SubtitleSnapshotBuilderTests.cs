@@ -1,3 +1,4 @@
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.Realtime;
 using RealtimeTranslator.Core.Subtitles;
 using Xunit;
@@ -185,6 +186,27 @@ public sealed class SubtitleSnapshotBuilderTests
         var snapshot = builder.Reset(TranslationState.Idle);
 
         Assert.False(snapshot.Current.IsFinalized);
+    }
+
+    // Given: カタログのバナーキー
+    // When: idle / connecting / reconnecting を組み立てる
+    // Then: 直書き日本語ではなく UserCopy のキーへ解決する
+    [Fact]
+    public void BannersComeFromCatalogAndIdleSubstitutesHotkey()
+    {
+        Assert.Equal(
+            UserCopy.Current.Text("banner.connecting"),
+            SubtitleSnapshotBuilder.ConnectingBanner);
+        Assert.Equal(
+            UserCopy.Current.Text("banner.reconnecting"),
+            SubtitleSnapshotBuilder.ReconnectingBanner);
+        Assert.Equal(
+            UserCopy.Current.Format("banner.idle", "hotkey", "Ctrl + Alt + Space"),
+            SubtitleSnapshotBuilder.IdleBanner);
+        Assert.Equal(
+            UserCopy.Current.Format("banner.idle", "hotkey", "Control + Option + Space"),
+            SubtitleSnapshotBuilder.IdleBannerFor("Control + Option + Space"));
+        Assert.Contains("Control + Option + Space", SubtitleSnapshotBuilder.IdleBannerFor("Control + Option + Space"));
     }
 
     // Given: 未確定字幕を Reset（停止後約 5 秒クリア）した builder
