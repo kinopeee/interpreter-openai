@@ -136,25 +136,30 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
     static var genericServerMessage: String { UiCopy.text("error.genericServer") }
 
     var errorDescription: String? {
+        description(using: UserCopyStore.current)
+    }
+
+    /// 表示文言の `UserCopy` を明示する。未指定時は Current。
+    func description(using copy: UserCopy) -> String {
         switch self {
         case .missingAPIKey:
-            return UiCopy.text("error.missingApiKey")
+            return copy.text("error.missingApiKey")
         case .notConnected:
-            return UiCopy.text("error.notConnected")
+            return copy.text("error.notConnected")
         case .invalidMessage:
-            return UiCopy.text("error.invalidMessage")
+            return copy.text("error.invalidMessage")
         case .authenticationFailed:
-            return UiCopy.text("error.authenticationFailed")
+            return copy.text("error.authenticationFailed")
         case .fatalServerError(let message):
             return Self.sanitizedServerMessage(message)
         case .recoverableTransportFailure:
-            return UiCopy.text("error.transportDisconnected")
+            return copy.text("error.transportDisconnected")
         case .sessionUpdateTimeout:
-            return UiCopy.text("error.sessionUpdateTimeout")
+            return copy.text("error.sessionUpdateTimeout")
         case .closeTimeout:
-            return UiCopy.text("error.closeTimeout")
+            return copy.text("error.closeTimeout")
         case .cancelled:
-            return UiCopy.text("error.cancelled")
+            return copy.text("error.cancelled")
         }
     }
 

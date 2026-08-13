@@ -23,7 +23,16 @@ public sealed partial class RealtimeTranslationException : Exception
     public static string GenericServerMessage => UserCopy.Current.Text("error.genericServer");
 
     public RealtimeTranslationException(RealtimeTranslationErrorKind kind, string? serverMessage = null)
-        : base(DescribeFor(kind, serverMessage))
+        : this(kind, serverMessage, UserCopy.Current)
+    {
+    }
+
+    /// <summary>表示文言の <see cref="UserCopy"/> を明示する。未指定時は <see cref="UserCopy.Current"/>。</summary>
+    internal RealtimeTranslationException(
+        RealtimeTranslationErrorKind kind,
+        string? serverMessage,
+        UserCopy copy)
+        : base(DescribeFor(kind, serverMessage, copy))
     {
         Kind = kind;
         ServerMessage = serverMessage;
@@ -85,19 +94,26 @@ public sealed partial class RealtimeTranslationException : Exception
         return HttpAuthStatusPattern().IsMatch(messageLowered);
     }
 
-    private static string DescribeFor(RealtimeTranslationErrorKind kind, string? serverMessage) => kind switch
+    private static string DescribeFor(
+        RealtimeTranslationErrorKind kind,
+        string? serverMessage,
+        UserCopy copy)
     {
-        RealtimeTranslationErrorKind.MissingApiKey => UserCopy.Current.Text("error.missingApiKey"),
-        RealtimeTranslationErrorKind.NotConnected => UserCopy.Current.Text("error.notConnected"),
-        RealtimeTranslationErrorKind.InvalidMessage => UserCopy.Current.Text("error.invalidMessage"),
-        RealtimeTranslationErrorKind.AuthenticationFailed => UserCopy.Current.Text("error.authenticationFailed"),
-        RealtimeTranslationErrorKind.FatalServerError => SanitizeServerMessage(serverMessage ?? string.Empty),
-        RealtimeTranslationErrorKind.RecoverableTransportFailure => UserCopy.Current.Text("error.transportDisconnected"),
-        RealtimeTranslationErrorKind.SessionUpdateTimeout => UserCopy.Current.Text("error.sessionUpdateTimeout"),
-        RealtimeTranslationErrorKind.CloseTimeout => UserCopy.Current.Text("error.closeTimeout"),
-        RealtimeTranslationErrorKind.Cancelled => UserCopy.Current.Text("error.cancelled"),
-        _ => UserCopy.Current.Text("error.genericServer"),
-    };
+        ArgumentNullException.ThrowIfNull(copy);
+        return kind switch
+        {
+            RealtimeTranslationErrorKind.MissingApiKey => copy.Text("error.missingApiKey"),
+            RealtimeTranslationErrorKind.NotConnected => copy.Text("error.notConnected"),
+            RealtimeTranslationErrorKind.InvalidMessage => copy.Text("error.invalidMessage"),
+            RealtimeTranslationErrorKind.AuthenticationFailed => copy.Text("error.authenticationFailed"),
+            RealtimeTranslationErrorKind.FatalServerError => SanitizeServerMessage(serverMessage ?? string.Empty),
+            RealtimeTranslationErrorKind.RecoverableTransportFailure => copy.Text("error.transportDisconnected"),
+            RealtimeTranslationErrorKind.SessionUpdateTimeout => copy.Text("error.sessionUpdateTimeout"),
+            RealtimeTranslationErrorKind.CloseTimeout => copy.Text("error.closeTimeout"),
+            RealtimeTranslationErrorKind.Cancelled => copy.Text("error.cancelled"),
+            _ => copy.Text("error.genericServer"),
+        };
+    }
 
     private static readonly string[] KnownAuthenticationFailureCodes =
     [

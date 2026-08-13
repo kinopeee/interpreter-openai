@@ -105,9 +105,9 @@ final class PrivacyFixtureTests: XCTestCase {
         }
     }
 
-    // Given: 空のサーバー文言、または英語カタログに含まれる "API key"
-    // When: Sanitize する / authenticationFailed を組み立てる
-    // Then: 空は generic になり、カタログ文言は再サニタイズしない
+    // Given: 空のサーバー文言、または英語カタログの "API key" を含む認証・欠落キー文言
+    // When: Sanitize する / 英語 copy で例外を組み立てる
+    // Then: 空は generic。例外経路はカタログ文言のまま（再サニタイズしない）
     func testCatalogErrorCopyIsNotReSanitized() throws {
         XCTAssertEqual(
             RealtimeTranslationError.sanitizedServerMessage(""),
@@ -120,16 +120,20 @@ final class PrivacyFixtureTests: XCTestCase {
 
         let json = try SharedFixtures.uiCatalogJSON()
         let en = try UserCopy.parse(json: json, locale: .en)
-        let authenticationFailed = en.text("error.authenticationFailed")
-        XCTAssertTrue(authenticationFailed.localizedCaseInsensitiveContains("API key"))
-        XCTAssertEqual(
-            RealtimeTranslationError.sanitizedServerMessage(authenticationFailed),
-            RealtimeTranslationError.genericServerMessage
-        )
-        XCTAssertEqual(
-            RealtimeTranslationError.authenticationFailed.errorDescription,
-            UserCopyStore.current.text("error.authenticationFailed")
-        )
+        let cases: [(RealtimeTranslationError, String)] = [
+            (.authenticationFailed, "error.authenticationFailed"),
+            (.missingAPIKey, "error.missingApiKey"),
+        ]
+        for (error, key) in cases {
+            let catalogText = en.text(key)
+            XCTAssertTrue(catalogText.localizedCaseInsensitiveContains("API key"), key)
+            XCTAssertEqual(
+                RealtimeTranslationError.sanitizedServerMessage(catalogText),
+                RealtimeTranslationError.genericServerMessage,
+                key
+            )
+            XCTAssertEqual(error.description(using: en), catalogText, key)
+        }
     }
 
     private func makeError(named name: String) -> RealtimeTranslationError {

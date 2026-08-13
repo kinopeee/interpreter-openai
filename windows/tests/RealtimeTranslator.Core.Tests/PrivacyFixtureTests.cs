@@ -129,9 +129,9 @@ public sealed class PrivacyFixtureTests
         Assert.DoesNotContain("sk-", en.Text(key), StringComparison.OrdinalIgnoreCase);
     }
 
-    // Given: 空のサーバー文言、または英語カタログに含まれる "API key"
-    // When: Sanitize する / AuthenticationFailed を組み立てる
-    // Then: 空は generic になり、カタログ文言は再サニタイズしない
+    // Given: 空のサーバー文言、または英語カタログの "API key" を含む認証・欠落キー文言
+    // When: Sanitize する / 英語 copy で例外を組み立てる
+    // Then: 空は generic。例外経路はカタログ文言のまま（再サニタイズしない）
     [Fact]
     public void CatalogErrorCopyIsNotReSanitized()
     {
@@ -143,14 +143,22 @@ public sealed class PrivacyFixtureTests
             new RealtimeTranslationException(RealtimeTranslationErrorKind.FatalServerError, string.Empty).Message);
 
         var en = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.En);
-        var authenticationFailed = en.Text("error.authenticationFailed");
-        Assert.Contains("API key", authenticationFailed, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(
-            RealtimeTranslationException.GenericServerMessage,
-            RealtimeTranslationException.SanitizeServerMessage(authenticationFailed));
-        Assert.Equal(
-            UserCopy.Current.Text("error.authenticationFailed"),
-            new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed).Message);
+        (RealtimeTranslationErrorKind Kind, string Key)[] cases =
+        [
+            (RealtimeTranslationErrorKind.AuthenticationFailed, "error.authenticationFailed"),
+            (RealtimeTranslationErrorKind.MissingApiKey, "error.missingApiKey"),
+        ];
+        foreach (var (kind, key) in cases)
+        {
+            var catalogText = en.Text(key);
+            Assert.Contains("API key", catalogText, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(
+                RealtimeTranslationException.GenericServerMessage,
+                RealtimeTranslationException.SanitizeServerMessage(catalogText));
+            Assert.Equal(
+                catalogText,
+                new RealtimeTranslationException(kind, serverMessage: null, en).Message);
+        }
     }
 
     private static RealtimeTranslationErrorKind ParseKind(string value) => value switch
