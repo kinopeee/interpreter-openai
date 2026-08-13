@@ -254,6 +254,11 @@ public partial class App : Application, IDisposable
 
     private void ExportSubtitles()
     {
+        if (!_transcriptStore.HasEntries)
+        {
+            return;
+        }
+
         using var dialog = new SaveFileDialog
         {
             Filter = UiCopy.Text("dialog.exportFilter"),

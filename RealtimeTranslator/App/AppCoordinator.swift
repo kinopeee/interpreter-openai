@@ -130,6 +130,8 @@ final class AppCoordinator: NSObject {
     }
 
     func exportSubtitles() {
+        guard hasRecordedSubtitles else { return }
+
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.plainText]
         panel.canCreateDirectories = true

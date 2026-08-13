@@ -107,12 +107,11 @@ final class SubtitleTranscriptStore: @unchecked Sendable {
             return
         }
         let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: fileURL.path), fileByteCountLocked() > 0 else {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
         if fileManager.fileExists(atPath: destination.path) {
             try fileManager.removeItem(at: destination)
-        }
-        if !fileManager.fileExists(atPath: fileURL.path) {
-            try Data().write(to: destination, options: .atomic)
-            return
         }
         try fileManager.copyItem(at: fileURL, to: destination)
     }

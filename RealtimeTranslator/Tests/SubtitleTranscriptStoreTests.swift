@@ -169,6 +169,51 @@ final class SubtitleTranscriptStoreTests: XCTestCase {
         )
     }
 
+    // Given: セッションファイルがまだ無い
+    // When: exportCopy する
+    // Then: fileReadNoSuchFile を投げ、書き出し先は作らない
+    func testExportCopyWithMissingSourceDoesNotCreateEmptyFile() {
+        let store = makeStore()
+        let destination = directory.appendingPathComponent("export.txt")
+
+        XCTAssertThrowsError(try store.exportCopy(to: destination)) { error in
+            XCTAssertEqual((error as? CocoaError)?.code, .fileReadNoSuchFile)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+    }
+
+    // Given: クリア直後の空セッションファイル
+    // When: exportCopy する
+    // Then: fileReadNoSuchFile を投げ、書き出し先は作らない
+    func testExportCopyWithClearedSourceDoesNotCopyEmptyFile() throws {
+        let store = makeStore()
+        XCTAssertEqual(
+            store.appendEntry(sourceText: "こんにちは", translatedText: "Hello"),
+            .appended
+        )
+        try store.clear()
+        let destination = directory.appendingPathComponent("export.txt")
+
+        XCTAssertThrowsError(try store.exportCopy(to: destination)) { error in
+            XCTAssertEqual((error as? CocoaError)?.code, .fileReadNoSuchFile)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+    }
+
+    // Given: 記録が空で、書き出し先に既存ファイルがある
+    // When: exportCopy する
+    // Then: 既存ファイルを空で上書きしない
+    func testExportCopyWithMissingSourceLeavesExistingDestinationUnchanged() throws {
+        let store = makeStore()
+        let destination = directory.appendingPathComponent("export.txt")
+        try Data("keep".utf8).write(to: destination)
+
+        XCTAssertThrowsError(try store.exportCopy(to: destination)) { error in
+            XCTAssertEqual((error as? CocoaError)?.code, .fileReadNoSuchFile)
+        }
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "keep")
+    }
+
     // Given: 追記済みのセッションファイル
     // When: 同一パスへ exportCopy する
     // Then: 内容を消さず no-op になる
