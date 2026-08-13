@@ -27,7 +27,7 @@ namespace RealtimeTranslator.App;
 /// <summary>合成ルート。tray 常駐なのでメインウィンドウは持たず、明示終了でのみプロセスを閉じる。</summary>
 public partial class App : Application, IDisposable
 {
-    private readonly SubtitleSnapshotBuilder _snapshots = new();
+    private SubtitleSnapshotBuilder _snapshots = new();
     private readonly SubtitleOverlayViewModel _overlayViewModel = new();
     private readonly AppSettingsStore _settingsStore = new();
     private readonly SubtitleTranscriptStore _transcriptStore = new();
@@ -64,6 +64,7 @@ public partial class App : Application, IDisposable
 
         _settings = _settingsStore.Load();
         UiCopy.Install(_settings.UiLanguage);
+        _snapshots = new SubtitleSnapshotBuilder(UiCopy.Format("banner.idle", "hotkey", UiCopy.Hotkey));
 
         _lease = SingleInstanceLease.TryAcquire();
         if (_lease is null)

@@ -226,7 +226,7 @@ actor RealtimeTranslationConnection {
                     guard currentEpoch == epoch else { return }
                     publish(
                         .error(
-                            message: "翻訳サーバーとの接続が切れました",
+                            message: UiCopy.text("error.transportDisconnected"),
                             code: "transport"
                         ),
                         epoch: currentEpoch

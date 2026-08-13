@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.Localization;
 
 namespace RealtimeTranslator.Core.OpenAI;
 
@@ -65,7 +66,7 @@ public static class RealtimeSourceTranscriptionCodec
             _ => throw new ArgumentOutOfRangeException(nameof(pair), pair, null),
         })];
 
-    private const string DefaultErrorMessage = "原文字幕セッションでエラーが発生しました";
+    private static string DefaultErrorMessage => UserCopy.Current.Text("error.sourceSessionGeneric");
 
     public static byte[] Encode(RealtimeSourceTranscriptionClientEvent clientEvent)
     {

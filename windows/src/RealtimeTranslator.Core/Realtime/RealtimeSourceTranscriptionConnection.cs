@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
 
 namespace RealtimeTranslator.Core.Realtime;
@@ -382,7 +383,9 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
                 writer.TryWrite(new RealtimeTranslationStreamEvent(
                     RealtimeTranslationLane.Source,
-                    new RealtimeTranslationServerEvent.ServerError("原文字幕サーバーとの接続が切れました", "transport"),
+                    new RealtimeTranslationServerEvent.ServerError(
+                        UserCopy.Current.Text("error.sourceDisconnected"),
+                        "transport"),
                     currentEpoch));
                 writer.TryComplete();
                 return;

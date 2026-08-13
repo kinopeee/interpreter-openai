@@ -133,28 +133,28 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
     case closeTimeout
     case cancelled
 
-    static let genericServerMessage = "翻訳サーバーでエラーが発生しました"
+    static var genericServerMessage: String { UiCopy.text("error.genericServer") }
 
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
-            return "APIキーが設定されていません"
+            return UiCopy.text("error.missingApiKey")
         case .notConnected:
-            return "翻訳セッションに接続していません"
+            return UiCopy.text("error.notConnected")
         case .invalidMessage:
-            return "翻訳サーバーからの応答を解釈できません"
+            return UiCopy.text("error.invalidMessage")
         case .authenticationFailed:
-            return "OpenAI APIキーが無効です"
+            return UiCopy.text("error.authenticationFailed")
         case .fatalServerError(let message):
             return Self.sanitizedServerMessage(message)
         case .recoverableTransportFailure:
-            return "翻訳サーバーとの接続が切れました"
+            return UiCopy.text("error.transportDisconnected")
         case .sessionUpdateTimeout:
-            return "翻訳セッションの準備がタイムアウトしました"
+            return UiCopy.text("error.sessionUpdateTimeout")
         case .closeTimeout:
-            return "翻訳セッションの終了待ちがタイムアウトしました"
+            return UiCopy.text("error.closeTimeout")
         case .cancelled:
-            return "翻訳セッションがキャンセルされました"
+            return UiCopy.text("error.cancelled")
         }
     }
 

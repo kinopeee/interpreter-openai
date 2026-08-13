@@ -80,7 +80,7 @@ final class AppCoordinator: NSObject {
     private var idleSnapshot: SubtitleSnapshot {
         SubtitleSnapshot(
             current: .empty,
-            statusBanner: "待機中 — Control + Option + Space で録音開始"
+            statusBanner: UiCopy.text("banner.idle", ["hotkey": UiCopy.macHotkey])
         )
     }
 

@@ -144,6 +144,9 @@ public sealed class UserCopy
         return key;
     }
 
+    public string Format(string key, string name, string value) =>
+        Format(key, new Dictionary<string, string>(StringComparer.Ordinal) { [name] = value });
+
     public string Format(string key, IReadOnlyDictionary<string, string> substitutions)
     {
         ArgumentNullException.ThrowIfNull(substitutions);

@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json.Nodes;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.Subtitles;
 using Xunit;
 
@@ -28,6 +29,23 @@ public sealed class SubtitleTranscriptFormatterTests
         Assert.Equal(
             SharedFixtures.Text(messages["writeFailureBanner"]),
             SubtitleTranscriptLimits.WriteFailureBanner);
+    }
+
+    // Given: ui.json の字幕記録バナー ja
+    // When: transcript fixture の messages と照合する
+    // Then: fixtures/v1 を変えずにカタログ ja が一致する
+    [Fact]
+    public void CatalogJapaneseTranscriptBannersMatchFixture()
+    {
+        var ja = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.Ja);
+        var messages = (JsonObject)SharedFixtures.Load("transcript")["messages"]!;
+
+        Assert.Equal(
+            SharedFixtures.Text(messages["sizeLimitBanner"]),
+            ja.Text("transcript.sizeLimitBanner"));
+        Assert.Equal(
+            SharedFixtures.Text(messages["writeFailureBanner"]),
+            ja.Text("transcript.writeFailureBanner"));
     }
 
     // Given: fixture の entry / sessionStart ケース

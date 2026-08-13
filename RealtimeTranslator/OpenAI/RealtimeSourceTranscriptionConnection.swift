@@ -186,7 +186,7 @@ actor RealtimeSourceTranscriptionConnection {
                         RealtimeTranslationStreamEvent(
                             lane: .source,
                             event: .error(
-                                message: "原文字幕サーバーとの接続が切れました",
+                                message: UiCopy.text("error.sourceDisconnected"),
                                 code: "transport"
                             ),
                             epoch: currentEpoch
@@ -267,7 +267,7 @@ actor RealtimeSourceTranscriptionConnection {
 
     private func classifyError(_ object: [String: Any]) -> RealtimeTranslationError {
         let body = object["error"] as? [String: Any]
-        let message = body?["message"] as? String ?? "原文字幕セッションでエラーが発生しました"
+        let message = body?["message"] as? String ?? UiCopy.text("error.sourceSessionGeneric")
         let code = body?["code"] as? String
         if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
             return .authenticationFailed

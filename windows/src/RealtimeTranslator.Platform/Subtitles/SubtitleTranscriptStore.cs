@@ -19,8 +19,8 @@ public enum SubtitleTranscriptAppendResult
 public sealed class SubtitleTranscriptStore
 {
     public const int MaxFileBytes = SubtitleTranscriptLimits.MaxFileBytes;
-    public const string SizeLimitBanner = SubtitleTranscriptLimits.SizeLimitBanner;
-    public const string WriteFailureBanner = SubtitleTranscriptLimits.WriteFailureBanner;
+    public static string SizeLimitBanner => SubtitleTranscriptLimits.SizeLimitBanner;
+    public static string WriteFailureBanner => SubtitleTranscriptLimits.WriteFailureBanner;
 
     private readonly string _filePath;
     private readonly Func<DateTimeOffset> _now;

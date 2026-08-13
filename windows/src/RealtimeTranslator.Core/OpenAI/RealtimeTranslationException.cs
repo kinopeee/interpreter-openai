@@ -1,5 +1,6 @@
 using System;
 using System.Text.RegularExpressions;
+using RealtimeTranslator.Core.Localization;
 
 namespace RealtimeTranslator.Core.OpenAI;
 
@@ -19,7 +20,7 @@ public enum RealtimeTranslationErrorKind
 /// <summary>Realtime セッションの失敗。表示文言は必ず正規化済みのものを使う。</summary>
 public sealed partial class RealtimeTranslationException : Exception
 {
-    public const string GenericServerMessage = "翻訳サーバーでエラーが発生しました";
+    public static string GenericServerMessage => UserCopy.Current.Text("error.genericServer");
 
     public RealtimeTranslationException(RealtimeTranslationErrorKind kind, string? serverMessage = null)
         : base(DescribeFor(kind, serverMessage))
@@ -86,16 +87,16 @@ public sealed partial class RealtimeTranslationException : Exception
 
     private static string DescribeFor(RealtimeTranslationErrorKind kind, string? serverMessage) => kind switch
     {
-        RealtimeTranslationErrorKind.MissingApiKey => "APIキーが設定されていません",
-        RealtimeTranslationErrorKind.NotConnected => "翻訳セッションに接続していません",
-        RealtimeTranslationErrorKind.InvalidMessage => "翻訳サーバーからの応答を解釈できません",
-        RealtimeTranslationErrorKind.AuthenticationFailed => "OpenAI APIキーが無効です",
+        RealtimeTranslationErrorKind.MissingApiKey => UserCopy.Current.Text("error.missingApiKey"),
+        RealtimeTranslationErrorKind.NotConnected => UserCopy.Current.Text("error.notConnected"),
+        RealtimeTranslationErrorKind.InvalidMessage => UserCopy.Current.Text("error.invalidMessage"),
+        RealtimeTranslationErrorKind.AuthenticationFailed => UserCopy.Current.Text("error.authenticationFailed"),
         RealtimeTranslationErrorKind.FatalServerError => SanitizeServerMessage(serverMessage ?? string.Empty),
-        RealtimeTranslationErrorKind.RecoverableTransportFailure => "翻訳サーバーとの接続が切れました",
-        RealtimeTranslationErrorKind.SessionUpdateTimeout => "翻訳セッションの準備がタイムアウトしました",
-        RealtimeTranslationErrorKind.CloseTimeout => "翻訳セッションの終了待ちがタイムアウトしました",
-        RealtimeTranslationErrorKind.Cancelled => "翻訳セッションがキャンセルされました",
-        _ => GenericServerMessage,
+        RealtimeTranslationErrorKind.RecoverableTransportFailure => UserCopy.Current.Text("error.transportDisconnected"),
+        RealtimeTranslationErrorKind.SessionUpdateTimeout => UserCopy.Current.Text("error.sessionUpdateTimeout"),
+        RealtimeTranslationErrorKind.CloseTimeout => UserCopy.Current.Text("error.closeTimeout"),
+        RealtimeTranslationErrorKind.Cancelled => UserCopy.Current.Text("error.cancelled"),
+        _ => UserCopy.Current.Text("error.genericServer"),
     };
 
     private static readonly string[] KnownAuthenticationFailureCodes =

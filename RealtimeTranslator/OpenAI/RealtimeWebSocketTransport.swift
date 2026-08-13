@@ -17,9 +17,9 @@ enum URLSessionWebSocketTransportError: Error, LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .notConnected:
-            return "WebSocketに接続していません"
+            return UiCopy.text("error.websocketNotConnected")
         case .unsupportedMessage:
-            return "未対応のWebSocketメッセージを受信しました"
+            return UiCopy.text("error.websocketUnsupported")
         }
     }
 }

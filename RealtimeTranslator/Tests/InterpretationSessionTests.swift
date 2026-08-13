@@ -347,7 +347,7 @@ final class InterpretationSessionTests: XCTestCase {
         // Then: マイク理由をバナーに載せたうえで再接続し listening へ戻る
         await waitUntil(timeout: 3) {
             session.state == .reconnecting
-                && delegate.latestSnapshot?.statusBanner?.contains("マイク") == true
+                && delegate.latestSnapshot?.statusBanner?.contains(UiCopy.text("error.micDeviceChanged")) == true
         }
         await waitUntil(timeout: 3) {
             session.state == .listening && dual.startCallCount > startCountAtListening

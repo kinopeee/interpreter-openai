@@ -22,6 +22,17 @@ final class SubtitleTranscriptFormatterTests: XCTestCase {
             SharedFixtures.text(messages["writeFailureBanner"]),
             SubtitleTranscriptLimits.writeFailureBanner
         )
+
+        let json = try SharedFixtures.uiCatalogJSON()
+        let ja = try UserCopy.parse(json: json, locale: .ja)
+        XCTAssertEqual(
+            SharedFixtures.text(messages["sizeLimitBanner"]),
+            ja.text("transcript.sizeLimitBanner")
+        )
+        XCTAssertEqual(
+            SharedFixtures.text(messages["writeFailureBanner"]),
+            ja.text("transcript.writeFailureBanner")
+        )
     }
 
     // Given: fixture の entry / sessionStart ケース
