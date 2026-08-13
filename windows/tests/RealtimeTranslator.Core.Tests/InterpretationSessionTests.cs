@@ -729,6 +729,83 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: en-es でスペイン語→en の完全ペアが揃ったあと、逆側 evidence が連続 2 回来る
+    // When: hysteresis を満たして英語へ反転する
+    // Then: 1 回目では確定せず、2 回目で前セグメントを確定し Spanish target へ切り替える
+    [Fact]
+    public async Task EnEsLanguageFlipFinalizesAndReroutes()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, languagePairProvider: () => LanguagePair.EnEs);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("el la los las es está que y");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 1);
+        Assert.Equal(RealtimeTranslationOutputLanguage.English, client.SelectedTargets[0]);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Hello from Spanish");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.TranslatedText.Length > 0);
+            }
+        });
+        var resetsAfterSpanish = client.ResetAudioRoutingCount;
+
+        // When: 逆側 1 回だけでは切替も確定もしない（同一セグメントへ ingest される）
+        client.PublishSourceDelta(" the and is are of to it that");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText.Contains("the and is are", StringComparison.Ordinal)
+                    && !update.ShouldFinalize);
+            }
+        });
+        Assert.Equal([RealtimeTranslationOutputLanguage.English], client.SelectedTargets);
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
+
+        // When: 連続 2 回目で hysteresis を満たす
+        client.PublishSourceDelta(" this with for you they the and");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 2);
+
+        // Then: 英語話者の target=es へ切り替わり、前セグメントが確定する
+        Assert.Equal(
+            [RealtimeTranslationOutputLanguage.English, RealtimeTranslationOutputLanguage.Spanish],
+            client.SelectedTargets);
+        Assert.Equal([SpokenLanguage.Spanish, SpokenLanguage.English], client.SpokenLanguages);
+        Assert.True(client.ResetAudioRoutingCount > resetsAfterSpanish);
+        RealtimeSubtitleUpdate finalized = default;
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                finalized = updates.Find(update => update.ShouldFinalize);
+                return finalized.ShouldFinalize;
+            }
+        });
+        Assert.Equal(
+            "el la los las es está que y the and is are of to it that",
+            finalized.SourceText);
+        Assert.DoesNotContain("this with for you they", finalized.SourceText, StringComparison.Ordinal);
+        Assert.Equal("Hello from Spanish", finalized.TranslatedText);
+        await session.StopAsync();
+    }
+
     // Given: 日本語 routing が確定したあとのセグメント
     // When: 末尾ウィンドウが AmbiguousLatin（ラテン 1 語）だけになる
     // Then: segment 境界として反転せず、英語 lane へ切り替えない

@@ -226,6 +226,56 @@
           "en": ["f1", "f2", "f3"]
         }
       }
+    },
+    {
+      "name": "ja-es three consecutive spanish translation send failures emit one transport error and halt translation",
+      "pair": "ja-es",
+      "steps": [
+        { "kind": "selectTranslationTarget", "target": "es" },
+        { "kind": "appendFrame", "frame": "ok1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail2" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail3" },
+        { "kind": "appendFrame", "frame": "afterHalt" }
+      ],
+      "expected": {
+        "sourceFrames": ["ok1", "fail1", "fail2", "fail3", "afterHalt"],
+        "frames": {
+          "es": ["ok1"],
+          "ja": []
+        },
+        "transportErrorCount": 1,
+        "translationPumpHalted": true,
+        "signalsSessionReconnect": true
+      }
+    },
+    {
+      "name": "en-es three consecutive spanish translation send failures emit one transport error and halt translation",
+      "pair": "en-es",
+      "steps": [
+        { "kind": "selectTranslationTarget", "target": "es" },
+        { "kind": "appendFrame", "frame": "ok1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail2" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail3" },
+        { "kind": "appendFrame", "frame": "afterHalt" }
+      ],
+      "expected": {
+        "sourceFrames": ["ok1", "fail1", "fail2", "fail3", "afterHalt"],
+        "frames": {
+          "es": ["ok1"],
+          "en": []
+        },
+        "transportErrorCount": 1,
+        "translationPumpHalted": true,
+        "signalsSessionReconnect": true
+      }
     }
   ],
   "targetSelectionDescription": "target は話者言語ではなく出力言語。話者言語は pair.counterpart(target) で求める。",

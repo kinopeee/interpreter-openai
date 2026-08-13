@@ -317,10 +317,12 @@ public sealed class DualRealtimeTranslationClientDrainTests
     }
 
     // Given: スペイン語接続を渡していない dual
-    // When: ja-es で Start する
+    // When: スペイン語を含む pair で Start する
     // Then: KeyNotFoundException ではなく、必要な接続が無い旨の ArgumentException になる
-    [Fact]
-    public async Task StartWithSpanishPairWithoutSpanishConnectionFailsClearly()
+    [Theory]
+    [InlineData(LanguagePair.JaEs)]
+    [InlineData(LanguagePair.EnEs)]
+    public async Task StartWithSpanishPairWithoutSpanishConnectionFailsClearly(LanguagePair pair)
     {
         var source = new FakeRealtimeServerTransport();
         var english = new FakeRealtimeServerTransport();
@@ -331,10 +333,34 @@ public sealed class DualRealtimeTranslationClientDrainTests
             new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"));
 
         var error = await Assert.ThrowsAsync<ArgumentException>(() =>
-            dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs));
+            dual.StartAsync("sk-test", RealtimeSessionTuning.Default, pair));
 
         Assert.Equal("pair", error.ParamName);
         Assert.Contains("es", error.Message, StringComparison.Ordinal);
+    }
+
+    // Given: ja-en で開始した dual（Spanish 接続なし）
+    // When: Spanish target を選ぶ
+    // Then: KeyNotFoundException ではなく、未構成接続である旨の ArgumentException になる
+    [Fact]
+    public async Task SelectSpanishTargetWithoutSpanishConnectionFailsClearly()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(source, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"));
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn);
+
+        var error = await Assert.ThrowsAsync<ArgumentException>(() =>
+            dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Spanish));
+
+        Assert.Equal("target", error.ParamName);
+        Assert.Contains("es", error.Message, StringComparison.Ordinal);
+        await dual.ForceCloseAsync();
     }
 
     // Given: ja-es で Spanish target に pending frame がある dual（未使用 English lane は未接続）

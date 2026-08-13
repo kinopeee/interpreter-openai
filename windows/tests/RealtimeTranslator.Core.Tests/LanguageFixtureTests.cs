@@ -68,6 +68,21 @@ public sealed class LanguageFixtureTests
         Assert.Equal(SpokenLanguageEvidence.AmbiguousLatin, evidence);
     }
 
+    // Given: title-case の英語 exclusive words（tr-TR の ToLower だと I→ı で "is" が照合不能）
+    // When: en-es 証拠を求める
+    // Then: ToLowerInvariant（I→i）で exclusive word が照合でき english になる
+    [Fact]
+    public void EnEsExclusiveWordMatchIsCultureInvariant()
+    {
+        Assert.Equal("i", "I".ToLowerInvariant());
+        Assert.Equal("is", "Is".ToLowerInvariant());
+        Assert.Equal("this", "This".ToLowerInvariant());
+
+        Assert.Equal(
+            SpokenLanguageEvidence.English,
+            SpokenLanguageDetector.Evidence("Is This With It", LanguagePair.EnEs));
+    }
+
     // Given: アクセント付きスペイン語の複数語
     // When: ja-es で証拠を求める
     // Then: ASCII のみの語分割に落ちず spanish になる
