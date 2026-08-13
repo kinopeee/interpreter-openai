@@ -118,7 +118,7 @@ struct SubtitleView: View {
             .accessibilityHidden(snapshot.current.isEmpty)
             .overlay(alignment: .leading) {
                 if showListeningPlaceholder {
-                    Text("録音中…")
+                    Text(UiCopy.text("overlay.recording"))
                         .font(.system(size: max(14, fontSize * 0.45), weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.82))
                         .shadow(color: .black, radius: 3, y: 1)
@@ -254,7 +254,7 @@ struct RecordingControlView: View {
     }
 
     private var buttonTitle: String {
-        isRecording ? "録音終了" : "録音開始"
+        isRecording ? UiCopy.text("overlay.stopRecording") : UiCopy.text("overlay.startRecording")
     }
 
     private var buttonIcon: String {

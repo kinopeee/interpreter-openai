@@ -59,6 +59,7 @@ targets:
         CFBundleVersion: "1"
         LSMinimumSystemVersion: "26.0"
         LSUIElement: true
+        CFBundleLocalizations: [en, ja]
         NSMicrophoneUsageDescription: リアルタイム翻訳字幕を生成するため、マイク音声をOpenAI APIへ送信します。
         NSPrincipalClass: NSApplication
   RealtimeTranslatorTests:

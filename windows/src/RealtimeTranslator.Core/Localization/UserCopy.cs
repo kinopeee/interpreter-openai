@@ -119,6 +119,11 @@ public sealed class UserCopy
         Volatile.Write(ref _current, copy);
     }
 
+    public static void InstallFromPreference(UiLanguagePreference preference, string? osTwoLetterLanguage)
+    {
+        Install(LoadEmbedded(UiLanguage.Resolve(preference, osTwoLetterLanguage)));
+    }
+
     public string this[string key] => Text(key);
 
     public string Text(string key)

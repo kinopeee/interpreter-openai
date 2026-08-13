@@ -28,9 +28,9 @@ enum RealtimeTranslationNoiseReduction: String, Sendable, Equatable, CaseIterabl
     var displayName: String {
         switch self {
         case .nearField:
-            return "近距離マイク"
+            return UiCopy.text("settings.noiseReduction.nearField")
         case .farField:
-            return "会議・遠距離"
+            return UiCopy.text("settings.noiseReduction.farField")
         }
     }
 }
@@ -46,15 +46,15 @@ enum RealtimeTranscriptionDelay: String, Sendable, Equatable, CaseIterable {
     var displayName: String {
         switch self {
         case .minimal:
-            return "最速（精度低め）"
+            return UiCopy.text("settings.transcriptionDelay.minimal")
         case .low:
-            return "低遅延（既定）"
+            return UiCopy.text("settings.transcriptionDelay.low")
         case .medium:
-            return "バランス"
+            return UiCopy.text("settings.transcriptionDelay.medium")
         case .high:
-            return "高精度"
+            return UiCopy.text("settings.transcriptionDelay.high")
         case .xhigh:
-            return "最高精度"
+            return UiCopy.text("settings.transcriptionDelay.xhigh")
         }
     }
 }

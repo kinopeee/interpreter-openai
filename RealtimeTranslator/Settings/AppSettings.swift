@@ -27,6 +27,7 @@ final class AppSettings {
         static let transcriptionDelayMode = "transcriptionDelayMode"
         static let recordSubtitles = "recordSubtitles"
         static let languagePair = "languagePair"
+        static let uiLanguage = "uiLanguage"
     }
 
     /// 現在有効な同意バージョン。文言変更時にインクリメントする。
@@ -93,6 +94,11 @@ final class AppSettings {
             UserDefaults.standard.set(languagePair.rawValue, forKey: Keys.languagePair)
             refreshDefaultTranscriptionHintsIfNeeded(from: oldValue, to: languagePair)
         }
+    }
+
+    /// アプリ枠の表示言語。翻訳ペアとは独立。反映はプロセス再起動後。
+    var uiLanguage: UiLanguagePreference {
+        didSet { UserDefaults.standard.set(uiLanguage.rawValue, forKey: Keys.uiLanguage) }
     }
 
     var hasAcceptedCurrentOpenAIConsent: Bool {
@@ -166,6 +172,7 @@ final class AppSettings {
         }
 
         recordSubtitles = defaults.bool(forKey: Keys.recordSubtitles)
+        uiLanguage = UiLanguagePreference.parse(defaults.string(forKey: Keys.uiLanguage))
         // 他プロパティ初期化後に代入し、init 中の self 参照を避ける。
         languagePair = pair
     }

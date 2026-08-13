@@ -23,6 +23,7 @@ public partial class SubtitleOverlayWindow : Window
 
         _viewModel = viewModel;
         InitializeComponent();
+        Title = UiCopy.Text("overlay.windowTitle");
         DataContext = viewModel;
     }
 

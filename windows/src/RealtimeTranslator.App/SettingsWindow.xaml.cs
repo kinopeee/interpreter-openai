@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Windows;
@@ -6,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
 using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Settings;
 using RealtimeTranslator.Platform.Security;
@@ -36,31 +38,60 @@ public partial class SettingsWindow : Window
         _apiKeyStore = apiKeyStore;
 
         InitializeComponent();
+        ApplyCopy();
 
         _tuningDebounce = new DispatcherTimer { Interval = TuningDebounceInterval };
         _tuningDebounce.Tick += OnTuningDebounceElapsed;
 
         NoiseReductionBox.ItemsSource = new[]
         {
-            new ComboOption<RealtimeTranslationNoiseReduction>(RealtimeTranslationNoiseReduction.NearField, "近距離マイク"),
-            new ComboOption<RealtimeTranslationNoiseReduction>(RealtimeTranslationNoiseReduction.FarField, "遠距離マイク"),
+            new ComboOption<RealtimeTranslationNoiseReduction>(
+                RealtimeTranslationNoiseReduction.NearField,
+                UiCopy.NoiseName(RealtimeTranslationNoiseReduction.NearField)),
+            new ComboOption<RealtimeTranslationNoiseReduction>(
+                RealtimeTranslationNoiseReduction.FarField,
+                UiCopy.NoiseName(RealtimeTranslationNoiseReduction.FarField)),
         };
         LanguagePairBox.ItemsSource = new[]
         {
-            new ComboOption<LanguagePair>(LanguagePair.JaEn, "日本語 ↔ 英語"),
-            new ComboOption<LanguagePair>(LanguagePair.JaEs, "日本語 ↔ スペイン語"),
-            new ComboOption<LanguagePair>(LanguagePair.EnEs, "英語 ↔ スペイン語"),
+            new ComboOption<LanguagePair>(LanguagePair.JaEn, UiCopy.PairName(LanguagePair.JaEn)),
+            new ComboOption<LanguagePair>(LanguagePair.JaEs, UiCopy.PairName(LanguagePair.JaEs)),
+            new ComboOption<LanguagePair>(LanguagePair.EnEs, UiCopy.PairName(LanguagePair.EnEs)),
         };
         TranscriptionDelayBox.ItemsSource = new[]
         {
-            new ComboOption<RealtimeTranscriptionDelay>(RealtimeTranscriptionDelay.Minimal, "最小"),
-            new ComboOption<RealtimeTranscriptionDelay>(RealtimeTranscriptionDelay.Low, "低"),
-            new ComboOption<RealtimeTranscriptionDelay>(RealtimeTranscriptionDelay.Medium, "中"),
-            new ComboOption<RealtimeTranscriptionDelay>(RealtimeTranscriptionDelay.High, "高"),
-            new ComboOption<RealtimeTranscriptionDelay>(RealtimeTranscriptionDelay.XHigh, "最高"),
+            new ComboOption<RealtimeTranscriptionDelay>(
+                RealtimeTranscriptionDelay.Minimal,
+                UiCopy.DelayName(RealtimeTranscriptionDelay.Minimal)),
+            new ComboOption<RealtimeTranscriptionDelay>(
+                RealtimeTranscriptionDelay.Low,
+                UiCopy.DelayName(RealtimeTranscriptionDelay.Low)),
+            new ComboOption<RealtimeTranscriptionDelay>(
+                RealtimeTranscriptionDelay.Medium,
+                UiCopy.DelayName(RealtimeTranscriptionDelay.Medium)),
+            new ComboOption<RealtimeTranscriptionDelay>(
+                RealtimeTranscriptionDelay.High,
+                UiCopy.DelayName(RealtimeTranscriptionDelay.High)),
+            new ComboOption<RealtimeTranscriptionDelay>(
+                RealtimeTranscriptionDelay.XHigh,
+                UiCopy.DelayName(RealtimeTranscriptionDelay.XHigh)),
+        };
+        UiLanguageBox.ItemsSource = new[]
+        {
+            new ComboOption<UiLanguagePreference>(
+                UiLanguagePreference.System,
+                UiCopy.Text("settings.uiLanguage.system")),
+            new ComboOption<UiLanguagePreference>(
+                UiLanguagePreference.Ja,
+                UiCopy.Text("settings.uiLanguage.ja")),
+            new ComboOption<UiLanguagePreference>(
+                UiLanguagePreference.En,
+                UiCopy.Text("settings.uiLanguage.en")),
         };
         PresetBox.ItemsSource = RealtimeSessionTuning.Preset.All
-            .Select(preset => new ComboOption<RealtimeSessionTuning.Preset>(preset, preset.DisplayName))
+            .Select(preset => new ComboOption<RealtimeSessionTuning.Preset>(
+                preset,
+                UiCopy.PresetName(preset.Id)))
             .ToArray();
         PresetBox.SelectedIndex = 0;
 
@@ -98,6 +129,7 @@ public partial class SettingsWindow : Window
         SelectOption(NoiseReductionBox, settings.NoiseReduction);
         SelectOption(LanguagePairBox, settings.LanguagePair);
         SelectOption(TranscriptionDelayBox, settings.TranscriptionDelay);
+        SelectOption(UiLanguageBox, settings.UiLanguage);
         PromptBox.Text = settings.TranscriptionPrompt;
         KeywordsBox.Text = settings.TranscriptionKeywordsText;
         FontSizeSlider.Value = settings.FontSize;
@@ -143,11 +175,11 @@ public partial class SettingsWindow : Window
         {
             _apiKeyStore.Save(ApiKeyBox.Password);
             ApiKeyBox.Clear();
-            ShowApiKeyStatus("API キーを資格情報マネージャーへ保存しました", isError: false);
+            ShowApiKeyStatus(UiCopy.Text("settings.apiKeySaveOk.windows"), isError: false);
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            ShowApiKeyStatus("API キーを保存できませんでした", isError: true);
+            ShowApiKeyStatus(UiCopy.Text("settings.apiKeySaveFailed"), isError: true);
         }
 
         RefreshStoredKeyState();
@@ -159,11 +191,11 @@ public partial class SettingsWindow : Window
         {
             _apiKeyStore.Delete();
             ApiKeyBox.Clear();
-            ShowApiKeyStatus("API キーを削除しました", isError: false);
+            ShowApiKeyStatus(UiCopy.Text("settings.apiKeyDeleteOk"), isError: false);
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            ShowApiKeyStatus("API キーを削除できませんでした", isError: true);
+            ShowApiKeyStatus(UiCopy.Text("settings.apiKeyDeleteFailed"), isError: true);
         }
 
         RefreshStoredKeyState();
@@ -218,6 +250,17 @@ public partial class SettingsWindow : Window
         }
 
         Publish(next);
+    }
+
+    private void OnUiLanguageChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || SelectedEnum<UiLanguagePreference>(UiLanguageBox) is not { } value)
+        {
+            return;
+        }
+
+        // 反映は再起動後。開いているウィンドウは描き直さない。
+        Publish(Settings with { UiLanguage = value });
     }
 
     private static bool IsKnownDefaultPrompt(string prompt) =>
@@ -320,9 +363,11 @@ public partial class SettingsWindow : Window
         ScheduleTuningChange();
     }
 
-    private void UpdateFontSizeText() => FontSizeText.Text = string.Create(
-        CultureInfo.InvariantCulture,
-        $"フォントサイズ: {(int)FontSizeSlider.Value}pt");
+    private void UpdateFontSizeText() =>
+        FontSizeText.Text = UiCopy.Format(
+            "settings.fontSize",
+            "size",
+            ((int)FontSizeSlider.Value).ToString(CultureInfo.InvariantCulture));
 
     private void UpdateHintCounters()
     {
@@ -330,20 +375,28 @@ public partial class SettingsWindow : Window
         var promptLength = RealtimeSessionTuning.CountTextElements(
             RealtimeSessionTuning.SanitizedPrompt(PromptBox.Text));
         var isPromptOverLimit = RealtimeSessionTuning.IsPromptOverCharacterLimit(PromptBox.Text);
-        PromptCounterText.Text = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{promptLength}/{RealtimeSessionTuning.PromptCharacterLimit} 文字")
-            + (isPromptOverLimit ? "（超過分は切り詰められます）" : string.Empty);
+        PromptCounterText.Text = UiCopy.Format(
+            "settings.promptCounter",
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["count"] = promptLength.ToString(CultureInfo.InvariantCulture),
+                ["limit"] = RealtimeSessionTuning.PromptCharacterLimit.ToString(CultureInfo.InvariantCulture),
+            })
+            + (isPromptOverLimit ? UiCopy.Text("settings.promptOverLimit") : string.Empty);
 
         var keywordCount = RealtimeSessionTuning.ParseKeywords(KeywordsBox.Text).Length;
         var isKeywordOverLimit = RealtimeSessionTuning.IsKeywordCountOverLimit(KeywordsBox.Text);
-        KeywordCounterText.Text = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{keywordCount}/{RealtimeSessionTuning.KeywordLimit} 語")
-            + (isKeywordOverLimit ? "（超過分は送信されません）" : string.Empty);
+        KeywordCounterText.Text = UiCopy.Format(
+            "settings.keywordCounter",
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["count"] = keywordCount.ToString(CultureInfo.InvariantCulture),
+                ["limit"] = RealtimeSessionTuning.KeywordLimit.ToString(CultureInfo.InvariantCulture),
+            })
+            + (isKeywordOverLimit ? UiCopy.Text("settings.keywordOverLimit") : string.Empty);
 
         KeywordWarningText.Text = KeywordsBox.Text.IndexOfAny(['<', '>']) >= 0
-            ? "「<」「>」は送信時に自動除去されます。"
+            ? UiCopy.Text("settings.keywordForbidden")
             : string.Empty;
     }
 
@@ -359,10 +412,12 @@ public partial class SettingsWindow : Window
         catch (System.ComponentModel.Win32Exception)
         {
             hasKey = false;
-            ShowApiKeyStatus("API キーの保存状態を確認できませんでした", isError: true);
+            ShowApiKeyStatus(UiCopy.Text("settings.apiKeyStatusUnknown"), isError: true);
         }
 
-        StoredKeyStateText.Text = hasKey ? "資格情報マネージャーに保存済み" : "未保存";
+        StoredKeyStateText.Text = hasKey
+            ? UiCopy.Text("settings.apiKeySaved.windows")
+            : UiCopy.Text("settings.apiKeyNotSaved");
         DeleteApiKeyButton.IsEnabled = hasKey;
     }
 
@@ -370,6 +425,44 @@ public partial class SettingsWindow : Window
     {
         ApiKeyStatusText.Text = message;
         ApiKeyStatusText.Foreground = isError ? System.Windows.Media.Brushes.Firebrick : System.Windows.Media.Brushes.Gray;
+    }
+
+    private void ApplyCopy()
+    {
+        Title = UiCopy.Text("settings.windowTitle");
+        GeneralTab.Header = UiCopy.Text("settings.tab.general");
+        SpeechTab.Header = UiCopy.Text("settings.tab.speech");
+        SubtitlesTab.Header = UiCopy.Text("settings.tab.subtitles");
+        OpenAiSectionTitle.Text = UiCopy.Text("settings.section.openai");
+        ModelText.Text = UiCopy.Text("settings.model") + ": gpt-live-transcribe / gpt-realtime-translate";
+        LanguagePairLabel.Text = UiCopy.Text("settings.languagePair");
+        LanguagePairAppliesNextRecordingText.Text = UiCopy.Text("settings.languagePairAppliesNextRecording");
+        SubtitleDisplayText.Text = UiCopy.Text("settings.subtitleDisplay") + ": " + UiCopy.Text("settings.subtitleDisplayValue");
+        TranslatedAudioText.Text = UiCopy.Text("settings.translatedAudio") + ": " + UiCopy.Text("settings.translatedAudioValue");
+        ConsentCheckBox.Content = UiCopy.Text("settings.consentToggle");
+        ConsentHelpText.Text = UiCopy.Text("settings.consentHelp");
+        ApiKeySectionTitle.Text = UiCopy.Text("settings.section.apiKey");
+        SaveApiKeyButton.Content = UiCopy.Text("settings.save");
+        DeleteApiKeyButton.Content = UiCopy.Text("settings.delete");
+        ApiKeyStorageHelpText.Text = UiCopy.Text("settings.apiKeyStorageHelp.windows");
+        UiLanguageLabel.Text = UiCopy.Text("settings.uiLanguage");
+        UiLanguageRestartHint.Text = UiCopy.Text("settings.uiLanguageRestartHint");
+        RecognitionSectionTitle.Text = UiCopy.Text("settings.section.recognition");
+        NoiseReductionLabel.Text = UiCopy.Text("settings.noiseReduction");
+        TranscriptionDelayLabel.Text = UiCopy.Text("settings.transcriptionDelay");
+        DelayHelpText.Text = UiCopy.Text("settings.delayHelp");
+        ApplyPresetButton.Content = UiCopy.Text("settings.applyPreset");
+        RestoreDefaultsButton.Content = UiCopy.Text("settings.restoreDefaults");
+        HintsSectionTitle.Text = UiCopy.Text("settings.section.hints");
+        PromptTitleText.Text = UiCopy.Text("settings.promptTitle");
+        PromptHelpText.Text = UiCopy.Text("settings.promptHelp");
+        KeywordsTitleText.Text = UiCopy.Text("settings.keywordsTitle");
+        TuningLiveHelpText.Text = UiCopy.Text("settings.tuningLiveHelp");
+        SubtitlesSectionTitle.Text = UiCopy.Text("settings.section.subtitles");
+        RecordSubtitlesCheckBox.Content = UiCopy.Text("settings.recordSubtitles");
+        RecordSubtitlesHelpText.Text = UiCopy.Text("settings.recordSubtitlesHelp.windows");
+        ControlsSectionTitle.Text = UiCopy.Text("settings.section.controls");
+        ControlsHelpText.Text = UiCopy.Text("settings.controlsHelp.windows");
     }
 
     private static void SelectOption<T>(Selector box, T value) =>
