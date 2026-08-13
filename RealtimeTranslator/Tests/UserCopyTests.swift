@@ -115,6 +115,14 @@ final class UserCopyTests: XCTestCase {
         XCTAssertEqual(try UserCopy.placeholderMismatches(in: json), ["bad"])
     }
 
+    // Given: 非 ASCII や不正な開始文字を含む疑似プレースホルダ
+    // When: 名前を抽出する
+    // Then: Windows / CI と同じ ASCII 識別子だけを認める
+    func testPlaceholderNamesRejectNonAsciiIdentifiers() {
+        XCTAssertEqual(UserCopy.placeholderNames("ok {hotkey} and {名前} and {1bad}"), ["hotkey"])
+        XCTAssertEqual(UserCopy.placeholderNames("{_ok} {_} {a1}"), ["_ok", "_", "a1"])
+    }
+
     // Given: OS の UI 言語と保存値
     // When: 表示言語を解決する
     // Then: ja OS だけ ja、それ以外と未知値は en / system
@@ -165,10 +173,14 @@ final class UserCopyTests: XCTestCase {
     }
 }
 
-private final class KeyLog: @unchecked Sendable {
-    private(set) var keys: [String] = []
+private final class KeyLog: Sendable {
+    private let state = OSAllocatedUnfairLock(initialState: [String]())
+
+    var keys: [String] {
+        state.withLock { $0 }
+    }
 
     func append(_ key: String) {
-        keys.append(key)
+        state.withLock { $0.append(key) }
     }
 }

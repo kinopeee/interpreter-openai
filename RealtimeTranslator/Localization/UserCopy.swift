@@ -169,13 +169,18 @@ struct UserCopy: Sendable {
         return text
     }
 
+    /// Windows / shared-contracts と同じ `[A-Za-z_][A-Za-z0-9_]*`。
     private static func isPlaceholderName(_ name: String) -> Bool {
-        guard let first = name.unicodeScalars.first else { return false }
-        let rest = name.unicodeScalars.dropFirst()
-        let isStart = (first == "_") || CharacterSet.letters.contains(first)
+        guard let first = name.utf8.first else { return false }
+        let isStart = first == UInt8(ascii: "_")
+            || (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(first)
+            || (UInt8(ascii: "a")...UInt8(ascii: "z")).contains(first)
         guard isStart else { return false }
-        return rest.allSatisfy { scalar in
-            scalar == "_" || CharacterSet.letters.contains(scalar) || CharacterSet.decimalDigits.contains(scalar)
+        return name.utf8.dropFirst().allSatisfy { byte in
+            byte == UInt8(ascii: "_")
+                || (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(byte)
+                || (UInt8(ascii: "a")...UInt8(ascii: "z")).contains(byte)
+                || (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte)
         }
     }
 }
