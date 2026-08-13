@@ -10,7 +10,7 @@ final class JapaneseUserCopyTestObserver: NSObject, XCTestObservation {
         Self.installJapaneseCatalog()
     }
 
-    func testBundleWillStartExecuting(_ testBundle: Bundle) {
+    func testBundleWillStart(_ testBundle: Bundle) {
         Self.installJapaneseCatalog()
     }
 
