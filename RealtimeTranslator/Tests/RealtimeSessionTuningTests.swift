@@ -294,9 +294,16 @@ final class RealtimeSessionTuningTests: XCTestCase {
     @MainActor
     func testAppSettingsPersistsUiLanguagePreference() {
         // Given: 保存済みの表示言語
+        let defaults = UserDefaults.standard
+        let previousRawValue = defaults.object(forKey: "uiLanguage")
         let settings = AppSettings()
-        let previous = settings.uiLanguage
-        defer { settings.uiLanguage = previous }
+        defer {
+            if let previousRawValue {
+                defaults.set(previousRawValue, forKey: "uiLanguage")
+            } else {
+                defaults.removeObject(forKey: "uiLanguage")
+            }
+        }
 
         // When: English を保存して読み直す
         settings.uiLanguage = .en
