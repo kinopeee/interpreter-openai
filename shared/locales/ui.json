@@ -364,6 +364,11 @@
       "en": "The display language changes after you restart the app."
     },
     {
+      "key": "settings.appVersion",
+      "ja": "バージョン {version}",
+      "en": "Version {version}"
+    },
+    {
       "key": "menu.startTranslation",
       "ja": "翻訳を開始",
       "en": "Start translation"

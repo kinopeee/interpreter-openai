@@ -16,6 +16,9 @@ final class UserCopyTests: XCTestCase {
         XCTAssertEqual(copy.locale, .ja)
         XCTAssertFalse(copy.text("error.genericServer").isEmpty)
         XCTAssertFalse(copy.text("settings.uiLanguage").isEmpty)
+        XCTAssertEqual(copy.text("settings.appVersion", ["version": "0.1.0"]), "バージョン 0.1.0")
+        let english = try UserCopy.parse(json: json, locale: .en)
+        XCTAssertEqual(english.text("settings.appVersion", ["version": "0.1.0"]), "Version 0.1.0")
     }
 
     // Given: アプリバンドルへコピーされた ui.json

@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title=""
         Width="620"
-        Height="560"
+        Height="600"
         ResizeMode="CanMinimize"
         WindowStartupLocation="CenterScreen">
   <TabControl x:Name="SettingsTabs" Margin="12">
@@ -53,6 +53,10 @@
         <TextBlock x:Name="UiLanguageRestartHint"
                    Foreground="Gray"
                    Margin="140,0,0,0"
+                   TextWrapping="Wrap" />
+        <TextBlock x:Name="AppVersionText"
+                   Foreground="Gray"
+                   Margin="0,24,0,0"
                    TextWrapping="Wrap" />
       </StackPanel>
     </TabItem>

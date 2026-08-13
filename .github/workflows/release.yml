@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
+      app_version: ${{ steps.resolve.outputs.app_version }}
     steps:
       - name: Resolve release tag
         id: resolve
@@ -41,6 +42,7 @@ jobs:
           else
             # PR では Release を作らず、artifact 名用の仮タグだけ付ける。
             echo "tag=pr${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+            echo "app_version=0.0.0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # ZIP パスに使える文字だけ許可（区切り・traversal を拒否）。
@@ -49,6 +51,12 @@ jobs:
             exit 1
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          # バイナリへ焼く SemVer。タグの v 接頭辞と -rc 等の接尾辞は MARKETING_VERSION から外す。
+          if [[ ! "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            echo "could not read X.Y.Z from release tag: $tag" >&2
+            exit 1
+          fi
+          echo "app_version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
 
   windows:
     name: package (win-x64)
@@ -80,8 +88,26 @@ jobs:
       - name: Publish self-contained app
         working-directory: windows
         shell: pwsh
+        env:
+          APP_VERSION: ${{ needs.version.outputs.app_version }}
         # publish-windows.ps1 は PSScriptRoot からリポジトリルートを解決する。
-        run: ../scripts/publish-windows.ps1 -Runtime win-x64 -NoRestore
+        run: ../scripts/publish-windows.ps1 -Runtime win-x64 -NoRestore -Version $env:APP_VERSION
+
+      - name: Verify baked app version
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ needs.version.outputs.app_version }}
+        run: |
+          $exe = 'artifacts/RealtimeTranslator-win-x64/RealtimeTranslator.App.exe'
+          $info = (Get-Item $exe).VersionInfo
+          $product = [string]$info.ProductVersion
+          $file = [string]$info.FileVersion
+          if ($product -ne $env:APP_VERSION) {
+            throw "ProductVersion '$product' must equal '$($env:APP_VERSION)'"
+          }
+          if (-not $file.StartsWith($env:APP_VERSION)) {
+            throw "FileVersion '$file' must start with '$($env:APP_VERSION)'"
+          }
 
       - name: Package
         shell: pwsh
@@ -179,10 +205,15 @@ jobs:
       - name: Build
         env:
           SIGN_MODE: ${{ steps.sign.outputs.mode }}
+          APP_VERSION: ${{ needs.version.outputs.app_version }}
           MACOS_DEVELOPER_ID_IDENTITY: ${{ secrets.MACOS_DEVELOPER_ID_IDENTITY }}
           MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
         run: |
           set -euo pipefail
+          version_flags=(
+            "MARKETING_VERSION=${APP_VERSION}"
+            "CURRENT_PROJECT_VERSION=${APP_VERSION}"
+          )
           if [[ "$SIGN_MODE" == "developer-id" ]]; then
             identity="${MACOS_DEVELOPER_ID_IDENTITY:-${CODESIGN_IDENTITY:-}}"
             team_id="${MACOS_TEAM_ID:-${CODESIGN_TEAM_ID:-D8YZR4M6QB}}"
@@ -207,7 +238,8 @@ jobs:
               CODE_SIGN_IDENTITY="$identity" \
               DEVELOPMENT_TEAM="$team_id" \
               CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
-              OTHER_CODE_SIGN_FLAGS="--timestamp --keychain ${CODESIGN_KEYCHAIN_PATH}"
+              OTHER_CODE_SIGN_FLAGS="--timestamp --keychain ${CODESIGN_KEYCHAIN_PATH}" \
+              "${version_flags[@]}"
           else
             # PR dry-run: CIに証明書が無くても配布zip経路を検証できるようad-hoc署名する。
             xcodebuild build \
@@ -220,7 +252,8 @@ jobs:
               CODE_SIGN_STYLE=Manual \
               CODE_SIGN_IDENTITY=- \
               DEVELOPMENT_TEAM= \
-              CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO
+              CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+              "${version_flags[@]}"
           fi
 
       - name: Verify the audio input entitlement
@@ -236,6 +269,24 @@ jobs:
           fi
           if /usr/libexec/PlistBuddy -c 'Print :com.apple.security.get-task-allow' entitlements.xml >/dev/null 2>&1; then
             echo "com.apple.security.get-task-allow must not be present in Release builds" >&2
+            exit 1
+          fi
+
+      - name: Verify baked app version
+        env:
+          APP_VERSION: ${{ needs.version.outputs.app_version }}
+        run: |
+          set -euo pipefail
+          app="build/DerivedDataRelease/Build/Products/Release/RealtimeTranslator.app"
+          plist="$app/Contents/Info.plist"
+          short=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
+          build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")
+          if [[ "$short" != "$APP_VERSION" ]]; then
+            echo "CFBundleShortVersionString must be $APP_VERSION, got: $short" >&2
+            exit 1
+          fi
+          if [[ "$build" != "$APP_VERSION" ]]; then
+            echo "CFBundleVersion must be $APP_VERSION, got: $build" >&2
             exit 1
           fi
 

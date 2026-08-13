@@ -3,8 +3,8 @@ import SwiftUI
 
 enum SettingsWindowMetrics {
     static let contentWidth: CGFloat = 560
-    /// 一般タブの表示言語セクションと英語折り返しを、初回表示でスクロールなしに収める。
-    static let contentHeight: CGFloat = 720
+    /// 一般タブの表示言語・バージョン行と英語折り返しを、初回表示でスクロールなしに収める。
+    static let contentHeight: CGFloat = 760
 }
 
 struct SettingsView: View {
@@ -216,6 +216,11 @@ private struct SettingsGeneralTab: View {
                 }
                 Text(UiCopy.text("settings.uiLanguageRestartHint"))
                     .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Text(UiCopy.text("settings.appVersion", ["version": AppReleaseVersion.current]))
                     .foregroundStyle(.secondary)
             }
 

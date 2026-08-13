@@ -23,6 +23,15 @@ public sealed class UserCopyTests
         Assert.Equal(UiLocale.Ja, copy.Locale);
         Assert.False(string.IsNullOrEmpty(copy.Text("error.genericServer")));
         Assert.False(string.IsNullOrEmpty(copy.Text("settings.uiLanguage")));
+        Assert.Equal("バージョン 0.1.0", copy.Format("settings.appVersion", new Dictionary<string, string>
+        {
+            ["version"] = "0.1.0",
+        }));
+        var english = UserCopy.Parse(json, UiLocale.En);
+        Assert.Equal("Version 0.1.0", english.Format("settings.appVersion", new Dictionary<string, string>
+        {
+            ["version"] = "0.1.0",
+        }));
     }
 
     // Given: 埋め込みリソースとリポジトリ上の ui.json
