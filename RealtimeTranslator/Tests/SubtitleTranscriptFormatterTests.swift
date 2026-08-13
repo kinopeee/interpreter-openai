@@ -109,4 +109,27 @@ final class SubtitleTranscriptFormatterTests: XCTestCase {
             "2026-08-07T16:00:00Z"
         )
     }
+
+    // Given: 英語 UI カタログが存在する
+    // When: 字幕記録を整形する
+    // Then: ラベルは uiLanguage に依存せず 原文: / 訳文: / === 録音開始 のまま
+    func testFormatLabelsStayJapaneseIndependentOfUiLocale() throws {
+        let json = try SharedFixtures.uiCatalogJSON()
+        let en = try UserCopy.parse(json: json, locale: .en)
+        XCTAssertFalse(en.text("menu.exportSubtitles").contains("原文:"))
+        XCTAssertFalse(en.text("menu.exportSubtitles").contains("訳文:"))
+
+        let entry = SubtitleTranscriptFormatter.formatEntry(
+            timestamp: "2026-08-13T10:00:00Z",
+            sourceText: "hello",
+            translatedText: "hola"
+        )
+        let start = SubtitleTranscriptFormatter.formatSessionStart(timestamp: "2026-08-13T10:00:00Z")
+
+        XCTAssertTrue(entry.contains("原文: hello"))
+        XCTAssertTrue(entry.contains("訳文: hola"))
+        XCTAssertTrue(start.hasPrefix("=== 録音開始 "))
+        XCTAssertFalse(entry.contains("Source:"))
+        XCTAssertFalse(entry.contains("Translation:"))
+    }
 }

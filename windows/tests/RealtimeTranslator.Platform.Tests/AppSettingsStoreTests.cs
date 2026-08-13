@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Settings;
 using RealtimeTranslator.Platform.Settings;
@@ -42,6 +44,27 @@ public sealed class AppSettingsStoreTests : IDisposable
 
         Assert.Equal(settings, store.Load());
         Assert.DoesNotContain("apiKey", File.ReadAllText(store.FilePath), StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Given: 表示言語と翻訳ペアを変えた設定
+    // When: 保存して読み戻す
+    // Then: uiLanguage と languagePair が欠落せず、API キーはファイルに書かれない
+    [Fact]
+    public void SaveThenLoadRoundTripsUiLanguageAndLanguagePair()
+    {
+        var store = CreateStore();
+        var settings = AppSettingsData.Default with
+        {
+            UiLanguage = UiLanguagePreference.En,
+            LanguagePair = LanguagePair.JaEs,
+        };
+
+        store.Save(settings);
+
+        var restored = store.Load();
+        Assert.Equal(UiLanguagePreference.En, restored.UiLanguage);
+        Assert.Equal(LanguagePair.JaEs, restored.LanguagePair);
+        Assert.DoesNotContain("sk-", File.ReadAllText(store.FilePath), StringComparison.OrdinalIgnoreCase);
     }
 
     // Given: 途中で壊れた設定ファイル
