@@ -156,15 +156,16 @@ final class AppCoordinator: NSObject {
         alert.alertStyle = .warning
         alert.addButton(withTitle: UiCopy.text("alert.clearTranscript.confirm"))
         alert.addButton(withTitle: UiCopy.text("alert.clearTranscript.cancel"))
-        guard AccessoryDialogPresenter.runModal(alert) == .alertFirstButtonReturn else { return }
-
-        do {
-            try transcriptStore.clear()
-            didAnnounceTranscriptCap = false
-            menuBarController.refresh()
-        } catch {
-            AppLogger.general.error("subtitle transcript clear failed")
-            presentMessage(SubtitleTranscriptStore.writeFailureBanner)
+        AccessoryDialogPresenter.runModal(alert) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn else { return }
+            do {
+                try self.transcriptStore.clear()
+                self.didAnnounceTranscriptCap = false
+                self.menuBarController.refresh()
+            } catch {
+                AppLogger.general.error("subtitle transcript clear failed")
+                self.presentMessage(SubtitleTranscriptStore.writeFailureBanner)
+            }
         }
     }
 
@@ -215,6 +216,10 @@ final class AppCoordinator: NSObject {
 
     private func releaseSettingsActivationIfNeeded() {
         guard settingsHoldsActivation else {
+            return
+        }
+        // 閉じた直後に開き直すと、新しいウィンドウが表示中のまま release してしまう。
+        if let settingsWindow, settingsWindow.isVisible {
             return
         }
         AccessoryDialogPresenter.releaseActivation()

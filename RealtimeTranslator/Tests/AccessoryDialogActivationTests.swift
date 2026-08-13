@@ -96,5 +96,20 @@ final class AccessoryDialogActivationTests: XCTestCase {
 
         // Then: アラートを閉じてから accessory へ戻す
         XCTAssertEqual(session.end(), .accessory)
+        XCTAssertEqual(session.depth, 0)
+    }
+
+    func testSettingsHoldThenAlertRestoresOnlyAfterSettingsClose() {
+        // Given: 設定画面が regular を保持したまま同意アラートを重ねる
+        var session = AccessoryDialogSession()
+        _ = session.begin(currentPolicy: .accessory)
+
+        // When: アラートを閉じてから設定を閉じる
+        _ = session.begin(currentPolicy: .regular)
+        XCTAssertNil(session.end())
+
+        // Then: 設定が開いている間は戻さず、閉じたとき accessory へ戻す
+        XCTAssertEqual(session.end(), .accessory)
+        XCTAssertEqual(session.depth, 0)
     }
 }

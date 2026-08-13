@@ -83,13 +83,17 @@ enum AccessoryDialogPresenter {
         }
     }
 
+    @discardableResult
     static func runModal(
         _ alert: NSAlert,
-        application: NSApplication = .shared
+        application: NSApplication = .shared,
+        afterDismiss: ((NSApplication.ModalResponse) -> Void)? = nil
     ) -> NSApplication.ModalResponse {
         applyBegin(session.begin(currentPolicy: application.activationPolicy()), to: application)
-        defer { applyEnd(to: application) }
-        return alert.runModal()
+        let response = alert.runModal()
+        afterDismiss?(response)
+        applyEnd(to: application)
+        return response
     }
 
     /// 設定ウィンドウなど、閉じるまで前面に置きたい modeless UI 用。
@@ -101,18 +105,18 @@ enum AccessoryDialogPresenter {
         applyEnd(to: application)
     }
 
-    static func applyBegin(
+    private static func applyBegin(
         _ activation: AccessoryDialogActivation,
         to application: NSApplication
     ) {
         if let policy = activation.beginPolicy {
             application.setActivationPolicy(policy)
         }
-        // accessory のままでは `activate()` が他アプリを下げない。既存の設定画面と同じ API を使う。
+        // accessory のままでは `activate()` が他アプリを下げない。
         application.activate(ignoringOtherApps: true)
     }
 
-    static func applyEnd(to application: NSApplication) {
+    private static func applyEnd(to application: NSApplication) {
         if let policy = session.end() {
             application.setActivationPolicy(policy)
         }
