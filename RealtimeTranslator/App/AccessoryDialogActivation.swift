@@ -27,22 +27,57 @@ struct AccessoryDialogActivation: Equatable, Sendable {
     }
 }
 
+/// 重ねて開いた保存パネル / アラートの活性化を1本にまとめる。
+///
+/// `NSSavePanel.begin` は modeless なので、メニューから2枚目を開ける。
+/// 呼び出しごとの snapshot だと、先に閉じたパネルが `.accessory` へ戻して
+/// 残りのダイアログが背面へ落ちる。depth が 0 になるまで戻さない。
+struct AccessoryDialogSession: Equatable, Sendable {
+    private(set) var depth = 0
+    private(set) var restorePolicy: NSApplication.ActivationPolicy?
+
+    /// 最初の表示だけ policy 変更を記録する。重ね開きでは activate だけ行う。
+    mutating func begin(
+        currentPolicy: NSApplication.ActivationPolicy
+    ) -> AccessoryDialogActivation {
+        let activation = AccessoryDialogActivation.begin(currentPolicy: currentPolicy)
+        if depth == 0 {
+            restorePolicy = activation.endPolicy
+        }
+        depth += 1
+        return activation
+    }
+
+    /// 最後の表示が閉じたときだけ、開始前の policy を返す。
+    mutating func end() -> NSApplication.ActivationPolicy? {
+        guard depth > 0 else {
+            return nil
+        }
+        depth -= 1
+        guard depth == 0 else {
+            return nil
+        }
+        let policy = restorePolicy
+        restorePolicy = nil
+        return policy
+    }
+}
+
 /// accessory アプリ向けに保存パネル / アラートを前面へ出す。
 @MainActor
 enum AccessoryDialogPresenter {
+    private static var session = AccessoryDialogSession()
+
     static func present(
         _ panel: NSSavePanel,
         application: NSApplication = .shared,
         completion: @escaping (NSApplication.ModalResponse) -> Void
     ) {
-        let activation = AccessoryDialogActivation.begin(
-            currentPolicy: application.activationPolicy()
-        )
-        applyBegin(activation, to: application)
+        applyBegin(session.begin(currentPolicy: application.activationPolicy()), to: application)
         panel.level = .modalPanel
         panel.hidesOnDeactivate = false
         panel.begin { response in
-            applyEnd(activation, to: application)
+            applyEnd(to: application)
             completion(response)
         }
     }
@@ -51,11 +86,8 @@ enum AccessoryDialogPresenter {
         _ alert: NSAlert,
         application: NSApplication = .shared
     ) -> NSApplication.ModalResponse {
-        let activation = AccessoryDialogActivation.begin(
-            currentPolicy: application.activationPolicy()
-        )
-        applyBegin(activation, to: application)
-        defer { applyEnd(activation, to: application) }
+        applyBegin(session.begin(currentPolicy: application.activationPolicy()), to: application)
+        defer { applyEnd(to: application) }
         return alert.runModal()
     }
 
@@ -70,11 +102,8 @@ enum AccessoryDialogPresenter {
         application.activate(ignoringOtherApps: true)
     }
 
-    static func applyEnd(
-        _ activation: AccessoryDialogActivation,
-        to application: NSApplication
-    ) {
-        if let policy = activation.endPolicy {
+    static func applyEnd(to application: NSApplication) {
+        if let policy = session.end() {
             application.setActivationPolicy(policy)
         }
     }

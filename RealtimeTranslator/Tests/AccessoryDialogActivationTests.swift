@@ -34,4 +34,54 @@ final class AccessoryDialogActivationTests: XCTestCase {
         XCTAssertEqual(activation.beginPolicy, .regular)
         XCTAssertEqual(activation.endPolicy, .prohibited)
     }
+
+    func testSessionRestoresAccessoryAfterSinglePresentation() {
+        // Given: accessory から保存パネルを1枚だけ開く
+        var session = AccessoryDialogSession()
+        let activation = session.begin(currentPolicy: .accessory)
+
+        // When / Then: 閉じたら accessory へ戻す
+        XCTAssertEqual(activation.beginPolicy, .regular)
+        XCTAssertEqual(session.end(), .accessory)
+        XCTAssertEqual(session.depth, 0)
+    }
+
+    func testNestedSessionsRestoreOnlyWhenLastCloses() {
+        // Given: accessory のまま保存パネルを2枚重ねて開ける
+        var session = AccessoryDialogSession()
+
+        // When: 1枚目で regular へ上げ、2枚目はすでに regular
+        let first = session.begin(currentPolicy: .accessory)
+        XCTAssertEqual(first.beginPolicy, .regular)
+        let second = session.begin(currentPolicy: .regular)
+        XCTAssertNil(second.beginPolicy)
+
+        // Then: 先に閉じたパネルでは戻さず、最後に閉じたとき accessory へ戻す
+        XCTAssertNil(session.end())
+        XCTAssertEqual(session.end(), .accessory)
+        XCTAssertEqual(session.depth, 0)
+    }
+
+    func testNestedSessionsKeepOriginalRestorePolicy() {
+        // Given: 重ね開きの2枚目が currentPolicy を accessory と誤って渡す
+        var session = AccessoryDialogSession()
+        _ = session.begin(currentPolicy: .accessory)
+        _ = session.begin(currentPolicy: .accessory)
+
+        // When / Then: 最初に記録した restore を使い、depth 0 で1回だけ戻す
+        XCTAssertNil(session.end())
+        XCTAssertEqual(session.end(), .accessory)
+        XCTAssertNil(session.end())
+    }
+
+    func testRegularSessionDoesNotRestoreOnNestedClose() {
+        // Given: すでに regular
+        var session = AccessoryDialogSession()
+        _ = session.begin(currentPolicy: .regular)
+        _ = session.begin(currentPolicy: .regular)
+
+        // When / Then: どちらを閉じても policy は触らない
+        XCTAssertNil(session.end())
+        XCTAssertNil(session.end())
+    }
 }
