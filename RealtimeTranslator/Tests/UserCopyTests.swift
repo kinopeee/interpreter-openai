@@ -17,6 +17,16 @@ final class UserCopyTests: XCTestCase {
         XCTAssertFalse(copy.text("settings.uiLanguage").isEmpty)
     }
 
+    // Given: アプリバンドルへコピーされた ui.json
+    // When: Bundle.main から探す
+    // Then: リポジトリフォールバックなしでもカタログが載っている
+    func testUiCatalogIsBundledInApp() {
+        XCTAssertNotNil(
+            Bundle.main.url(forResource: "ui", withExtension: "json"),
+            "project.yml で ui.json を Copy Bundle Resources に含めること"
+        )
+    }
+
     // Given: テストプロセスの Current
     // When: 既定のカタログを読む
     // Then: ja が載っており、Current を切り替えない

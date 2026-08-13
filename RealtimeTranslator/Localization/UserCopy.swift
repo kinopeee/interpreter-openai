@@ -209,23 +209,9 @@ enum UserCopyStore {
         lock.unlock()
     }
 
+    /// Production / TEST_HOST はバンドル内の `ui.json` のみ。リポジトリ上の `shared/` は読まない。
     static func catalogURL() -> URL? {
-        if let bundled = Bundle.main.url(forResource: "ui", withExtension: "json") {
-            return bundled
-        }
-        return repositoryCatalogURL()
-    }
-
-    static func repositoryCatalogURL() -> URL? {
-        var url = URL(fileURLWithPath: #filePath)
-        while url.pathComponents.count > 1 {
-            url.deleteLastPathComponent()
-            let candidate = url.appendingPathComponent("shared/locales/ui.json")
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                return candidate
-            }
-        }
-        return nil
+        Bundle.main.url(forResource: "ui", withExtension: "json")
     }
 
     private static func loadJapaneseDefault() -> UserCopy {

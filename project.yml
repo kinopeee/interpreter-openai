@@ -22,7 +22,6 @@ targets:
       - path: RealtimeTranslator
         excludes:
           - Tests/**
-    resources:
       - path: shared/locales/ui.json
         buildPhase: resources
     settings:
