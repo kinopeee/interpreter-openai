@@ -7,4 +7,11 @@
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\..\shared\locales\ui.json">
+      <LogicalName>RealtimeTranslator.Core.locales.ui.json</LogicalName>
+      <Link>locales\ui.json</Link>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

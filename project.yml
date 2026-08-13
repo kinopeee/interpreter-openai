@@ -22,6 +22,9 @@ targets:
       - path: RealtimeTranslator
         excludes:
           - Tests/**
+    resources:
+      - path: shared/locales/ui.json
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.realtimetranslator.app

@@ -15,8 +15,9 @@ shared/
 │   ├── codec.json     ├── tuning.json   ├── language.json
 │   ├── subtitle.json  ├── routing.json  ├── privacy.json
 │   └── schema/        # 各 fixture の JSON Schema (draft 2020-12)
-└── locales/           # 実装時に ui.json を追加する（UI 文言の正本。ui-locale.md 参照）
-                       # fixtures と違い文言の推敲は通常変更。v1 不変ルールの対象外
+└── locales/           # UI 文言の正本（ui-locale.md 参照）。fixtures と違い文言の推敲は通常変更。v1 不変ルールの対象外
+    ├── ui.json
+    └── ui.schema.json
 ```
 
 ## ルール
@@ -29,9 +30,17 @@ shared/
 ## ローカル検証
 
 ```bash
+# fixtures（v1 の 1:1 対応）
 cd shared/fixtures/v1
 for s in schema/*.schema.json; do
   n="$(basename "$s" .schema.json)"
   npx --yes ajv-cli@5.0.0 validate --spec=draft2020 -s "$s" -d "$n.json"
 done
+cd ../../..
+
+# UI 文言カタログ（fixtures の 1:1 ループとは別。リポジトリルートで実行）
+npx --yes ajv-cli@5.0.0 validate --spec=draft2020 \
+  -s shared/locales/ui.schema.json -d shared/locales/ui.json
 ```
+
+プレースホルダ名の ja/en 一致とキー一意は `shared-contracts` のカスタム検証、および両実装の `UserCopyTests` でも見る。

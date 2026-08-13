@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/locales/ui.schema.json",
+  "title": "Realtime Translator UI copy catalog",
+  "type": "object",
+  "required": ["version", "locales", "fallback", "strings"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "locales": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "fallback": { "type": "string", "minLength": 1 },
+    "strings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["key", "ja", "en"],
+        "additionalProperties": false,
+        "properties": {
+          "key": { "type": "string", "minLength": 1 },
+          "ja": { "type": "string", "minLength": 1 },
+          "en": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
