@@ -9,16 +9,20 @@ shared/
 │   ├── endpoints.md   # OpenAI Realtime エンドポイント / イベント / タイムアウト
 │   ├── audio.md       # 24kHz PCM16 パケット化・適応ゲイン
 │   ├── routing.md     # 言語判定・dual routing・字幕整列
-│   └── privacy.md     # ログ禁止事項・エラー正規化・鍵の保管先
-└── fixtures/v1/       # 期待値テーブル（両実装のテストが読む）
-    ├── codec.json     ├── tuning.json   ├── language.json
-    ├── subtitle.json  ├── routing.json  ├── privacy.json
-    └── schema/        # 各 fixture の JSON Schema (draft 2020-12)
+│   ├── privacy.md     # ログ禁止事項・エラー正規化・鍵の保管先
+│   └── ui-locale.md   # アプリ枠の表示言語（ja/en、再起動後反映）
+├── fixtures/v1/       # 期待値テーブル（両実装のテストが読む）
+│   ├── codec.json     ├── tuning.json   ├── language.json
+│   ├── subtitle.json  ├── routing.json  ├── privacy.json
+│   └── schema/        # 各 fixture の JSON Schema (draft 2020-12)
+└── locales/           # 実装時に ui.json を追加する（UI 文言の正本。ui-locale.md 参照）
+                       # fixtures と違い文言の推敲は通常変更。v1 不変ルールの対象外
 ```
 
 ## ルール
 
-- 挙動を変える変更は、まず `protocol/` と `fixtures/v1/` を更新し、その後に各実装を合わせる。
+- fixture-backed な挙動を変える変更は、まず `protocol/` と `fixtures/v1/` を更新し、その後に各実装を合わせる。`shared/fixtures/v1` は両実装の契約正本のまま。
+- UI 文言のみの変更（`shared/locales/`、例: `banner.connecting` の標準化）は `fixtures/v1` 更新の対象外。正本は `protocol/ui-locale.md` と `locales/ui.json`。
 - fixture の破壊的変更はディレクトリを `v2/` として増やす。`v1/` の既存ケースは意味を変えない。
 - fixture を足したら対応する schema も更新する。CI (`shared-contracts`) が 1:1 対応を検査する。
 
