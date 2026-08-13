@@ -200,8 +200,8 @@ final class AppCoordinator: NSObject {
         window.center()
         window.isReleasedWhenClosed = false
         settingsWindow = window
-        observeSettingsWindowClose(window)
         retainSettingsActivationIfNeeded()
+        observeSettingsWindowClose(window)
         window.makeKeyAndOrderFront(nil)
     }
 
@@ -214,12 +214,12 @@ final class AppCoordinator: NSObject {
         }
     }
 
-    private func releaseSettingsActivationIfNeeded() {
+    private func releaseSettingsActivationIfNeeded(closedID: ObjectIdentifier?) {
         guard settingsHoldsActivation else {
             return
         }
-        // 閉じた直後に開き直すと、新しいウィンドウが表示中のまま release してしまう。
-        if let settingsWindow, settingsWindow.isVisible {
+        // 古いウィンドウの close が、新しい設定ウィンドウの活性化を落とさない。
+        if let closedID, let settingsWindow, ObjectIdentifier(settingsWindow) != closedID {
             return
         }
         AccessoryDialogPresenter.releaseActivation()
@@ -234,16 +234,20 @@ final class AppCoordinator: NSObject {
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main,
-            using: { [weak self] _ in
-                AppCoordinator.enqueueSettingsWindowClose(self)
+            using: { [weak self] notification in
+                let closedID = (notification.object as AnyObject?).map { ObjectIdentifier($0) }
+                AppCoordinator.handleSettingsWindowWillClose(self, closedID: closedID)
             }
         )
     }
 
-    /// NotificationCenter コールバックから MainActor 上の活性化解除へ渡す境界。
-    nonisolated private static func enqueueSettingsWindowClose(_ coordinator: AppCoordinator?) {
-        Task { @MainActor in
-            coordinator?.releaseSettingsActivationIfNeeded()
+    /// main キューの willClose から同期で活性化を戻す。Task にすると開き直しより後に走る。
+    nonisolated private static func handleSettingsWindowWillClose(
+        _ coordinator: AppCoordinator?,
+        closedID: ObjectIdentifier?
+    ) {
+        MainActor.assumeIsolated {
+            coordinator?.releaseSettingsActivationIfNeeded(closedID: closedID)
         }
     }
 
