@@ -11,11 +11,12 @@ shared/
 │   ├── routing.md     # 言語判定・dual routing・字幕整列
 │   ├── privacy.md     # ログ禁止事項・エラー正規化・鍵の保管先
 │   └── ui-locale.md   # アプリ枠の表示言語（ja/en、再起動後反映）
-└── fixtures/v1/       # 期待値テーブル（両実装のテストが読む）
-    ├── codec.json     ├── tuning.json   ├── language.json
-    ├── subtitle.json  ├── routing.json  ├── privacy.json
-    └── schema/        # 各 fixture の JSON Schema (draft 2020-12)
-    # 実装時に ui.json を追加する（文言キーの正本。ui-locale.md 参照）
+├── fixtures/v1/       # 期待値テーブル（両実装のテストが読む）
+│   ├── codec.json     ├── tuning.json   ├── language.json
+│   ├── subtitle.json  ├── routing.json  ├── privacy.json
+│   └── schema/        # 各 fixture の JSON Schema (draft 2020-12)
+└── locales/           # 実装時に ui.json を追加する（UI 文言の正本。ui-locale.md 参照）
+                       # fixtures と違い文言の推敲は通常変更。v1 不変ルールの対象外
 ```
 
 ## ルール

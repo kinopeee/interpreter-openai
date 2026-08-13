@@ -4,7 +4,7 @@
 初回対象は **ja / en**。切替は **再起動後に反映**。スペイン語 UI と実行時切替は対象外。
 
 この文書は契約（両実装が守る不変条件）と、実装時の作業手順・注意・制限を兼ねる。
-実装は **この文書と `shared/fixtures/v1/ui.json` を先に置き、その後に各実装を合わせる**。
+実装は **この文書と `shared/locales/ui.json` を先に置き、その後に各実装を合わせる**。
 
 ## 1. 決定事項（ロック済み）
 
@@ -96,15 +96,20 @@
 ## 5. アーキテクチャ
 
 ```
-shared/fixtures/v1/ui.json          ← キーと ja/en の正本
-shared/fixtures/v1/schema/ui.schema.json
+shared/locales/ui.json              ← キーと ja/en の正本
+shared/locales/ui.schema.json
         │
-        ├─ テスト: 既存 SharedFixtures から読む
+        ├─ テスト: 両実装のテストが読む（SharedFixtures と同じ repo-root 探索）
         ├─ macOS: XcodeGen でアプリバンドルへ resource コピー
         └─ Windows Core: EmbeddedResource（ビルド時パス参照）
 ```
 
 実行時はキー引きだけ。`.xcstrings` と `.resx` を別管理しない（すぐずれる）。
+
+**`fixtures/v1` には置かない。** fixtures は「v1 の既存ケースは意味を変えない。破壊的変更は `v2/`」が
+ルールであり、UI 文言は推敲で変わり得るため、この不変ルールの対象にしない。
+`shared/locales/` は「キーの追加・文言の改善は通常変更、キーの削除・意味変更は両実装同時」の運用とする。
+CI（`shared-contracts`）は現状 `fixtures/v1` しか検査しないため、`locales/` の schema 検査ステップを追加する。
 
 ### 解決器
 
@@ -132,11 +137,11 @@ Windows Core は AOT 対象のため、カタログ読みは既存の `AppSettin
 
 ## 6. カタログ形式
 
-`shared/fixtures/v1/ui.json`:
+`shared/locales/ui.json`:
 
 ```json
 {
-  "$schema": "./schema/ui.schema.json",
+  "$schema": "./ui.schema.json",
   "version": 1,
   "description": "アプリ枠のユーザー向け文言。字幕本文と記録ファイル形式は含めない。",
   "locales": ["ja", "en"],
@@ -159,7 +164,7 @@ schema で保証すること:
 
 キー命名: `領域.用途`。例: `settings.tab.general`、`menu.startTranslation`、`banner.idle`、`error.authenticationFailed`。
 
-CI（`shared-contracts`）は他 fixture と同じ 1:1 schema 検査に乗せる。追加で「ja と en の `{name}` 集合が等しい」検査をテスト側に置く（schema だけでは足りない）。
+CI（`shared-contracts`）へ `locales/ui.json` の schema 検査ステップを追加する（fixtures の 1:1 ループとは別ステップ）。「ja と en の `{name}` 集合が等しい」検査はテスト側に置く（schema だけでは足りない）。
 
 ## 7. キー棚卸し
 
@@ -191,7 +196,9 @@ CI（`shared-contracts`）は他 fixture と同じ 1:1 schema 検査に乗せる
 | `settings.delayHelp` | 値を上げると… |
 | `settings.applyPreset` / `settings.restoreDefaults` | プリセットを適用 / デフォルトに戻す |
 | `settings.preset.softwareDevelopment` 等 | ソフトウェア開発 / ビジネス会議 / ハッカソン |
+| `settings.section.recognition` / `.hints` / `.subtitles` / `.controls` / `.apiKey` | セクション見出し（認識設定 / 認識ヒント / 字幕 / 操作 / API キー） |
 | `settings.promptTitle` / `settings.keywordsTitle` | 認識プロンプト / キーワード (1行1語) |
+| `settings.promptHelp` | 会議のテーマや話者、話題を文章で書くと認識精度が上がります。 |
 | `settings.promptCounter` | `{count}/{limit} 文字` |
 | `settings.promptOverLimit` | （超過分は切り詰められます） |
 | `settings.keywordCounter` | `{count}/{limit} 語` |
@@ -238,13 +245,14 @@ Windows の ja 利用者には遅延ラベルが変わる。仕様変更とし�
 | キー | 現行 | 備考 |
 | --- | --- | --- |
 | `banner.idle` | 待機中 — {hotkey} で録音開始 | ホットキーは注入 |
-| `banner.connecting` | 接続中… / OpenAI Realtimeへ接続中… | **両 OS で `接続中…` に統一** |
+| `banner.connecting` | 接続中… / OpenAI Realtimeへ接続中… | **両 OS で `接続中…` に統一**。macOS 利用者に見える文言変更なので実装 PR に明記する |
 | `banner.reconnecting` | 再接続中… | |
 | `banner.reconnectingProgress` | {detail} 再接続中… ({attempt}/{max}) | detail 省略形もあり |
 | `banner.listening` | 録音中… 話してください | macOS InterpretationSession |
 | `banner.closing` | 録音を終了中… | macOS |
 | `overlay.recording` | 録音中… | macOS アクセシビリティ |
 | `overlay.startRecording` / `overlay.stopRecording` | 録音開始 / 録音終了 | macOS ボタン。Windows にボタンなし |
+| `overlay.windowTitle` / `settings.windowTitle` | Realtime Translator 字幕 / 設定 | Windows の Window.Title。タスクバー非表示だが支援技術が読む |
 
 Windows `SubtitleSnapshotBuilder` は idle / connecting / reconnecting だけ。macOS はセッション側で listening / closing も出す。キーは共通化してよいが、使わない OS があっても消さない。
 
@@ -261,7 +269,10 @@ Windows `SubtitleSnapshotBuilder` は idle / connecting / reconnecting だけ。
 | `transcript.sizeLimitBanner` | 字幕記録が上限に達しました。書き出してクリアしてください |
 | `transcript.writeFailureBanner` | 字幕の記録に失敗しました |
 
-`transcript.json` の `messages.*` は **ファイル形式ではなくバナー**なので、正本を `ui.json` へ移し、`transcript.json` はキー参照か「UI カタログ側」と注記する。schema の `const: "字幕記録が…"` は外す。
+`transcript.json` の `messages.*` は **ファイル形式ではなくバナー**だが、`fixtures/v1` は変更しない。
+`ui.json` の ja がこの fixture 値と一致することを両実装のテストで検証する（正本の二重化を一致テストで防ぐ）。
+なお const 制約を持つのは `privacy.schema.json` の `genericErrorMessage` だけで、`transcript.schema.json` の
+`messages` は `type: string`。どちらの schema も変更不要。
 
 ### エラー（画面に出るもの）
 
@@ -276,6 +287,8 @@ Windows `SubtitleSnapshotBuilder` は idle / connecting / reconnecting だけ。
 | `error.genericServer` | 翻訳サーバーでエラーが発生しました |
 | `error.transportDisconnected` | 翻訳サーバーとの接続が切れました |
 | `error.sourceDisconnected` | 原文字幕サーバーとの接続が切れました |
+| `error.audioSendFailed` | 翻訳サーバーへの音声送信が失敗しました |
+| `error.sourceSessionGeneric` | 原文字幕セッションでエラーが発生しました |
 | `error.sessionUpdateTimeout` | 翻訳セッションの準備がタイムアウトしました |
 | `error.closeTimeout` | 翻訳セッションの終了待ちがタイムアウトしました |
 | `error.cancelled` | 翻訳セッションがキャンセルされました |
@@ -307,7 +320,7 @@ API キーストア（設定画面の status に出ることがある）:
 | `error.apiKeyStoreUnavailable` | APIキーの保存領域へアクセスできません |
 | `error.apiKeyEncodingFailed` | APIキーを処理できません |
 
-`privacy.json` の `genericErrorMessage` は `error.genericServer` の ja と同じ値を指す。schema の `const` をやめ、テストは `UserCopy` の ja と照合する。正規化アルゴリズム自体は変えない。
+`privacy.json` の `genericErrorMessage` は `error.genericServer` の ja と同じ値を指す。**fixture と schema（`const`）は変更しない。** 既存の fixture テストに「`ui.json` の `error.genericServer` ja が fixture 値と一致する」断言を足す。正規化アルゴリズム自体は変えない。
 
 ### Info.plist（OS 言語）
 
@@ -322,7 +335,9 @@ API キーストア（設定画面の status に出ることがある）:
    - macOS: `Locale.current.language.languageCode` が `ja` なら ja、それ以外は en
    - Windows: `CultureInfo.CurrentUICulture.TwoLetterISOLanguageName` が `ja` なら ja、それ以外は en
 3. カタログをロードし、解決したロケールで `UserCopy` を固定する。
-4. Windows のみ、以降のスレッド既定を `ja-JP` または `en-US` にする（WPF の `XmlLanguage` 用）。`InvariantCulture` にはしない。
+4. **スレッドカルチャは変更しない。** 文言は `UserCopy` が持ち、永続化は既に `InvariantCulture` 固定。
+   `CurrentCulture` を変えると数値・日付書式の副作用が出る。`InvariantGlobalization=false` の維持だけで
+   WPF の `XmlLanguage` 要件は満たせる。
 5. その後にトレイ・オーバーレイ・設定・セッションを構築する。
 
 多重起動検出は設定より前でもよい。その場合のメッセージは OS 言語でも許容する。設定が読めるなら `UserCopy` 後に出す方がよい。
@@ -358,7 +373,7 @@ DEBUG の環境変数取り込み（`OPENAI_API_KEY`）より前に `UserCopy` �
 
 作業順:
 
-1. `shared/fixtures/v1/ui.json` と schema を追加する。`ja` に現行文言を全部入れる。`en` は一旦 ja と同じでよい（キー集合を先に固定するため）が、マージ前には英訳する。空文字は禁止。
+1. `shared/locales/ui.json` と `ui.schema.json` を追加し、`shared-contracts` に検査ステップを足す。`ja` に現行文言を全部入れる。`en` は一旦 ja と同じでよい（キー集合を先に固定するため）が、フェーズ 4 で必ず英訳する。空文字は禁止。
 2. `UserCopy` ローダを Core（Windows）と Swift に追加する。キー欠落・プレースホルダ不一致のテストを書く。
 3. macOS: `project.yml` で `ui.json` を resource に含める。Swift production は `Bundle.main` から読む。
 4. Windows: Core csproj で EmbeddedResource する。パスはリポジトリ相対。AOT でも `JsonNode` のみ。
@@ -379,6 +394,8 @@ DEBUG の環境変数取り込み（`OPENAI_API_KEY`）より前に `UserCopy` �
    XAML の `Text=` / `Header=` / `Content=` をコードからの代入か、起動時に埋める。XAML に日本語を残さない。  
    ComboBox は `DisplayMemberPath="DisplayName"` を維持し、`DisplayName` をカタログから入れる。
 2. **表示言語 Picker** を一般タブへ追加。保存は即時。反映は再起動。ヒント文を出す。
+   **リリースゲート**: `en` の実文言はフェーズ 4 で入るため、フェーズ 1〜4 を揃えてからタグを切る。
+   途中でリリースする場合は Picker の `en` 選択肢を出さない（`system`/`ja` のみ）。
 3. **メニュー / トレイ**  
    `MenuBarController` / `AppMainMenu` / `TrayController`。生成時に `UserCopy` を引く。状態変化（開始/停止）もキーで差し替える。
 4. **ダイアログ・通知**  
@@ -402,8 +419,7 @@ DEBUG の環境変数取り込み（`OPENAI_API_KEY`）より前に `UserCopy` �
 2. `SubtitleSnapshotBuilder` の const バナーをやめる。コンストラクタで `UserCopy` を受け取るか、参照時に引く。idle は `{hotkey}` を OS 側で埋めた文字列を渡す。
 3. `InterpretationSession` の直書きバナー（接続中、録音中、再接続中、終了中、再接続上限）をキー化。
 4. マイク例外、API キーストア例外、WebSocket 例外。
-5. `privacy.json` の `genericErrorMessage` const を外し、テストをカタログ照合へ。
-6. `transcript.json` のバナー文言をキー側へ移す。**`format` の `原文:` / `訳文:` は触らない。**
+5. `privacy.json` / `transcript.json` は**変更しない**。両実装の fixture テストへ「カタログ ja == fixture 値」の一致断言を足す。**`format` の `原文:` / `訳文:` も従来どおり。**
 
 注意:
 
@@ -432,9 +448,10 @@ DEBUG の環境変数取り込み（`OPENAI_API_KEY`）より前に `UserCopy` �
 
 - `shared/protocol/ui-locale.md`（本ファイル）
 - `shared/protocol/privacy.md`（固定文言がロケールされる旨）
-- `shared/README.md`（ui.json をツリーに追加）
-- `shared/fixtures/v1/ui.json` + schema
-- `shared/fixtures/v1/privacy.json` / `transcript.json` + schema（バナー const 解除）
+- `shared/README.md`（locales/ をツリーに追加）
+- `shared/locales/ui.json` + `ui.schema.json`（新規ディレクトリ）
+- `.github/workflows/shared-contracts.yml`（locales の schema 検査ステップ追加）
+- `shared/fixtures/v1/` は**変更しない**（一致断言はテスト側に置く）
 
 ### macOS
 
@@ -488,6 +505,7 @@ Preset の `DisplayName` は Core のレコードに日本語が残る。**Id �
 - OS 解決: `ja` → ja、`en` → en、`es` → en、`fr` → en
 - 例外 kind → カタログキー（ja Current で現行日本語と一致、en テーブルで英語）
 - `SanitizeServerMessage("")` が `error.genericServer` の **現在のロケール** になる
+- カタログ ja が `fixtures/v1` の `genericErrorMessage`・`sizeLimitBanner`・`writeFailureBanner` と一致する（fixture 不変の担保）
 - 字幕記録 format は `原文:` / `訳文:` のまま（回帰）
 - `AppMainMenu` は action / keyEquivalent で探す
 - 秘密情報非漏洩: どのロケールでも `sk-` がバナー・例外に出ない
