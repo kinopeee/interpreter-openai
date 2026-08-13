@@ -133,16 +133,15 @@ public sealed class SubtitleTranscriptStore
                 return;
             }
 
+            if (!File.Exists(_filePath) || FileByteCountLocked() == 0)
+            {
+                throw new FileNotFoundException("Subtitle transcript has no entries.", _filePath);
+            }
+
             var directory = Path.GetDirectoryName(destinationPath);
             if (!string.IsNullOrEmpty(directory))
             {
                 Directory.CreateDirectory(directory);
-            }
-
-            if (!File.Exists(_filePath))
-            {
-                File.WriteAllText(destinationPath, string.Empty, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                return;
             }
 
             File.Copy(_filePath, destinationPath, overwrite: true);

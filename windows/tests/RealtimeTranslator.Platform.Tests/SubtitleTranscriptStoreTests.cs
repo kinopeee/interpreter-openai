@@ -152,6 +152,50 @@ public sealed class SubtitleTranscriptStoreTests : IDisposable
             File.ReadAllText(destination, Encoding.UTF8));
     }
 
+    // Given: セッションファイルがまだ無い
+    // When: ExportCopy する
+    // Then: FileNotFoundException を投げ、書き出し先は作らない
+    [Fact]
+    public void ExportCopyWithMissingSourceDoesNotCreateEmptyFile()
+    {
+        var store = MakeStore();
+        var destination = Path.Combine(_directory, "export.txt");
+
+        var error = Assert.Throws<FileNotFoundException>(() => store.ExportCopy(destination));
+        Assert.Equal(_filePath, error.FileName);
+        Assert.False(File.Exists(destination));
+    }
+
+    // Given: クリア直後の空セッションファイル
+    // When: ExportCopy する
+    // Then: FileNotFoundException を投げ、書き出し先は作らない
+    [Fact]
+    public void ExportCopyWithClearedSourceDoesNotCopyEmptyFile()
+    {
+        var store = MakeStore();
+        Assert.Equal(SubtitleTranscriptAppendResult.Appended, store.AppendEntry("こんにちは", "Hello"));
+        store.Clear();
+        var destination = Path.Combine(_directory, "export.txt");
+
+        var error = Assert.Throws<FileNotFoundException>(() => store.ExportCopy(destination));
+        Assert.Equal(_filePath, error.FileName);
+        Assert.False(File.Exists(destination));
+    }
+
+    // Given: 記録が空で、書き出し先に既存ファイルがある
+    // When: ExportCopy する
+    // Then: 既存ファイルを空で上書きしない
+    [Fact]
+    public void ExportCopyWithMissingSourceLeavesExistingDestinationUnchanged()
+    {
+        var store = MakeStore();
+        var destination = Path.Combine(_directory, "export.txt");
+        File.WriteAllText(destination, "keep");
+
+        Assert.Throws<FileNotFoundException>(() => store.ExportCopy(destination));
+        Assert.Equal("keep", File.ReadAllText(destination));
+    }
+
     // Given: 追記済みのセッションファイル
     // When: 同一パスへ ExportCopy する
     // Then: 内容を消さず no-op になる

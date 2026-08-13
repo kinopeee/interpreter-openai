@@ -31,6 +31,10 @@ final class MenuBarController: NSObject {
 
     private func rebuildMenu() {
         let menu = NSMenu()
+        // 既定の autoenablesItems=true だと target/action がある項目は
+        // isEnabled=false を無視し、空の字幕書き出しができてしまう。
+        menu.autoenablesItems = false
+        menu.delegate = self
 
         let startStop = NSMenuItem(
             title: startStopTitle(),
@@ -172,5 +176,18 @@ final class MenuBarController: NSObject {
 
     @objc private func quit() {
         coordinator?.quit()
+    }
+}
+
+extension MenuBarController: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        let hasEntries = coordinator?.hasRecordedSubtitles == true
+        for item in menu.items {
+            if item.action == #selector(exportSubtitles)
+                || item.action == #selector(clearSubtitleTranscript)
+            {
+                item.isEnabled = hasEntries
+            }
+        }
     }
 }
