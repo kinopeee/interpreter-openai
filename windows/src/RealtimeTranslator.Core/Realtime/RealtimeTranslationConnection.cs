@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
 
 namespace RealtimeTranslator.Core.Realtime;
@@ -376,7 +377,9 @@ public sealed class RealtimeTranslationConnection : IDisposable
 
                 writer.TryWrite(new RealtimeTranslationStreamEvent(
                     _target,
-                    new RealtimeTranslationServerEvent.ServerError("翻訳サーバーとの接続が切れました", "transport"),
+                    new RealtimeTranslationServerEvent.ServerError(
+                        UserCopy.Current.Text("error.transportDisconnected"),
+                        "transport"),
                     currentEpoch));
                 writer.TryComplete();
                 return;

@@ -27,7 +27,7 @@ namespace RealtimeTranslator.App;
 /// <summary>合成ルート。tray 常駐なのでメインウィンドウは持たず、明示終了でのみプロセスを閉じる。</summary>
 public partial class App : Application, IDisposable
 {
-    private readonly SubtitleSnapshotBuilder _snapshots = new();
+    private SubtitleSnapshotBuilder _snapshots = new();
     private readonly SubtitleOverlayViewModel _overlayViewModel = new();
     private readonly AppSettingsStore _settingsStore = new();
     private readonly SubtitleTranscriptStore _transcriptStore = new();
@@ -62,11 +62,15 @@ public partial class App : Application, IDisposable
     {
         base.OnStartup(e);
 
+        _settings = _settingsStore.Load();
+        UiCopy.Install(_settings.UiLanguage);
+        _snapshots = new SubtitleSnapshotBuilder(UiCopy.Format("banner.idle", "hotkey", UiCopy.Hotkey));
+
         _lease = SingleInstanceLease.TryAcquire();
         if (_lease is null)
         {
             MessageBox.Show(
-                "Realtime Translator は既に起動しています。",
+                UiCopy.Text("alert.alreadyRunning"),
                 "Realtime Translator",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -74,7 +78,6 @@ public partial class App : Application, IDisposable
             return;
         }
 
-        _settings = _settingsStore.Load();
         _overlayViewModel.FontSize = _settings.FontSize;
 
         _apiKeyStore = new CredentialManagerApiKeyStore();
@@ -154,7 +157,7 @@ public partial class App : Application, IDisposable
         if (!_hotkey.Register(_overlay.Handle))
         {
             AppLogger.Warning(LogCategory.General, "global hotkey registration failed");
-            _tray?.ShowMessage("Ctrl + Alt + Space を登録できませんでした。トレイメニューから操作してください。");
+            _tray?.ShowMessage(UiCopy.Format("alert.hotkeyFailed", "hotkey", UiCopy.Hotkey));
         }
     }
 
@@ -197,7 +200,7 @@ public partial class App : Application, IDisposable
         if (!_settings.HasAcceptedCurrentConsent)
         {
             ShowSettings();
-            _tray?.ShowMessage("録音を開始する前に、設定で OpenAI への送信に同意してください。");
+            _tray?.ShowMessage(UiCopy.Text("alert.needConsent"));
             return;
         }
 
@@ -215,7 +218,7 @@ public partial class App : Application, IDisposable
         if (!hasStoredKey)
         {
             ShowSettings();
-            _tray?.ShowMessage("録音を開始する前に、設定で OpenAI API キーを保存してください。");
+            _tray?.ShowMessage(UiCopy.Text("alert.needApiKey"));
             return;
         }
 
@@ -253,7 +256,7 @@ public partial class App : Application, IDisposable
     {
         using var dialog = new SaveFileDialog
         {
-            Filter = "テキスト ファイル (*.txt)|*.txt",
+            Filter = UiCopy.Text("dialog.exportFilter"),
             DefaultExt = "txt",
             AddExtension = true,
             FileName = SubtitleTranscriptStore.DefaultExportFileName(),
@@ -279,8 +282,8 @@ public partial class App : Application, IDisposable
     private void ClearSubtitleTranscript()
     {
         var result = MessageBox.Show(
-            "ローカルの字幕記録ファイルを空にします。",
-            "字幕記録をクリアしますか？",
+            UiCopy.Text("alert.clearTranscript.body"),
+            UiCopy.Text("alert.clearTranscriptTitle"),
             MessageBoxButton.OKCancel,
             MessageBoxImage.Warning);
         if (result != MessageBoxResult.OK)

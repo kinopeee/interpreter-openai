@@ -1,0 +1,712 @@
+{
+  "$schema": "./ui.schema.json",
+  "version": 1,
+  "description": "アプリ枠のユーザー向け文言。字幕本文と記録ファイル形式は含めない。",
+  "locales": [
+    "ja",
+    "en"
+  ],
+  "fallback": "en",
+  "strings": [
+    {
+      "key": "settings.windowTitle",
+      "ja": "Realtime Translator 設定",
+      "en": "Realtime Translator Settings"
+    },
+    {
+      "key": "settings.tab.general",
+      "ja": "一般",
+      "en": "General"
+    },
+    {
+      "key": "settings.tab.speech",
+      "ja": "音声認識",
+      "en": "Speech recognition"
+    },
+    {
+      "key": "settings.tab.subtitles",
+      "ja": "字幕・操作",
+      "en": "Subtitles & controls"
+    },
+    {
+      "key": "settings.section.openai",
+      "ja": "OpenAI Realtime",
+      "en": "OpenAI Realtime"
+    },
+    {
+      "key": "settings.model",
+      "ja": "モデル",
+      "en": "Model"
+    },
+    {
+      "key": "settings.languagePair",
+      "ja": "翻訳方向",
+      "en": "Translation direction"
+    },
+    {
+      "key": "settings.subtitleDisplay",
+      "ja": "字幕表示",
+      "en": "Subtitle display"
+    },
+    {
+      "key": "settings.translatedAudio",
+      "ja": "翻訳音声",
+      "en": "Translated audio"
+    },
+    {
+      "key": "settings.languagePair.jaEn",
+      "ja": "日本語 ↔ 英語",
+      "en": "Japanese ↔ English"
+    },
+    {
+      "key": "settings.languagePair.jaEs",
+      "ja": "日本語 ↔ スペイン語",
+      "en": "Japanese ↔ Spanish"
+    },
+    {
+      "key": "settings.languagePair.enEs",
+      "ja": "英語 ↔ スペイン語",
+      "en": "English ↔ Spanish"
+    },
+    {
+      "key": "settings.languagePairAppliesNextRecording",
+      "ja": "次回録音開始時に反映されます。",
+      "en": "Applies the next time you start recording."
+    },
+    {
+      "key": "settings.subtitleDisplayValue",
+      "ja": "原文＋翻訳",
+      "en": "Source + translation"
+    },
+    {
+      "key": "settings.translatedAudioValue",
+      "ja": "字幕のみ（再生なし）",
+      "en": "Subtitles only (no playback)"
+    },
+    {
+      "key": "settings.consentToggle",
+      "ja": "マイク音声を OpenAI API へ送信することに同意する",
+      "en": "I agree to send microphone audio to the OpenAI API"
+    },
+    {
+      "key": "settings.consentHelp",
+      "ja": "録音中はマイク音声・原文・訳文が OpenAI へ送信されます。オンライン接続と API 料金が必要です。データ取扱いは OpenAI の Data controls を確認してください。",
+      "en": "While recording, microphone audio, source text, and translations are sent to OpenAI. An internet connection and API usage fees are required. Review OpenAI Data controls for how data is handled."
+    },
+    {
+      "key": "settings.apiKey",
+      "ja": "API キー",
+      "en": "API key"
+    },
+    {
+      "key": "settings.save",
+      "ja": "保存",
+      "en": "Save"
+    },
+    {
+      "key": "settings.delete",
+      "ja": "削除",
+      "en": "Delete"
+    },
+    {
+      "key": "settings.apiKeySaved.mac",
+      "ja": "Keychainに保存済み",
+      "en": "Saved in Keychain"
+    },
+    {
+      "key": "settings.apiKeySaved.windows",
+      "ja": "資格情報マネージャーに保存済み",
+      "en": "Saved in Credential Manager"
+    },
+    {
+      "key": "settings.apiKeyNotSaved",
+      "ja": "未保存",
+      "en": "Not saved"
+    },
+    {
+      "key": "settings.apiKeySaveOk.mac",
+      "ja": "APIキーをKeychainへ保存しました",
+      "en": "Saved the API key to Keychain"
+    },
+    {
+      "key": "settings.apiKeySaveOk.windows",
+      "ja": "API キーを資格情報マネージャーへ保存しました",
+      "en": "Saved the API key to Credential Manager"
+    },
+    {
+      "key": "settings.apiKeySaveFailed",
+      "ja": "API キーを保存できませんでした",
+      "en": "Could not save the API key"
+    },
+    {
+      "key": "settings.apiKeyDeleteOk",
+      "ja": "APIキーを削除しました",
+      "en": "Deleted the API key"
+    },
+    {
+      "key": "settings.apiKeyDeleteFailed",
+      "ja": "API キーを削除できませんでした",
+      "en": "Could not delete the API key"
+    },
+    {
+      "key": "settings.apiKeyStatusUnknown",
+      "ja": "API キーの保存状態を確認できませんでした",
+      "en": "Could not check whether an API key is saved"
+    },
+    {
+      "key": "settings.apiKeyStorageHelp.mac",
+      "ja": "APIキーはKeychainへ保存します。開発ビルドでは環境変数 OPENAI_API_KEY からも自動取り込みできます。",
+      "en": "The API key is stored in Keychain. Debug builds can also import it from the OPENAI_API_KEY environment variable."
+    },
+    {
+      "key": "settings.apiKeyStorageHelp.windows",
+      "ja": "API キーは Windows 資格情報マネージャーへ保存され、設定ファイルには書き出しません。",
+      "en": "The API key is stored in Windows Credential Manager and is not written to the settings file."
+    },
+    {
+      "key": "settings.noiseReduction",
+      "ja": "ノイズ低減",
+      "en": "Noise reduction"
+    },
+    {
+      "key": "settings.noiseReduction.nearField",
+      "ja": "近距離マイク",
+      "en": "Near-field mic"
+    },
+    {
+      "key": "settings.noiseReduction.farField",
+      "ja": "遠距離マイク",
+      "en": "Far-field mic"
+    },
+    {
+      "key": "settings.transcriptionDelay",
+      "ja": "認識遅延",
+      "en": "Recognition delay"
+    },
+    {
+      "key": "settings.transcriptionDelay.minimal",
+      "ja": "最速（精度低め）",
+      "en": "Fastest (lower accuracy)"
+    },
+    {
+      "key": "settings.transcriptionDelay.low",
+      "ja": "低遅延（既定）",
+      "en": "Low delay (default)"
+    },
+    {
+      "key": "settings.transcriptionDelay.medium",
+      "ja": "バランス",
+      "en": "Balanced"
+    },
+    {
+      "key": "settings.transcriptionDelay.high",
+      "ja": "高精度",
+      "en": "High accuracy"
+    },
+    {
+      "key": "settings.transcriptionDelay.xhigh",
+      "ja": "最高精度",
+      "en": "Highest accuracy"
+    },
+    {
+      "key": "settings.delayHelp",
+      "ja": "値を上げると短い発話の認識精度が上がり、字幕表示は遅くなります。",
+      "en": "Higher values improve recognition of short utterances and delay subtitle display."
+    },
+    {
+      "key": "settings.applyPreset",
+      "ja": "プリセットを適用",
+      "en": "Apply preset"
+    },
+    {
+      "key": "settings.restoreDefaults",
+      "ja": "デフォルトに戻す",
+      "en": "Restore defaults"
+    },
+    {
+      "key": "settings.preset.softwareDevelopment",
+      "ja": "ソフトウェア開発",
+      "en": "Software development"
+    },
+    {
+      "key": "settings.preset.businessMeeting",
+      "ja": "ビジネス会議",
+      "en": "Business meeting"
+    },
+    {
+      "key": "settings.preset.hackathon",
+      "ja": "ハッカソン",
+      "en": "Hackathon"
+    },
+    {
+      "key": "settings.section.recognition",
+      "ja": "認識設定",
+      "en": "Recognition"
+    },
+    {
+      "key": "settings.section.hints",
+      "ja": "認識ヒント",
+      "en": "Recognition hints"
+    },
+    {
+      "key": "settings.section.subtitles",
+      "ja": "字幕",
+      "en": "Subtitles"
+    },
+    {
+      "key": "settings.section.controls",
+      "ja": "操作",
+      "en": "Controls"
+    },
+    {
+      "key": "settings.section.apiKey",
+      "ja": "API キー",
+      "en": "API key"
+    },
+    {
+      "key": "settings.promptTitle",
+      "ja": "認識プロンプト",
+      "en": "Recognition prompt"
+    },
+    {
+      "key": "settings.keywordsTitle",
+      "ja": "キーワード (1行1語)",
+      "en": "Keywords (one word per line)"
+    },
+    {
+      "key": "settings.promptHelp",
+      "ja": "会議のテーマや話者、話題を文章で書くと認識精度が上がります。",
+      "en": "Writing the meeting topic, speakers, and subject in a sentence improves recognition accuracy."
+    },
+    {
+      "key": "settings.promptCounter",
+      "ja": "{count}/{limit} 文字",
+      "en": "{count}/{limit} characters"
+    },
+    {
+      "key": "settings.promptOverLimit",
+      "ja": "（超過分は切り詰められます）",
+      "en": "(excess is truncated)"
+    },
+    {
+      "key": "settings.keywordCounter",
+      "ja": "{count}/{limit} 語",
+      "en": "{count}/{limit} words"
+    },
+    {
+      "key": "settings.keywordOverLimit",
+      "ja": "（超過分は送信されません）",
+      "en": "(excess is not sent)"
+    },
+    {
+      "key": "settings.keywordForbidden",
+      "ja": "「<」「>」は送信時に自動除去されます。",
+      "en": "“<” and “>” are removed automatically when sending."
+    },
+    {
+      "key": "settings.tuningLiveHelp",
+      "ja": "プロンプト・キーワード・認識遅延の変更は録音中でも数秒で反映されます。ノイズ低減は次回の録音開始から反映されます。",
+      "en": "Prompt, keyword, and recognition-delay changes apply within a few seconds even while recording. Noise reduction applies the next time you start recording."
+    },
+    {
+      "key": "settings.fontSize",
+      "ja": "フォントサイズ: {size}pt",
+      "en": "Font size: {size}pt"
+    },
+    {
+      "key": "settings.recordSubtitles",
+      "ja": "字幕をローカルに記録する",
+      "en": "Record subtitles locally"
+    },
+    {
+      "key": "settings.recordSubtitlesHelp.mac",
+      "ja": "このMacにのみ保存します。OpenAIへ追加送信しません。メニューから書き出し・クリアできます。",
+      "en": "Saved only on this Mac. Not sent to OpenAI. Export or clear from the menu."
+    },
+    {
+      "key": "settings.recordSubtitlesHelp.windows",
+      "ja": "この PC にのみ保存します。OpenAI へ追加送信しません。トレイメニューから書き出し・クリアできます。",
+      "en": "Saved only on this PC. Not sent to OpenAI. Export or clear from the tray menu."
+    },
+    {
+      "key": "settings.controlsHelp.mac",
+      "ja": "メニューバーの開始/停止、または Control + Option + Space を使用します。",
+      "en": "Use Start/Stop in the menu bar, or Control + Option + Space."
+    },
+    {
+      "key": "settings.controlsHelp.windows",
+      "ja": "タスクトレイのメニュー、または Ctrl + Alt + Space で録音の開始/停止を切り替えます。字幕位置はトレイメニューの「字幕位置を編集」からドラッグで変更できます。",
+      "en": "Use the tray menu, or Ctrl + Alt + Space, to start or stop recording. Change subtitle position by dragging from Edit subtitle position in the tray menu."
+    },
+    {
+      "key": "settings.uiLanguage",
+      "ja": "表示言語",
+      "en": "Display language"
+    },
+    {
+      "key": "settings.uiLanguage.system",
+      "ja": "システムと同じ",
+      "en": "Match system"
+    },
+    {
+      "key": "settings.uiLanguage.ja",
+      "ja": "日本語",
+      "en": "Japanese"
+    },
+    {
+      "key": "settings.uiLanguage.en",
+      "ja": "English",
+      "en": "English"
+    },
+    {
+      "key": "settings.uiLanguageRestartHint",
+      "ja": "アプリを再起動すると表示言語が変わります。",
+      "en": "The display language changes after you restart the app."
+    },
+    {
+      "key": "menu.startTranslation",
+      "ja": "翻訳を開始",
+      "en": "Start translation"
+    },
+    {
+      "key": "menu.stopTranslation",
+      "ja": "翻訳を停止",
+      "en": "Stop translation"
+    },
+    {
+      "key": "menu.languagePair",
+      "ja": "翻訳方向: {pair}",
+      "en": "Direction: {pair}"
+    },
+    {
+      "key": "menu.subtitleDisplay",
+      "ja": "字幕表示: 原文＋翻訳",
+      "en": "Subtitle display: Source + translation"
+    },
+    {
+      "key": "menu.translatedAudio",
+      "ja": "翻訳音声: 字幕のみ",
+      "en": "Translated audio: Subtitles only"
+    },
+    {
+      "key": "menu.exportSubtitles",
+      "ja": "字幕を書き出し…",
+      "en": "Export subtitles…"
+    },
+    {
+      "key": "menu.clearSubtitles",
+      "ja": "字幕記録をクリア",
+      "en": "Clear subtitle record"
+    },
+    {
+      "key": "menu.editPosition",
+      "ja": "字幕位置を編集",
+      "en": "Edit subtitle position"
+    },
+    {
+      "key": "menu.settings",
+      "ja": "設定…",
+      "en": "Settings…"
+    },
+    {
+      "key": "menu.quit",
+      "ja": "終了",
+      "en": "Quit"
+    },
+    {
+      "key": "menu.quitApp",
+      "ja": "Realtime Translator を終了",
+      "en": "Quit Realtime Translator"
+    },
+    {
+      "key": "menu.edit",
+      "ja": "編集",
+      "en": "Edit"
+    },
+    {
+      "key": "menu.undo",
+      "ja": "取り消す",
+      "en": "Undo"
+    },
+    {
+      "key": "menu.redo",
+      "ja": "やり直す",
+      "en": "Redo"
+    },
+    {
+      "key": "menu.cut",
+      "ja": "カット",
+      "en": "Cut"
+    },
+    {
+      "key": "menu.copy",
+      "ja": "コピー",
+      "en": "Copy"
+    },
+    {
+      "key": "menu.paste",
+      "ja": "ペースト",
+      "en": "Paste"
+    },
+    {
+      "key": "menu.delete",
+      "ja": "削除",
+      "en": "Delete"
+    },
+    {
+      "key": "menu.selectAll",
+      "ja": "すべてを選択",
+      "en": "Select All"
+    },
+    {
+      "key": "banner.idle",
+      "ja": "待機中 — {hotkey} で録音開始",
+      "en": "Idle — press {hotkey} to start recording"
+    },
+    {
+      "key": "banner.connecting",
+      "ja": "接続中…",
+      "en": "Connecting…"
+    },
+    {
+      "key": "banner.reconnecting",
+      "ja": "再接続中…",
+      "en": "Reconnecting…"
+    },
+    {
+      "key": "banner.reconnectingProgress",
+      "ja": "{detail} 再接続中… ({attempt}/{max})",
+      "en": "{detail} Reconnecting… ({attempt}/{max})"
+    },
+    {
+      "key": "banner.listening",
+      "ja": "録音中… 話してください",
+      "en": "Recording… please speak"
+    },
+    {
+      "key": "banner.closing",
+      "ja": "録音を終了中…",
+      "en": "Ending recording…"
+    },
+    {
+      "key": "overlay.recording",
+      "ja": "録音中…",
+      "en": "Recording…"
+    },
+    {
+      "key": "overlay.startRecording",
+      "ja": "録音開始",
+      "en": "Start recording"
+    },
+    {
+      "key": "overlay.stopRecording",
+      "ja": "録音終了",
+      "en": "Stop recording"
+    },
+    {
+      "key": "overlay.windowTitle",
+      "ja": "Realtime Translator 字幕",
+      "en": "Realtime Translator subtitles"
+    },
+    {
+      "key": "alert.alreadyRunning",
+      "ja": "Realtime Translator は既に起動しています。",
+      "en": "Realtime Translator is already running."
+    },
+    {
+      "key": "alert.clearTranscriptTitle",
+      "ja": "字幕記録をクリアしますか？",
+      "en": "Clear the subtitle record?"
+    },
+    {
+      "key": "alert.clearTranscript.body",
+      "ja": "ローカルの字幕記録ファイルを空にします。",
+      "en": "This empties the local subtitle record file."
+    },
+    {
+      "key": "alert.clearTranscript.confirm",
+      "ja": "クリア",
+      "en": "Clear"
+    },
+    {
+      "key": "alert.clearTranscript.cancel",
+      "ja": "キャンセル",
+      "en": "Cancel"
+    },
+    {
+      "key": "alert.needConsent",
+      "ja": "録音を開始する前に、設定で OpenAI への送信に同意してください。",
+      "en": "Before you start recording, agree to sending audio to OpenAI in Settings."
+    },
+    {
+      "key": "alert.needApiKey",
+      "ja": "録音を開始する前に、設定で OpenAI API キーを保存してください。",
+      "en": "Before you start recording, save an OpenAI API key in Settings."
+    },
+    {
+      "key": "alert.hotkeyFailed",
+      "ja": "{hotkey} を登録できませんでした。トレイメニューから操作してください。",
+      "en": "Could not register {hotkey}. Use the tray menu instead."
+    },
+    {
+      "key": "dialog.exportFilter",
+      "ja": "テキスト ファイル (*.txt)|*.txt",
+      "en": "Text files (*.txt)|*.txt"
+    },
+    {
+      "key": "transcript.sizeLimitBanner",
+      "ja": "字幕記録が上限に達しました。書き出してクリアしてください",
+      "en": "The subtitle record reached its limit. Export and clear it."
+    },
+    {
+      "key": "transcript.writeFailureBanner",
+      "ja": "字幕の記録に失敗しました",
+      "en": "Failed to save the subtitle record"
+    },
+    {
+      "key": "error.missingApiKey",
+      "ja": "APIキーが設定されていません",
+      "en": "An API key is not set"
+    },
+    {
+      "key": "error.notConnected",
+      "ja": "翻訳セッションに接続していません",
+      "en": "Not connected to a translation session"
+    },
+    {
+      "key": "error.invalidMessage",
+      "ja": "翻訳サーバーからの応答を解釈できません",
+      "en": "Could not interpret the translation server response"
+    },
+    {
+      "key": "error.authenticationFailed",
+      "ja": "OpenAI APIキーが無効です",
+      "en": "The OpenAI API key is invalid"
+    },
+    {
+      "key": "error.genericServer",
+      "ja": "翻訳サーバーでエラーが発生しました",
+      "en": "A translation server error occurred"
+    },
+    {
+      "key": "error.transportDisconnected",
+      "ja": "翻訳サーバーとの接続が切れました",
+      "en": "Disconnected from the translation server"
+    },
+    {
+      "key": "error.sourceDisconnected",
+      "ja": "原文字幕サーバーとの接続が切れました",
+      "en": "Disconnected from the source-subtitle server"
+    },
+    {
+      "key": "error.audioSendFailed",
+      "ja": "翻訳サーバーへの音声送信が失敗しました",
+      "en": "Failed to send audio to the translation server"
+    },
+    {
+      "key": "error.sourceSessionGeneric",
+      "ja": "原文字幕セッションでエラーが発生しました",
+      "en": "The source-subtitle session encountered an error"
+    },
+    {
+      "key": "error.sessionUpdateTimeout",
+      "ja": "翻訳セッションの準備がタイムアウトしました",
+      "en": "Timed out waiting for the translation session to become ready"
+    },
+    {
+      "key": "error.closeTimeout",
+      "ja": "翻訳セッションの終了待ちがタイムアウトしました",
+      "en": "Timed out waiting for the translation session to close"
+    },
+    {
+      "key": "error.cancelled",
+      "ja": "翻訳セッションがキャンセルされました",
+      "en": "The translation session was cancelled"
+    },
+    {
+      "key": "error.reconnectLimit",
+      "ja": "再接続上限に達しました",
+      "en": "Reconnect limit reached"
+    },
+    {
+      "key": "error.audioInputStopped",
+      "ja": "音声入力が停止しました",
+      "en": "Audio input stopped"
+    },
+    {
+      "key": "error.eventStreamStopped",
+      "ja": "イベント受信が停止しました",
+      "en": "Event stream stopped"
+    },
+    {
+      "key": "error.websocketNotConnected",
+      "ja": "WebSocketに接続していません",
+      "en": "WebSocket is not connected"
+    },
+    {
+      "key": "error.websocketUnsupported",
+      "ja": "未対応のWebSocketメッセージを受信しました",
+      "en": "Received an unsupported WebSocket message"
+    },
+    {
+      "key": "error.micDenied",
+      "ja": "マイクを利用できません",
+      "en": "Microphone is unavailable"
+    },
+    {
+      "key": "error.micFormatUnavailable",
+      "ja": "マイク入力の音声形式を取得できません",
+      "en": "Could not get the microphone audio format"
+    },
+    {
+      "key": "error.micConverterUnavailable",
+      "ja": "翻訳用の音声変換を開始できません",
+      "en": "Could not start audio conversion for translation"
+    },
+    {
+      "key": "error.micBufferUnavailable",
+      "ja": "音声バッファを準備できません",
+      "en": "Could not prepare the audio buffer"
+    },
+    {
+      "key": "error.micPipelineOverloaded",
+      "ja": "音声処理が遅延しています",
+      "en": "Audio processing is delayed"
+    },
+    {
+      "key": "error.micDeviceChanged",
+      "ja": "マイク入力デバイスが変更されました",
+      "en": "The microphone input device changed"
+    },
+    {
+      "key": "error.micNotFound",
+      "ja": "マイクが見つかりません",
+      "en": "Microphone not found"
+    },
+    {
+      "key": "error.micStartFailed",
+      "ja": "マイクを開始できませんでした",
+      "en": "Could not start the microphone"
+    },
+    {
+      "key": "error.apiKeyEmpty",
+      "ja": "APIキーが空です",
+      "en": "The API key is empty"
+    },
+    {
+      "key": "error.apiKeyNotFound",
+      "ja": "APIキーが保存されていません",
+      "en": "An API key is not saved"
+    },
+    {
+      "key": "error.apiKeyStoreUnavailable",
+      "ja": "APIキーの保存領域へアクセスできません",
+      "en": "Could not access API key storage"
+    },
+    {
+      "key": "error.apiKeyEncodingFailed",
+      "ja": "APIキーを処理できません",
+      "en": "Could not process the API key"
+    }
+  ]
+}

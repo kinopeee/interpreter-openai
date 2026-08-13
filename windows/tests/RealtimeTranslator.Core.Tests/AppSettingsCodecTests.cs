@@ -1,5 +1,6 @@
 using System.Linq;
 using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Settings;
 using Xunit;
@@ -27,6 +28,7 @@ public sealed class AppSettingsCodecTests
             TranscriptionDelay = RealtimeTranscriptionDelay.High,
             RecordSubtitles = true,
             LanguagePair = LanguagePair.EnEs,
+            UiLanguage = UiLanguagePreference.En,
         };
 
         var restored = AppSettingsCodec.Decode(AppSettingsCodec.Encode(settings));
@@ -35,6 +37,7 @@ public sealed class AppSettingsCodecTests
         Assert.True(restored.HasAcceptedCurrentConsent);
         Assert.True(restored.RecordSubtitles);
         Assert.Equal(LanguagePair.EnEs, restored.LanguagePair);
+        Assert.Equal(UiLanguagePreference.En, restored.UiLanguage);
     }
 
     // Given: 対応する全言語ペア
@@ -96,6 +99,28 @@ public sealed class AppSettingsCodecTests
     public void DecodeMissingLanguagePairDefaultsToJaEn()
     {
         Assert.Equal(LanguagePair.JaEn, AppSettingsCodec.Decode("{\"fontSize\":32}").LanguagePair);
+    }
+
+    // Given: 表示言語を含まない旧 settings.json
+    // When: 読み込む
+    // Then: system を使う
+    [Fact]
+    public void DecodeMissingUiLanguageDefaultsToSystem()
+    {
+        Assert.Equal(
+            UiLanguagePreference.System,
+            AppSettingsCodec.Decode("{\"fontSize\":32}").UiLanguage);
+    }
+
+    // Given: 未知の表示言語を含む settings.json
+    // When: 読み込む
+    // Then: system へ倒して起動を妨げない
+    [Fact]
+    public void DecodeUnknownUiLanguageDefaultsToSystem()
+    {
+        Assert.Equal(
+            UiLanguagePreference.System,
+            AppSettingsCodec.Decode("{\"uiLanguage\":\"es\"}").UiLanguage);
     }
 
     // Given: 未知の言語ペアを含む settings.json

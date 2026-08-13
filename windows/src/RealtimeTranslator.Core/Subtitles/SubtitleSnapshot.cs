@@ -1,4 +1,5 @@
 using System;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.Realtime;
 
 namespace RealtimeTranslator.Core.Subtitles;
@@ -24,14 +25,28 @@ public readonly record struct SubtitleSnapshot(LiveSubtitle Current, string? Sta
 /// </summary>
 public sealed class SubtitleSnapshotBuilder
 {
-    public const string IdleBanner = "待機中 — Control + Alt + Space で録音開始";
-    public const string ConnectingBanner = "接続中…";
-    public const string ReconnectingBanner = "再接続中…";
+    public const string DefaultIdleHotkey = "Ctrl + Alt + Space";
 
+    public static string IdleBanner => IdleBannerFor(DefaultIdleHotkey);
+
+    public static string ConnectingBanner => UserCopy.Current.Text("banner.connecting");
+
+    public static string ReconnectingBanner => UserCopy.Current.Text("banner.reconnecting");
+
+    private readonly string _idleBanner;
     private LiveSubtitle _current = LiveSubtitle.Empty;
     private int _segmentGeneration;
 
-    public SubtitleSnapshot Current { get; private set; } = new(LiveSubtitle.Empty, IdleBanner);
+    public SubtitleSnapshotBuilder(string? idleBanner = null)
+    {
+        _idleBanner = idleBanner ?? IdleBanner;
+        Current = new SubtitleSnapshot(LiveSubtitle.Empty, _idleBanner);
+    }
+
+    public static string IdleBannerFor(string hotkey) =>
+        UserCopy.Current.Format("banner.idle", "hotkey", hotkey);
+
+    public SubtitleSnapshot Current { get; private set; }
 
     public SubtitleSnapshot Apply(RealtimeSubtitleUpdate update, TranslationState state)
     {
@@ -64,12 +79,12 @@ public sealed class SubtitleSnapshotBuilder
         return Current;
     }
 
-    private static string? BannerFor(TranslationState state, LiveSubtitle current) => state switch
+    private string? BannerFor(TranslationState state, LiveSubtitle current) => state switch
     {
         TranslationState.Connecting => ConnectingBanner,
         TranslationState.Reconnecting => ReconnectingBanner,
         // 表示中の字幕があるうちはバナーで覆わない。
-        TranslationState.Idle => current.IsEmpty ? IdleBanner : null,
+        TranslationState.Idle => current.IsEmpty ? _idleBanner : null,
         // Error はトレイ側が状態を示す。空スロットで待機バナーを出すと失敗と矛盾する。
         TranslationState.Error => null,
         _ => null,

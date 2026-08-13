@@ -22,6 +22,8 @@ targets:
       - path: RealtimeTranslator
         excludes:
           - Tests/**
+      - path: shared/locales/ui.json
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.realtimetranslator.app
@@ -56,6 +58,7 @@ targets:
         CFBundleVersion: "1"
         LSMinimumSystemVersion: "26.0"
         LSUIElement: true
+        CFBundleLocalizations: [en, ja]
         NSMicrophoneUsageDescription: リアルタイム翻訳字幕を生成するため、マイク音声をOpenAI APIへ送信します。
         NSPrincipalClass: NSApplication
   RealtimeTranslatorTests:
@@ -69,6 +72,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.realtimetranslator.tests
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSPrincipalClass: JapaneseUserCopyTestObserver
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/RealtimeTranslator.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/RealtimeTranslator"
         BUNDLE_LOADER: "$(TEST_HOST)"
 schemes:

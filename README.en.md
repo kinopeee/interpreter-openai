@@ -72,6 +72,7 @@ Open Settings from the menu bar. There are three tabs.
 | Item | Description |
 | --- | --- |
 | Model / translation direction / subtitle display / translated audio | Explains current behavior (not editable). Translated audio playback is not included in the MVP. |
+| Display language | `Match system` / `Japanese` / `English`. Saved immediately; applied after you restart the app. Independent of translation direction (`languagePair`). |
 | Consent to send microphone audio to OpenAI | Required before recording. Translation cannot start without consent. |
 | API key | Save or delete in Keychain. On first run it can also be imported from the `OPENAI_API_KEY` environment variable. |
 
@@ -79,7 +80,7 @@ Open Settings from the menu bar. There are three tabs.
 
 | Item | Description |
 | --- | --- |
-| Noise reduction | `Near-field mic` (`near_field`) or `Meeting / far-field` (`far_field`, default). Changes apply on the next recording start. |
+| Noise reduction | `Near-field mic` (`near_field`) or `Far-field mic` (`far_field`, default). Changes apply on the next recording start. |
 | Recognition delay | `delay` for `gpt-live-transcribe`. Higher values improve short-utterance accuracy and slow subtitles. Default is `Low latency` (`low`). Options: fastest / low latency / balanced / high accuracy / highest accuracy. |
 | Presets | Apply recognition prompt and keywords together (software development / business meeting / hackathon). |
 | Recognition prompt | Context hints such as conversation domain (max 1,000 characters). |
@@ -196,7 +197,7 @@ Tabs and fields match macOS (General / Speech recognition / Subtitles & controls
 | API key | Stored/deleted in Windows Credential Manager (generic credential `RealtimeTranslator:openai-api-key`). Never written to the settings file. |
 | Start/stop | Tray menu, or `Control + Alt + Space`. |
 | Subtitle position | Drag via tray **Edit subtitle position**, then save. |
-| Settings path | `%LOCALAPPDATA%\RealtimeTranslator\settings.json` (font size, subtitle position, consent, recognition prompt/keywords/delay/noise reduction). |
+| Settings path | `%LOCALAPPDATA%\RealtimeTranslator\settings.json` (font size, subtitle position, consent, recognition prompt/keywords/delay/noise reduction, display language). |
 
 Prompt, keyword, and recognition-delay changes apply to the session within a few seconds even while recording. Noise-reduction changes apply on the next recording start.
 

@@ -1,3 +1,4 @@
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
 using Xunit;
 
@@ -21,6 +22,18 @@ public sealed class PrivacyFixtureTests
         Assert.Equal(
             SharedFixtures.Text(SharedFixtures.Load("privacy")["genericErrorMessage"]),
             RealtimeTranslationException.GenericServerMessage);
+    }
+
+    // Given: ui.json の error.genericServer ja
+    // When: privacy fixture の genericErrorMessage と照合する
+    // Then: fixtures/v1 を変えずにカタログ ja が一致する
+    [Fact]
+    public void CatalogJapaneseGenericServerMatchesFixture()
+    {
+        var ja = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.Ja);
+        Assert.Equal(
+            SharedFixtures.Text(SharedFixtures.Load("privacy")["genericErrorMessage"]),
+            ja.Text("error.genericServer"));
     }
 
     // Given: 資格情報や内部情報を含みうるサーバーメッセージ

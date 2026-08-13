@@ -43,7 +43,7 @@ final class MenuBarController: NSObject {
         menu.addItem(.separator())
 
         let directionItem = NSMenuItem(
-            title: "翻訳方向: \(pairDisplayName())",
+            title: UiCopy.text("menu.languagePair", ["pair": UiCopy.pairName(pairDisplayPair())]),
             action: nil,
             keyEquivalent: ""
         )
@@ -51,7 +51,7 @@ final class MenuBarController: NSObject {
         menu.addItem(directionItem)
 
         let displayItem = NSMenuItem(
-            title: "字幕表示: 原文＋翻訳",
+            title: UiCopy.text("menu.subtitleDisplay"),
             action: nil,
             keyEquivalent: ""
         )
@@ -59,7 +59,7 @@ final class MenuBarController: NSObject {
         menu.addItem(displayItem)
 
         let audioItem = NSMenuItem(
-            title: "翻訳音声: 字幕のみ",
+            title: UiCopy.text("menu.translatedAudio"),
             action: nil,
             keyEquivalent: ""
         )
@@ -70,7 +70,7 @@ final class MenuBarController: NSObject {
 
         let hasEntries = coordinator?.hasRecordedSubtitles == true
         let exportItem = NSMenuItem(
-            title: "字幕を書き出し…",
+            title: UiCopy.text("menu.exportSubtitles"),
             action: #selector(exportSubtitles),
             keyEquivalent: ""
         )
@@ -79,7 +79,7 @@ final class MenuBarController: NSObject {
         menu.addItem(exportItem)
 
         let clearItem = NSMenuItem(
-            title: "字幕記録をクリア",
+            title: UiCopy.text("menu.clearSubtitles"),
             action: #selector(clearSubtitleTranscript),
             keyEquivalent: ""
         )
@@ -89,7 +89,7 @@ final class MenuBarController: NSObject {
 
         menu.addItem(.separator())
         let editPositionItem = NSMenuItem(
-            title: "字幕位置を編集",
+            title: UiCopy.text("menu.editPosition"),
             action: #selector(togglePositionEditing),
             keyEquivalent: ""
         )
@@ -98,7 +98,7 @@ final class MenuBarController: NSObject {
         menu.addItem(editPositionItem)
 
         let settingsItem = NSMenuItem(
-            title: "設定…",
+            title: UiCopy.text("menu.settings"),
             action: #selector(openSettings),
             keyEquivalent: ","
         )
@@ -107,7 +107,7 @@ final class MenuBarController: NSObject {
 
         menu.addItem(.separator())
         let quitItem = NSMenuItem(
-            title: "終了",
+            title: UiCopy.text("menu.quit"),
             action: #selector(quit),
             keyEquivalent: "q"
         )
@@ -118,20 +118,16 @@ final class MenuBarController: NSObject {
         updateIcon()
     }
 
-    private func pairDisplayName() -> String {
-        switch coordinator?.languagePair ?? .jaEn {
-        case .jaEn: return "日本語 ↔ 英語"
-        case .jaEs: return "日本語 ↔ スペイン語"
-        case .enEs: return "英語 ↔ スペイン語"
-        }
+    private func pairDisplayPair() -> LanguagePair {
+        coordinator?.languagePair ?? .jaEn
     }
 
     private func startStopTitle() -> String {
         switch coordinator?.translationState {
         case .connecting, .listening, .reconnecting, .closing:
-            return "翻訳を停止"
+            return UiCopy.text("menu.stopTranslation")
         case .idle, .error, .none:
-            return "翻訳を開始"
+            return UiCopy.text("menu.startTranslation")
         }
     }
 

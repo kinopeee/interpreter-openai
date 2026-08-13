@@ -103,6 +103,7 @@ enum AppRuntime {
         }
 
         AppStatusFile.write("boot")
+        UiCopy.installFromSavedPreference()
         AppMainMenu.install()
         installKeepAliveWindow()
         let coordinator = AppCoordinator()

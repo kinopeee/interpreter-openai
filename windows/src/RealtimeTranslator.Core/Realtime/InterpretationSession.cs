@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
 
 namespace RealtimeTranslator.Core.Realtime;
@@ -390,7 +391,7 @@ public sealed class InterpretationSession : IDisposable
             {
                 await TearDownStreamingAsync().ConfigureAwait(false);
                 FlushPendingFinalizeIfNeeded();
-                EnterError("再接続上限に達しました");
+                EnterError(UserCopy.Current.Text("error.reconnectLimit"));
                 return;
             }
 
@@ -506,7 +507,7 @@ public sealed class InterpretationSession : IDisposable
 
         throw new RealtimeTranslationException(
             RealtimeTranslationErrorKind.RecoverableTransportFailure,
-            "音声入力が停止しました");
+            UserCopy.Current.Text("error.audioInputStopped"));
     }
 
     private async Task ConsumeEventsAsync(int generation, int epoch, CancellationToken cancellationToken)
@@ -567,7 +568,7 @@ public sealed class InterpretationSession : IDisposable
 
         throw new RealtimeTranslationException(
             RealtimeTranslationErrorKind.RecoverableTransportFailure,
-            "イベント受信が停止しました");
+            UserCopy.Current.Text("error.eventStreamStopped"));
     }
 
     private static RealtimeTranslationException ClassifyError(RealtimeTranslationServerEvent.ServerError error)

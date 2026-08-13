@@ -3,7 +3,8 @@ import SwiftUI
 
 enum SettingsWindowMetrics {
     static let contentWidth: CGFloat = 560
-    static let contentHeight: CGFloat = 560
+    /// 一般タブの表示言語セクションと英語折り返しを、初回表示でスクロールなしに収める。
+    static let contentHeight: CGFloat = 720
 }
 
 struct SettingsView: View {
@@ -30,17 +31,17 @@ struct SettingsView: View {
                 onDeleteAPIKey: deleteAPIKey
             )
             .tabItem {
-                Label("一般", systemImage: "gearshape")
+                Label(UiCopy.text("settings.tab.general"), systemImage: "gearshape")
             }
 
             SettingsSpeechRecognitionTab(settings: settings)
                 .tabItem {
-                    Label("音声認識", systemImage: "waveform")
+                    Label(UiCopy.text("settings.tab.speech"), systemImage: "waveform")
                 }
 
             SettingsSubtitleAndControlsTab(settings: settings)
                 .tabItem {
-                    Label("字幕・操作", systemImage: "captions.bubble")
+                    Label(UiCopy.text("settings.tab.subtitles"), systemImage: "captions.bubble")
                 }
         }
         .frame(
@@ -67,6 +68,9 @@ struct SettingsView: View {
         .onChange(of: settings.languagePair) { _, _ in
             onSave?()
         }
+        .onChange(of: settings.uiLanguage) { _, _ in
+            onSave?()
+        }
     }
 
     private func scheduleTuningChangeNotification() {
@@ -88,7 +92,7 @@ struct SettingsView: View {
             apiKeyDraft = ""
             hasStoredKey = true
             statusIsError = false
-            statusMessage = "APIキーをKeychainへ保存しました"
+            statusMessage = UiCopy.text("settings.apiKeySaveOk.mac")
         } catch {
             statusIsError = true
             statusMessage = error.localizedDescription
@@ -101,7 +105,7 @@ struct SettingsView: View {
             apiKeyDraft = ""
             hasStoredKey = false
             statusIsError = false
-            statusMessage = "APIキーを削除しました"
+            statusMessage = UiCopy.text("settings.apiKeyDeleteOk")
         } catch {
             statusIsError = true
             statusMessage = error.localizedDescription
@@ -157,21 +161,27 @@ private struct SettingsGeneralTab: View {
 
     var body: some View {
         Form {
-            Section("OpenAI Realtime") {
-                LabeledContent("モデル", value: "gpt-realtime-translate")
-                Picker("翻訳方向", selection: $settings.languagePair) {
-                    Text("日本語 ↔ 英語").tag(LanguagePair.jaEn)
-                    Text("日本語 ↔ スペイン語").tag(LanguagePair.jaEs)
-                    Text("英語 ↔ スペイン語").tag(LanguagePair.enEs)
+            Section(UiCopy.text("settings.section.openai")) {
+                LabeledContent(UiCopy.text("settings.model"), value: "gpt-realtime-translate")
+                Picker(UiCopy.text("settings.languagePair"), selection: $settings.languagePair) {
+                    Text(UiCopy.pairName(.jaEn)).tag(LanguagePair.jaEn)
+                    Text(UiCopy.pairName(.jaEs)).tag(LanguagePair.jaEs)
+                    Text(UiCopy.pairName(.enEs)).tag(LanguagePair.enEs)
                 }
-                Text("次回録音開始時に反映されます。")
+                Text(UiCopy.text("settings.languagePairAppliesNextRecording"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                LabeledContent("字幕表示", value: "原文＋翻訳")
-                LabeledContent("翻訳音声", value: "字幕のみ（再生なし）")
+                LabeledContent(
+                    UiCopy.text("settings.subtitleDisplay"),
+                    value: UiCopy.text("settings.subtitleDisplayValue")
+                )
+                LabeledContent(
+                    UiCopy.text("settings.translatedAudio"),
+                    value: UiCopy.text("settings.translatedAudioValue")
+                )
 
                 Toggle(
-                    "マイク音声をOpenAI APIへ送信することに同意する",
+                    UiCopy.text("settings.consentToggle"),
                     isOn: Binding(
                         get: { settings.hasAcceptedCurrentOpenAIConsent },
                         set: { accepted in
@@ -184,9 +194,7 @@ private struct SettingsGeneralTab: View {
                     )
                 )
 
-                Text(
-                    "録音中はマイク音声・原文・訳文がOpenAIへ送信されます。オンライン接続とAPI料金が必要です。データ取扱いはOpenAIのData controlsを確認してください。"
-                )
+                Text(UiCopy.text("settings.consentHelp"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -200,24 +208,39 @@ private struct SettingsGeneralTab: View {
                 )
             }
 
-            Section("APIキー") {
+            Section(UiCopy.text("settings.uiLanguage")) {
+                Picker(UiCopy.text("settings.uiLanguage"), selection: $settings.uiLanguage) {
+                    Text(UiCopy.text("settings.uiLanguage.system")).tag(UiLanguagePreference.system)
+                    Text(UiCopy.text("settings.uiLanguage.ja")).tag(UiLanguagePreference.ja)
+                    Text(UiCopy.text("settings.uiLanguage.en")).tag(UiLanguagePreference.en)
+                }
+                Text(UiCopy.text("settings.uiLanguageRestartHint"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section(UiCopy.text("settings.section.apiKey")) {
                 SecureField("sk-...", text: $apiKeyDraft)
                     .textFieldStyle(.roundedBorder)
 
                 HStack {
-                    Button("保存") {
+                    Button(UiCopy.text("settings.save")) {
                         onSaveAPIKey()
                     }
                     .disabled(apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-                    Button("削除", role: .destructive) {
+                    Button(UiCopy.text("settings.delete"), role: .destructive) {
                         onDeleteAPIKey()
                     }
                     .disabled(!hasStoredKey)
 
                     Spacer()
 
-                    Text(hasStoredKey ? "Keychainに保存済み" : "未保存")
+                    Text(
+                        hasStoredKey
+                            ? UiCopy.text("settings.apiKeySaved.mac")
+                            : UiCopy.text("settings.apiKeyNotSaved")
+                    )
                         .font(.caption)
                         .foregroundStyle(hasStoredKey ? Color.secondary : Color.orange)
                 }
@@ -228,9 +251,7 @@ private struct SettingsGeneralTab: View {
                         .foregroundStyle(statusIsError ? .red : .secondary)
                 }
 
-                Text(
-                    "APIキーはKeychainへ保存します。開発ビルドでは環境変数 OPENAI_API_KEY からも自動取り込みできます。"
-                )
+                Text(UiCopy.text("settings.apiKeyStorageHelp.mac"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
@@ -266,76 +287,86 @@ private struct SettingsSpeechRecognitionTab: View {
 
     var body: some View {
         Form {
-            Section("認識設定") {
-                Picker("ノイズ低減", selection: $settings.noiseReductionMode) {
+            Section(UiCopy.text("settings.section.recognition")) {
+                Picker(UiCopy.text("settings.noiseReduction"), selection: $settings.noiseReductionMode) {
                     ForEach(RealtimeTranslationNoiseReduction.allCases, id: \.rawValue) { mode in
                         Text(mode.displayName).tag(mode.rawValue)
                     }
                 }
 
-                Picker("認識遅延", selection: $settings.transcriptionDelayMode) {
+                Picker(UiCopy.text("settings.transcriptionDelay"), selection: $settings.transcriptionDelayMode) {
                     ForEach(RealtimeTranscriptionDelay.allCases, id: \.rawValue) { delay in
                         Text(delay.displayName).tag(delay.rawValue)
                     }
                 }
 
-                Text("値を上げると短い発話の認識精度が上がり、字幕表示は遅くなります。")
+                Text(UiCopy.text("settings.delayHelp"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 HStack {
-                    Menu("プリセットを適用") {
+                    Menu(UiCopy.text("settings.applyPreset")) {
                         ForEach(RealtimeSessionTuning.Preset.all) { preset in
-                            Button(preset.displayName) {
+                            Button(UiCopy.presetTitle(preset)) {
                                 settings.applyPreset(preset)
                             }
                         }
                     }
-                    Button("デフォルトに戻す") {
+                    Button(UiCopy.text("settings.restoreDefaults")) {
                         settings.restoreDefaultTranscriptionHints()
                     }
                 }
             }
 
-            Section("認識ヒント") {
+            Section(UiCopy.text("settings.section.hints")) {
                 SettingsMultilineField(
-                    title: "認識プロンプト",
+                    title: UiCopy.text("settings.promptTitle"),
                     text: $settings.transcriptionPrompt,
                     height: 96
                 )
-                Text("会議のテーマや話者、話題を文章で書くと認識精度が上がります。")
+                Text(UiCopy.text("settings.promptHelp"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(
-                    "\(promptCharacterCount)/\(RealtimeSessionTuning.promptCharacterLimit) 文字"
-                        + (isPromptOverLimit ? "（超過分は切り詰められます）" : "")
+                    UiCopy.text(
+                        "settings.promptCounter",
+                        [
+                            "count": String(promptCharacterCount),
+                            "limit": String(RealtimeSessionTuning.promptCharacterLimit),
+                        ]
+                    )
+                        + (isPromptOverLimit ? UiCopy.text("settings.promptOverLimit") : "")
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
                 SettingsMultilineField(
-                    title: "キーワード (1行1語)",
+                    title: UiCopy.text("settings.keywordsTitle"),
                     text: $settings.transcriptionKeywordsText,
                     height: 112
                 )
                 Text(
-                    "\(keywordCount)/\(RealtimeSessionTuning.keywordLimit) 語"
-                        + (isKeywordLineCountOverLimit ? "（超過分は送信されません）" : "")
+                    UiCopy.text(
+                        "settings.keywordCounter",
+                        [
+                            "count": String(keywordCount),
+                            "limit": String(RealtimeSessionTuning.keywordLimit),
+                        ]
+                    )
+                        + (isKeywordLineCountOverLimit ? UiCopy.text("settings.keywordOverLimit") : "")
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
                 if keywordsContainForbiddenCharacters {
-                    Text("「<」「>」は送信時に自動除去されます。")
+                    Text(UiCopy.text("settings.keywordForbidden"))
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
             }
 
             Section {
-                Text(
-                    "プロンプト・キーワード・認識遅延の変更は録音中でも数秒で反映されます。ノイズ低減は次回の録音開始から反映されます。"
-                )
+                Text(UiCopy.text("settings.tuningLiveHelp"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
@@ -349,19 +380,24 @@ private struct SettingsSubtitleAndControlsTab: View {
 
     var body: some View {
         Form {
-            Section("字幕") {
+            Section(UiCopy.text("settings.section.subtitles")) {
                 Stepper(value: $settings.fontSize, in: 18...48, step: 2) {
-                    Text("フォントサイズ: \(Int(settings.fontSize))pt")
+                    Text(
+                        UiCopy.text(
+                            "settings.fontSize",
+                            ["size": String(Int(settings.fontSize))]
+                        )
+                    )
                 }
 
-                Toggle("字幕をローカルに記録する", isOn: $settings.recordSubtitles)
-                Text("このMacにのみ保存します。OpenAIへ追加送信しません。メニューから書き出し・クリアできます。")
+                Toggle(UiCopy.text("settings.recordSubtitles"), isOn: $settings.recordSubtitles)
+                Text(UiCopy.text("settings.recordSubtitlesHelp.mac"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Section("操作") {
-                Text("メニューバーの開始/停止、または Control + Option + Space を使用します。")
+            Section(UiCopy.text("settings.section.controls")) {
+                Text(UiCopy.text("settings.controlsHelp.mac"))
                     .font(.callout)
             }
         }

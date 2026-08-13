@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using RealtimeTranslator.Core.Localization;
 
 namespace RealtimeTranslator.Core.Subtitles;
 
@@ -8,10 +9,9 @@ public static class SubtitleTranscriptLimits
 {
     public const int MaxFileBytes = 10 * 1024 * 1024;
 
-    public const string SizeLimitBanner =
-        "字幕記録が上限に達しました。書き出してクリアしてください";
+    public static string SizeLimitBanner => UserCopy.Current.Text("transcript.sizeLimitBanner");
 
-    public const string WriteFailureBanner = "字幕の記録に失敗しました";
+    public static string WriteFailureBanner => UserCopy.Current.Text("transcript.writeFailureBanner");
 }
 
 /// <summary>字幕セッション記録のプレーンテキスト整形。時刻文字列は呼び出し側が渡す。</summary>

@@ -117,7 +117,7 @@ final class InterpretationSession {
         sessionLanguagePair = languagePairProvider()
         state = .connecting
         aggregator.reset()
-        aggregator.setStatusBanner("OpenAI Realtimeへ接続中…")
+        aggregator.setStatusBanner(UiCopy.text("banner.connecting"))
         publishSubtitles()
 
         sessionTask = Task { @MainActor [weak self] in
@@ -209,7 +209,7 @@ final class InterpretationSession {
             guard reconnectAttempt < Self.maxReconnectAttempts else {
                 await tearDownStreaming()
                 flushPendingFinalizeIfNeeded()
-                enterError(RealtimeTranslationError.recoverableTransportFailure("再接続上限"))
+                enterErrorMessage(UiCopy.text("error.reconnectLimit"))
                 return
             }
 
@@ -217,13 +217,9 @@ final class InterpretationSession {
             state = .reconnecting
             let micMessage = RealtimeAudioCaptureError.inputDeviceChanged.errorDescription
             if let reconnectDetail, let micMessage, reconnectDetail == micMessage {
-                aggregator.setStatusBanner(
-                    "\(reconnectDetail) 再接続中… (\(reconnectAttempt)/\(Self.maxReconnectAttempts))"
-                )
+                aggregator.setStatusBanner(reconnectingBanner(detail: reconnectDetail))
             } else {
-                aggregator.setStatusBanner(
-                    "再接続中… (\(reconnectAttempt)/\(Self.maxReconnectAttempts))"
-                )
+                aggregator.setStatusBanner(reconnectingBanner(detail: nil))
             }
             publishSubtitles()
             await tearDownStreaming(keepSubtitles: true)
@@ -273,7 +269,7 @@ final class InterpretationSession {
     private func connectAndStream(generation: Int) async throws {
         let apiKey = try requireAPIKey()
         state = .connecting
-        aggregator.setStatusBanner("OpenAI Realtimeへ接続中…")
+        aggregator.setStatusBanner(UiCopy.text("banner.connecting"))
         publishSubtitles()
 
         let pair = sessionLanguagePair ?? languagePairProvider()
@@ -308,7 +304,7 @@ final class InterpretationSession {
 
         state = .listening
         reconnectAttempt = 0
-        aggregator.setStatusBanner("録音中… 話してください")
+        aggregator.setStatusBanner(UiCopy.text("banner.listening"))
         startTicker(intervalNanoseconds: activeTickerIntervalNanoseconds)
         publishSubtitles()
 
@@ -414,7 +410,7 @@ final class InterpretationSession {
     private func performStop() async {
         lifecycleGeneration += 1
         state = .closing
-        aggregator.setStatusBanner("録音を終了中…")
+        aggregator.setStatusBanner(UiCopy.text("banner.closing"))
         publishSubtitles()
 
         let runningSessionTask = sessionTask
@@ -709,11 +705,25 @@ final class InterpretationSession {
         delegate?.interpretationSession(self, didUpdateSubtitles: aggregator.snapshot())
     }
 
+    private func reconnectingBanner(detail: String?) -> String {
+        let substitutions = [
+            "detail": detail ?? "",
+            "attempt": String(reconnectAttempt),
+            "max": String(Self.maxReconnectAttempts),
+        ]
+        return UiCopy.text("banner.reconnectingProgress", substitutions)
+            .trimmingCharacters(in: .whitespaces)
+    }
+
     private func enterError(_ error: Error) {
+        enterErrorMessage(error.localizedDescription)
+    }
+
+    private func enterErrorMessage(_ message: String) {
         state = .error
-        aggregator.setStatusBanner(error.localizedDescription)
+        aggregator.setStatusBanner(message)
         publishSubtitles()
-        delegate?.interpretationSession(self, didEncounterMessage: error.localizedDescription)
+        delegate?.interpretationSession(self, didEncounterMessage: message)
     }
 
 }

@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Xunit;
 
+
 namespace RealtimeTranslator.Core.Tests;
 
 /// <summary>`shared/fixtures/v1` を読み込むヘルパ。fixture が唯一の正本。</summary>
@@ -76,11 +77,23 @@ public static class SharedFixtures
 
     /// <summary>ビルド出力から repo root を遡って探す。fixture をテスト出力へコピーしない。</summary>
     private static readonly Lazy<string> DirectoryPath = new(() =>
+        FindDirectory("shared", "fixtures", "v1"));
+
+    /// <summary><c>shared/locales/ui.json</c>。fixtures とは別ディレクトリ。</summary>
+    public static string UiCatalogJson => File.ReadAllText(UiCatalogPath);
+
+    public static string UiCatalogPath =>
+        Path.Combine(FindDirectory("shared", "locales"), "ui.json");
+
+    private static string FindDirectory(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var candidate = Path.Combine(directory.FullName, "shared", "fixtures", "v1");
+            var parts = new string[relativeSegments.Length + 1];
+            parts[0] = directory.FullName;
+            Array.Copy(relativeSegments, 0, parts, 1, relativeSegments.Length);
+            var candidate = Path.Combine(parts);
             if (Directory.Exists(candidate))
             {
                 return candidate;
@@ -89,6 +102,7 @@ public static class SharedFixtures
             directory = directory.Parent;
         }
 
-        throw new DirectoryNotFoundException("shared/fixtures/v1 not found above " + AppContext.BaseDirectory);
-    });
+        throw new DirectoryNotFoundException(
+            string.Join("/", relativeSegments) + " not found above " + AppContext.BaseDirectory);
+    }
 }

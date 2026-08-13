@@ -385,7 +385,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                         RealtimeTranslationStreamEvent(
                             lane: .translation(target),
                             event: .error(
-                                message: "翻訳サーバーへの音声送信が失敗しました",
+                                message: UiCopy.text("error.audioSendFailed"),
                                 code: "transport"
                             ),
                             epoch: epoch

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
 
 namespace RealtimeTranslator.Core.Settings;
@@ -20,7 +21,8 @@ public sealed record AppSettingsData(
     RealtimeTranslationNoiseReduction NoiseReduction,
     RealtimeTranscriptionDelay TranscriptionDelay,
     bool RecordSubtitles,
-    LanguagePair LanguagePair = LanguagePair.JaEn)
+    LanguagePair LanguagePair = LanguagePair.JaEn,
+    UiLanguagePreference UiLanguage = UiLanguagePreference.System)
 {
     /// <summary>同意文言を変えたら上げる。上げると再同意を求める。</summary>
     public const int CurrentConsentVersion = 1;
@@ -74,6 +76,7 @@ public static class AppSettingsCodec
             writer.WriteString("transcriptionDelay", settings.TranscriptionDelay.ToWireValue());
             writer.WriteBoolean("recordSubtitles", settings.RecordSubtitles);
             writer.WriteString("languagePair", settings.LanguagePair.ToWireValue());
+            writer.WriteString("uiLanguage", settings.UiLanguage.ToWireValue());
             writer.WriteEndObject();
         }
 
@@ -111,7 +114,8 @@ public static class AppSettingsCodec
             NoiseReduction(dictionary) ?? defaults.NoiseReduction,
             TranscriptionDelay(dictionary) ?? defaults.TranscriptionDelay,
             Boolean(dictionary, "recordSubtitles") ?? false,
-            Pair(dictionary) ?? defaults.LanguagePair);
+            Pair(dictionary) ?? defaults.LanguagePair,
+            UiLanguage.Parse(Text(dictionary, "uiLanguage")));
     }
 
     public static double ClampFontSize(double value) =>

@@ -13,6 +13,19 @@ final class PrivacyFixtureTests: XCTestCase {
         )
     }
 
+    // Given: ui.json の error.genericServer ja
+    // When: privacy fixture の genericErrorMessage と照合する
+    // Then: fixtures/v1 を変えずにカタログ ja が一致する
+    func testCatalogJapaneseGenericServerMatchesFixture() throws {
+        let json = try SharedFixtures.uiCatalogJSON()
+        let ja = try UserCopy.parse(json: json, locale: .ja)
+        let fixture = try SharedFixtures.load("privacy")
+        XCTAssertEqual(
+            SharedFixtures.text(fixture["genericErrorMessage"]),
+            ja.text("error.genericServer")
+        )
+    }
+
     // Given: 資格情報や内部情報を含みうるサーバーメッセージ
     // When: プライバシー安全な正規化を行う
     // Then: fixture が許容する文言だけが残る

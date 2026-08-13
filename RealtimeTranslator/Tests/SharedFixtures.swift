@@ -176,11 +176,27 @@ enum SharedFixtures {
         fatalError("unhandled text node")
     }
 
+    static var uiCatalogURL: URL {
+        localesDirectoryURL.appendingPathComponent("ui.json")
+    }
+
+    static func uiCatalogJSON() throws -> Data {
+        try Data(contentsOf: uiCatalogURL)
+    }
+
     private static let directoryURL: URL = {
+        findDirectory("shared/fixtures/v1")
+    }()
+
+    private static let localesDirectoryURL: URL = {
+        findDirectory("shared/locales")
+    }()
+
+    private static func findDirectory(_ relativePath: String) -> URL {
         var url = URL(fileURLWithPath: #filePath)
         while url.pathComponents.count > 1 {
             url.deleteLastPathComponent()
-            let candidate = url.appendingPathComponent("shared/fixtures/v1", isDirectory: true)
+            let candidate = url.appendingPathComponent(relativePath, isDirectory: true)
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
                 isDirectory.boolValue
@@ -188,8 +204,8 @@ enum SharedFixtures {
                 return candidate
             }
         }
-        fatalError("shared/fixtures/v1 not found above \(#filePath)")
-    }()
+        fatalError("\(relativePath) not found above \(#filePath)")
+    }
 
     private static func normalize(_ value: Any?) -> Any? {
         guard let value else { return nil }

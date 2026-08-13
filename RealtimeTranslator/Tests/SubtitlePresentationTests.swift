@@ -345,7 +345,7 @@ final class SubtitlePresentationTests: XCTestCase {
         let idleOnly = SubtitleView(
             snapshot: snapshot(
                 current: .empty,
-                statusBanner: "待機中 — Control + Option + Space で録音開始"
+                statusBanner: UiCopy.text("banner.idle", ["hotkey": UiCopy.macHotkey])
             ),
             fontSize: 32,
             isEditingPosition: false
@@ -353,7 +353,7 @@ final class SubtitlePresentationTests: XCTestCase {
         let withCurrent = SubtitleView(
             snapshot: snapshot(
                 current: subtitle(source: "現在の原文", translation: "Current translation"),
-                statusBanner: "待機中 — Control + Option + Space で録音開始"
+                statusBanner: UiCopy.text("banner.idle", ["hotkey": UiCopy.macHotkey])
             ),
             fontSize: 32,
             isEditingPosition: false

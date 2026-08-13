@@ -3,8 +3,8 @@ import Foundation
 /// 字幕セッション記録の上限とユーザー向けバナー（本文を含めない）。
 enum SubtitleTranscriptLimits {
     static let maxFileBytes = 10 * 1024 * 1024
-    static let sizeLimitBanner = "字幕記録が上限に達しました。書き出してクリアしてください"
-    static let writeFailureBanner = "字幕の記録に失敗しました"
+    static var sizeLimitBanner: String { UiCopy.text("transcript.sizeLimitBanner") }
+    static var writeFailureBanner: String { UiCopy.text("transcript.writeFailureBanner") }
 }
 
 /// 字幕セッション記録のプレーンテキスト整形。時刻文字列は呼び出し側が渡す。

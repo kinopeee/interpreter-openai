@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.Realtime;
 
 namespace RealtimeTranslator.Platform.Audio;
@@ -13,7 +14,7 @@ namespace RealtimeTranslator.Platform.Audio;
 public sealed class AudioCaptureException : Exception
 {
     public AudioCaptureException()
-        : this("マイクを開始できませんでした")
+        : this(UserCopy.Current.Text("error.micStartFailed"))
     {
     }
 
@@ -93,7 +94,7 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         catch (Exception error) when (error is COMException or InvalidOperationException or ArgumentException)
         {
             ownedDevice?.Dispose();
-            throw new AudioCaptureException("マイクが見つかりません", error);
+            throw new AudioCaptureException(UserCopy.Current.Text("error.micNotFound"), error);
         }
 
         var pipeline = new CapturedAudioFramePipeline(capture.WaveFormat);
@@ -122,7 +123,7 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         {
             // pump 未起動のため StopAsync 側で writer を完了させる。
             await StopAsync().ConfigureAwait(false);
-            throw new AudioCaptureException("マイクを開始できませんでした", error);
+            throw new AudioCaptureException(UserCopy.Current.Text("error.micStartFailed"), error);
         }
 
         // StartRecording 成功後に pump を登録し、StopAsync と交差しても await 対象を失わない。

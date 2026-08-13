@@ -4,8 +4,8 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Windows.Forms;
-using RealtimeTranslator.Core.Realtime;
 using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.Realtime;
 
 namespace RealtimeTranslator.App;
 
@@ -26,23 +26,23 @@ public sealed class TrayController : IDisposable
 
     public TrayController(LanguagePair languagePair = LanguagePair.JaEn)
     {
-        _startStopItem = new ToolStripMenuItem("翻訳を開始", null, (_, _) => StartStopRequested?.Invoke(this, EventArgs.Empty));
+        _startStopItem = new ToolStripMenuItem(UiCopy.Text("menu.startTranslation"), null, (_, _) => StartStopRequested?.Invoke(this, EventArgs.Empty));
         _exportSubtitlesItem = new ToolStripMenuItem(
-            "字幕を書き出し…",
+            UiCopy.Text("menu.exportSubtitles"),
             null,
             (_, _) => ExportSubtitlesRequested?.Invoke(this, EventArgs.Empty))
         {
             Enabled = false,
         };
         _clearSubtitlesItem = new ToolStripMenuItem(
-            "字幕記録をクリア",
+            UiCopy.Text("menu.clearSubtitles"),
             null,
             (_, _) => ClearSubtitlesRequested?.Invoke(this, EventArgs.Empty))
         {
             Enabled = false,
         };
         _editPositionItem = new ToolStripMenuItem(
-            "字幕位置を編集",
+            UiCopy.Text("menu.editPosition"),
             null,
             (_, _) => EditPositionRequested?.Invoke(this, EventArgs.Empty))
         {
@@ -52,18 +52,18 @@ public sealed class TrayController : IDisposable
         var menu = new ContextMenuStrip();
         menu.Items.Add(_startStopItem);
         menu.Items.Add(new ToolStripSeparator());
-        _languagePairItem = Disabled("翻訳方向: " + DisplayPair(languagePair));
+        _languagePairItem = Disabled(UiCopy.Format("menu.languagePair", "pair", UiCopy.PairName(languagePair)));
         menu.Items.Add(_languagePairItem);
-        menu.Items.Add(Disabled("字幕表示: 原文＋翻訳"));
-        menu.Items.Add(Disabled("翻訳音声: 字幕のみ"));
+        menu.Items.Add(Disabled(UiCopy.Text("menu.subtitleDisplay")));
+        menu.Items.Add(Disabled(UiCopy.Text("menu.translatedAudio")));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_exportSubtitlesItem);
         menu.Items.Add(_clearSubtitlesItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_editPositionItem);
-        menu.Items.Add(new ToolStripMenuItem("設定…", null, (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty)));
+        menu.Items.Add(new ToolStripMenuItem(UiCopy.Text("menu.settings"), null, (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty)));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("終了", null, (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty)));
+        menu.Items.Add(new ToolStripMenuItem(UiCopy.Text("menu.quit"), null, (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty)));
 
         _notifyIcon = new NotifyIcon
         {
@@ -96,7 +96,9 @@ public sealed class TrayController : IDisposable
 
     public void UpdateState(TranslationState state)
     {
-        _startStopItem.Text = IsRunning(state) ? "翻訳を停止" : "翻訳を開始";
+        _startStopItem.Text = IsRunning(state)
+            ? UiCopy.Text("menu.stopTranslation")
+            : UiCopy.Text("menu.startTranslation");
         _startStopItem.Enabled = state != TranslationState.Closing;
         _notifyIcon.Icon = IconFor(state);
         // NotifyIcon.Text は 63 文字までなので状態名だけを足す。
@@ -108,7 +110,7 @@ public sealed class TrayController : IDisposable
     public void SetEditingPosition(bool isEditing) => _editPositionItem.Checked = isEditing;
 
     public void SetLanguagePair(LanguagePair pair) =>
-        _languagePairItem.Text = "翻訳方向: " + DisplayPair(pair);
+        _languagePairItem.Text = UiCopy.Format("menu.languagePair", "pair", UiCopy.PairName(pair));
 
     public void SetHasRecordedSubtitles(bool hasEntries)
     {
@@ -143,14 +145,6 @@ public sealed class TrayController : IDisposable
     }
 
     private static ToolStripMenuItem Disabled(string text) => new(text) { Enabled = false };
-
-    private static string DisplayPair(LanguagePair pair) => pair switch
-    {
-        LanguagePair.JaEn => "日本語 ↔ 英語",
-        LanguagePair.JaEs => "日本語 ↔ スペイン語",
-        LanguagePair.EnEs => "英語 ↔ スペイン語",
-        _ => "日本語 ↔ 英語",
-    };
 
     private Icon IconFor(TranslationState state)
     {

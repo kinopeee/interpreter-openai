@@ -80,7 +80,7 @@ final class AppCoordinator: NSObject {
     private var idleSnapshot: SubtitleSnapshot {
         SubtitleSnapshot(
             current: .empty,
-            statusBanner: "待機中 — Control + Option + Space で録音開始"
+            statusBanner: UiCopy.text("banner.idle", ["hotkey": UiCopy.macHotkey])
         )
     }
 
@@ -97,12 +97,12 @@ final class AppCoordinator: NSObject {
 
     private func beginTranslation() {
         guard settings.hasAcceptedCurrentOpenAIConsent else {
-            presentMessage("録音を開始する前に、設定でOpenAIへの送信に同意してください。")
+            presentMessage(UiCopy.text("alert.needConsent"))
             openSettings()
             return
         }
         guard apiKeyStore.hasStoredKey else {
-            presentMessage("録音を開始する前に、設定でOpenAI APIキーを保存してください。")
+            presentMessage(UiCopy.text("alert.needApiKey"))
             openSettings()
             return
         }
@@ -149,11 +149,11 @@ final class AppCoordinator: NSObject {
 
     func clearSubtitleTranscript() {
         let alert = NSAlert()
-        alert.messageText = "字幕記録をクリアしますか？"
-        alert.informativeText = "ローカルの字幕記録ファイルを空にします。"
+        alert.messageText = UiCopy.text("alert.clearTranscriptTitle")
+        alert.informativeText = UiCopy.text("alert.clearTranscript.body")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "クリア")
-        alert.addButton(withTitle: "キャンセル")
+        alert.addButton(withTitle: UiCopy.text("alert.clearTranscript.confirm"))
+        alert.addButton(withTitle: UiCopy.text("alert.clearTranscript.cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
         do {
@@ -186,7 +186,7 @@ final class AppCoordinator: NSObject {
         )
         let hosting = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: hosting)
-        window.title = "Realtime Translator 設定"
+        window.title = UiCopy.text("settings.windowTitle")
         window.styleMask = [.titled, .closable]
         window.setContentSize(
             NSSize(

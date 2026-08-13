@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
 
 namespace RealtimeTranslator.Core.Realtime;
@@ -46,7 +47,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
     public const int ConsecutiveTranslationFailureLimit = 3;
 
-    public const string TransportErrorMessage = "翻訳サーバーへの音声送信が失敗しました";
+    public static string TransportErrorMessage => UserCopy.Current.Text("error.audioSendFailed");
 
     public const string TransportErrorCode = "transport";
 

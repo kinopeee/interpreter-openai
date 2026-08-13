@@ -1,0 +1,2 @@
+/* Microphone permission is shown in the OS language, not uiLanguage. */
+"NSMicrophoneUsageDescription" = "Microphone audio is sent to the OpenAI API to generate real-time translation subtitles.";

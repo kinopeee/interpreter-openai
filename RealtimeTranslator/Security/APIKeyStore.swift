@@ -9,13 +9,13 @@ enum APIKeyStoreError: Error, LocalizedError, Equatable, Sendable {
     var errorDescription: String? {
         switch self {
         case .emptyKey:
-            return "APIキーが空です"
+            return UiCopy.text("error.apiKeyEmpty")
         case .notFound:
-            return "APIキーが保存されていません"
+            return UiCopy.text("error.apiKeyNotFound")
         case .unexpectedStatus:
-            return "APIキーの保存領域へアクセスできません"
+            return UiCopy.text("error.apiKeyStoreUnavailable")
         case .encodingFailed:
-            return "APIキーを処理できません"
+            return UiCopy.text("error.apiKeyEncodingFailed")
         }
     }
 }

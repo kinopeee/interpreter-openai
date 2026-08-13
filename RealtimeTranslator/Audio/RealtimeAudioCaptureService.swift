@@ -32,17 +32,17 @@ enum RealtimeAudioCaptureError: Error, LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .microphoneDenied:
-            return "マイクを利用できません"
+            return UiCopy.text("error.micDenied")
         case .audioFormatUnavailable:
-            return "マイク入力の音声形式を取得できません"
+            return UiCopy.text("error.micFormatUnavailable")
         case .audioConverterUnavailable:
-            return "翻訳用の音声変換を開始できません"
+            return UiCopy.text("error.micConverterUnavailable")
         case .audioBufferPoolUnavailable:
-            return "音声バッファを準備できません"
+            return UiCopy.text("error.micBufferUnavailable")
         case .pipelineOverloaded:
-            return "音声処理が遅延しています"
+            return UiCopy.text("error.micPipelineOverloaded")
         case .inputDeviceChanged:
-            return "マイク入力デバイスが変更されました"
+            return UiCopy.text("error.micDeviceChanged")
         }
     }
 }
