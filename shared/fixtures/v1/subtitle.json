@@ -313,6 +313,22 @@
           "isTranslationCurrent": true,
           "shouldFinalize": false
         }
+      },
+      {
+        "name": "expected spanish lane wins over english echo",
+        "epoch": 1,
+        "expectLane": "es",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "the meeting starts now", "eventId": "s-en-echo", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "the meeting starts now", "eventId": "t-en-echo", "elapsedMs": 150 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "es", "text": "la reunión empieza ahora", "eventId": "t-es-real", "elapsedMs": 200 }
+        ],
+        "expectedFinal": {
+          "sourceText": "the meeting starts now",
+          "translatedText": "la reunión empieza ahora",
+          "isTranslationCurrent": true,
+          "shouldFinalize": false
+        }
       }
     ]
   }
