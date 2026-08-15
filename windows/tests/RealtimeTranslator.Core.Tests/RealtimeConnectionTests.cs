@@ -117,6 +117,56 @@ public sealed class RealtimeConnectionTests
         Assert.DoesNotContain("sk-live-xyz", error.Message, StringComparison.Ordinal);
     }
 
+    // Given: handshake 中に Authorization / Bearer を含む非 auth code の error
+    // When: 翻訳接続を開始する
+    // Then: AuthenticationFailed へ分類し、鍵断片を Message に出さない
+    [Fact]
+    public async Task TranslationConnectionClassifiesAuthorizationThemedHandshakeAsAuthenticationFailure()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        transport.EnqueueJson(
+            """{"type":"error","error":{"message":"Invalid Authorization header: Bearer sk-leak-example","code":"invalid_request_error"}}""");
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety",
+            sessionUpdateTimeout: ShortTimeout);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+
+        Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
+        Assert.DoesNotContain("sk-leak-example", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
+        Assert.True(transport.CloseCount >= 1);
+    }
+
+    // Given: handshake 中にキー断片を含む非認証 server_error
+    // When: 翻訳接続を開始する
+    // Then: FatalServerError へ分類し、表示文言から秘密情報を除去する
+    [Fact]
+    public async Task TranslationConnectionHandshakeFatalServerErrorRedactsKeyMaterial()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        transport.EnqueueJson(
+            """{"type":"error","error":{"message":"upstream echo sk-should-not-appear","code":"server_error"}}""");
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety",
+            sessionUpdateTimeout: ShortTimeout);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+
+        Assert.Equal(RealtimeTranslationErrorKind.FatalServerError, error.Kind);
+        Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
+        Assert.DoesNotContain("sk-should-not-appear", error.Message, StringComparison.Ordinal);
+        Assert.True(transport.CloseCount >= 1);
+    }
+
     // Given: 空の API キー
     // When: 接続を開始する
     // Then: 送信前に MissingApiKey で失敗する
@@ -364,6 +414,66 @@ public sealed class RealtimeConnectionTests
 
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, tuningError.Kind);
+    }
+
+    // Given: session.created を返さない原文接続
+    // When: handshake timeout まで待つ
+    // Then: SessionUpdateTimeout で失敗し transport は解放される
+    [Fact]
+    public async Task SourceConnectionTimesOutWhenHandshakeStalls()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            handshakeTimeout: ShortTimeout);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => connection.StartAsync("sk-test", RealtimeSessionTuning.Default));
+
+        Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, error.Kind);
+        Assert.True(transport.CloseCount >= 1);
+    }
+
+    // Given: handshake 前（未 ready）の原文接続。closeTimeout は長く、誤って待つとテストが固まる
+    // When: ready 前に graceful close する
+    // Then: completed 待ちへ入らず即完了し、commit も送らない
+    [Fact]
+    public async Task SourceConnectionCloseBeforeReadyForceClosesWithoutWaiting()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            closeTimeout: TimeSpan.FromSeconds(2));
+
+        var started = Stopwatch.StartNew();
+        await connection.CloseGracefullyAsync();
+        started.Stop();
+
+        Assert.True(started.Elapsed < TimeSpan.FromMilliseconds(500));
+        Assert.Equal(1, transport.CloseCount);
+        Assert.Empty(transport.Sent);
+    }
+
+    // Given: session completed を返さない ready な原文接続
+    // When: graceful close を試みる
+    // Then: commit を送った上で CloseTimeout になる
+    [Fact]
+    public async Task SourceConnectionCloseTimesOutWithoutCompleted()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            closeTimeout: ShortTimeout);
+        await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => connection.CloseGracefullyAsync());
+
+        Assert.Equal(RealtimeTranslationErrorKind.CloseTimeout, error.Kind);
+        Assert.Equal("input_audio_buffer.commit", TypeOf(transport.Sent[^1]));
     }
 
     // Given: far_field で接続した原文 transcription 接続
