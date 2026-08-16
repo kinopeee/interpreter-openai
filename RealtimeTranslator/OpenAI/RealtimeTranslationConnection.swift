@@ -149,24 +149,27 @@ actor RealtimeTranslationConnection {
         }
         isClosing = true
         isReady = false
+        // forceClose / 次の start が進めた epoch のソケットを、古い close 待ちが閉じない。
+        let closeEpoch = epoch
 
         try? await send(.sessionClose)
 
         let deadline = ContinuousClock.now + .nanoseconds(Int64(closeTimeoutNanoseconds))
         while ContinuousClock.now < deadline {
             if didReceiveClosed {
-                await tearDownTransport()
+                await tearDownTransportIfCurrentEpoch(closeEpoch)
                 return
             }
             do {
                 try await Task.sleep(nanoseconds: 50_000_000)
             } catch is CancellationError {
                 // async let の片方が失敗してキャンセルされたとき、期限まで待たない。
-                await tearDownTransport()
+                await tearDownTransportIfCurrentEpoch(closeEpoch)
                 throw CancellationError()
             }
         }
-        await tearDownTransport()
+        await tearDownTransportIfCurrentEpoch(closeEpoch)
+        guard closeEpoch == epoch else { return }
         throw RealtimeTranslationError.closeTimeout
     }
 
@@ -303,6 +306,11 @@ actor RealtimeTranslationConnection {
         receiveTask = nil
         await transport.close()
         finishEventStream()
+    }
+
+    private func tearDownTransportIfCurrentEpoch(_ closeEpoch: Int) async {
+        guard closeEpoch == epoch else { return }
+        await tearDownTransport()
     }
 
     private func finishEventStream() {

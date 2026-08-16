@@ -385,6 +385,56 @@ final class RealtimeTranslationConnectionTests: XCTestCase {
         XCTAssertEqual(sentCount, 0)
     }
 
+    func testStaleCloseDoesNotTearDownSocketAfterRestart() async throws {
+        // Given: handshake済みの翻訳接続。session.closed は返さず close 待ちに入る。
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeTranslationConnection(
+            target: .english,
+            transport: transport,
+            safetyIdentifier: "safety",
+            sessionUpdateTimeoutNanoseconds: 1_000_000_000,
+            closeTimeoutNanoseconds: 800_000_000
+        )
+        try await transport.enqueueJSON(["type": "session.created"])
+        let startTask = Task {
+            try await connection.start(
+                apiKey: "sk-test",
+                config: .englishTargetWithoutSourceTranscription()
+            )
+        }
+        try await waitForSent(transport)
+        try await transport.enqueueJSON(["type": "session.updated"])
+        try await startTask.value
+
+        // When: graceful close の待ち中に forceClose し、同じ接続で次の start を完了する
+        let closeTask = Task {
+            try await connection.closeGracefully()
+        }
+        try await waitForSentCount(transport, minimum: 2)
+        await connection.forceClose()
+        try await transport.enqueueJSON(["type": "session.created"])
+        let restartTask = Task {
+            try await connection.start(
+                apiKey: "sk-test",
+                config: .englishTargetWithoutSourceTranscription()
+            )
+        }
+        try await waitForSentCount(transport, minimum: 3)
+        try await transport.enqueueJSON(["type": "session.updated"])
+        try await restartTask.value
+        let closeCountAfterRestart = await transport.closeCount
+        let connectCountAfterRestart = await transport.connectCount
+
+        _ = await closeTask.result
+
+        // Then: 古い close 待ちは新しいソケットを閉じない
+        let closeCountAfterStaleClose = await transport.closeCount
+        let connectCountAfterStaleClose = await transport.connectCount
+        XCTAssertEqual(closeCountAfterStaleClose, closeCountAfterRestart)
+        XCTAssertEqual(connectCountAfterStaleClose, connectCountAfterRestart)
+        XCTAssertEqual(connectCountAfterRestart, 2)
+    }
+
     func testOutputAudioDeltaIsNotForwardedToEventStream() async throws {
         // Given: ready な翻訳接続。Stop 後の購読停止中に音声 delta が洪水しても字幕を落とさない。
         let transport = FakeRealtimeWebSocketTransport()

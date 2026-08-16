@@ -647,6 +647,60 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         XCTAssertTrue(translations.contains("drain survivor"))
     }
 
+    func testSourceCloseFailureDoesNotLeaveTranslationCloseToKillNextStart() async throws {
+        // Given: 翻訳 close は session.closed を待たされ、原文 commit だけ失敗する
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport,
+            closeTimeoutNanoseconds: 400_000_000
+        )
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        await sourceTransport.failNextSendOnce()
+
+        // When: 原文 close 失敗後にすぐ次の録音を開始する
+        _ = await dual.closeGracefully()
+        // 2回目は sent が既にあるので startDual の minimum:1 待ちは使えない。
+        let sourceSentBeforeRestart = await sourceTransport.sent.count
+        let englishSentBeforeRestart = await englishTransport.sent.count
+        let japaneseSentBeforeRestart = await japaneseTransport.sent.count
+        try await sourceTransport.enqueueJSON(["type": "session.created"])
+        try await englishTransport.enqueueJSON(["type": "session.created"])
+        try await japaneseTransport.enqueueJSON(["type": "session.created"])
+        let restartTask = Task {
+            try await dual.start(apiKey: "sk-test", pair: .jaEn)
+        }
+        try await waitUntilSent(sourceTransport, minimum: sourceSentBeforeRestart + 1)
+        try await waitUntilSent(englishTransport, minimum: englishSentBeforeRestart + 1)
+        try await waitUntilSent(japaneseTransport, minimum: japaneseSentBeforeRestart + 1)
+        try await sourceTransport.enqueueJSON(["type": "session.updated"])
+        try await englishTransport.enqueueJSON(["type": "session.updated"])
+        try await japaneseTransport.enqueueJSON(["type": "session.updated"])
+        try await restartTask.value
+        let englishCloseAfterRestart = await englishTransport.closeCount
+        let englishConnectAfterRestart = await englishTransport.connectCount
+        let japaneseCloseAfterRestart = await japaneseTransport.closeCount
+        let japaneseConnectAfterRestart = await japaneseTransport.connectCount
+
+        try await Task.sleep(nanoseconds: 500_000_000)
+
+        // Then: 取り残された翻訳 close が新ソケットを閉じない
+        XCTAssertEqual(await englishTransport.closeCount, englishCloseAfterRestart)
+        XCTAssertEqual(await englishTransport.connectCount, englishConnectAfterRestart)
+        XCTAssertEqual(await japaneseTransport.closeCount, japaneseCloseAfterRestart)
+        XCTAssertEqual(await japaneseTransport.connectCount, japaneseConnectAfterRestart)
+        XCTAssertEqual(englishConnectAfterRestart, 2)
+        XCTAssertEqual(japaneseConnectAfterRestart, 2)
+    }
+
     func testWaitForTranslationDrainTimesOutWhenSendStalls() async throws {
         // Given: 翻訳送信が完了しないdual（言語判定済みで翻訳laneへ流れる）
         let sourceTransport = FakeRealtimeWebSocketTransport()
