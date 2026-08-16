@@ -162,6 +162,7 @@ final class APIKeyStoreTests: XCTestCase {
         // Then
         XCTAssertFalse(imported)
         XCTAssertNil(try store.load())
+        XCTAssertEqual(try store.storedKeyState(), .missing)
     }
 
     func testBootstrapRejectsMalformedEnvironmentValue() throws {
@@ -178,5 +179,6 @@ final class APIKeyStoreTests: XCTestCase {
             XCTAssertEqual(error as? APIKeyStoreError, .malformedKey)
         }
         XCTAssertNil(try store.load())
+        XCTAssertEqual(try store.storedKeyState(), .missing)
     }
 }
