@@ -107,6 +107,18 @@
       "message": "authority mismatch",
       "expected": false
     },
+    {
+      "name": "message phrase authorization with non-auth code",
+      "code": "invalid_request_error",
+      "message": "Invalid Authorization header: Bearer sk-leak-example",
+      "expected": true
+    },
+    {
+      "name": "server_error with key material is not authentication",
+      "code": "server_error",
+      "message": "upstream echo sk-should-not-appear",
+      "expected": false
+    },
     { "name": "unrelated failure", "code": "server_error", "message": "boom", "expected": false },
     { "name": "no code and empty message", "code": null, "message": "", "expected": false }
   ],

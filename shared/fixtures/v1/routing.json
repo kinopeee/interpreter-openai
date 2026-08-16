@@ -192,6 +192,34 @@
       }
     },
     {
+      "name": "ja-es preroll flushes to spanish target",
+      "pair": "ja-es",
+      "steps": [
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "appendFrame", "frame": "f2" },
+        { "kind": "selectTranslationTarget", "target": "es" },
+        { "kind": "appendFrame", "frame": "f3" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2", "f3"],
+        "frames": { "es": ["f1", "f2", "f3"], "ja": [] }
+      }
+    },
+    {
+      "name": "en-es preroll flushes to english target",
+      "pair": "en-es",
+      "steps": [
+        { "kind": "appendFrame", "frame": "f1" },
+        { "kind": "appendFrame", "frame": "f2" },
+        { "kind": "selectTranslationTarget", "target": "en" },
+        { "kind": "appendFrame", "frame": "f3" }
+      ],
+      "expected": {
+        "sourceFrames": ["f1", "f2", "f3"],
+        "frames": { "en": ["f1", "f2", "f3"], "es": [] }
+      }
+    },
+    {
       "name": "ja-es language switch flushes the rolling preroll to the new target",
       "pair": "ja-es",
       "steps": [
@@ -271,6 +299,82 @@
         "frames": {
           "es": ["ok1"],
           "en": []
+        },
+        "transportErrorCount": 1,
+        "translationPumpHalted": true,
+        "signalsSessionReconnect": true
+      }
+    },
+    {
+      "name": "en-es three consecutive english translation send failures emit one transport error and halt translation",
+      "pair": "en-es",
+      "steps": [
+        { "kind": "selectTranslationTarget", "target": "en" },
+        { "kind": "appendFrame", "frame": "ok1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail2" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail3" },
+        { "kind": "appendFrame", "frame": "afterHalt" }
+      ],
+      "expected": {
+        "sourceFrames": ["ok1", "fail1", "fail2", "fail3", "afterHalt"],
+        "frames": {
+          "en": ["ok1"],
+          "es": []
+        },
+        "transportErrorCount": 1,
+        "translationPumpHalted": true,
+        "signalsSessionReconnect": true
+      }
+    },
+    {
+      "name": "ja-es three consecutive japanese translation send failures emit one transport error and halt translation",
+      "pair": "ja-es",
+      "steps": [
+        { "kind": "selectTranslationTarget", "target": "ja" },
+        { "kind": "appendFrame", "frame": "ok1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail2" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail3" },
+        { "kind": "appendFrame", "frame": "afterHalt" }
+      ],
+      "expected": {
+        "sourceFrames": ["ok1", "fail1", "fail2", "fail3", "afterHalt"],
+        "frames": {
+          "ja": ["ok1"],
+          "es": [],
+          "en": []
+        },
+        "transportErrorCount": 1,
+        "translationPumpHalted": true,
+        "signalsSessionReconnect": true
+      }
+    },
+    {
+      "name": "halted translation pump does not resume when the target switches",
+      "steps": [
+        { "kind": "selectTranslationTarget", "target": "en" },
+        { "kind": "appendFrame", "frame": "ok1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail2" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail3" },
+        { "kind": "selectTranslationTarget", "target": "ja" },
+        { "kind": "appendFrame", "frame": "afterSwitch" }
+      ],
+      "expected": {
+        "sourceFrames": ["ok1", "fail1", "fail2", "fail3", "afterSwitch"],
+        "frames": {
+          "en": ["ok1"],
+          "ja": []
         },
         "transportErrorCount": 1,
         "translationPumpHalted": true,

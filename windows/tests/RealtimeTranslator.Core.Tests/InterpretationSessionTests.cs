@@ -460,6 +460,41 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: en-es ペアと ja-en 既定の tuningProvider
+    // When: Start し、Listening 中に ApplyTuningChangeAsync する
+    // Then: Start / Apply の双方で ForPair(EnEs) の prompt・keywords が dual へ渡る
+    [Fact]
+    public async Task EnEsStartAndApplyTuningUsePairMigratedDefaults()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(
+            client,
+            tuningProvider: () => RealtimeSessionTuning.Default,
+            languagePairProvider: () => LanguagePair.EnEs);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        Assert.Equal(LanguagePair.EnEs, client.LastStartedPair);
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.EnEs),
+            client.LastStartedTuning?.TranscriptionPrompt);
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.EnEs).ToArray(),
+            client.LastStartedTuning?.TranscriptionKeywords.ToArray());
+
+        await session.ApplyTuningChangeAsync();
+
+        Assert.Equal(1, client.UpdateTranscriptionTuningCount);
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.EnEs),
+            client.LastTuning?.TranscriptionPrompt);
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.EnEs).ToArray(),
+            client.LastTuning?.TranscriptionKeywords.ToArray());
+        await session.StopAsync();
+    }
+
     // Given: 文字種の反転を起こさない英語 delta がサーバから連続で流れ続ける
     // When: 同一セグメント内で delta を大量に取り込む
     // Then: routing 判定バッファは上限までで打ち切られ、その後の反転検出も壊れない
@@ -616,6 +651,134 @@ public sealed class InterpretationSessionTests
 
         Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
         Assert.True(client.ResetAudioRoutingCount > resetsAfterJapanese);
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
+
+        await session.StopAsync();
+    }
+
+    // Given: ja-es で訳文がまだ無い日本語原文だけのセグメント
+    // When: スペイン語へ文字種が反転する
+    // Then: 不完全ペアを ShouldFinalize せず、routing だけ日本語 target へ切り替える
+    [Fact]
+    public async Task JaEsLanguageFlipDoesNotFinalizeIncompleteSourceOnlyPair()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, languagePairProvider: () => LanguagePair.JaEs);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("これは原文だけです");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 1);
+        Assert.Equal(RealtimeTranslationOutputLanguage.Spanish, client.SelectedTargets[0]);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.SourceText.Length > 0);
+            }
+        });
+        var resetsAfterJapanese = client.ResetAudioRoutingCount;
+
+        client.PublishSourceDelta("................ mundo ahora");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 2);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText.Contains("mundo ahora", StringComparison.Ordinal));
+            }
+        });
+        await Task.Delay(100);
+
+        Assert.Equal(
+            [RealtimeTranslationOutputLanguage.Spanish, RealtimeTranslationOutputLanguage.Japanese],
+            client.SelectedTargets);
+        Assert.True(client.ResetAudioRoutingCount > resetsAfterJapanese);
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
+
+        await session.StopAsync();
+    }
+
+    // Given: en-es で訳文がまだ無いスペイン語原文だけのセグメント
+    // When: hysteresis を満たして英語へ反転する
+    // Then: 1 回目では確定せず、2 回目も不完全ペアを ShouldFinalize せず Spanish target へ切り替える
+    [Fact]
+    public async Task EnEsLanguageFlipDoesNotFinalizeIncompleteSourceOnlyPair()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, languagePairProvider: () => LanguagePair.EnEs);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("el la los las es está que y");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 1);
+        Assert.Equal(RealtimeTranslationOutputLanguage.English, client.SelectedTargets[0]);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.SourceText.Length > 0);
+            }
+        });
+        var resetsAfterSpanish = client.ResetAudioRoutingCount;
+
+        client.PublishSourceDelta(" the and is are of to it that");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText.Contains("the and is are", StringComparison.Ordinal)
+                    && !update.ShouldFinalize);
+            }
+        });
+        Assert.Equal([RealtimeTranslationOutputLanguage.English], client.SelectedTargets);
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
+
+        client.PublishSourceDelta(" this with for you they the and");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 2);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText.Contains("this with for you", StringComparison.Ordinal));
+            }
+        });
+        await Task.Delay(100);
+
+        Assert.Equal(
+            [RealtimeTranslationOutputLanguage.English, RealtimeTranslationOutputLanguage.Spanish],
+            client.SelectedTargets);
+        Assert.True(client.ResetAudioRoutingCount > resetsAfterSpanish);
         lock (updates)
         {
             Assert.DoesNotContain(updates, update => update.ShouldFinalize);

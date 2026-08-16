@@ -320,6 +320,134 @@ public sealed class DualRealtimeTranslationClientParityTests
         await dual.ForceCloseAsync();
     }
 
+    // Given: スペイン語接続を含む Dual と ja-es / en-es
+    // When: その pair で Start する
+    // Then: 原文だけが gpt-live-transcribe を要求し、接続した翻訳 lane は transcription ブロックを持たない
+    [Theory]
+    [InlineData(LanguagePair.JaEs)]
+    [InlineData(LanguagePair.EnEs)]
+    public async Task StartOmitsTranscriptionOnSpanishPairTranslationLanes(LanguagePair pair)
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        var spanish = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese, spanish);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, pair);
+
+        var sourceTranscription = FirstSessionUpdateInput(source)["transcription"]!.AsObject();
+        Assert.Equal("gpt-live-transcribe", sourceTranscription["model"]!.GetValue<string>());
+        Assert.Null(FirstSessionUpdateInput(spanish)["transcription"]);
+
+        if (pair == LanguagePair.JaEs)
+        {
+            Assert.Equal(0, english.ConnectCount);
+            Assert.Null(FirstSessionUpdateInput(japanese)["transcription"]);
+        }
+        else
+        {
+            Assert.Equal(0, japanese.ConnectCount);
+            Assert.Null(FirstSessionUpdateInput(english)["transcription"]);
+        }
+
+        await dual.ForceCloseAsync();
+    }
+
+    // Given: スペイン語翻訳接続だけ Connect が失敗する Dual
+    // When: スペイン語を含む pair で Start する
+    // Then: 例外を伝播し、原文と全翻訳接続を ForceClose する
+    [Theory]
+    [InlineData(LanguagePair.JaEs)]
+    [InlineData(LanguagePair.EnEs)]
+    public async Task StartFailureForceClosesSpanishPairConnections(LanguagePair pair)
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        var spanish = new FakeRealtimeServerTransport
+        {
+            ConnectError = new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.RecoverableTransportFailure,
+                "spanish connect failed"),
+        };
+        using var dual = CreateDual(source, english, japanese, spanish);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.StartAsync("sk-test", RealtimeSessionTuning.Default, pair));
+
+        Assert.Equal(RealtimeTranslationErrorKind.RecoverableTransportFailure, error.Kind);
+        Assert.True(source.CloseCount >= 1);
+        Assert.True(english.CloseCount >= 1);
+        Assert.True(japanese.CloseCount >= 1);
+        Assert.True(spanish.CloseCount >= 1);
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
+    // Given: ja-es で ready な Dual の Spanish CloseAsync だけが失敗する
+    // When: ForceCloseAsync する
+    // Then: 先頭の失敗を伝播しつつ原文・日本語 lane も閉じ、Events は完了する
+    [Fact]
+    public async Task ForceCloseContinuesWhenSpanishConnectionThrows()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        var spanish = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese, spanish);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs);
+        var epochBefore = dual.ConnectionEpoch;
+        var closeCountBefore = (
+            Source: source.CloseCount,
+            Japanese: japanese.CloseCount,
+            Spanish: spanish.CloseCount);
+        spanish.CloseError = new InvalidOperationException("spanish close boom");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => dual.ForceCloseAsync());
+
+        Assert.Equal("spanish close boom", error.Message);
+        Assert.True(dual.ConnectionEpoch > epochBefore);
+        Assert.True(source.CloseCount > closeCountBefore.Source);
+        Assert.True(japanese.CloseCount > closeCountBefore.Japanese);
+        Assert.True(spanish.CloseCount > closeCountBefore.Spanish);
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
+    // Given: ForceClose 済みの Dual
+    // When: Select / UpdateTuning / Append する
+    // Then: いずれも NotConnected になり、停止後の誤送信を許さない
+    [Fact]
+    public async Task SelectAndUpdateAfterForceCloseAreNotConnected()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.ForceCloseAsync();
+
+        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English));
+        var tuningError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.UpdateTranscriptionTuningAsync(RealtimeSessionTuning.Default));
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, selectError.Kind);
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, tuningError.Kind);
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
     private static DualRealtimeTranslationClient CreateDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,
