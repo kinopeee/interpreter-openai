@@ -187,6 +187,71 @@ public sealed class RealtimeConnectionTests
         Assert.Equal(0, transport.ConnectCount);
     }
 
+    // Given: handshake 中に Missing bearer 文言（code は非 auth）
+    // When: 翻訳接続を開始する
+    // Then: AuthenticationFailed へ分類し、bearer を Message に出さない
+    [Fact]
+    public async Task TranslationConnectionClassifiesMissingBearerHandshakeAsAuthenticationFailure()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        transport.EnqueueJson(
+            """{"type":"error","error":{"message":"Missing bearer or basic authentication in header","code":"invalid_request_error"}}""");
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety",
+            sessionUpdateTimeout: ShortTimeout);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+
+        Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
+        Assert.DoesNotContain("bearer", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
+        Assert.True(transport.CloseCount >= 1);
+    }
+
+    // Given: 埋め込み改行と時刻が混ざったキー
+    // When: 接続を開始する
+    // Then: 送信前に AuthenticationFailed で失敗する
+    [Fact]
+    public async Task TranslationConnectionRejectsMalformedApiKeyBeforeConnect()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety");
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
+            "sk-proj-abc\n3:26",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+
+        Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
+        Assert.Equal(0, transport.ConnectCount);
+    }
+
+    // Given: 行折り返しされた allowlist キー
+    // When: 翻訳接続を開始する
+    // Then: Authorization は正規化後のキーだけを載せる
+    [Fact]
+    public async Task TranslationConnectionStripsEmbeddedWhitespaceFromApiKeyHeader()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety");
+
+        await connection.StartAsync(
+            "sk-proj-AAAA\nBBBB",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+
+        Assert.Equal("Bearer sk-proj-AAAABBBB", transport.ConnectedHeaders["Authorization"]);
+        await connection.ForceCloseAsync();
+    }
+
     // Given: ready 状態の翻訳接続
     // When: 訳文 delta が届く
     // Then: target と epoch を付けて下流へ流す

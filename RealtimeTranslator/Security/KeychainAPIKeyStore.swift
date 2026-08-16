@@ -32,8 +32,7 @@ final class KeychainAPIKeyStore: APIKeyStore, @unchecked Sendable {
             guard let key = String(data: data, encoding: .utf8) else {
                 throw APIKeyStoreError.encodingFailed
             }
-            let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
+            return storedAPIKey(from: key)
         case errSecItemNotFound:
             return nil
         default:
@@ -42,11 +41,8 @@ final class KeychainAPIKeyStore: APIKeyStore, @unchecked Sendable {
     }
 
     func save(_ key: String) throws {
-        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            throw APIKeyStoreError.emptyKey
-        }
-        guard let data = trimmed.data(using: .utf8) else {
+        let normalized = try normalizedAPIKey(from: key)
+        guard let data = normalized.data(using: .utf8) else {
             throw APIKeyStoreError.encodingFailed
         }
 

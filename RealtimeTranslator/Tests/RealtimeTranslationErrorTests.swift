@@ -40,6 +40,12 @@ final class RealtimeTranslationErrorTests: XCTestCase {
                 message: "Invalid Authorization header provided"
             )
         )
+        XCTAssertTrue(
+            RealtimeTranslationError.isAuthenticationFailure(
+                code: "invalid_request_error",
+                message: "Missing bearer or basic authentication in header"
+            )
+        )
     }
 
     func testAuthenticationFailureIgnoresUnrelatedSubstrings() {

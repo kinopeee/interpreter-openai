@@ -2,7 +2,9 @@ using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.Realtime;
+using RealtimeTranslator.Core.Security;
 
 namespace RealtimeTranslator.Platform.Security;
 
@@ -76,8 +78,8 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
             Marshal.Copy(credential.CredentialBlob, blob, 0, blob.Length);
             try
             {
-                var value = Encoding.UTF8.GetString(blob).Trim();
-                return value.Length == 0 ? null : value;
+                var result = ApiKeyNormalizer.Normalize(Encoding.UTF8.GetString(blob));
+                return result.Status == ApiKeyNormalizationStatus.Valid ? result.Value : null;
             }
             finally
             {
@@ -92,9 +94,17 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
 
     public void Save(string apiKey)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
+        var normalized = ApiKeyNormalizer.Normalize(apiKey);
+        if (normalized.Status != ApiKeyNormalizationStatus.Valid || normalized.Value is not { } value)
+        {
+            throw new ApiKeyFormatException(
+                UserCopy.Current.Text(
+                    normalized.Status == ApiKeyNormalizationStatus.Malformed
+                        ? "error.apiKeyMalformed"
+                        : "error.apiKeyEmpty"));
+        }
 
-        var blob = Encoding.UTF8.GetBytes(apiKey.Trim());
+        var blob = Encoding.UTF8.GetBytes(value);
         var blobHandle = Marshal.AllocHGlobal(blob.Length);
         try
         {

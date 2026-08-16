@@ -2,6 +2,7 @@ import Foundation
 
 enum APIKeyStoreError: Error, LocalizedError, Equatable, Sendable {
     case emptyKey
+    case malformedKey
     case notFound
     case unexpectedStatus(OSStatus)
     case encodingFailed
@@ -10,6 +11,8 @@ enum APIKeyStoreError: Error, LocalizedError, Equatable, Sendable {
         switch self {
         case .emptyKey:
             return UiCopy.text("error.apiKeyEmpty")
+        case .malformedKey:
+            return UiCopy.text("error.apiKeyMalformed")
         case .notFound:
             return UiCopy.text("error.apiKeyNotFound")
         case .unexpectedStatus:

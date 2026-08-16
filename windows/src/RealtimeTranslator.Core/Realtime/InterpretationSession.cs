@@ -887,13 +887,7 @@ public sealed class InterpretationSession : IDisposable
         }
     }
 
-    private string RequireApiKey()
-    {
-        var key = _apiKeyStore.Load();
-        return string.IsNullOrWhiteSpace(key)
-            ? throw new RealtimeTranslationException(RealtimeTranslationErrorKind.MissingApiKey)
-            : key;
-    }
+    private string RequireApiKey() => RealtimeApiKey.Require(_apiKeyStore.Load());
 
     private bool IsCurrentGeneration(int generation)
     {

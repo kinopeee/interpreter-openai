@@ -78,10 +78,7 @@ public sealed class RealtimeTranslationConnection : IDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(config);
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            throw new RealtimeTranslationException(RealtimeTranslationErrorKind.MissingApiKey);
-        }
+        apiKey = RealtimeApiKey.Require(apiKey);
 
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -321,12 +318,15 @@ public sealed class RealtimeTranslationConnection : IDisposable
         }
     }
 
-    private static RealtimeTranslationException ClassifyServerError(RealtimeTranslationServerEvent.ServerError error) =>
-        RealtimeTranslationException.IsAuthenticationFailure(error.Code, error.Message)
+    private static RealtimeTranslationException ClassifyServerError(RealtimeTranslationServerEvent.ServerError error)
+    {
+        Trace.WriteLine("Realtime translation error code=" + (error.Code ?? "none"));
+        return RealtimeTranslationException.IsAuthenticationFailure(error.Code, error.Message)
             ? new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed)
             : new RealtimeTranslationException(
                 RealtimeTranslationErrorKind.FatalServerError,
                 RealtimeTranslationException.SanitizeServerMessage(error.Message));
+    }
 
     private void StartReceiveLoop(int currentEpoch)
     {
@@ -401,6 +401,11 @@ public sealed class RealtimeTranslationConnection : IDisposable
                 or RealtimeTranslationServerEvent.InputTranscriptDelta)
             {
                 continue;
+            }
+
+            if (serverEvent is RealtimeTranslationServerEvent.ServerError errorEvent)
+            {
+                Trace.WriteLine("Realtime translation error code=" + (errorEvent.Code ?? "none"));
             }
 
             writer.TryWrite(new RealtimeTranslationStreamEvent(_target, serverEvent, currentEpoch));

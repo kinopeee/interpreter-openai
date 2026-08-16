@@ -135,6 +135,18 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
 
     static var genericServerMessage: String { UiCopy.text("error.genericServer") }
 
+    /// 接続直前のキー正規化。空は欠落、形式不正は認証失敗として送らない。
+    static func requireNormalizedAPIKey(_ raw: String) throws -> String {
+        switch APIKeyNormalization.normalize(raw) {
+        case .empty:
+            throw missingAPIKey
+        case .malformed:
+            throw authenticationFailed
+        case .valid(let key):
+            return key
+        }
+    }
+
     var errorDescription: String? {
         description(using: UserCopyStore.current)
     }
@@ -200,6 +212,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
             "invalid_api_key",
             "incorrect api key",
             "invalid api key",
+            "authentication",
             "authentication failed",
             "authentication error",
             "not authenticated",

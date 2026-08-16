@@ -22,6 +22,35 @@ final class APIKeyStoreTests: XCTestCase {
         XCTAssertNil(try store.load())
     }
 
+    func testInMemorySaveStripsEmbeddedWhitespaceAndRejectsTimestamp() throws {
+        // Given: 空の in-memory store
+        let store = InMemoryAPIKeyStore()
+
+        // When: 行折り返しキーを保存する
+        try store.save("sk-proj-AAAA\nBBBB")
+
+        // Then: 空白除去後のキーが残る
+        XCTAssertEqual(try store.load(), "sk-proj-AAAABBBB")
+
+        // When/Then: 貼り付けゴミ（時刻）は形式不正
+        XCTAssertThrowsError(try store.save("sk-proj-abc\n3:26")) { error in
+            XCTAssertEqual(error as? APIKeyStoreError, .malformedKey)
+            XCTAssertEqual(
+                APIKeyStoreError.malformedKey.errorDescription,
+                "APIキーの形式が正しくありません。コピー時に改行や余分な文字が入っていないか確認してください"
+            )
+        }
+        XCTAssertEqual(try store.load(), "sk-proj-AAAABBBB")
+    }
+
+    func testInMemoryLoadDropsMalformedStoredValue() throws {
+        // Given: 初期値が形式不正
+        let store = InMemoryAPIKeyStore(initialKey: "sk-abc:def")
+
+        // When/Then: 読み出しは nil（ヘッダへ渡さない）
+        XCTAssertNil(try store.load())
+    }
+
     func testKeychainStoreRoundTripWithNamespacedService() throws {
         // Given: テスト専用service名のKeychain store
         let service = "com.realtimetranslator.tests.\(UUID().uuidString)"
@@ -71,6 +100,22 @@ final class APIKeyStoreTests: XCTestCase {
 
         // Then
         XCTAssertFalse(imported)
+        XCTAssertNil(try store.load())
+    }
+
+    func testBootstrapRejectsMalformedEnvironmentValue() throws {
+        // Given: 空 store と形式不正の環境変数
+        let store = InMemoryAPIKeyStore()
+
+        // When/Then: 取り込みは形式不正で失敗し、空のまま
+        XCTAssertThrowsError(
+            try APIKeyBootstrap.importFromEnvironmentIfNeeded(
+                store: store,
+                environment: ["OPENAI_API_KEY": "sk-proj-abc\n3:26"]
+            )
+        ) { error in
+            XCTAssertEqual(error as? APIKeyStoreError, .malformedKey)
+        }
         XCTAssertNil(try store.load())
     }
 }

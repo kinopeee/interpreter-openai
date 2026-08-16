@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
+using RealtimeTranslator.Core.Security;
 using RealtimeTranslator.Core.Settings;
 using RealtimeTranslator.Platform.Security;
 
@@ -176,6 +177,10 @@ public partial class SettingsWindow : Window
             _apiKeyStore.Save(ApiKeyBox.Password);
             ApiKeyBox.Clear();
             ShowApiKeyStatus(UiCopy.Text("settings.apiKeySaveOk.windows"), isError: false);
+        }
+        catch (ApiKeyFormatException error)
+        {
+            ShowApiKeyStatus(error.Message, isError: true);
         }
         catch (System.ComponentModel.Win32Exception)
         {

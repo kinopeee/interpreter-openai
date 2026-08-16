@@ -77,9 +77,7 @@ actor RealtimeTranslationConnection {
         apiKey: String,
         config: RealtimeTranslationSessionConfig
     ) async throws {
-        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw RealtimeTranslationError.missingAPIKey
-        }
+        let apiKey = try RealtimeTranslationError.requireNormalizedAPIKey(apiKey)
 
         await tearDownTransport()
         recreateEventStream()
@@ -291,6 +289,9 @@ actor RealtimeTranslationConnection {
     }
 
     private func classifyServerError(message: String, code: String?) -> RealtimeTranslationError {
+        AppLogger.realtime.error(
+            "Realtime translation error code=\(code ?? "none", privacy: .public)"
+        )
         if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
             return .authenticationFailed
         }

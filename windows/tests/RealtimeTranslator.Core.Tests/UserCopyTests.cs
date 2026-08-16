@@ -237,6 +237,8 @@ public sealed class UserCopyTests
             "error.notConnected",
             "error.invalidMessage",
             "error.authenticationFailed",
+            "error.apiKeyEmpty",
+            "error.apiKeyMalformed",
             "error.transportDisconnected",
             "error.sourceDisconnected",
             "error.audioSendFailed",

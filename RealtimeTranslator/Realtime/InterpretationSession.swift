@@ -524,12 +524,10 @@ final class InterpretationSession {
     }
 
     private func requireAPIKey() throws -> String {
-        guard let key = try apiKeyStore.load(),
-              !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else {
+        guard let key = try apiKeyStore.load() else {
             throw RealtimeTranslationError.missingAPIKey
         }
-        return key
+        return try RealtimeTranslationError.requireNormalizedAPIKey(key)
     }
 
     private func enqueueRender(_ update: RealtimeSubtitleUpdate) {

@@ -699,6 +699,11 @@
       "en": "The API key is empty"
     },
     {
+      "key": "error.apiKeyMalformed",
+      "ja": "APIキーの形式が正しくありません。コピー時に改行や余分な文字が入っていないか確認してください",
+      "en": "The API key format is invalid. Check that no line breaks or extra characters were pasted"
+    },
+    {
       "key": "error.apiKeyNotFound",
       "ja": "APIキーが保存されていません",
       "en": "An API key is not saved"

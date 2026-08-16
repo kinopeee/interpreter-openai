@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Tracing;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.Security;
 using RealtimeTranslator.Platform.App;
 using RealtimeTranslator.Platform.Logging;
@@ -35,6 +36,29 @@ public sealed class SecurityAndAppServicesTests
         }
 
         Assert.Null(store.Load());
+    }
+
+    // Given: 行折り返しキーと時刻が混ざったキー
+    // When: 保存する
+    // Then: 折り返しは結合され、時刻付きは形式不正で拒否する
+    [Fact]
+    public void CredentialStoreNormalizesWrappedKeysAndRejectsTimestamps()
+    {
+        var target = $"RealtimeTranslator.Tests:{Guid.NewGuid()}";
+        var store = new CredentialManagerApiKeyStore(target);
+        try
+        {
+            store.Save("sk-proj-AAAA\nBBBB");
+            Assert.Equal("sk-proj-AAAABBBB", store.Load());
+
+            var error = Assert.Throws<ApiKeyFormatException>(() => store.Save("sk-proj-abc\n3:26"));
+            Assert.Equal(UserCopy.Current.Text("error.apiKeyMalformed"), error.Message);
+            Assert.Equal("sk-proj-AAAABBBB", store.Load());
+        }
+        finally
+        {
+            store.Delete();
+        }
     }
 
     // Given: 未保存のターゲット

@@ -15,11 +15,11 @@ enum APIKeyBootstrap {
         guard let raw = environment[environmentKeyName] else {
             return false
         }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        do {
+            try store.save(raw)
+            return true
+        } catch APIKeyStoreError.emptyKey {
             return false
         }
-        try store.save(trimmed)
-        return true
     }
 }

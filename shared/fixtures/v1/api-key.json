@@ -1,0 +1,62 @@
+{
+  "$schema": "./schema/api-key.schema.json",
+  "version": 1,
+  "description": "API キー正規化。空白・制御文字を除去し、残った文字が allowlist 以外なら拒否する。",
+  "normalize": [
+    {
+      "name": "surrounding whitespace is stripped",
+      "input": "  sk-proj-abc  ",
+      "status": "valid",
+      "expected": "sk-proj-abc"
+    },
+    {
+      "name": "embedded newline in a wrapped key is stripped",
+      "input": "sk-proj-AAAA\nBBBB",
+      "status": "valid",
+      "expected": "sk-proj-AAAABBBB"
+    },
+    {
+      "name": "embedded newline and timestamp is malformed",
+      "input": "sk-proj-abc\n3:26",
+      "status": "malformed"
+    },
+    {
+      "name": "zero width space is stripped",
+      "input": "sk-proj-\u200babc",
+      "status": "valid",
+      "expected": "sk-proj-abc"
+    },
+    {
+      "name": "tab and crlf around a key are stripped",
+      "input": "\tsk-live-xyz\r\n",
+      "status": "valid",
+      "expected": "sk-live-xyz"
+    },
+    {
+      "name": "dots underscores and hyphens remain",
+      "input": "sk-proj.test_value-1",
+      "status": "valid",
+      "expected": "sk-proj.test_value-1"
+    },
+    {
+      "name": "whitespace only is empty",
+      "input": "  \n\t  ",
+      "status": "empty"
+    },
+    {
+      "name": "empty string is empty",
+      "input": "",
+      "status": "empty"
+    },
+    {
+      "name": "colon leftover after strip is malformed",
+      "input": "sk-abc:def",
+      "status": "malformed"
+    },
+    {
+      "name": "slash is malformed",
+      "input": "sk-abc/def",
+      "status": "malformed"
+    }
+  ]
+}
