@@ -14,6 +14,7 @@ shared/
 ├── fixtures/v1/       # 期待値テーブル（両実装のテストが読む）
 │   ├── codec.json     ├── tuning.json   ├── language.json
 │   ├── subtitle.json  ├── routing.json  ├── privacy.json
+│   ├── api-key.json
 │   └── schema/        # 各 fixture の JSON Schema (draft 2020-12)
 └── locales/           # UI 文言の正本（ui-locale.md 参照）。fixtures と違い文言の推敲は通常変更。v1 不変ルールの対象外
     ├── ui.json

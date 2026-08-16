@@ -134,6 +134,7 @@ public sealed partial class RealtimeTranslationException : Exception
         "invalid_api_key",
         "incorrect api key",
         "invalid api key",
+        "authentication",
         "authentication failed",
         "authentication error",
         "not authenticated",

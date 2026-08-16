@@ -44,6 +44,8 @@ actor RealtimeSourceTranscriptionConnection {
         let currentEpoch = epoch
         didReceiveCompleted = false
 
+        let apiKey = try RealtimeTranslationError.requireNormalizedAPIKey(apiKey)
+
         do {
             try await transport.connect(
                 url: Self.endpointURL,
@@ -269,6 +271,9 @@ actor RealtimeSourceTranscriptionConnection {
         let body = object["error"] as? [String: Any]
         let message = body?["message"] as? String ?? UiCopy.text("error.sourceSessionGeneric")
         let code = body?["code"] as? String
+        AppLogger.realtime.error(
+            "Realtime transcription error code=\(code ?? "none", privacy: .public)"
+        )
         if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
             return .authenticationFailed
         }

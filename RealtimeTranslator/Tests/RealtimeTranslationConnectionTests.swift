@@ -6,6 +6,7 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
     private var waiters: [CheckedContinuation<Data, Error>] = []
     private(set) var sent: [Data] = []
     private(set) var connectCount = 0
+    private(set) var lastHeaders: [String: String] = [:]
     private(set) var closeCount = 0
     private(set) var sendAttemptCount = 0
     var connectError: Error?
@@ -34,11 +35,11 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
 
     func connect(url: URL, headers: [String: String]) async throws {
         connectCount += 1
+        lastHeaders = headers
         if let connectError {
             throw connectError
         }
         _ = url
-        _ = headers
     }
 
     func failNextSendOnce() {
@@ -206,6 +207,90 @@ final class RealtimeTranslationConnectionTests: XCTestCase {
         } catch {
             XCTFail("Unexpected error \(error)")
         }
+    }
+
+    func testMissingBearerHandshakeErrorIsAuthenticationFailure() async {
+        // Given: OpenAI の missing bearer 文言（code は非 auth）
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeTranslationConnection(
+            target: .english,
+            transport: transport,
+            safetyIdentifier: "safety",
+            sessionUpdateTimeoutNanoseconds: 1_000_000_000
+        )
+        try? await transport.enqueueJSON([
+            "type": "error",
+            "error": [
+                "message": "Missing bearer or basic authentication in header",
+                "code": "invalid_request_error",
+            ],
+        ])
+
+        // When/Then: 認証失敗として扱い、bearer を localizedDescription に出さない
+        do {
+            try await connection.start(
+                apiKey: "sk-bad",
+                config: .englishTargetWithSourceTranscription()
+            )
+            XCTFail("Expected authenticationFailed")
+        } catch let error as RealtimeTranslationError {
+            XCTAssertEqual(error, .authenticationFailed)
+            XCTAssertEqual(error.localizedDescription, "OpenAI APIキーが無効です")
+            XCTAssertFalse(error.localizedDescription.localizedCaseInsensitiveContains("bearer"))
+            XCTAssertFalse(error.localizedDescription.contains("sk-"))
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
+    }
+
+    func testStartRejectsMalformedApiKeyBeforeConnect() async {
+        // Given: 埋め込み改行と時刻が混ざったキー
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeTranslationConnection(
+            target: .english,
+            transport: transport,
+            safetyIdentifier: "safety",
+            sessionUpdateTimeoutNanoseconds: 1_000_000_000
+        )
+
+        // When/Then: 接続前に認証失敗へ倒し、ヘッダを送らない
+        do {
+            try await connection.start(
+                apiKey: "sk-proj-abc\n3:26",
+                config: .englishTargetWithSourceTranscription()
+            )
+            XCTFail("Expected authenticationFailed")
+        } catch let error as RealtimeTranslationError {
+            XCTAssertEqual(error, .authenticationFailed)
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
+        let connectCount = await transport.connectCount
+        XCTAssertEqual(connectCount, 0)
+    }
+
+    func testStartStripsEmbeddedWhitespaceFromApiKeyHeader() async throws {
+        // Given: 行折り返しされた allowlist キー
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeTranslationConnection(
+            target: .english,
+            transport: transport,
+            safetyIdentifier: "safety",
+            sessionUpdateTimeoutNanoseconds: 1_000_000_000
+        )
+        try await transport.enqueueJSON(["type": "session.created"])
+        try await transport.enqueueJSON(["type": "session.updated"])
+
+        // When: 埋め込み改行付きキーで開始する
+        try await connection.start(
+            apiKey: "sk-proj-AAAA\nBBBB",
+            config: .englishTargetWithSourceTranscription()
+        )
+
+        // Then: Authorization は正規化後のキーだけを載せる
+        let headers = await transport.lastHeaders
+        XCTAssertEqual(headers["Authorization"], "Bearer sk-proj-AAAABBBB")
+        await connection.forceClose()
     }
 
     func testHandshakeFatalServerErrorRedactsKeyMaterial() async {

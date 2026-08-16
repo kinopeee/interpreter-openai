@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
+using RealtimeTranslator.Core.Security;
 using RealtimeTranslator.Core.Settings;
 using RealtimeTranslator.Platform.Security;
 
@@ -171,34 +172,49 @@ public partial class SettingsWindow : Window
 
     private void OnSaveApiKey(object sender, RoutedEventArgs e)
     {
+        string statusMessage;
+        bool statusIsError;
         try
         {
             _apiKeyStore.Save(ApiKeyBox.Password);
             ApiKeyBox.Clear();
-            ShowApiKeyStatus(UiCopy.Text("settings.apiKeySaveOk.windows"), isError: false);
+            statusMessage = UiCopy.Text("settings.apiKeySaveOk.windows");
+            statusIsError = false;
+        }
+        catch (ApiKeyFormatException error)
+        {
+            statusMessage = error.Message;
+            statusIsError = true;
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            ShowApiKeyStatus(UiCopy.Text("settings.apiKeySaveFailed"), isError: true);
+            statusMessage = UiCopy.Text("settings.apiKeySaveFailed");
+            statusIsError = true;
         }
 
         RefreshStoredKeyState();
+        ShowApiKeyStatus(statusMessage, statusIsError);
     }
 
     private void OnDeleteApiKey(object sender, RoutedEventArgs e)
     {
+        string statusMessage;
+        bool statusIsError;
         try
         {
             _apiKeyStore.Delete();
             ApiKeyBox.Clear();
-            ShowApiKeyStatus(UiCopy.Text("settings.apiKeyDeleteOk"), isError: false);
+            statusMessage = UiCopy.Text("settings.apiKeyDeleteOk");
+            statusIsError = false;
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            ShowApiKeyStatus(UiCopy.Text("settings.apiKeyDeleteFailed"), isError: true);
+            statusMessage = UiCopy.Text("settings.apiKeyDeleteFailed");
+            statusIsError = true;
         }
 
         RefreshStoredKeyState();
+        ShowApiKeyStatus(statusMessage, statusIsError);
     }
 
     private void OnNoiseReductionChanged(object sender, SelectionChangedEventArgs e)
@@ -402,23 +418,27 @@ public partial class SettingsWindow : Window
 
     private void RefreshStoredKeyState()
     {
-        // HasStoredKey は CredRead 失敗を false に畳むが、未知の Win32 失敗でも
+        // StoredKeyState は CredRead 失敗を Missing に畳むが、未知の Win32 失敗でも
         // 設定ウィンドウ構築・保存後更新でプロセスを落とさない。
-        bool hasKey;
+        StoredApiKeyState state;
         try
         {
-            hasKey = _apiKeyStore.HasStoredKey;
+            state = _apiKeyStore.StoredKeyState;
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            hasKey = false;
+            state = StoredApiKeyState.Missing;
             ShowApiKeyStatus(UiCopy.Text("settings.apiKeyStatusUnknown"), isError: true);
         }
 
-        StoredKeyStateText.Text = hasKey
+        StoredKeyStateText.Text = state == StoredApiKeyState.Valid
             ? UiCopy.Text("settings.apiKeySaved.windows")
             : UiCopy.Text("settings.apiKeyNotSaved");
-        DeleteApiKeyButton.IsEnabled = hasKey;
+        DeleteApiKeyButton.IsEnabled = state != StoredApiKeyState.Missing;
+        if (state == StoredApiKeyState.Malformed)
+        {
+            ShowApiKeyStatus(UiCopy.Text("error.apiKeyMalformed"), isError: true);
+        }
     }
 
     private void ShowApiKeyStatus(string message, bool isError)

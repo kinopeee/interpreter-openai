@@ -14,6 +14,26 @@ final class KeychainAPIKeyStore: APIKeyStore, @unchecked Sendable {
     }
 
     func load() throws -> String? {
+        guard let data = try loadData() else {
+            return nil
+        }
+        guard let key = String(data: data, encoding: .utf8) else {
+            throw APIKeyStoreError.encodingFailed
+        }
+        return storedAPIKey(from: key)
+    }
+
+    func storedKeyState() throws -> StoredAPIKeyState {
+        guard let data = try loadData() else {
+            return .missing
+        }
+        guard let key = String(data: data, encoding: .utf8) else {
+            return .malformed
+        }
+        return storedAPIKeyState(from: key)
+    }
+
+    private func loadData() throws -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -29,11 +49,7 @@ final class KeychainAPIKeyStore: APIKeyStore, @unchecked Sendable {
             guard let data = item as? Data else {
                 throw APIKeyStoreError.encodingFailed
             }
-            guard let key = String(data: data, encoding: .utf8) else {
-                throw APIKeyStoreError.encodingFailed
-            }
-            let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
+            return data
         case errSecItemNotFound:
             return nil
         default:
@@ -42,11 +58,8 @@ final class KeychainAPIKeyStore: APIKeyStore, @unchecked Sendable {
     }
 
     func save(_ key: String) throws {
-        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            throw APIKeyStoreError.emptyKey
-        }
-        guard let data = trimmed.data(using: .utf8) else {
+        let normalized = try normalizedAPIKey(from: key)
+        guard let data = normalized.data(using: .utf8) else {
             throw APIKeyStoreError.encodingFailed
         }
 
@@ -76,6 +89,27 @@ final class KeychainAPIKeyStore: APIKeyStore, @unchecked Sendable {
             throw APIKeyStoreError.unexpectedStatus(updateStatus)
         }
     }
+
+    #if DEBUG
+    /// テストで旧バージョンが保存した正規化前の値を再現する。接続へは渡さない。
+    func seedUnnormalized(_ raw: String) throws {
+        guard let data = raw.data(using: .utf8) else {
+            throw APIKeyStoreError.encodingFailed
+        }
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ]
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw APIKeyStoreError.unexpectedStatus(status)
+        }
+    }
+    #endif
 
     func delete() throws {
         let query: [String: Any] = [

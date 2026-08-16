@@ -14,7 +14,7 @@ struct SettingsView: View {
     var onTuningChanged: (() -> Void)?
 
     @State private var apiKeyDraft = ""
-    @State private var hasStoredKey = false
+    @State private var storedKeyState: StoredAPIKeyState = .missing
     @State private var statusMessage: String?
     @State private var statusIsError = false
     @State private var tuningDebounceTask: Task<Void, Never>?
@@ -24,7 +24,7 @@ struct SettingsView: View {
             SettingsGeneralTab(
                 settings: settings,
                 apiKeyDraft: $apiKeyDraft,
-                hasStoredKey: hasStoredKey,
+                storedKeyState: storedKeyState,
                 statusMessage: statusMessage,
                 statusIsError: statusIsError,
                 onSaveAPIKey: saveAPIKey,
@@ -83,14 +83,24 @@ struct SettingsView: View {
     }
 
     private func refreshStoredKeyState() {
-        hasStoredKey = (try? apiKeyStore.load()?.isEmpty == false) == true
+        do {
+            storedKeyState = try apiKeyStore.storedKeyState()
+            if storedKeyState == .malformed {
+                statusIsError = true
+                statusMessage = UiCopy.text("error.apiKeyMalformed")
+            }
+        } catch {
+            storedKeyState = .missing
+            statusIsError = true
+            statusMessage = error.localizedDescription
+        }
     }
 
     private func saveAPIKey() {
         do {
             try apiKeyStore.save(apiKeyDraft)
             apiKeyDraft = ""
-            hasStoredKey = true
+            storedKeyState = .valid
             statusIsError = false
             statusMessage = UiCopy.text("settings.apiKeySaveOk.mac")
         } catch {
@@ -103,7 +113,7 @@ struct SettingsView: View {
         do {
             try apiKeyStore.delete()
             apiKeyDraft = ""
-            hasStoredKey = false
+            storedKeyState = .missing
             statusIsError = false
             statusMessage = UiCopy.text("settings.apiKeyDeleteOk")
         } catch {
@@ -153,7 +163,7 @@ private struct SettingsMultilineField: View {
 private struct SettingsGeneralTab: View {
     @Bindable var settings: AppSettings
     @Binding var apiKeyDraft: String
-    let hasStoredKey: Bool
+    let storedKeyState: StoredAPIKeyState
     let statusMessage: String?
     let statusIsError: Bool
     let onSaveAPIKey: () -> Void
@@ -237,17 +247,17 @@ private struct SettingsGeneralTab: View {
                     Button(UiCopy.text("settings.delete"), role: .destructive) {
                         onDeleteAPIKey()
                     }
-                    .disabled(!hasStoredKey)
+                    .disabled(!storedKeyState.canDelete)
 
                     Spacer()
 
                     Text(
-                        hasStoredKey
+                        storedKeyState.hasUsableKey
                             ? UiCopy.text("settings.apiKeySaved.mac")
                             : UiCopy.text("settings.apiKeyNotSaved")
                     )
                         .font(.caption)
-                        .foregroundStyle(hasStoredKey ? Color.secondary : Color.orange)
+                        .foregroundStyle(storedKeyState.hasUsableKey ? Color.secondary : Color.orange)
                 }
 
                 if let statusMessage {

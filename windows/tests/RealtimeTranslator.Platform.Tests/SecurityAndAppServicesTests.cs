@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Tracing;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.Security;
 using RealtimeTranslator.Platform.App;
 using RealtimeTranslator.Platform.Logging;
@@ -23,11 +24,13 @@ public sealed class SecurityAndAppServicesTests
         try
         {
             Assert.Null(store.Load());
+            Assert.Equal(StoredApiKeyState.Missing, store.StoredKeyState);
 
             store.Save("  sk-unit-test-value  ");
 
             Assert.Equal("sk-unit-test-value", store.Load());
             Assert.True(store.HasStoredKey);
+            Assert.Equal(StoredApiKeyState.Valid, store.StoredKeyState);
         }
         finally
         {
@@ -35,6 +38,58 @@ public sealed class SecurityAndAppServicesTests
         }
 
         Assert.Null(store.Load());
+        Assert.Equal(StoredApiKeyState.Missing, store.StoredKeyState);
+    }
+
+    // Given: 行折り返しキーと時刻が混ざったキー
+    // When: 保存する
+    // Then: 折り返しは結合され、時刻付きは形式不正で拒否する
+    [Fact]
+    public void CredentialStoreNormalizesWrappedKeysAndRejectsTimestamps()
+    {
+        var target = $"RealtimeTranslator.Tests:{Guid.NewGuid()}";
+        var store = new CredentialManagerApiKeyStore(target);
+        try
+        {
+            store.Save("sk-proj-AAAA\nBBBB");
+            Assert.Equal("sk-proj-AAAABBBB", store.Load());
+
+            var error = Assert.Throws<ApiKeyFormatException>(() => store.Save("sk-proj-abc\n3:26"));
+            Assert.Equal(UserCopy.Current.Text("error.apiKeyMalformed"), error.Message);
+            Assert.Equal("sk-proj-AAAABBBB", store.Load());
+        }
+        finally
+        {
+            store.Delete();
+        }
+    }
+
+    // Given: 旧バージョンが残した形式不正キー
+    // When: Load / StoredKeyState / Delete する
+    // Then: 接続には使わず、形式不正として識別して削除できる
+    [Fact]
+    public void OrphanMalformedCredentialCanBeDeleted()
+    {
+        var target = $"RealtimeTranslator.Tests:{Guid.NewGuid()}";
+        var store = new CredentialManagerApiKeyStore(target);
+        try
+        {
+            store.SeedUnnormalized("sk-proj-abc\n3:26");
+
+            Assert.Null(store.Load());
+            Assert.False(store.HasStoredKey);
+            Assert.Equal(StoredApiKeyState.Malformed, store.StoredKeyState);
+
+            store.Delete();
+
+            Assert.False(store.HasStoredKey);
+            Assert.Null(store.Load());
+            Assert.Equal(StoredApiKeyState.Missing, store.StoredKeyState);
+        }
+        finally
+        {
+            store.Delete();
+        }
     }
 
     // Given: 未保存のターゲット
@@ -64,6 +119,7 @@ public sealed class SecurityAndAppServicesTests
 
         Assert.False(store.HasStoredKey);
         Assert.Null(store.Load());
+        Assert.Equal(StoredApiKeyState.Missing, store.StoredKeyState);
     }
 
     // Given: テスト専用のレジストリキー

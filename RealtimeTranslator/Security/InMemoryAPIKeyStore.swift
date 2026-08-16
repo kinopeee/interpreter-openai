@@ -12,16 +12,22 @@ final class InMemoryAPIKeyStore: APIKeyStore, @unchecked Sendable {
     func load() throws -> String? {
         lock.lock()
         defer { lock.unlock() }
-        return stored
+        guard let stored else {
+            return nil
+        }
+        return storedAPIKey(from: stored)
+    }
+
+    func storedKeyState() throws -> StoredAPIKeyState {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedAPIKeyState(from: stored)
     }
 
     func save(_ key: String) throws {
-        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            throw APIKeyStoreError.emptyKey
-        }
+        let normalized = try normalizedAPIKey(from: key)
         lock.lock()
-        stored = trimmed
+        stored = normalized
         lock.unlock()
     }
 

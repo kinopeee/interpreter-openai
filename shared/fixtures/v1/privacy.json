@@ -38,6 +38,11 @@
       "name": "the word bearer without a trailing space is not redacted",
       "input": "bearerless request",
       "expected": "bearerless request"
+    },
+    {
+      "name": "missing bearer authentication message is redacted",
+      "input": "Missing bearer or basic authentication in header",
+      "expected": "翻訳サーバーでエラーが発生しました"
     }
   ],
   "isAuthenticationFailure": [
@@ -106,6 +111,12 @@
       "code": "authority_error",
       "message": "authority mismatch",
       "expected": false
+    },
+    {
+      "name": "missing bearer authentication in header",
+      "code": "invalid_request_error",
+      "message": "Missing bearer or basic authentication in header",
+      "expected": true
     },
     {
       "name": "message phrase authorization with non-auth code",

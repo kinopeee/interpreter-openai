@@ -318,6 +318,7 @@ API キーストア（設定画面の status に出ることがある）:
 | キー | 現行 |
 | --- | --- |
 | `error.apiKeyEmpty` | APIキーが空です |
+| `error.apiKeyMalformed` | APIキーの形式が正しくありません。コピー時に改行や余分な文字が入っていないか確認してください |
 | `error.apiKeyNotFound` | APIキーが保存されていません |
 | `error.apiKeyStoreUnavailable` | APIキーの保存領域へアクセスできません |
 | `error.apiKeyEncodingFailed` | APIキーを処理できません |

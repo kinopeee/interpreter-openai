@@ -74,10 +74,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(tuning);
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            throw new RealtimeTranslationException(RealtimeTranslationErrorKind.MissingApiKey);
-        }
+        apiKey = RealtimeApiKey.Require(apiKey);
 
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try

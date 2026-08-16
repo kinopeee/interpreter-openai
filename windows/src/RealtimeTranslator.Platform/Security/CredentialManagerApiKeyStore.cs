@@ -2,7 +2,9 @@ using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.Realtime;
+using RealtimeTranslator.Core.Security;
 
 namespace RealtimeTranslator.Platform.Security;
 
@@ -45,7 +47,7 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
         {
             try
             {
-                return !string.IsNullOrWhiteSpace(Load());
+                return StoredKeyState == StoredApiKeyState.Valid;
             }
             catch (Win32Exception)
             {
@@ -54,14 +56,64 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
         }
     }
 
+    /// <summary>保存項目の有無と、接続に利用できる形式かを秘密値なしで返す。</summary>
+    public StoredApiKeyState StoredKeyState
+    {
+        get
+        {
+            return ApiKeyNormalizer.StoredState(ReadNormalizedCredential());
+        }
+    }
+
     public string? Load()
     {
+        var result = ReadNormalizedCredential();
+        return result is { Status: ApiKeyNormalizationStatus.Valid, Value: { } value }
+            ? value
+            : null;
+    }
+
+    private ApiKeyNormalizationResult? ReadNormalizedCredential()
+    {
+        if (!TryReadBlob(out var blob))
+        {
+            return null;
+        }
+
+        try
+        {
+            return ApiKeyNormalizer.Normalize(Encoding.UTF8.GetString(blob));
+        }
+        finally
+        {
+            Array.Clear(blob);
+        }
+    }
+
+    public void Save(string apiKey)
+    {
+        var normalized = ApiKeyNormalizer.Normalize(apiKey);
+        if (normalized.Status != ApiKeyNormalizationStatus.Valid || normalized.Value is not { } value)
+        {
+            throw new ApiKeyFormatException(
+                UserCopy.Current.Text(
+                    normalized.Status == ApiKeyNormalizationStatus.Malformed
+                        ? "error.apiKeyMalformed"
+                        : "error.apiKeyEmpty"));
+        }
+
+        WriteBlob(Encoding.UTF8.GetBytes(value));
+    }
+
+    private bool TryReadBlob(out byte[] blob)
+    {
+        blob = [];
         if (!NativeMethods.CredReadW(_targetName, CredTypeGeneric, 0, out var handle))
         {
             // CredRead 失敗はすべて「キーなし」相当。以前は ErrorNotFound 以外で
             // Win32Exception を投げており、Settings 構築・録音開始ゲートが落ちていた。
             // 文書化済み失敗は ErrorNotFound / ErrorNoSuchLogonSession。それ以外も throw しない。
-            return null;
+            return false;
         }
 
         try
@@ -69,20 +121,12 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
             var credential = Marshal.PtrToStructure<NativeMethods.Credential>(handle);
             if (credential.CredentialBlob == IntPtr.Zero || credential.CredentialBlobSize == 0)
             {
-                return null;
+                return true;
             }
 
-            var blob = new byte[credential.CredentialBlobSize];
+            blob = new byte[credential.CredentialBlobSize];
             Marshal.Copy(credential.CredentialBlob, blob, 0, blob.Length);
-            try
-            {
-                var value = Encoding.UTF8.GetString(blob).Trim();
-                return value.Length == 0 ? null : value;
-            }
-            finally
-            {
-                Array.Clear(blob);
-            }
+            return true;
         }
         finally
         {
@@ -90,11 +134,8 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
         }
     }
 
-    public void Save(string apiKey)
+    private void WriteBlob(byte[] blob)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
-
-        var blob = Encoding.UTF8.GetBytes(apiKey.Trim());
         var blobHandle = Marshal.AllocHGlobal(blob.Length);
         try
         {
@@ -125,6 +166,13 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
             Marshal.FreeHGlobal(blobHandle);
             Array.Clear(blob);
         }
+    }
+
+    /// <summary>旧バージョンが保存した正規化前の値を再現する。接続へは渡さない。</summary>
+    internal void SeedUnnormalized(string raw)
+    {
+        ArgumentNullException.ThrowIfNull(raw);
+        WriteBlob(Encoding.UTF8.GetBytes(raw));
     }
 
     public void Delete()
