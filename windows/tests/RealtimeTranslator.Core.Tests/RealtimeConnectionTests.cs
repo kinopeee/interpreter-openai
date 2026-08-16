@@ -167,6 +167,28 @@ public sealed class RealtimeConnectionTests
         Assert.True(transport.CloseCount >= 1);
     }
 
+    // Given: handshake で session.created の代わりに session.updated が来る
+    // When: 翻訳接続を開始する
+    // Then: InvalidMessage で失敗し transport は解放される
+    [Fact]
+    public async Task TranslationConnectionRejectsUnexpectedHandshakeEvent()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        transport.EnqueueJson("""{"type":"session.updated"}""");
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety",
+            sessionUpdateTimeout: ShortTimeout);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+
+        Assert.Equal(RealtimeTranslationErrorKind.InvalidMessage, error.Kind);
+        Assert.True(transport.CloseCount >= 1);
+    }
+
     // Given: 空の API キー
     // When: 接続を開始する
     // Then: 送信前に MissingApiKey で失敗する
@@ -474,6 +496,154 @@ public sealed class RealtimeConnectionTests
 
         Assert.Equal(RealtimeTranslationErrorKind.CloseTimeout, error.Kind);
         Assert.Equal("input_audio_buffer.commit", TypeOf(transport.Sent[^1]));
+    }
+
+    // Given: handshake 中に認証エラーを返す原文接続
+    // When: 接続を開始する
+    // Then: 再接続しない致命失敗になり、鍵断片は Message に出ず transport は解放される
+    [Fact]
+    public async Task SourceConnectionClassifiesAuthenticationFailure()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        transport.EnqueueJson(
+            """{"type":"error","error":{"message":"Incorrect API key sk-live-xyz","code":"invalid_api_key"}}""");
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            handshakeTimeout: ShortTimeout);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => connection.StartAsync("sk-test", RealtimeSessionTuning.Default));
+
+        Assert.False(error.IsRecoverable);
+        Assert.Equal("OpenAI APIキーが無効です", error.Message);
+        Assert.DoesNotContain("sk-live-xyz", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
+        Assert.True(transport.CloseCount >= 1);
+    }
+
+    // Given: handshake 中に Authorization / Bearer を含む非 auth code の error
+    // When: 原文接続を開始する
+    // Then: 認証失敗文言へ正規化し、鍵断片を Message に出さない
+    [Fact]
+    public async Task SourceConnectionClassifiesAuthorizationThemedHandshakeAsAuthenticationFailure()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        transport.EnqueueJson(
+            """{"type":"error","error":{"message":"Invalid Authorization header: Bearer sk-leak-example","code":"invalid_request_error"}}""");
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            handshakeTimeout: ShortTimeout);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => connection.StartAsync("sk-test", RealtimeSessionTuning.Default));
+
+        Assert.False(error.IsRecoverable);
+        Assert.Equal("OpenAI APIキーが無効です", error.Message);
+        Assert.DoesNotContain("sk-leak-example", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
+        Assert.True(transport.CloseCount >= 1);
+    }
+
+    // Given: handshake 中にキー断片を含む非認証 server_error
+    // When: 原文接続を開始する
+    // Then: FatalServerError へ分類し、表示文言から秘密情報を除去する
+    [Fact]
+    public async Task SourceConnectionHandshakeFatalServerErrorRedactsKeyMaterial()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        transport.EnqueueJson(
+            """{"type":"error","error":{"message":"upstream echo sk-should-not-appear","code":"server_error"}}""");
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            handshakeTimeout: ShortTimeout);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => connection.StartAsync("sk-test", RealtimeSessionTuning.Default));
+
+        Assert.Equal(RealtimeTranslationErrorKind.FatalServerError, error.Kind);
+        Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
+        Assert.DoesNotContain("sk-should-not-appear", error.Message, StringComparison.Ordinal);
+        Assert.True(transport.CloseCount >= 1);
+    }
+
+    // Given: handshake で session.created の代わりに session.updated が来る
+    // When: 原文接続を開始する
+    // Then: InvalidMessage で失敗し transport は解放される
+    [Fact]
+    public async Task SourceConnectionRejectsUnexpectedHandshakeEvent()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        transport.EnqueueJson("""{"type":"session.updated"}""");
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            handshakeTimeout: ShortTimeout);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => connection.StartAsync("sk-test", RealtimeSessionTuning.Default));
+
+        Assert.Equal(RealtimeTranslationErrorKind.InvalidMessage, error.Kind);
+        Assert.True(transport.CloseCount >= 1);
+    }
+
+    // Given: 空の API キー
+    // When: 原文接続を開始する
+    // Then: 送信前に MissingApiKey で失敗する
+    [Fact]
+    public async Task SourceConnectionRejectsBlankApiKey()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => connection.StartAsync("   ", RealtimeSessionTuning.Default));
+
+        Assert.Equal(RealtimeTranslationErrorKind.MissingApiKey, error.Kind);
+        Assert.Equal(0, transport.ConnectCount);
+    }
+
+    // Given: ready 状態の原文接続
+    // When: 復号できないメッセージが届く
+    // Then: transport error として 1 度だけ通知しイベント流を閉じる
+    [Fact]
+    public async Task SourceConnectionReportsTransportErrorOnBrokenMessage()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
+        await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        transport.EnqueueRaw(Encoding.UTF8.GetBytes("{not json"));
+        var streamEvent = await ReadOneAsync(connection.Events);
+
+        var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(streamEvent.Event);
+        Assert.Equal("transport", error.Code);
+        Assert.Equal("原文字幕サーバーとの接続が切れました", error.Message);
+        await connection.ForceCloseAsync();
+    }
+
+    // Given: ready な原文接続
+    // When: 鍵断片を含む runtime error が届く
+    // Then: 原文 codec は code を transcription に畳み、表示文言から秘密情報を除去する
+    [Fact]
+    public async Task SourceConnectionRuntimeAuthErrorRedactsKeyMaterial()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
+        await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        transport.EnqueueJson(
+            """{"type":"error","error":{"message":"Incorrect API key sk-runtime-xyz","code":"invalid_api_key"}}""");
+        var streamEvent = await ReadOneAsync(connection.Events);
+
+        var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(streamEvent.Event);
+        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Equal("OpenAI APIキーが無効です", error.Message);
+        Assert.DoesNotContain("sk-runtime-xyz", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
+        await connection.ForceCloseAsync();
     }
 
     // Given: far_field で接続した原文 transcription 接続
