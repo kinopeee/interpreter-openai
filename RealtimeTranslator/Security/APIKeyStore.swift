@@ -45,6 +45,7 @@ protocol APIKeyStore: AnyObject, Sendable {
 }
 
 extension APIKeyStore {
+    /// 接続に利用できる保存キーがあるか。形式不正の保存項目は false。
     var hasStoredKey: Bool {
         (try? storedKeyState().hasUsableKey) == true
     }

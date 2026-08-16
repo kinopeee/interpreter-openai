@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.Realtime;
+using RealtimeTranslator.Core.Security;
 using RealtimeTranslator.Core.Settings;
 using RealtimeTranslator.Core.Subtitles;
 using RealtimeTranslator.Platform.App;
@@ -205,20 +206,24 @@ public partial class App : Application, IDisposable
         }
 
         // CredRead が NOT_FOUND 以外で失敗しても録音開始ゲートでプロセスを落とさない。
-        bool hasStoredKey;
+        StoredApiKeyState keyState;
         try
         {
-            hasStoredKey = _apiKeyStore?.HasStoredKey == true;
+            keyState = _apiKeyStore?.StoredKeyState ?? StoredApiKeyState.Missing;
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            hasStoredKey = false;
+            keyState = StoredApiKeyState.Missing;
         }
 
-        if (!hasStoredKey)
+        if (keyState != StoredApiKeyState.Valid)
         {
             ShowSettings();
-            _tray?.ShowMessage(UiCopy.Text("alert.needApiKey"));
+            _tray?.ShowMessage(
+                UiCopy.Text(
+                    keyState == StoredApiKeyState.Malformed
+                        ? "error.apiKeyMalformed"
+                        : "alert.needApiKey"));
             return;
         }
 

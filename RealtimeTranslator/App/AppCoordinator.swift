@@ -103,9 +103,12 @@ final class AppCoordinator: NSObject {
             presentMessage(UiCopy.text("alert.needConsent"))
             return
         }
-        guard apiKeyStore.hasStoredKey else {
+        let keyState = (try? apiKeyStore.storedKeyState()) ?? .missing
+        guard keyState.hasUsableKey else {
             openSettings()
-            presentMessage(UiCopy.text("alert.needApiKey"))
+            presentMessage(
+                UiCopy.text(keyState == .malformed ? "error.apiKeyMalformed" : "alert.needApiKey")
+            )
             return
         }
 

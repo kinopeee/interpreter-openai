@@ -90,6 +90,26 @@ final class APIKeyStoreTests: XCTestCase {
         XCTAssertNil(try store.load())
     }
 
+    func testKeychainOrphanMalformedKeyCanBeDeleted() throws {
+        // Given: 旧バージョンが残した形式不正キー
+        let service = "com.realtimetranslator.tests.\(UUID().uuidString)"
+        let store = KeychainAPIKeyStore(service: service, account: "unit-test-key")
+        defer { try? store.delete() }
+        try store.seedUnnormalized("sk-proj-abc\n3:26")
+
+        // When: 接続用キーと保存状態を読み出す
+        let state = try store.storedKeyState()
+
+        // Then: 接続には渡さず、削除可能な形式不正項目として扱う
+        XCTAssertNil(try store.load())
+        XCTAssertEqual(state, .malformed)
+        XCTAssertTrue(state.canDelete)
+        XCTAssertFalse(store.hasStoredKey)
+        try store.delete()
+        XCTAssertNil(try store.load())
+        XCTAssertEqual(try store.storedKeyState(), .missing)
+    }
+
     func testKeychainStoreRoundTripWithNamespacedService() throws {
         // Given: テスト専用service名のKeychain store
         let service = "com.realtimetranslator.tests.\(UUID().uuidString)"

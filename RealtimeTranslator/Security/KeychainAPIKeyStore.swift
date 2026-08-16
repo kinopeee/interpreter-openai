@@ -90,6 +90,27 @@ final class KeychainAPIKeyStore: APIKeyStore, @unchecked Sendable {
         }
     }
 
+    #if DEBUG
+    /// テストで旧バージョンが保存した正規化前の値を再現する。接続へは渡さない。
+    func seedUnnormalized(_ raw: String) throws {
+        guard let data = raw.data(using: .utf8) else {
+            throw APIKeyStoreError.encodingFailed
+        }
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ]
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw APIKeyStoreError.unexpectedStatus(status)
+        }
+    }
+    #endif
+
     func delete() throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

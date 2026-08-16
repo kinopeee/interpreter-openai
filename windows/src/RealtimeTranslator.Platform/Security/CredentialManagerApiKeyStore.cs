@@ -75,36 +75,18 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
 
     private ApiKeyNormalizationResult? ReadNormalizedCredential()
     {
-        if (!NativeMethods.CredReadW(_targetName, CredTypeGeneric, 0, out var handle))
+        if (!TryReadBlob(out var blob))
         {
-            // CredRead 失敗はすべて「キーなし」相当。以前は ErrorNotFound 以外で
-            // Win32Exception を投げており、Settings 構築・録音開始ゲートが落ちていた。
-            // 文書化済み失敗は ErrorNotFound / ErrorNoSuchLogonSession。それ以外も throw しない。
             return null;
         }
 
         try
         {
-            var credential = Marshal.PtrToStructure<NativeMethods.Credential>(handle);
-            if (credential.CredentialBlob == IntPtr.Zero || credential.CredentialBlobSize == 0)
-            {
-                return ApiKeyNormalizer.Normalize(string.Empty);
-            }
-
-            var blob = new byte[credential.CredentialBlobSize];
-            Marshal.Copy(credential.CredentialBlob, blob, 0, blob.Length);
-            try
-            {
-                return ApiKeyNormalizer.Normalize(Encoding.UTF8.GetString(blob));
-            }
-            finally
-            {
-                Array.Clear(blob);
-            }
+            return ApiKeyNormalizer.Normalize(Encoding.UTF8.GetString(blob));
         }
         finally
         {
-            NativeMethods.CredFree(handle);
+            Array.Clear(blob);
         }
     }
 
@@ -120,7 +102,40 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
                         : "error.apiKeyEmpty"));
         }
 
-        var blob = Encoding.UTF8.GetBytes(value);
+        WriteBlob(Encoding.UTF8.GetBytes(value));
+    }
+
+    private bool TryReadBlob(out byte[] blob)
+    {
+        blob = [];
+        if (!NativeMethods.CredReadW(_targetName, CredTypeGeneric, 0, out var handle))
+        {
+            // CredRead 失敗はすべて「キーなし」相当。以前は ErrorNotFound 以外で
+            // Win32Exception を投げており、Settings 構築・録音開始ゲートが落ちていた。
+            // 文書化済み失敗は ErrorNotFound / ErrorNoSuchLogonSession。それ以外も throw しない。
+            return false;
+        }
+
+        try
+        {
+            var credential = Marshal.PtrToStructure<NativeMethods.Credential>(handle);
+            if (credential.CredentialBlob == IntPtr.Zero || credential.CredentialBlobSize == 0)
+            {
+                return true;
+            }
+
+            blob = new byte[credential.CredentialBlobSize];
+            Marshal.Copy(credential.CredentialBlob, blob, 0, blob.Length);
+            return true;
+        }
+        finally
+        {
+            NativeMethods.CredFree(handle);
+        }
+    }
+
+    private void WriteBlob(byte[] blob)
+    {
         var blobHandle = Marshal.AllocHGlobal(blob.Length);
         try
         {
@@ -151,6 +166,13 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
             Marshal.FreeHGlobal(blobHandle);
             Array.Clear(blob);
         }
+    }
+
+    /// <summary>旧バージョンが保存した正規化前の値を再現する。接続へは渡さない。</summary>
+    internal void SeedUnnormalized(string raw)
+    {
+        ArgumentNullException.ThrowIfNull(raw);
+        WriteBlob(Encoding.UTF8.GetBytes(raw));
     }
 
     public void Delete()
