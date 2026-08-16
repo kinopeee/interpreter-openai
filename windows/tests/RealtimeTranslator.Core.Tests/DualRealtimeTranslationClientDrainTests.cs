@@ -443,6 +443,122 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.False(await dual.Events.WaitToReadAsync());
     }
 
+    // Given: ja-es で Japanese target に pending frame がある dual（未使用 English lane は未接続）
+    // When: CloseGracefullyAsync する
+    // Then: Japanese lane へ drain したあと close し、未使用 English へ session.close を送らない
+    [Fact]
+    public async Task CloseGracefullyDrainsJapanesePendingFramesForJaEsPair()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var spanish = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(source, english, japanese, ShortCloseTimeout, spanish: spanish);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Japanese);
+
+        japanese.SendDelay = TimeSpan.FromMilliseconds(120);
+        await dual.AppendAudioFrameAsync(Frame(0xC1));
+        await dual.AppendAudioFrameAsync(Frame(0xC2));
+        japanese.SendDelay = TimeSpan.Zero;
+
+        await dual.CloseGracefullyAsync();
+
+        Assert.Equal(0, english.ConnectCount);
+        Assert.Equal(2, japanese.AppendedFrameTexts().Count);
+        var japaneseTypes = SentTypes(japanese);
+        var lastAppendIndex = japaneseTypes.FindLastIndex(type => type == "session.input_audio_buffer.append");
+        var closeIndex = japaneseTypes.FindLastIndex(type => type == "session.close");
+        Assert.True(lastAppendIndex >= 0);
+        Assert.True(closeIndex > lastAppendIndex);
+        Assert.Contains("session.close", SentTypes(spanish));
+        Assert.DoesNotContain("session.close", SentTypes(english));
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
+    // Given: en-es で Spanish target に pending frame がある dual（未使用 Japanese lane は未接続）
+    // When: CloseGracefullyAsync する
+    // Then: Spanish lane へ drain したあと close し、未使用 Japanese へ session.close を送らない
+    [Fact]
+    public async Task CloseGracefullyDrainsSpanishPendingFramesForEnEsPair()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var spanish = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(source, english, japanese, ShortCloseTimeout, spanish: spanish);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.EnEs);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Spanish);
+
+        spanish.SendDelay = TimeSpan.FromMilliseconds(120);
+        await dual.AppendAudioFrameAsync(Frame(0xD1));
+        await dual.AppendAudioFrameAsync(Frame(0xD2));
+        await dual.AppendAudioFrameAsync(Frame(0xD3));
+        spanish.SendDelay = TimeSpan.Zero;
+
+        await dual.CloseGracefullyAsync();
+
+        Assert.Equal(0, japanese.ConnectCount);
+        Assert.Equal(3, spanish.AppendedFrameTexts().Count);
+        var spanishTypes = SentTypes(spanish);
+        var lastAppendIndex = spanishTypes.FindLastIndex(type => type == "session.input_audio_buffer.append");
+        var closeIndex = spanishTypes.FindLastIndex(type => type == "session.close");
+        Assert.True(lastAppendIndex >= 0);
+        Assert.True(closeIndex > lastAppendIndex);
+        Assert.Contains("session.close", SentTypes(english));
+        Assert.DoesNotContain("session.close", SentTypes(japanese));
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
+    // Given: ja-es で Spanish lane の CloseAsync だけが失敗する ready Dual
+    // When: CloseGracefullyAsync する
+    // Then: 例外を伝播しても原文・日本語 lane は閉じ、未使用 English で止まらず Events は完了する
+    [Fact]
+    public async Task CloseGracefullyContinuesWhenSpanishConnectionThrows()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var spanish = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(source, english, japanese, ShortCloseTimeout, spanish: spanish);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Spanish);
+        var closeCountBefore = (
+            Source: source.CloseCount,
+            Japanese: japanese.CloseCount,
+            Spanish: spanish.CloseCount);
+        spanish.CloseError = new InvalidOperationException("spanish close boom");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => dual.CloseGracefullyAsync());
+
+        Assert.Equal("spanish close boom", error.Message);
+        Assert.Equal(0, english.ConnectCount);
+        Assert.Contains("session.close", SentTypes(spanish));
+        Assert.Contains("session.close", SentTypes(japanese));
+        Assert.Contains("input_audio_buffer.commit", SentTypes(source));
+        Assert.DoesNotContain("session.close", SentTypes(english));
+        Assert.True(source.CloseCount > closeCountBefore.Source);
+        Assert.True(japanese.CloseCount > closeCountBefore.Japanese);
+        Assert.True(spanish.CloseCount > closeCountBefore.Spanish);
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
     private static DualRealtimeTranslationClient CreateDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,
