@@ -222,6 +222,42 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.False(await dual.Events.WaitToReadAsync());
     }
 
+    // Given: 原文接続の CloseAsync だけが失敗する ready Dual
+    // When: CloseGracefullyAsync する
+    // Then: 例外を伝播しても翻訳両 lane は閉じ、Events は完了する
+    [Fact]
+    public async Task CloseGracefullyContinuesWhenSourceConnectionThrows()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(source, english, japanese, ShortCloseTimeout);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+        var closeCountBefore = (
+            Source: source.CloseCount,
+            English: english.CloseCount,
+            Japanese: japanese.CloseCount);
+        source.CloseError = new InvalidOperationException("source close boom");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => dual.CloseGracefullyAsync());
+
+        Assert.Equal("source close boom", error.Message);
+        Assert.Contains("session.close", SentTypes(english));
+        Assert.Contains("session.close", SentTypes(japanese));
+        Assert.Contains("input_audio_buffer.commit", SentTypes(source));
+        Assert.True(source.CloseCount > closeCountBefore.Source);
+        Assert.True(english.CloseCount > closeCountBefore.English);
+        Assert.True(japanese.CloseCount > closeCountBefore.Japanese);
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
     // Given: base drain timeout だけでは送り切れない程度の pending と緩い送信遅延
     // When: CloseGracefullyAsync する（pending 比例で予算が伸びる）
     // Then: session.close より前に全 frame が翻訳 lane へ届く（短い固定 timeout だと欠落する）
