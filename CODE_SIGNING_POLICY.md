@@ -11,7 +11,7 @@
 
 The project is preparing an application to the SignPath Foundation open-source
 code-signing program. Windows artifacts published before that application is
-approved are not represented as SignPath-signed artifacts.
+approved are unsigned.
 
 After approval, releases signed through that program will carry this credit:
 
@@ -39,7 +39,12 @@ authentication for GitHub and SignPath.
 
 ## Source and build provenance
 
-Windows release artifacts must:
+Until the SignPath Foundation application is approved, Windows release artifacts
+remain unsigned. The current `.github/workflows/release.yml` Windows job
+packages those unsigned artifacts after tests pass. It does not submit files to
+SignPath or verify Authenticode signatures.
+
+After approval, signed Windows release artifacts must:
 
 1. Be built from this repository by `.github/workflows/release.yml`.
 2. Be built from a release tag matching the repository's `vX.Y.Z` tag policy.
@@ -71,18 +76,35 @@ after the signed files have been downloaded from SignPath.
 
 ## Release verification
 
-The release workflow must verify the Authenticode signature before packaging.
-Users can also verify the extracted application:
+After SignPath approval, the release workflow must verify the Authenticode
+signature of every file in the signing scope before packaging. Users can also
+verify the extracted application:
 
 ```powershell
-$signature = Get-AuthenticodeSignature .\RealtimeTranslator.App.exe
-$signature.Status
-$signature.SignerCertificate.Subject
+$files = @(
+  '.\RealtimeTranslator.App.exe',
+  '.\RealtimeTranslator.App.dll',
+  '.\RealtimeTranslator.Core.dll',
+  '.\RealtimeTranslator.Platform.dll'
+)
+foreach ($file in $files) {
+  $signature = Get-AuthenticodeSignature $file
+  if ($signature.Status -ne 'Valid') {
+    throw "$file signature status is $($signature.Status)"
+  }
+  $signature.SignerCertificate.Subject
+}
 ```
 
-For a SignPath-signed release, `Status` must be `Valid` and the signer must
-chain to the certificate supplied by the SignPath Foundation. The release ZIP
-must also match its separately published `.sha256` file.
+For a SignPath-signed release, each file's `Status` must be `Valid` and the
+signer must chain to the certificate supplied by the SignPath Foundation. The
+release ZIP must also match its separately published `.sha256` file:
+
+```powershell
+$expected = (Get-Content .\RealtimeTranslator-<tag>-win-x64.zip.sha256 -Raw).Trim().Split()[0].ToLowerInvariant()
+$actual = (Get-FileHash .\RealtimeTranslator-<tag>-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actual -ne $expected) { throw "SHA-256 mismatch: expected $expected, got $actual" }
+```
 
 ## Security and revocation
 

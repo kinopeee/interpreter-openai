@@ -4,7 +4,11 @@ Realtime Translator の配布物です。OpenAI API キーはご自身のもの�
 
 - [プライバシーポリシー](https://github.com/kinopeee/interpreter-openai/blob/main/PRIVACY.md)
 - [Code signing policy / コード署名ポリシー](https://github.com/kinopeee/interpreter-openai/blob/main/CODE_SIGNING_POLICY.md)
-- Windows向けコード署名はSignPath Foundationへ申請準備中です。承認前のWindows成果物は未署名です。
+
+<!-- リリース作成時にWindows署名状態を更新する。
+     SignPath承認前: 次の「未署名」行を残す。
+     承認後: 「未署名」行を削除し、SignPathクレジットだけを残す。 -->
+- このリリースのWindows成果物は未署名です。Windows向けコード署名はSignPath Foundationへ申請準備中です。
 
 承認後、SignPath経由で署名したリリースには次のクレジットを表示します。
 
