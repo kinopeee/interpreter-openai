@@ -83,7 +83,11 @@ struct SettingsView: View {
     }
 
     private func refreshStoredKeyState() {
-        hasStoredKey = (try? apiKeyStore.load()?.isEmpty == false) == true
+        hasStoredKey = apiKeyStore.hasStoredKey
+        if hasStoredKey, (try? apiKeyStore.load()) == nil {
+            statusIsError = true
+            statusMessage = UiCopy.text("error.apiKeyMalformed")
+        }
     }
 
     private func saveAPIKey() {

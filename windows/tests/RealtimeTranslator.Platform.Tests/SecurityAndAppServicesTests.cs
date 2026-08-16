@@ -61,6 +61,32 @@ public sealed class SecurityAndAppServicesTests
         }
     }
 
+    // Given: 旧バージョンが残した形式不正キー
+    // When: Load / HasStoredKey / Delete する
+    // Then: 読み出しは null、存在判定は true、削除できる
+    [Fact]
+    public void OrphanMalformedCredentialCanBeDeleted()
+    {
+        var target = $"RealtimeTranslator.Tests:{Guid.NewGuid()}";
+        var store = new CredentialManagerApiKeyStore(target);
+        try
+        {
+            store.SeedUnnormalized("sk-proj-abc\n3:26");
+
+            Assert.Null(store.Load());
+            Assert.True(store.HasStoredKey);
+
+            store.Delete();
+
+            Assert.False(store.HasStoredKey);
+            Assert.Null(store.Load());
+        }
+        finally
+        {
+            store.Delete();
+        }
+    }
+
     // Given: 未保存のターゲット
     // When: 削除する
     // Then: 例外にせず何も起きない

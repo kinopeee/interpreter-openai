@@ -13,6 +13,17 @@ final class KeychainAPIKeyStore: APIKeyStore, @unchecked Sendable {
         self.account = account
     }
 
+    var hasStoredKey: Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        let status = SecItemCopyMatching(query as CFDictionary, nil)
+        return status == errSecSuccess
+    }
+
     func load() throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -70,6 +81,25 @@ final class KeychainAPIKeyStore: APIKeyStore, @unchecked Sendable {
             }
         default:
             throw APIKeyStoreError.unexpectedStatus(updateStatus)
+        }
+    }
+
+    /// 旧バージョンが保存した正規化前の値を再現する。接続へは渡さない。
+    func seedUnnormalized(_ raw: String) throws {
+        guard let data = raw.data(using: .utf8) else {
+            throw APIKeyStoreError.encodingFailed
+        }
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ]
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw APIKeyStoreError.unexpectedStatus(status)
         }
     }
 

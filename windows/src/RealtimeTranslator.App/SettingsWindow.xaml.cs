@@ -424,6 +424,10 @@ public partial class SettingsWindow : Window
             ? UiCopy.Text("settings.apiKeySaved.windows")
             : UiCopy.Text("settings.apiKeyNotSaved");
         DeleteApiKeyButton.IsEnabled = hasKey;
+        if (hasKey && string.IsNullOrEmpty(_apiKeyStore.Load()))
+        {
+            ShowApiKeyStatus(UiCopy.Text("error.apiKeyMalformed"), isError: true);
+        }
     }
 
     private void ShowApiKeyStatus(string message, bool isError)

@@ -47,7 +47,26 @@ final class APIKeyStoreTests: XCTestCase {
         // Given: 初期値が形式不正
         let store = InMemoryAPIKeyStore(initialKey: "sk-abc:def")
 
-        // When/Then: 読み出しは nil（ヘッダへ渡さない）
+        // When/Then: 読み出しは nil（ヘッダへ渡さない）が、削除はできる
+        XCTAssertNil(try store.load())
+        XCTAssertTrue(store.hasStoredKey)
+        try store.delete()
+        XCTAssertFalse(store.hasStoredKey)
+        XCTAssertNil(try store.load())
+    }
+
+    func testKeychainOrphanMalformedKeyCanBeDeleted() throws {
+        // Given: 旧バージョンが残した形式不正キー
+        let service = "com.realtimetranslator.tests.\(UUID().uuidString)"
+        let store = KeychainAPIKeyStore(service: service, account: "unit-test-key")
+        defer { try? store.delete() }
+        try store.seedUnnormalized("sk-proj-abc\n3:26")
+
+        // When/Then: 読み出しは nil、hasStoredKey は true、削除できる
+        XCTAssertNil(try store.load())
+        XCTAssertTrue(store.hasStoredKey)
+        try store.delete()
+        XCTAssertFalse(store.hasStoredKey)
         XCTAssertNil(try store.load())
     }
 

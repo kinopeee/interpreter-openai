@@ -222,6 +222,13 @@ public partial class App : Application, IDisposable
             return;
         }
 
+        if (string.IsNullOrEmpty(_apiKeyStore?.Load()))
+        {
+            ShowSettings();
+            _tray?.ShowMessage(UiCopy.Text("error.apiKeyMalformed"));
+            return;
+        }
+
         if (_transcriptSession.BeginRecording(_settings.RecordSubtitles))
         {
             HandleTranscriptResult(_transcriptStore.MarkSessionStart());

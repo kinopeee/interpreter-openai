@@ -30,6 +30,7 @@ protocol APIKeyStore: AnyObject, Sendable {
 }
 
 extension APIKeyStore {
+    /// 既定は load() の有効キー有無。保管の有無は各 store がオーバーライドする。
     var hasStoredKey: Bool {
         (try? load()?.isEmpty == false) == true
     }

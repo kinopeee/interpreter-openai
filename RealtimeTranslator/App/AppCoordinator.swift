@@ -108,6 +108,11 @@ final class AppCoordinator: NSObject {
             presentMessage(UiCopy.text("alert.needApiKey"))
             return
         }
+        if (try? apiKeyStore.load()) == nil {
+            openSettings()
+            presentMessage(UiCopy.text("error.apiKeyMalformed"))
+            return
+        }
 
         hasOpenTranscriptSession = false
         if settings.recordSubtitles {
