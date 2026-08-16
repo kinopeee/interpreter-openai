@@ -318,7 +318,6 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
     {
         if (serverEvent is RealtimeSourceTranscriptionServerEvent.ServerError error)
         {
-            Trace.WriteLine("Realtime transcription error code=" + (error.Code ?? "none"));
             throw RealtimeTranslationException.IsAuthenticationFailure(error.Code, error.Message)
                 ? new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed)
                 : new RealtimeTranslationException(

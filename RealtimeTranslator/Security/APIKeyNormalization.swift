@@ -22,7 +22,7 @@ enum APIKeyNormalization: Equatable, Sendable {
             return true
         }
         switch scalar.properties.generalCategory {
-        case .control, .format, .surrogate, .unassigned:
+        case .control, .format:
             return true
         default:
             return false

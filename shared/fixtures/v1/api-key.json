@@ -54,6 +54,11 @@
       "status": "malformed"
     },
     {
+      "name": "unassigned unicode scalar is malformed",
+      "input": "sk-proj-abc\u0378",
+      "status": "malformed"
+    },
+    {
       "name": "slash is malformed",
       "input": "sk-abc/def",
       "status": "malformed"

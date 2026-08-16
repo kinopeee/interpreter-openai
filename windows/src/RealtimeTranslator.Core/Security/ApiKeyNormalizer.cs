@@ -60,9 +60,7 @@ public static class ApiKeyNormalizer
         }
 
         return Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control
-            or UnicodeCategory.Format
-            or UnicodeCategory.Surrogate
-            or UnicodeCategory.OtherNotAssigned;
+            or UnicodeCategory.Format;
     }
 
     private static bool IsAllowed(string value)
