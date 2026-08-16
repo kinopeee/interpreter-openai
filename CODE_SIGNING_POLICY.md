@@ -87,17 +87,29 @@ $files = @(
   '.\RealtimeTranslator.Core.dll',
   '.\RealtimeTranslator.Platform.dll'
 )
+# Replace with the published SignPath Foundation signer identity after approval.
+$expectedChainMarker = 'SignPath Foundation'
 foreach ($file in $files) {
   $signature = Get-AuthenticodeSignature $file
   if ($signature.Status -ne 'Valid') {
     throw "$file signature status is $($signature.Status)"
   }
-  $signature.SignerCertificate.Subject
+  $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
+  if (-not $chain.Build($signature.SignerCertificate)) {
+    throw "$file certificate chain is invalid"
+  }
+  $chainSubjects = @(
+    $chain.ChainElements | ForEach-Object { $_.Certificate.Subject }
+  )
+  if (-not ($chainSubjects | Where-Object { $_ -like "*$expectedChainMarker*" })) {
+    throw "$file signer chain does not include ${expectedChainMarker}: $($chainSubjects -join '; ')"
+  }
 }
 ```
 
 For a SignPath-signed release, each file's `Status` must be `Valid` and the
-signer must chain to the certificate supplied by the SignPath Foundation. The
+signer must chain to the certificate supplied by the SignPath Foundation. After
+approval, replace `$expectedChainMarker` with that published identity. The
 release ZIP must also match its separately published `.sha256` file:
 
 ```powershell
