@@ -235,6 +235,37 @@ public sealed class DualRealtimeTranslationClientParityTests
         Assert.False(await dual.Events.WaitToReadAsync());
     }
 
+    // Given: ready な Dual
+    // When: 原文接続へ鍵断片付きの runtime error が届く
+    // Then: merge 後の Events は transcription code と認証失敗文言だけを出し、鍵は出さない
+    [Fact]
+    public async Task SourceRuntimeAuthErrorIsMergedWithoutKeyMaterial()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        source.EnqueueJson(
+            """{"type":"error","error":{"message":"Incorrect API key sk-dual-xyz","code":"invalid_api_key"}}""");
+
+        RealtimeTranslationServerEvent.ServerError? error = null;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (error is null)
+        {
+            var streamEvent = await dual.Events.ReadAsync(timeout.Token);
+            error = streamEvent.Event as RealtimeTranslationServerEvent.ServerError;
+        }
+
+        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Equal("OpenAI APIキーが無効です", error.Message);
+        Assert.DoesNotContain("sk-dual-xyz", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
+        await dual.ForceCloseAsync();
+    }
+
     // Given: 3 本の翻訳接続を持つ Dual と選択された言語ペア
     // When: その pair で Start する
     // Then: source と pair 内 2 lane だけが接続され、未使用 lane は接続されない

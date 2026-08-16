@@ -1091,6 +1091,57 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: transport error 後の再接続待ち
+    // When: 利用者が録音を停止する
+    // Then: Idle に戻り、capture は止まり、追加 Start は走らない
+    [Fact]
+    public async Task StopDuringReconnectingReturnsToIdle()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        using var session = NewSession(
+            client,
+            audio: audio,
+            initialReconnectDelay: TimeSpan.FromSeconds(2));
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        Assert.Equal(1, client.StartCount);
+
+        client.PublishTransportError();
+        await WaitUntilAsync(() => session.State == TranslationState.Reconnecting);
+        Assert.Equal(1, client.StartCount);
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        Assert.False(audio.IsRunning);
+        Assert.Equal(1, client.StartCount);
+        Assert.True(audio.StopCallCount >= 1);
+    }
+
+    // Given: transport error 後の再接続待ち
+    // When: その間に StartAsync を再度呼ぶ
+    // Then: Idle/Error 以外は受理せず Dual Start は増えない
+    [Fact]
+    public async Task StartWhileReconnectingIsNoOp()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, initialReconnectDelay: TimeSpan.FromSeconds(2));
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishTransportError();
+        await WaitUntilAsync(() => session.State == TranslationState.Reconnecting);
+        var startCount = client.StartCount;
+
+        await session.StartAsync();
+
+        Assert.Equal(TranslationState.Reconnecting, session.State);
+        Assert.Equal(startCount, client.StartCount);
+        await session.StopAsync();
+        Assert.Equal(TranslationState.Idle, session.State);
+    }
+
     // Given: 翻訳送信の連続失敗による transport error
     // When: セッションがイベントを受け取る
     // Then: 再接続して新しい epoch で再開する
@@ -1337,6 +1388,53 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
 
         Assert.Equal(TranslationState.Idle, session.State);
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("停止時の最終原文", finalized.SourceText);
+        Assert.Equal("Final source at stop", finalized.TranslatedText);
+    }
+
+    // Given: 停止時 close drain で ServerError と完全ペアが同じ queue に並ぶ
+    // When: 利用者が録音を停止する
+    // Then: ServerError は無視し、完全ペアだけ ShouldFinalize する
+    [Fact]
+    public async Task StopIngestsTranscriptDespiteServerErrorInCloseDrain()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        string? message = null;
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.OnCloseGracefully = () =>
+        {
+            client.PublishServerError("close drain transport glitch", "server_error");
+            client.PublishSourceDelta("停止時の最終原文");
+            client.PublishTranslationDelta(
+                RealtimeTranslationOutputLanguage.English,
+                "Final source at stop");
+            client.Complete();
+            return Task.CompletedTask;
+        };
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        Assert.Null(message);
         RealtimeSubtitleUpdate finalized;
         lock (updates)
         {
@@ -1840,13 +1938,14 @@ public sealed class InterpretationSessionTests
         string? apiKey = "sk-test",
         Func<RealtimeSessionTuning>? tuningProvider = null,
         FakeAudioCapture? audio = null,
-        Func<LanguagePair>? languagePairProvider = null) =>
+        Func<LanguagePair>? languagePairProvider = null,
+        TimeSpan? initialReconnectDelay = null) =>
         new(
             new FakeApiKeyStore(apiKey),
             audio ?? new FakeAudioCapture(),
             client,
             tuningProvider,
-            initialReconnectDelay: TimeSpan.FromMilliseconds(1),
+            initialReconnectDelay: initialReconnectDelay ?? TimeSpan.FromMilliseconds(1),
             tickInterval: TimeSpan.FromMilliseconds(20),
             languagePairProvider: languagePairProvider);
 
