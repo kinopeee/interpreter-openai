@@ -8,6 +8,17 @@
 
 Windows版の手順は [Windows版](#windows版) を参照してください。以下はmacOS版の説明です。
 
+## プライバシーとコード署名
+
+- [プライバシーポリシー](PRIVACY.md)
+- [Code signing policy / コード署名ポリシー](CODE_SIGNING_POLICY.md)
+
+Windows向けコード署名はSignPath Foundationへ申請準備中です。承認前に公開された
+Windows版Release成果物は未署名です。承認後、SignPath経由で署名したリリースには
+次のクレジットを表示します。
+
+> Free code signing provided by SignPath.io, certificate by SignPath Foundation
+
 ## 要件
 
 - macOS 26以降

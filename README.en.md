@@ -8,6 +8,17 @@ It streams microphone audio to OpenAI’s `gpt-live-transcribe` and `gpt-realtim
 
 For Windows setup, see [Windows](#windows). The sections below describe the macOS edition.
 
+## Privacy and code signing
+
+- [Privacy Policy](PRIVACY.md)
+- [Code Signing Policy](CODE_SIGNING_POLICY.md)
+
+The project is preparing an application to the SignPath Foundation for Windows
+code signing. Windows release artifacts published before approval are unsigned.
+After approval, releases signed through SignPath will carry this credit:
+
+> Free code signing provided by SignPath.io, certificate by SignPath Foundation
+
 ## Requirements
 
 - macOS 26 or later

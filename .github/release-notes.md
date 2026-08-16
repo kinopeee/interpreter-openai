@@ -1,5 +1,19 @@
 Realtime Translator の配布物です。OpenAI API キーはご自身のもの（BYOK）を使います。キーは各OSの安全な保管領域（Windows 資格情報マネージャー / macOS キーチェーン）にのみ保存されます。
 
+## プライバシーとコード署名
+
+- [プライバシーポリシー](https://github.com/kinopeee/interpreter-openai/blob/main/PRIVACY.md)
+- [Code signing policy / コード署名ポリシー](https://github.com/kinopeee/interpreter-openai/blob/main/CODE_SIGNING_POLICY.md)
+
+<!-- リリース作成時にWindows署名状態を更新する。
+     SignPath承認前: 次の「未署名」行を残す。
+     承認後: 「未署名」行を削除し、SignPathクレジットだけを残す。 -->
+- このリリースのWindows成果物は未署名です。Windows向けコード署名はSignPath Foundationへ申請準備中です。
+
+承認後、SignPath経由で署名したリリースには次のクレジットを表示します。
+
+> Free code signing provided by SignPath.io, certificate by SignPath Foundation
+
 ## Windows (`RealtimeTranslator-<tag>-win-x64.zip`)
 
 - 自己完結ビルドのため .NET のインストールは不要です。Windows 10 / 11 (x64)。
