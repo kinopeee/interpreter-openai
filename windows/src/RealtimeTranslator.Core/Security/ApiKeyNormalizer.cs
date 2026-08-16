@@ -83,7 +83,7 @@ public static class ApiKeyNormalizer
 public sealed class ApiKeyFormatException : ArgumentException
 {
     public ApiKeyFormatException(string message)
-        : base(message, "apiKey")
+        : base(message)
     {
     }
 }

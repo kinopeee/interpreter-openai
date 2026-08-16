@@ -1,3 +1,5 @@
+using System;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.Security;
 using Xunit;
 
@@ -34,5 +36,18 @@ public sealed class ApiKeyNormalizationFixtureTests
             default:
                 throw new Xunit.Sdk.XunitException("unknown status " + status);
         }
+    }
+
+    // Given: 形式不正のカタログ文言
+    // When: ApiKeyFormatException を作る
+    // Then: Message はカタログだけ（Parameter name を混ぜない）
+    [Fact]
+    public void FormatExceptionMessageIsCatalogTextOnly()
+    {
+        var text = UserCopy.Current.Text("error.apiKeyMalformed");
+        var error = new ApiKeyFormatException(text);
+
+        Assert.Equal(text, error.Message);
+        Assert.DoesNotContain("Parameter", error.Message, StringComparison.Ordinal);
     }
 }
