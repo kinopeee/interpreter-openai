@@ -516,6 +516,9 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         return ResolveTranslationDrainTimeout(_translationDrainTimeout, pending);
     }
 
+    /// <summary>テスト用。停止時 drain 予算（送信中 frame の +1 を含む）。</summary>
+    internal TimeSpan CloseDrainTimeoutForTests => ResolveCloseDrainTimeout();
+
     /// <summary>翻訳ポンプが現在の待ち行列を処理し終えるまで待つ。決定的なテストのために使う。</summary>
     /// <remarks>送信が停滞しても timeout（既定5秒、Close時はpending比例）で打ち切る（ポンプTaskを無期限待ちしない）。</remarks>
     internal async Task WaitForTranslationDrainAsync(
