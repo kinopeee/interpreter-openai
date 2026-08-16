@@ -172,38 +172,49 @@ public partial class SettingsWindow : Window
 
     private void OnSaveApiKey(object sender, RoutedEventArgs e)
     {
+        string statusMessage;
+        bool statusIsError;
         try
         {
             _apiKeyStore.Save(ApiKeyBox.Password);
             ApiKeyBox.Clear();
-            ShowApiKeyStatus(UiCopy.Text("settings.apiKeySaveOk.windows"), isError: false);
+            statusMessage = UiCopy.Text("settings.apiKeySaveOk.windows");
+            statusIsError = false;
         }
         catch (ApiKeyFormatException error)
         {
-            ShowApiKeyStatus(error.Message, isError: true);
+            statusMessage = error.Message;
+            statusIsError = true;
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            ShowApiKeyStatus(UiCopy.Text("settings.apiKeySaveFailed"), isError: true);
+            statusMessage = UiCopy.Text("settings.apiKeySaveFailed");
+            statusIsError = true;
         }
 
         RefreshStoredKeyState();
+        ShowApiKeyStatus(statusMessage, statusIsError);
     }
 
     private void OnDeleteApiKey(object sender, RoutedEventArgs e)
     {
+        string statusMessage;
+        bool statusIsError;
         try
         {
             _apiKeyStore.Delete();
             ApiKeyBox.Clear();
-            ShowApiKeyStatus(UiCopy.Text("settings.apiKeyDeleteOk"), isError: false);
+            statusMessage = UiCopy.Text("settings.apiKeyDeleteOk");
+            statusIsError = false;
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            ShowApiKeyStatus(UiCopy.Text("settings.apiKeyDeleteFailed"), isError: true);
+            statusMessage = UiCopy.Text("settings.apiKeyDeleteFailed");
+            statusIsError = true;
         }
 
         RefreshStoredKeyState();
+        ShowApiKeyStatus(statusMessage, statusIsError);
     }
 
     private void OnNoiseReductionChanged(object sender, SelectionChangedEventArgs e)
