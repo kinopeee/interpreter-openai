@@ -96,6 +96,39 @@ public sealed class SubtitleFixtureTests
         Assert.Equal("la reunión es hoy", update.Value.TranslatedText);
     }
 
+    // Given: ja-es pair の日本語原文と未選択の翻訳 lane
+    // When: assembler が原文の文字種を補助信号として使う
+    // Then: 話者日本語の相手側であるスペイン語 lane を選ぶ（既定 ja-en の英語 lane ではない）
+    [Fact]
+    public void JaEsFallbackSelectsSpanishLaneForJapaneseSource()
+    {
+        var assembler = new RealtimeSubtitleAssembler(LanguagePair.JaEs);
+        assembler.Reset(1);
+
+        assembler.Ingest(
+            new RealtimeTranslationStreamEvent(
+                RealtimeTranslationLane.Source,
+                new RealtimeTranslationServerEvent.InputTranscriptDelta(
+                    "会議を始めます",
+                    "source-jaes",
+                    null),
+                1),
+            Origin);
+
+        var update = assembler.Ingest(
+            new RealtimeTranslationStreamEvent(
+                RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.Spanish),
+                new RealtimeTranslationServerEvent.OutputTranscriptDelta(
+                    "Empezamos la reunión",
+                    "translation-jaes",
+                    null),
+                1),
+            Origin);
+
+        Assert.NotNull(update);
+        Assert.Equal("Empezamos la reunión", update.Value.TranslatedText);
+    }
+
     // Given: fixture の原文・翻訳 delta シナリオ（epoch / 重複 ID / lane 期待値を含む）
     // When: assembler へ順に投入し時間を進める
     // Then: finalize タイミングと字幕内容が期待どおりになる
