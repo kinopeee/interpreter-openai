@@ -835,10 +835,12 @@ public sealed class InterpretationSessionTests
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
+        var processedDeltaCount = 0;
+        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
+
         client.PublishSourceDelta("Tokyo");
-        await Task.Delay(40);
         client.PublishSourceDelta(" Paris");
-        await Task.Delay(40);
+        await WaitUntilAsync(() => Volatile.Read(ref processedDeltaCount) >= 2);
 
         Assert.Empty(client.SelectedTargets);
         Assert.Empty(client.SpokenLanguages);
