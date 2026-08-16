@@ -1,4 +1,5 @@
-﻿using System.Collections.Immutable;
+﻿using System;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -92,6 +93,24 @@ public sealed class SourceTranscriptionCodecFixtureTests
                 Assert.Fail("unhandled fixture kind " + SharedFixtures.Text(expected["kind"]));
                 break;
         }
+    }
+
+    // Given: 鍵断片を含む invalid_api_key の原文 error
+    // When: 文字起こし専用 codec でデコードする
+    // Then: code は transcription に畳み、表示文言は認証失敗で鍵断片を残さない
+    [Fact]
+    public void AuthErrorIsTaggedTranscriptionAndRedactsKeyMaterial()
+    {
+        var utf8 = Encoding.UTF8.GetBytes(
+            """{"type":"error","error":{"message":"Incorrect API key sk-codec-xyz","code":"invalid_api_key"}}""");
+
+        var actual = RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8);
+        var error = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
+
+        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Equal("OpenAI APIキーが無効です", error.Message);
+        Assert.DoesNotContain("sk-codec-xyz", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
     }
 
     // Given: JSON として不正なペイロード

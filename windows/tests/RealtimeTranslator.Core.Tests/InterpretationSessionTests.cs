@@ -427,6 +427,39 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: ja-en で開始したあと、録音中に provider を ja-es へ変更する
+    // When: Listening 中に ApplyTuningChangeAsync する
+    // Then: 凍結中の ja-en 向け ForPair を送り、新しいペアの hint へすり替わらない
+    [Fact]
+    public async Task ApplyTuningChangeUsesFrozenPairAfterProviderChanges()
+    {
+        var client = new FakeDualClient();
+        var pair = LanguagePair.JaEn;
+        using var session = NewSession(
+            client,
+            tuningProvider: () => RealtimeSessionTuning.Default,
+            languagePairProvider: () => pair);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        Assert.Equal(LanguagePair.JaEn, client.LastStartedPair);
+
+        pair = LanguagePair.JaEs;
+        await session.ApplyTuningChangeAsync();
+
+        Assert.Equal(1, client.UpdateTranscriptionTuningCount);
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEn),
+            client.LastTuning?.TranscriptionPrompt);
+        Assert.Equal(
+            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEn).ToArray(),
+            client.LastTuning?.TranscriptionKeywords.ToArray());
+        Assert.NotEqual(
+            RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEs),
+            client.LastTuning?.TranscriptionPrompt);
+        await session.StopAsync();
+    }
+
     // Given: en-es ペアと ja-en 既定の tuningProvider
     // When: Start し、Listening 中に ApplyTuningChangeAsync する
     // Then: Start / Apply の双方で ForPair(EnEs) の prompt・keywords が dual へ渡る
@@ -772,6 +805,48 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: ja-es で開始したセッション
+    // When: ラテン 1 語だけの原文 delta を受け取る
+    // Then: AmbiguousLatin をスペイン語話者とみなし、日本語 target を開く
+    [Fact]
+    public async Task JaEsAmbiguousLatinSelectsJapaneseTarget()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, languagePairProvider: () => LanguagePair.JaEs);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("Tokyo");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 1);
+
+        Assert.Equal([RealtimeTranslationOutputLanguage.Japanese], client.SelectedTargets);
+        Assert.Equal([SpokenLanguage.Spanish], client.SpokenLanguages);
+        await session.StopAsync();
+    }
+
+    // Given: en-es で開始したセッション
+    // When: 排他語のないラテン 1 語だけの原文 delta を受け取る
+    // Then: AmbiguousLatin では target を開かず、誤った lane へ preroll しない
+    [Fact]
+    public async Task EnEsAmbiguousLatinDoesNotSelectATarget()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, languagePairProvider: () => LanguagePair.EnEs);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var processedDeltaCount = 0;
+        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
+
+        client.PublishSourceDelta("Tokyo");
+        client.PublishSourceDelta(" Paris");
+        await WaitUntilAsync(() => Volatile.Read(ref processedDeltaCount) >= 2);
+
+        Assert.Empty(client.SelectedTargets);
+        Assert.Empty(client.SpokenLanguages);
+        await session.StopAsync();
+    }
+
     // Given: 接続後に変更された言語ペア provider
     // When: 録音中に原文の言語反転を検出する
     // Then: 接続開始時のペアで routing し、provider の変更を反映しない
@@ -1091,6 +1166,57 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: transport error 後の再接続待ち
+    // When: 利用者が録音を停止する
+    // Then: Idle に戻り、capture は止まり、追加 Start は走らない
+    [Fact]
+    public async Task StopDuringReconnectingReturnsToIdle()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        using var session = NewSession(
+            client,
+            audio: audio,
+            initialReconnectDelay: TimeSpan.FromSeconds(2));
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        Assert.Equal(1, client.StartCount);
+
+        client.PublishTransportError();
+        await WaitUntilAsync(() => session.State == TranslationState.Reconnecting);
+        Assert.Equal(1, client.StartCount);
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        Assert.False(audio.IsRunning);
+        Assert.Equal(1, client.StartCount);
+        Assert.True(audio.StopCallCount >= 1);
+    }
+
+    // Given: transport error 後の再接続待ち
+    // When: その間に StartAsync を再度呼ぶ
+    // Then: Idle/Error 以外は受理せず Dual Start は増えない
+    [Fact]
+    public async Task StartWhileReconnectingIsNoOp()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, initialReconnectDelay: TimeSpan.FromSeconds(2));
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishTransportError();
+        await WaitUntilAsync(() => session.State == TranslationState.Reconnecting);
+        var startCount = client.StartCount;
+
+        await session.StartAsync();
+
+        Assert.Equal(TranslationState.Reconnecting, session.State);
+        Assert.Equal(startCount, client.StartCount);
+        await session.StopAsync();
+        Assert.Equal(TranslationState.Idle, session.State);
+    }
+
     // Given: 翻訳送信の連続失敗による transport error
     // When: セッションがイベントを受け取る
     // Then: 再接続して新しい epoch で再開する
@@ -1337,6 +1463,53 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
 
         Assert.Equal(TranslationState.Idle, session.State);
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("停止時の最終原文", finalized.SourceText);
+        Assert.Equal("Final source at stop", finalized.TranslatedText);
+    }
+
+    // Given: 停止時 close drain で ServerError と完全ペアが同じ queue に並ぶ
+    // When: 利用者が録音を停止する
+    // Then: ServerError は無視し、完全ペアだけ ShouldFinalize する
+    [Fact]
+    public async Task StopIngestsTranscriptDespiteServerErrorInCloseDrain()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        string? message = null;
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.OnCloseGracefully = () =>
+        {
+            client.PublishServerError("close drain transport glitch", "server_error");
+            client.PublishSourceDelta("停止時の最終原文");
+            client.PublishTranslationDelta(
+                RealtimeTranslationOutputLanguage.English,
+                "Final source at stop");
+            client.Complete();
+            return Task.CompletedTask;
+        };
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        Assert.Null(message);
         RealtimeSubtitleUpdate finalized;
         lock (updates)
         {
@@ -1747,6 +1920,32 @@ public sealed class InterpretationSessionTests
         Assert.Equal(1, client.StartCount);
     }
 
+    // Given: ja-en 録音が致命エラーで止まったあと、provider を ja-es へ変える
+    // When: Error 状態から Start し直す
+    // Then: 失敗セッションの凍結ペアは捨て、新しい録音は ja-es で始める
+    [Fact]
+    public async Task StartAfterFatalErrorUsesCurrentProviderPair()
+    {
+        var client = new FakeDualClient();
+        var pair = LanguagePair.JaEn;
+        using var session = NewSession(client, languagePairProvider: () => pair);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        Assert.Equal(LanguagePair.JaEn, client.LastStartedPair);
+
+        client.PublishServerError("Incorrect API key provided", "invalid_api_key");
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+        Assert.Equal(1, client.StartCount);
+
+        pair = LanguagePair.JaEs;
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        Assert.Equal(LanguagePair.JaEs, client.LastStartedPair);
+        Assert.Equal(2, client.StartCount);
+        await session.StopAsync();
+    }
+
     // Given: Listening 中のセッション
     // When: キー断片を含む invalid_api_key エラーが届く
     // Then: 認証エラー文言になり、sk- や原文メッセージは MessageEncountered へ出ない
@@ -1840,13 +2039,14 @@ public sealed class InterpretationSessionTests
         string? apiKey = "sk-test",
         Func<RealtimeSessionTuning>? tuningProvider = null,
         FakeAudioCapture? audio = null,
-        Func<LanguagePair>? languagePairProvider = null) =>
+        Func<LanguagePair>? languagePairProvider = null,
+        TimeSpan? initialReconnectDelay = null) =>
         new(
             new FakeApiKeyStore(apiKey),
             audio ?? new FakeAudioCapture(),
             client,
             tuningProvider,
-            initialReconnectDelay: TimeSpan.FromMilliseconds(1),
+            initialReconnectDelay: initialReconnectDelay ?? TimeSpan.FromMilliseconds(1),
             tickInterval: TimeSpan.FromMilliseconds(20),
             languagePairProvider: languagePairProvider);
 
