@@ -1,5 +1,19 @@
 import Foundation
 
+enum StoredAPIKeyState: Equatable, Sendable {
+    case missing
+    case malformed
+    case valid
+
+    var hasUsableKey: Bool {
+        self == .valid
+    }
+
+    var canDelete: Bool {
+        self != .missing
+    }
+}
+
 enum APIKeyStoreError: Error, LocalizedError, Equatable, Sendable {
     case emptyKey
     case malformedKey
@@ -25,12 +39,13 @@ enum APIKeyStoreError: Error, LocalizedError, Equatable, Sendable {
 
 protocol APIKeyStore: AnyObject, Sendable {
     func load() throws -> String?
+    func storedKeyState() throws -> StoredAPIKeyState
     func save(_ key: String) throws
     func delete() throws
 }
 
 extension APIKeyStore {
     var hasStoredKey: Bool {
-        (try? load()?.isEmpty == false) == true
+        (try? storedKeyState().hasUsableKey) == true
     }
 }

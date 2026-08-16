@@ -11,6 +11,13 @@ public enum ApiKeyNormalizationStatus
     Valid,
 }
 
+public enum StoredApiKeyState
+{
+    Missing,
+    Malformed,
+    Valid,
+}
+
 public readonly record struct ApiKeyNormalizationResult(
     ApiKeyNormalizationStatus Status,
     string? Value);
@@ -20,6 +27,14 @@ public readonly record struct ApiKeyNormalizationResult(
 /// </summary>
 public static class ApiKeyNormalizer
 {
+    public static StoredApiKeyState StoredState(ApiKeyNormalizationResult? result) =>
+        result switch
+        {
+            null => StoredApiKeyState.Missing,
+            { Status: ApiKeyNormalizationStatus.Valid } => StoredApiKeyState.Valid,
+            _ => StoredApiKeyState.Malformed,
+        };
+
     public static ApiKeyNormalizationResult Normalize(string? raw)
     {
         if (string.IsNullOrEmpty(raw))

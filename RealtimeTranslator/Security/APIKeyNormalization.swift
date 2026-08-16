@@ -56,3 +56,13 @@ func storedAPIKey(from raw: String) -> String? {
     }
     return nil
 }
+
+func storedAPIKeyState(from raw: String?) -> StoredAPIKeyState {
+    guard let raw else {
+        return .missing
+    }
+    if case .valid = APIKeyNormalization.normalize(raw) {
+        return .valid
+    }
+    return .malformed
+}

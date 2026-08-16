@@ -407,23 +407,27 @@ public partial class SettingsWindow : Window
 
     private void RefreshStoredKeyState()
     {
-        // HasStoredKey は CredRead 失敗を false に畳むが、未知の Win32 失敗でも
+        // StoredKeyState は CredRead 失敗を Missing に畳むが、未知の Win32 失敗でも
         // 設定ウィンドウ構築・保存後更新でプロセスを落とさない。
-        bool hasKey;
+        StoredApiKeyState state;
         try
         {
-            hasKey = _apiKeyStore.HasStoredKey;
+            state = _apiKeyStore.StoredKeyState;
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            hasKey = false;
+            state = StoredApiKeyState.Missing;
             ShowApiKeyStatus(UiCopy.Text("settings.apiKeyStatusUnknown"), isError: true);
         }
 
-        StoredKeyStateText.Text = hasKey
+        StoredKeyStateText.Text = state == StoredApiKeyState.Valid
             ? UiCopy.Text("settings.apiKeySaved.windows")
             : UiCopy.Text("settings.apiKeyNotSaved");
-        DeleteApiKeyButton.IsEnabled = hasKey;
+        DeleteApiKeyButton.IsEnabled = state != StoredApiKeyState.Missing;
+        if (state == StoredApiKeyState.Malformed)
+        {
+            ShowApiKeyStatus(UiCopy.Text("error.apiKeyMalformed"), isError: true);
+        }
     }
 
     private void ShowApiKeyStatus(string message, bool isError)

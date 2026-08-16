@@ -24,11 +24,13 @@ public sealed class SecurityAndAppServicesTests
         try
         {
             Assert.Null(store.Load());
+            Assert.Equal(StoredApiKeyState.Missing, store.StoredKeyState);
 
             store.Save("  sk-unit-test-value  ");
 
             Assert.Equal("sk-unit-test-value", store.Load());
             Assert.True(store.HasStoredKey);
+            Assert.Equal(StoredApiKeyState.Valid, store.StoredKeyState);
         }
         finally
         {
@@ -36,6 +38,7 @@ public sealed class SecurityAndAppServicesTests
         }
 
         Assert.Null(store.Load());
+        Assert.Equal(StoredApiKeyState.Missing, store.StoredKeyState);
     }
 
     // Given: 行折り返しキーと時刻が混ざったキー
@@ -88,6 +91,7 @@ public sealed class SecurityAndAppServicesTests
 
         Assert.False(store.HasStoredKey);
         Assert.Null(store.Load());
+        Assert.Equal(StoredApiKeyState.Missing, store.StoredKeyState);
     }
 
     // Given: テスト専用のレジストリキー

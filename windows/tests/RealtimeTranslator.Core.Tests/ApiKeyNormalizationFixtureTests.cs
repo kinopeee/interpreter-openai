@@ -50,4 +50,46 @@ public sealed class ApiKeyNormalizationFixtureTests
         Assert.Equal(text, error.Message);
         Assert.DoesNotContain("Parameter", error.Message, StringComparison.Ordinal);
     }
+
+    // Given: 資格情報が存在しない
+    // When: 保存状態を分類する
+    // Then: Missing になる
+    [Fact]
+    public void MissingCredentialHasMissingStoredState()
+    {
+        Assert.Equal(StoredApiKeyState.Missing, ApiKeyNormalizer.StoredState(null));
+    }
+
+    // Given: 正常な保存キーの正規化結果
+    // When: 保存状態を分類する
+    // Then: Valid になる
+    [Fact]
+    public void ValidCredentialHasValidStoredState()
+    {
+        var normalized = ApiKeyNormalizer.Normalize("sk-valid");
+
+        Assert.Equal(StoredApiKeyState.Valid, ApiKeyNormalizer.StoredState(normalized));
+    }
+
+    // Given: 形式不正な保存キーの正規化結果
+    // When: 保存状態を分類する
+    // Then: Malformed になり、Missing と区別される
+    [Fact]
+    public void MalformedCredentialHasMalformedStoredState()
+    {
+        var normalized = ApiKeyNormalizer.Normalize("sk-invalid:timestamp");
+
+        Assert.Equal(StoredApiKeyState.Malformed, ApiKeyNormalizer.StoredState(normalized));
+    }
+
+    // Given: 空の保存項目の正規化結果
+    // When: 保存状態を分類する
+    // Then: Malformed になり、削除対象として Missing と区別される
+    [Fact]
+    public void EmptyCredentialHasMalformedStoredState()
+    {
+        var normalized = ApiKeyNormalizer.Normalize(string.Empty);
+
+        Assert.Equal(StoredApiKeyState.Malformed, ApiKeyNormalizer.StoredState(normalized));
+    }
 }

@@ -47,7 +47,7 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
         {
             try
             {
-                return !string.IsNullOrWhiteSpace(Load());
+                return StoredKeyState == StoredApiKeyState.Valid;
             }
             catch (Win32Exception)
             {
@@ -56,7 +56,24 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
         }
     }
 
+    /// <summary>保存項目の有無と、接続に利用できる形式かを秘密値なしで返す。</summary>
+    public StoredApiKeyState StoredKeyState
+    {
+        get
+        {
+            return ApiKeyNormalizer.StoredState(ReadNormalizedCredential());
+        }
+    }
+
     public string? Load()
+    {
+        var result = ReadNormalizedCredential();
+        return result is { Status: ApiKeyNormalizationStatus.Valid, Value: { } value }
+            ? value
+            : null;
+    }
+
+    private ApiKeyNormalizationResult? ReadNormalizedCredential()
     {
         if (!NativeMethods.CredReadW(_targetName, CredTypeGeneric, 0, out var handle))
         {
@@ -71,15 +88,14 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
             var credential = Marshal.PtrToStructure<NativeMethods.Credential>(handle);
             if (credential.CredentialBlob == IntPtr.Zero || credential.CredentialBlobSize == 0)
             {
-                return null;
+                return ApiKeyNormalizer.Normalize(string.Empty);
             }
 
             var blob = new byte[credential.CredentialBlobSize];
             Marshal.Copy(credential.CredentialBlob, blob, 0, blob.Length);
             try
             {
-                var result = ApiKeyNormalizer.Normalize(Encoding.UTF8.GetString(blob));
-                return result.Status == ApiKeyNormalizationStatus.Valid ? result.Value : null;
+                return ApiKeyNormalizer.Normalize(Encoding.UTF8.GetString(blob));
             }
             finally
             {

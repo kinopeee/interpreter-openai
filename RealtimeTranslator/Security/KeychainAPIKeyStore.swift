@@ -14,6 +14,26 @@ final class KeychainAPIKeyStore: APIKeyStore, @unchecked Sendable {
     }
 
     func load() throws -> String? {
+        guard let data = try loadData() else {
+            return nil
+        }
+        guard let key = String(data: data, encoding: .utf8) else {
+            throw APIKeyStoreError.encodingFailed
+        }
+        return storedAPIKey(from: key)
+    }
+
+    func storedKeyState() throws -> StoredAPIKeyState {
+        guard let data = try loadData() else {
+            return .missing
+        }
+        guard let key = String(data: data, encoding: .utf8) else {
+            return .malformed
+        }
+        return storedAPIKeyState(from: key)
+    }
+
+    private func loadData() throws -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -29,10 +49,7 @@ final class KeychainAPIKeyStore: APIKeyStore, @unchecked Sendable {
             guard let data = item as? Data else {
                 throw APIKeyStoreError.encodingFailed
             }
-            guard let key = String(data: data, encoding: .utf8) else {
-                throw APIKeyStoreError.encodingFailed
-            }
-            return storedAPIKey(from: key)
+            return data
         case errSecItemNotFound:
             return nil
         default:

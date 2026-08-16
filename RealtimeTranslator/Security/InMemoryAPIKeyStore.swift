@@ -6,9 +6,7 @@ final class InMemoryAPIKeyStore: APIKeyStore, @unchecked Sendable {
     private var stored: String?
 
     init(initialKey: String? = nil) {
-        if let initialKey, case .valid(let key) = APIKeyNormalization.normalize(initialKey) {
-            stored = key
-        }
+        stored = initialKey
     }
 
     func load() throws -> String? {
@@ -18,6 +16,12 @@ final class InMemoryAPIKeyStore: APIKeyStore, @unchecked Sendable {
             return nil
         }
         return storedAPIKey(from: stored)
+    }
+
+    func storedKeyState() throws -> StoredAPIKeyState {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedAPIKeyState(from: stored)
     }
 
     func save(_ key: String) throws {

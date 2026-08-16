@@ -5,6 +5,8 @@ final class APIKeyStoreTests: XCTestCase {
     func testInMemorySaveLoadDeleteAndRejectEmpty() throws {
         // Given: 空のin-memory store
         let store = InMemoryAPIKeyStore()
+        XCTAssertEqual(try store.storedKeyState(), .missing)
+        XCTAssertFalse(store.hasStoredKey)
 
         // When/Then: 空文字は拒否
         XCTAssertThrowsError(try store.save("   ")) { error in
@@ -14,12 +16,16 @@ final class APIKeyStoreTests: XCTestCase {
         // When: 保存・上書き・削除
         try store.save("sk-one")
         XCTAssertEqual(try store.load(), "sk-one")
+        XCTAssertEqual(try store.storedKeyState(), .valid)
+        XCTAssertTrue(store.hasStoredKey)
         try store.save("sk-two")
         XCTAssertEqual(try store.load(), "sk-two")
         try store.delete()
 
         // Then: 削除後はnil
         XCTAssertNil(try store.load())
+        XCTAssertEqual(try store.storedKeyState(), .missing)
+        XCTAssertFalse(try store.storedKeyState().canDelete)
     }
 
     func testInMemorySaveStripsEmbeddedWhitespaceAndRejectsTimestamp() throws {
@@ -43,11 +49,44 @@ final class APIKeyStoreTests: XCTestCase {
         XCTAssertEqual(try store.load(), "sk-proj-AAAABBBB")
     }
 
-    func testInMemoryLoadDropsMalformedStoredValue() throws {
+    func testInMemoryReportsMalformedStoredValueAsDeletable() throws {
         // Given: 初期値が形式不正
         let store = InMemoryAPIKeyStore(initialKey: "sk-abc:def")
 
-        // When/Then: 読み出しは nil（ヘッダへ渡さない）
+        // When: 保存状態と接続用キーを読み出す
+        let state = try store.storedKeyState()
+
+        // Then: 接続には渡さず、削除可能な形式不正項目として保持する
+        XCTAssertNil(try store.load())
+        XCTAssertEqual(state, .malformed)
+        XCTAssertFalse(state.hasUsableKey)
+        XCTAssertTrue(state.canDelete)
+        XCTAssertFalse(store.hasStoredKey)
+    }
+
+    func testDeletingMalformedStoredValueMakesStateMissing() throws {
+        // Given: 形式不正の保存項目
+        let store = InMemoryAPIKeyStore(initialKey: "sk-abc:def")
+        XCTAssertEqual(try store.storedKeyState(), .malformed)
+
+        // When: 保存項目を削除する
+        try store.delete()
+
+        // Then: 項目なしになり、削除操作も不要になる
+        XCTAssertEqual(try store.storedKeyState(), .missing)
+        XCTAssertFalse(try store.storedKeyState().canDelete)
+    }
+
+    func testEmptyStoredValueIsMalformedAndDeletable() throws {
+        // Given: 更新前から残った空の保存項目
+        let store = InMemoryAPIKeyStore(initialKey: "")
+
+        // When: 保存状態を確認する
+        let state = try store.storedKeyState()
+
+        // Then: 未保存と同一視せず、形式不正として削除できる
+        XCTAssertEqual(state, .malformed)
+        XCTAssertTrue(state.canDelete)
         XCTAssertNil(try store.load())
     }
 
@@ -62,8 +101,10 @@ final class APIKeyStoreTests: XCTestCase {
 
         // Then: 読み戻せ、削除できる
         XCTAssertEqual(try store.load(), "sk-keychain-test")
+        XCTAssertEqual(try store.storedKeyState(), .valid)
         try store.delete()
         XCTAssertNil(try store.load())
+        XCTAssertEqual(try store.storedKeyState(), .missing)
     }
 
     func testBootstrapImportsEnvironmentOnlyWhenKeychainEmpty() throws {
