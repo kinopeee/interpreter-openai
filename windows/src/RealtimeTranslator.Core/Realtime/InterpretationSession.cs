@@ -707,9 +707,10 @@ public sealed class InterpretationSession : IDisposable
 
     /// <summary>
     /// <see cref="SpokenLanguageDetector.RecentEvidence"/> と同じ判定窓を残す。
-    /// `en-es` は語窓、それ以外は末尾非空白 scalar 窓。空白 run が異常に長い場合だけ圧縮する。
+    /// `en-es` は語窓へ切り詰めたあと空白 run を圧縮する。それ以外は末尾非空白 scalar 窓で、
+    /// 空白 run が異常に長い場合だけ圧縮する。
     /// </summary>
-    private static string TrimRoutingSourceText(string text, LanguagePair pair)
+    internal static string TrimRoutingSourceText(string text, LanguagePair pair)
     {
         if (text.Length == 0)
         {
@@ -721,7 +722,7 @@ public sealed class InterpretationSession : IDisposable
             var wordStart = SpokenLanguageDetector.RecentWordWindowStart(
                 text,
                 SpokenLanguageDetector.EnEsWindow);
-            return text[wordStart..];
+            return CollapseWhitespaceRuns(text[wordStart..]);
         }
 
         var start = RecentEvidenceWindowStart(text, SpokenLanguageDetector.RecentEvidenceWindow);
