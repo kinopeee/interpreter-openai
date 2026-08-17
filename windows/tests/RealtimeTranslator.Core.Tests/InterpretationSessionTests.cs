@@ -148,6 +148,49 @@ public sealed class InterpretationSessionTests
         Assert.Equal(closeCount, client.CloseGracefullyCallCount);
     }
 
+    // Given: Listening 中に CloseGracefully が遅い
+    // When: StopAsync を重ねて呼び、完了前に Start しようとする
+    // Then: CloseGracefully は 1 回だけ。Stop 合流後にだけ次の Start が通り、ForceClose で新接続を落とさない
+    [Fact]
+    public async Task OverlappingStopJoinsAndDoesNotTearDownNextStart()
+    {
+        var closeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowCloseFinish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        // StartAsync がフックを消すため、Listening 到達後に遅い Close を仕込む。
+        client.OnCloseGracefully = async () =>
+        {
+            closeStarted.TrySetResult();
+            await allowCloseFinish.Task.ConfigureAwait(false);
+            client.Complete();
+        };
+
+        var firstStop = session.StopAsync();
+        await closeStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(TranslationState.Closing, session.State);
+
+        var secondStop = session.StopAsync();
+        // Closing 中の Start は受理されない（二重 Stop が先に Idle へ戻して穴を開けない）。
+        await session.StartAsync();
+        Assert.Equal(TranslationState.Closing, session.State);
+        Assert.Equal(1, client.CloseGracefullyCallCount);
+
+        allowCloseFinish.TrySetResult();
+        await Task.WhenAll(firstStop, secondStop);
+        Assert.Equal(TranslationState.Idle, session.State);
+        Assert.Equal(1, client.CloseGracefullyCallCount);
+
+        var forceCloseBeforeRestart = client.ForceCloseCallCount;
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        Assert.Equal(forceCloseBeforeRestart, client.ForceCloseCallCount);
+        await session.StopAsync();
+    }
+
     // Given: 既に Listening のセッション
     // When: StartAsync を再度呼ぶ
     // Then: Dual を二重に Start せず Listening のまま

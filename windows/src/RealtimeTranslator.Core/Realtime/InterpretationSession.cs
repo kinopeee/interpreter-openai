@@ -65,6 +65,8 @@ public sealed class InterpretationSession : IDisposable
 
     private CancellationTokenSource? _sessionCts;
     private Task? _sessionTask;
+    /// <summary>進行中の Stop。二重 Stop を macOS の stopTask と同様に合流させる。</summary>
+    private Task? _stopTask;
     private int _lifecycleGeneration;
     private int _reconnectAttempt;
     private TranslationState _state = TranslationState.Idle;
@@ -195,75 +197,110 @@ public sealed class InterpretationSession : IDisposable
         }
     }
 
-    public async Task StopAsync()
+    public Task StopAsync()
     {
-        Task? sessionTask;
-        CancellationTokenSource? cts;
         lock (_sync)
         {
             if (_state == TranslationState.Idle)
             {
-                return;
+                return Task.CompletedTask;
             }
 
-            _lifecycleGeneration += 1;
-            sessionTask = _sessionTask;
-            _sessionTask = null;
-            cts = _sessionCts;
-            _sessionCts = null;
-        }
-
-        SetState(TranslationState.Closing);
-
-        // 先に音声と session consumer を止め、close drain イベントを破棄されないようにする。
-        // generation を上げたまま consumer が生きていると、commit/session.close の
-        // 最終 delta を読んで捨ててしまい、オプトイン字幕記録が欠ける。
-        await _audioCapture.StopAsync().ConfigureAwait(false);
-        if (cts is not null)
-        {
-            await cts.CancelAsync().ConfigureAwait(false);
-        }
-
-        if (sessionTask is not null)
-        {
-            try
+            // Closing 中の再入は進行中 Stop へ合流する。
+            // Idle 以外で都度 CloseGracefully すると、先に Idle へ戻ったあと
+            // 後続の ForceClose が次の録音の WebSocket を落とす。
+            if (_stopTask is { } inFlight)
             {
-                await sessionTask.ConfigureAwait(false);
+                return inFlight;
             }
-#pragma warning disable CA1031 // stop 中の旧世代失敗は Idle 遷移を妨げない。
-            catch (Exception)
-#pragma warning restore CA1031
-            {
-                // session loop の例外は停止完了を阻まない。
-            }
-        }
 
-        cts?.Dispose();
+            _stopTask = StopCoreAsync();
+            return _stopTask;
+        }
+    }
+
+    private async Task StopCoreAsync()
+    {
+        // StopAsync が _sync を握ったまま同期実行しないよう、一度外へ出す。
+        await Task.Yield();
 
         try
         {
-            await _dualClient.CloseGracefullyAsync().ConfigureAwait(false);
-        }
-#pragma warning disable CA1031 // graceful close が失敗しても force close で必ず解放する。
-        catch (Exception)
+            Task? sessionTask;
+            CancellationTokenSource? cts;
+            lock (_sync)
+            {
+                if (_state == TranslationState.Idle)
+                {
+                    return;
+                }
+
+                _lifecycleGeneration += 1;
+                sessionTask = _sessionTask;
+                _sessionTask = null;
+                cts = _sessionCts;
+                _sessionCts = null;
+            }
+
+            SetState(TranslationState.Closing);
+
+            // 先に音声と session consumer を止め、close drain イベントを破棄されないようにする。
+            // generation を上げたまま consumer が生きていると、commit/session.close の
+            // 最終 delta を読んで捨ててしまい、オプトイン字幕記録が欠ける。
+            await _audioCapture.StopAsync().ConfigureAwait(false);
+            if (cts is not null)
+            {
+                await cts.CancelAsync().ConfigureAwait(false);
+            }
+
+            if (sessionTask is not null)
+            {
+                try
+                {
+                    await sessionTask.ConfigureAwait(false);
+                }
+#pragma warning disable CA1031 // stop 中の旧世代失敗は Idle 遷移を妨げない。
+                catch (Exception)
 #pragma warning restore CA1031
-        {
-            await _dualClient.ForceCloseAsync().ConfigureAwait(false);
+                {
+                    // session loop の例外は停止完了を阻まない。
+                }
+            }
+
+            cts?.Dispose();
+
+            try
+            {
+                await _dualClient.CloseGracefullyAsync().ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // graceful close が失敗しても force close で必ず解放する。
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+                await _dualClient.ForceCloseAsync().ConfigureAwait(false);
+            }
+
+            // commit / session.close 中に届いた最終 delta を assembler へ取り込む。
+            await IngestStopDrainEventsAsync().ConfigureAwait(false);
+
+            // 停止時点で完全ペアが残っていれば確定して見せる（オプトイン字幕記録も含む）。
+            FlushPendingFinalizeIfNeeded();
+
+            lock (_sync)
+            {
+                _sessionLanguagePair = null;
+                _activeLanguagePair = null;
+            }
+
+            SetState(TranslationState.Idle);
         }
-
-        // commit / session.close 中に届いた最終 delta を assembler へ取り込む。
-        await IngestStopDrainEventsAsync().ConfigureAwait(false);
-
-        // 停止時点で完全ペアが残っていれば確定して見せる（オプトイン字幕記録も含む）。
-        FlushPendingFinalizeIfNeeded();
-
-        lock (_sync)
+        finally
         {
-            _sessionLanguagePair = null;
-            _activeLanguagePair = null;
+            lock (_sync)
+            {
+                _stopTask = null;
+            }
         }
-
-        SetState(TranslationState.Idle);
     }
 
     /// <summary>録音中の prompt/keywords/delay 変更を原文接続へ反映する。</summary>

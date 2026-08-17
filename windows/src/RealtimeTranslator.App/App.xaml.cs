@@ -179,7 +179,9 @@ public partial class App : Application, IDisposable
             return;
         }
 
-        switch (_state)
+        // Dispatcher 経由の _state 反映遅れで二重 Stop / 誤 Start しないよう、
+        // セッション本体の状態を正とする（macOS の stopTask 合流と揃える）。
+        switch (_session.State)
         {
             case TranslationState.Idle:
             case TranslationState.Error:
