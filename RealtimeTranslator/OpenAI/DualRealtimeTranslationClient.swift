@@ -300,20 +300,31 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         translationPumpTask?.cancel()
         translationPumpTask = nil
         pendingTranslationFrames.removeAll(keepingCapacity: true)
+        // 原文 close が先に失敗しても翻訳 close を捨てない。Windows の WhenAll と同じく
+        // 全 lane を待ち、未 await の close が次セッションのソケットを閉じるのを防ぐ。
         var closeFailed = false
+        let closes = connections.values.map { connection in
+            Task { try await connection.closeGracefully() }
+        }
         do {
-            let closes = connections.values.map { connection in
-                Task { try await connection.closeGracefully() }
-            }
             try await sourceConnection.closeGracefully()
-            for close in closes {
-                try await close.value
-            }
         } catch {
             closeFailed = true
             AppLogger.realtime.error(
                 "Graceful close failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
             )
+        }
+        for close in closes {
+            do {
+                try await close.value
+            } catch {
+                if !closeFailed {
+                    closeFailed = true
+                    AppLogger.realtime.error(
+                        "Graceful close failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
+                    )
+                }
+            }
         }
         mergeTask?.cancel()
         mergeTask = nil
