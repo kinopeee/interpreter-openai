@@ -1154,6 +1154,42 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertLessThanOrEqual(trimmed.utf16.count, RoutingSourceTextWindow.maxLength)
     }
 
+    func testTrimEnEsCapsLongTokenAndWhitespaceFreeInputAtMaxLength() {
+        // Given: 空白のない1語と、語間空白を圧縮しても上限を超える長いトークン列
+        let whitespaceFree = String(
+            repeating: "x",
+            count: RoutingSourceTextWindow.maxLength + 8
+        )
+        let longToken = String(repeating: "y", count: RoutingSourceTextWindow.maxLength + 3)
+        let manyWords = ["aa", longToken, "zz"].joined(separator: "   ")
+        let twoUnitScalar = "😀"
+        let nearLimit = String(repeating: "z", count: RoutingSourceTextWindow.maxLength - 1)
+            + twoUnitScalar
+
+        // When: en-es の語窓切り詰めを行う
+        let trimmedToken = RoutingSourceTextWindow.trim(whitespaceFree, pair: .enEs)
+        let trimmedWords = RoutingSourceTextWindow.trim(manyWords, pair: .enEs)
+        let trimmedScalarBoundary = RoutingSourceTextWindow.trim(nearLimit, pair: .enEs)
+
+        // Then: 空白 run は圧縮され、戻り値は上限以内かつ Unicode scalar 境界で切れる
+        XCTAssertEqual(
+            trimmedToken,
+            String(repeating: "x", count: RoutingSourceTextWindow.maxLength)
+        )
+        XCTAssertEqual(
+            trimmedWords,
+            "aa " + String(repeating: "y", count: RoutingSourceTextWindow.maxLength - 3)
+        )
+        XCTAssertEqual(trimmedScalarBoundary, String(nearLimit.dropLast()))
+        XCTAssertFalse(trimmedScalarBoundary.contains(twoUnitScalar))
+        XCTAssertLessThanOrEqual(trimmedToken.utf16.count, RoutingSourceTextWindow.maxLength)
+        XCTAssertLessThanOrEqual(trimmedWords.utf16.count, RoutingSourceTextWindow.maxLength)
+        XCTAssertLessThanOrEqual(
+            trimmedScalarBoundary.utf16.count,
+            RoutingSourceTextWindow.maxLength
+        )
+    }
+
     func testEnEsLongWordWindowIsPreservedForRouting() async {
         // Given: en-es で英語 target 確定後、scalar 上限を超える長いスペイン語語窓
         let dual = FakeDualRealtimeTranslationClient()
