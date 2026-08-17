@@ -173,6 +173,52 @@ public sealed class DualRealtimeTranslationClientParityTests
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
     }
 
+    // Given: 形式不正の API キー
+    // When: Dual を開始する
+    // Then: どの lane も Connect せず AuthenticationFailed になり、鍵断片を出さない
+    [Fact]
+    public async Task StartWithMalformedApiKeyDoesNotConnectAnyLane()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        var error = await Assert.ThrowsAnyAsync<Exception>(
+            () => dual.StartAsync("sk-proj-abc\n3:26", RealtimeSessionTuning.Default));
+        var auth = UnwrapAuthenticationFailure(error);
+
+        Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, auth.Kind);
+        Assert.DoesNotContain("sk-", auth.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("3:26", auth.Message, StringComparison.Ordinal);
+        Assert.Equal(0, source.ConnectCount);
+        Assert.Equal(0, english.ConnectCount);
+        Assert.Equal(0, japanese.ConnectCount);
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
+    // Given: 行折り返しされた allowlist キー
+    // When: Dual を開始する
+    // Then: 原文と翻訳 lane の Authorization は正規化後のキーだけを載せる
+    [Fact]
+    public async Task StartStripsEmbeddedWhitespaceFromAllLaneHeaders()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-proj-AAAA\nBBBB", RealtimeSessionTuning.Default);
+
+        Assert.Equal("Bearer sk-proj-AAAABBBB", source.ConnectedHeaders["Authorization"]);
+        Assert.Equal("Bearer sk-proj-AAAABBBB", english.ConnectedHeaders["Authorization"]);
+        Assert.Equal("Bearer sk-proj-AAAABBBB", japanese.ConnectedHeaders["Authorization"]);
+        await dual.ForceCloseAsync();
+    }
+
     // Given: ready な Dual
     // When: 原文送信失敗後に ForceClose する
     // Then: epoch が進み、3 接続とも閉じる（Swift OneSidedFailureForceClosesPair 相当）
@@ -477,6 +523,30 @@ public sealed class DualRealtimeTranslationClientParityTests
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, selectError.Kind);
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, tuningError.Kind);
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
+    private static RealtimeTranslationException UnwrapAuthenticationFailure(Exception error)
+    {
+        if (error is RealtimeTranslationException direct)
+        {
+            return direct;
+        }
+
+        if (error is AggregateException aggregate)
+        {
+            var inner = aggregate.Flatten().InnerExceptions
+                .OfType<RealtimeTranslationException>()
+                .FirstOrDefault(candidate =>
+                    candidate.Kind == RealtimeTranslationErrorKind.AuthenticationFailed);
+            if (inner is not null)
+            {
+                return inner;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Expected AuthenticationFailed, but received {error.GetType().Name}: {error.Message}",
+            error);
     }
 
     private static DualRealtimeTranslationClient CreateDual(
