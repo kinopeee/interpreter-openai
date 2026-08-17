@@ -1035,7 +1035,7 @@ final class InterpretationSessionTests: XCTestCase {
         await waitUntil { processedDeltaCount >= nonFlippingDeltaCount }
         XCTAssertLessThanOrEqual(
             session.routingSourceTextLengthForTests,
-            InterpretationSession.routingSourceTextMaxLength,
+            RoutingSourceTextWindow.maxLength,
             "routing buffer length \(session.routingSourceTextLengthForTests) exceeded the cap before flip"
         )
 
@@ -1053,7 +1053,7 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(dual.spokenLanguages, [.english, .japanese])
         XCTAssertLessThanOrEqual(
             session.routingSourceTextLengthForTests,
-            InterpretationSession.routingSourceTextMaxLength,
+            RoutingSourceTextWindow.maxLength,
             "routing buffer length \(session.routingSourceTextLengthForTests) exceeded the cap after flip"
         )
         await session.stop()
@@ -1087,7 +1087,7 @@ final class InterpretationSessionTests: XCTestCase {
         // When: UTF-16 文字数キャップだけだと末尾 1 語しか残らない入力を取り込む
         let gap = String(
             repeating: " ",
-            count: InterpretationSession.routingSourceTextMaxLength + 32
+            count: RoutingSourceTextWindow.maxLength + 32
         )
         dual.emit(
             target: .english,
@@ -1103,7 +1103,7 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(dual.spokenLanguages, [.japanese, .english])
         XCTAssertLessThanOrEqual(
             session.routingSourceTextLengthForTests,
-            InterpretationSession.routingSourceTextMaxLength,
+            RoutingSourceTextWindow.maxLength,
             "routing buffer length \(session.routingSourceTextLengthForTests) exceeded the cap"
         )
         await session.stop()
@@ -1113,13 +1113,13 @@ final class InterpretationSessionTests: XCTestCase {
         // Given: 末尾ウィンドウより長い原文
         let prefix = String(repeating: "あ", count: 64)
         let tail = "hello world today"
-        let trimmed = InterpretationSession.trimRoutingSourceText(prefix + tail, pair: .jaEn)
+        let trimmed = RoutingSourceTextWindow.trim(prefix + tail, pair: .jaEn)
 
         // When/Then: 末尾の非空白 scalar ウィンドウ相当が残り、上限を超えない
         XCTAssertTrue(trimmed.hasSuffix(tail) || trimmed.contains("world"))
         XCTAssertLessThanOrEqual(
             trimmed.utf16.count,
-            InterpretationSession.routingSourceTextMaxLength
+            RoutingSourceTextWindow.maxLength
         )
     }
 
