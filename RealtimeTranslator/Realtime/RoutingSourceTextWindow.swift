@@ -6,16 +6,19 @@ import Foundation
 enum RoutingSourceTextWindow {
     /// ルーティング判定用に保持する原文の上限 (UTF-16)。
     /// ja-* は末尾の非空白 scalar ウィンドウへ切り詰め、ウィンドウ内の空白が異常に長い場合の
-    /// 安全弁として空白 run を圧縮してこの長さへ収める。en-es は語窓へ切り詰め、空白 run を圧縮する。
+    /// 安全弁として空白 run を圧縮してこの長さへ収める。en-es は語窓へ切り詰め、空白 run を圧縮し、
+    /// なお上限を超える場合は Unicode scalar 境界で先頭から切り詰める。
     static let maxLength = 16 * SpokenLanguageDetector.recentEvidenceWindow
 
-    /// `en-es` は語窓へ切り詰めたあと空白 run を圧縮する。それ以外は末尾非空白 scalar 窓で、
-    /// 空白 run が異常に長い場合だけ圧縮する。
+    /// `en-es` は語窓へ切り詰めたあと空白 run を圧縮し、上限を超えた分は scalar 境界で切る。
+    /// それ以外は末尾非空白 scalar 窓で、空白 run が異常に長い場合だけ圧縮する。
     static func trim(_ text: String, pair: LanguagePair) -> String {
         guard !text.isEmpty else { return text }
         if pair == .enEs {
             let start = SpokenLanguageDetector.recentWordWindowStart(in: text)
-            return collapseWhitespaceRuns(String(text.unicodeScalars[start...]))
+            return prefixCappedToMaxLength(
+                collapseWhitespaceRuns(String(text.unicodeScalars[start...]))
+            )
         }
         let window = recentEvidenceWindowSubstring(
             text,
@@ -41,6 +44,23 @@ enum RoutingSourceTextWindow {
         }
         guard nonWhitespaceCount > 0 else { return "" }
         return String(scalars[start...])
+    }
+
+    /// UTF-16 上限を超える分を捨て、切り位置は Unicode scalar 境界に揃える。
+    private static func prefixCappedToMaxLength(_ text: String) -> String {
+        guard text.utf16.count > maxLength else { return text }
+        let scalars = text.unicodeScalars
+        var utf16Count = 0
+        var end = scalars.startIndex
+        while end < scalars.endIndex {
+            let width = scalars[end].utf16.count
+            if utf16Count + width > maxLength {
+                break
+            }
+            utf16Count += width
+            end = scalars.index(after: end)
+        }
+        return String(scalars[..<end])
     }
 
     /// 連続する空白 scalar を U+0020 1 個へ潰す。ラテン語境界を残しつつ保持長を抑える。
