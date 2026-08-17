@@ -6,15 +6,16 @@ import Foundation
 enum RoutingSourceTextWindow {
     /// ルーティング判定用に保持する原文の上限 (UTF-16)。
     /// ja-* は末尾の非空白 scalar ウィンドウへ切り詰め、ウィンドウ内の空白が異常に長い場合の
-    /// 安全弁として空白 run を圧縮してこの長さへ収める。en-es は語窓へ切り詰める。
+    /// 安全弁として空白 run を圧縮してこの長さへ収める。en-es は語窓へ切り詰め、空白 run を圧縮する。
     static let maxLength = 16 * SpokenLanguageDetector.recentEvidenceWindow
 
-    /// `en-es` は語窓、それ以外は末尾非空白 scalar 窓。空白 run が異常に長い場合だけ圧縮する。
+    /// `en-es` は語窓へ切り詰めたあと空白 run を圧縮する。それ以外は末尾非空白 scalar 窓で、
+    /// 空白 run が異常に長い場合だけ圧縮する。
     static func trim(_ text: String, pair: LanguagePair) -> String {
         guard !text.isEmpty else { return text }
         if pair == .enEs {
             let start = SpokenLanguageDetector.recentWordWindowStart(in: text)
-            return String(text.unicodeScalars[start...])
+            return collapseWhitespaceRuns(String(text.unicodeScalars[start...]))
         }
         let window = recentEvidenceWindowSubstring(
             text,

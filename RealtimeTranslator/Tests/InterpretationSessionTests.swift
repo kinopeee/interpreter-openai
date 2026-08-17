@@ -1134,6 +1134,26 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(trimmed, "")
     }
 
+    func testTrimEnEsCollapsesLongWhitespaceRunAndKeepsWordWindow() {
+        // Given: en-es 語窓内に長い語と、上限を超える空白 run がある
+        let discarded = "old1 old2 old3 "
+        let longWord = String(repeating: "x", count: 40)
+        let gap = String(repeating: " ", count: RoutingSourceTextWindow.maxLength + 32)
+        let text = discarded + "aa bb cc" + gap + "dd ee ff " + longWord + " hh"
+        let start = SpokenLanguageDetector.recentWordWindowStart(in: text)
+        let selectedWindow = String(text.unicodeScalars[start...])
+
+        // When: en-es の語窓切り詰めを行う
+        let trimmed = RoutingSourceTextWindow.trim(text, pair: .enEs)
+
+        // Then: 語窓の語は残り、空白 run は 1 個へ圧縮され、保持長は語窓より短い
+        XCTAssertEqual(selectedWindow, "aa bb cc" + gap + "dd ee ff " + longWord + " hh")
+        XCTAssertEqual(trimmed, "aa bb cc dd ee ff \(longWord) hh")
+        XCTAssertTrue(trimmed.contains(longWord))
+        XCTAssertLessThan(trimmed.utf16.count, selectedWindow.utf16.count)
+        XCTAssertLessThanOrEqual(trimmed.utf16.count, RoutingSourceTextWindow.maxLength)
+    }
+
     func testEnEsLongWordWindowIsPreservedForRouting() async {
         // Given: en-es で英語 target 確定後、scalar 上限を超える長いスペイン語語窓
         let dual = FakeDualRealtimeTranslationClient()
