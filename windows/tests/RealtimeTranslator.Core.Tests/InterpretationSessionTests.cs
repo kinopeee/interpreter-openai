@@ -33,6 +33,49 @@ public sealed class InterpretationSessionTests
         Assert.Contains(TranslationState.Error, states);
     }
 
+    // Given: 埋め込み改行と時刻が混ざった形式不正キー
+    // When: セッションを開始する
+    // Then: Dual に渡さず認証エラーへ落ち、欠落キーとも汎用サーバーエラーとも区別する
+    [Fact]
+    public async Task StartWithMalformedApiKeyEntersAuthenticationError()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, apiKey: "sk-proj-abc\n3:26");
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+        await WaitUntilAsync(() => message is not null);
+
+        Assert.Equal(0, client.StartCount);
+        Assert.Equal("OpenAI APIキーが無効です", message);
+        Assert.NotEqual("APIキーが設定されていません", message);
+        Assert.NotEqual(RealtimeTranslationException.GenericServerMessage, message);
+        Assert.DoesNotContain("sk-", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("3:26", message, StringComparison.Ordinal);
+    }
+
+    // Given: 空白だけの API キー
+    // When: セッションを開始する
+    // Then: 接続せず欠落キーエラーになり、形式不正とは区別する
+    [Fact]
+    public async Task StartWithWhitespaceOnlyApiKeyEntersMissingKeyError()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, apiKey: "  \n\t  ");
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+        await WaitUntilAsync(() => message is not null);
+
+        Assert.Equal(0, client.StartCount);
+        Assert.Equal("APIキーが設定されていません", message);
+        Assert.NotEqual("OpenAI APIキーが無効です", message);
+    }
+
     // Given: Dual client の Start が完了するまで待機できる fake
     // When: StartAsync を呼び、Dual Start 完了前を観測する
     // Then: Dual Start 解放後にだけ capture が始まる

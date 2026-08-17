@@ -670,6 +670,39 @@ public sealed class RealtimeConnectionTests
         Assert.Equal(0, transport.ConnectCount);
     }
 
+    // Given: 埋め込み改行と時刻が混ざったキー
+    // When: 原文接続を開始する
+    // Then: 送信前に AuthenticationFailed で失敗する
+    [Fact]
+    public async Task SourceConnectionRejectsMalformedApiKeyBeforeConnect()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => connection.StartAsync("sk-proj-abc\n3:26", RealtimeSessionTuning.Default));
+
+        Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
+        Assert.Equal(0, transport.ConnectCount);
+        Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("3:26", error.Message, StringComparison.Ordinal);
+    }
+
+    // Given: 行折り返しされた allowlist キー
+    // When: 原文接続を開始する
+    // Then: Authorization は正規化後のキーだけを載せる
+    [Fact]
+    public async Task SourceConnectionStripsEmbeddedWhitespaceFromApiKeyHeader()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
+
+        await connection.StartAsync("sk-proj-AAAA\nBBBB", RealtimeSessionTuning.Default);
+
+        Assert.Equal("Bearer sk-proj-AAAABBBB", transport.ConnectedHeaders["Authorization"]);
+        await connection.ForceCloseAsync();
+    }
+
     // Given: ready 状態の原文接続
     // When: 復号できないメッセージが届く
     // Then: transport error として 1 度だけ通知しイベント流を閉じる
