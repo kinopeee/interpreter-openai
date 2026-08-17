@@ -693,10 +693,14 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         try await Task.sleep(nanoseconds: 500_000_000)
 
         // Then: 取り残された翻訳 close が新ソケットを閉じない
-        XCTAssertEqual(await englishTransport.closeCount, englishCloseAfterRestart)
-        XCTAssertEqual(await englishTransport.connectCount, englishConnectAfterRestart)
-        XCTAssertEqual(await japaneseTransport.closeCount, japaneseCloseAfterRestart)
-        XCTAssertEqual(await japaneseTransport.connectCount, japaneseConnectAfterRestart)
+        let englishCloseAfterWait = await englishTransport.closeCount
+        let englishConnectAfterWait = await englishTransport.connectCount
+        let japaneseCloseAfterWait = await japaneseTransport.closeCount
+        let japaneseConnectAfterWait = await japaneseTransport.connectCount
+        XCTAssertEqual(englishCloseAfterWait, englishCloseAfterRestart)
+        XCTAssertEqual(englishConnectAfterWait, englishConnectAfterRestart)
+        XCTAssertEqual(japaneseCloseAfterWait, japaneseCloseAfterRestart)
+        XCTAssertEqual(japaneseConnectAfterWait, japaneseConnectAfterRestart)
         XCTAssertEqual(englishConnectAfterRestart, 2)
         XCTAssertEqual(japaneseConnectAfterRestart, 2)
     }
