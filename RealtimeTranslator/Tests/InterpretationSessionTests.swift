@@ -1123,6 +1123,17 @@ final class InterpretationSessionTests: XCTestCase {
         )
     }
 
+    func testTrimRoutingSourceTextWhitespaceOnlyBecomesEmpty() {
+        // Given: 空白と改行だけの原文
+        let text = "  \n\t  "
+
+        // When: ja-en の末尾非空白 scalar 窓で切り詰める
+        let trimmed = RoutingSourceTextWindow.trim(text, pair: .jaEn)
+
+        // Then: 非空白 scalar が無いため空文字になり、ルーティング証拠を残さない
+        XCTAssertEqual(trimmed, "")
+    }
+
     func testEnEsLongWordWindowIsPreservedForRouting() async {
         // Given: en-es で英語 target 確定後、scalar 上限を超える長いスペイン語語窓
         let dual = FakeDualRealtimeTranslationClient()
