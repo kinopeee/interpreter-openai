@@ -49,19 +49,26 @@ function signAppJwt(appId, privateKeyPem) {
 }
 
 async function api(path, { method = "GET", token, body } = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(body ? { "Content-Type": "application/json" } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`${method} ${path} -> HTTP ${response.status}: ${text}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`${method} ${path} -> HTTP ${response.status}: ${text}`);
+    }
+    return text ? JSON.parse(text) : {};
+  } finally {
+    clearTimeout(timer);
   }
-  return text ? JSON.parse(text) : {};
 }
 
 const args = parseArgs(process.argv.slice(2));
@@ -72,14 +79,18 @@ for (const required of ["app-id", "key", "repo", "sha", "suite-key", "run-key", 
   }
 }
 
-const [owner, repoName] = args.repo.split("/");
+const repoParts = args.repo.split("/");
+if (repoParts.length !== 2 || repoParts.some((part) => part.length === 0)) {
+  console.error("Invalid --repo: expected owner/repo");
+  process.exit(1);
+}
+const [owner, repoName] = repoParts;
 const appJwt = signAppJwt(args["app-id"], readFileSync(args.key, "utf8"));
 
 const { installations = [] } = await api("/app/installations", { token: appJwt });
-const installation =
-  installations.find((entry) => entry.target?.slug === owner) ?? installations[0];
+const installation = installations.find((entry) => entry.target?.slug === owner);
 if (!installation) {
-  console.error("No installations found for this app. Install the app on the codebase first.");
+  console.error(`No installation found for ${owner}. Install the app on the codebase first.`);
   process.exit(1);
 }
 
