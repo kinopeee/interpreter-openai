@@ -564,7 +564,7 @@ public sealed class InterpretationSessionTests
         // When: 反転前に大量 delta の取り込み完了を待ち、その時点で上限を検証する
         await WaitUntilAsync(() => Volatile.Read(ref processedDeltaCount) >= nonFlippingDeltaCount);
         Assert.True(
-            session.RoutingSourceTextLengthForTests <= InterpretationSession.RoutingSourceTextMaxLength,
+            session.RoutingSourceTextLengthForTests <= RoutingSourceTextWindow.MaxLength,
             $"routing buffer length {session.RoutingSourceTextLengthForTests} exceeded the cap before flip");
 
         client.PublishSourceDelta("ここで日本語へ反転します");
@@ -572,7 +572,7 @@ public sealed class InterpretationSessionTests
 
         Assert.Equal([SpokenLanguage.English, SpokenLanguage.Japanese], client.SpokenLanguages);
         Assert.True(
-            session.RoutingSourceTextLengthForTests <= InterpretationSession.RoutingSourceTextMaxLength,
+            session.RoutingSourceTextLengthForTests <= RoutingSourceTextWindow.MaxLength,
             $"routing buffer length {session.RoutingSourceTextLengthForTests} exceeded the cap after flip");
         await session.StopAsync();
     }
@@ -620,27 +620,6 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
-    // Given: en-es 語窓内に長い語と、上限を超える空白 run がある
-    // When: en-es の語窓切り詰めを行う
-    // Then: 語窓の語は残り、空白 run は 1 個へ圧縮され、保持長は語窓より短い
-    [Fact]
-    public void TrimEnEsCollapsesLongWhitespaceRunAndKeepsWordWindow()
-    {
-        var discarded = "old1 old2 old3 ";
-        var longWord = new string('x', 40);
-        var gap = new string(' ', InterpretationSession.RoutingSourceTextMaxLength + 32);
-        var text = discarded + "aa bb cc" + gap + "dd ee ff " + longWord + " hh";
-        var selectedWindow = text[SpokenLanguageDetector.RecentWordWindowStart(text)..];
-
-        var trimmed = InterpretationSession.TrimRoutingSourceText(text, LanguagePair.EnEs);
-
-        Assert.Equal("aa bb cc" + gap + "dd ee ff " + longWord + " hh", selectedWindow);
-        Assert.Equal("aa bb cc dd ee ff " + longWord + " hh", trimmed);
-        Assert.Contains(longWord, trimmed);
-        Assert.True(trimmed.Length < selectedWindow.Length);
-        Assert.True(trimmed.Length <= InterpretationSession.RoutingSourceTextMaxLength);
-    }
-
     // Given: 日本語セグメントのあと、長い空白 run で隔てられた複数語の英語 delta
     // When: UTF-16 文字数キャップだけだと末尾 1 語しか残らない入力を取り込む
     // Then: RecentEvidence ウィンドウを保ち英語反転できる
@@ -658,13 +637,13 @@ public sealed class InterpretationSessionTests
         Assert.Equal(SpokenLanguage.Japanese, client.SpokenLanguages[0]);
 
         // 非空白 16 scalar / 2 語以上を満たしつつ、語間空白だけが上限を超える入力。
-        var gap = new string(' ', InterpretationSession.RoutingSourceTextMaxLength + 32);
+        var gap = new string(' ', RoutingSourceTextWindow.MaxLength + 32);
         client.PublishSourceDelta("aa bb cc dd ee ff gg" + gap + " hh");
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
 
         Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
         Assert.True(
-            session.RoutingSourceTextLengthForTests <= InterpretationSession.RoutingSourceTextMaxLength,
+            session.RoutingSourceTextLengthForTests <= RoutingSourceTextWindow.MaxLength,
             $"routing buffer length {session.RoutingSourceTextLengthForTests} exceeded the cap");
         await session.StopAsync();
     }
