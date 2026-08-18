@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Origin へ push する前に、コミット済み差分を CodeRabbit CLI でレビューする。
+# マージゲートにはしない。指摘の修正と push は人が判断する。
+#
+# 使い方:
+#   ./scripts/origin-prepush-review.sh
+#   ./scripts/origin-prepush-review.sh --agent
+#   ./scripts/origin-prepush-review.sh --light --base cursor/main
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+agent=0
+light=0
+base=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --agent) agent=1; shift ;;
+    --light) light=1; shift ;;
+    --base)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --base" >&2
+        exit 1
+      fi
+      base="$2"
+      shift 2
+      ;;
+    -h|--help)
+      sed -n '2,10p' "$0"
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if ! command -v coderabbit >/dev/null 2>&1; then
+  echo "coderabbit CLI が見つかりません。https://www.coderabbit.ai/ から入れてください。" >&2
+  exit 1
+fi
+
+if [[ -z "$base" ]]; then
+  if git rev-parse --verify --quiet cursor/main >/dev/null; then
+    base="cursor/main"
+  else
+    base="main"
+  fi
+fi
+
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "未コミットの変更があります。レビュー対象はコミット済み差分だけです。"
+fi
+
+cmd=(coderabbit review --committed --base "$base")
+if [[ "$agent" -eq 1 ]]; then
+  cmd+=(--agent)
+fi
+if [[ "$light" -eq 1 ]]; then
+  cmd+=(--light)
+fi
+
+echo "Reviewing committed changes against ${base}..."
+"${cmd[@]}"
+
+echo
+echo "次: 指摘を直してコミットし、git push cursor <branch>"
+echo "そのあと xcodebuild test と scripts/origin-report-check.mjs で Origin の check を更新する。"
