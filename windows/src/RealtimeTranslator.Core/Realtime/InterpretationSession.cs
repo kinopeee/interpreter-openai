@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -40,14 +38,6 @@ public interface IRealtimeAudioCapture
 public sealed class InterpretationSession : IDisposable
 {
     public const int MaxReconnectAttempts = 5;
-
-    /// <summary>
-    /// ルーティング判定用に保持する原文の上限 (UTF-16 char)。
-    /// ja-* は末尾の非空白 scalar ウィンドウへ切り詰め、ウィンドウ内の空白が異常に長い場合の
-    /// 安全弁として空白 run を圧縮してこの長さへ収める。en-es は語窓へ切り詰め、空白 run を圧縮し、
-    /// なお上限を超える場合は Unicode scalar 境界で先頭から切り詰める。
-    /// </summary>
-    internal const int RoutingSourceTextMaxLength = 16 * SpokenLanguageDetector.RecentEvidenceWindow;
 
     private static readonly TimeSpan DefaultInitialReconnectDelay = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan DefaultTickInterval = TimeSpan.FromMilliseconds(200);
@@ -668,7 +658,7 @@ public sealed class InterpretationSession : IDisposable
                 }
 
                 activePair = cachedPair;
-                _routingSourceText = TrimRoutingSourceText(_routingSourceText + delta, activePair);
+                _routingSourceText = RoutingSourceTextWindow.Trim(_routingSourceText + delta, activePair);
                 evidence = SpokenLanguageDetector.RecentEvidence(_routingSourceText, activePair);
                 currentTarget = _selectedTranslationTarget;
                 reverseEvidenceCount = _reverseEvidenceCount;
@@ -729,7 +719,7 @@ public sealed class InterpretationSession : IDisposable
             lock (_sync)
             {
                 // 切替を起こした delta は新しい segment の先頭として持ち越す。
-                _routingSourceText = TrimRoutingSourceText(delta, activePair);
+                _routingSourceText = RoutingSourceTextWindow.Trim(delta, activePair);
                 _selectedTranslationTarget = selection.Target;
                 _reverseEvidenceCount = selection.ReverseEvidenceCount;
                 _assembler.ExpectLane(selection.Target);
@@ -741,122 +731,6 @@ public sealed class InterpretationSession : IDisposable
         {
             _routingGate.Release();
         }
-    }
-
-    /// <summary>
-    /// <see cref="SpokenLanguageDetector.RecentEvidence"/> と同じ判定窓を残す。
-    /// `en-es` は語窓へ切り詰めたあと空白 run を圧縮し、上限を超えた分は scalar 境界で切る。
-    /// それ以外は末尾非空白 scalar 窓で、空白 run が異常に長い場合だけ圧縮する。
-    /// </summary>
-    internal static string TrimRoutingSourceText(string text, LanguagePair pair)
-    {
-        if (text.Length == 0)
-        {
-            return text;
-        }
-
-        if (pair == LanguagePair.EnEs)
-        {
-            var wordStart = SpokenLanguageDetector.RecentWordWindowStart(
-                text,
-                SpokenLanguageDetector.EnEsWindow);
-            return PrefixCappedToMaxLength(CollapseWhitespaceRuns(text[wordStart..]));
-        }
-
-        var start = RecentEvidenceWindowStart(text, SpokenLanguageDetector.RecentEvidenceWindow);
-        var window = text[start..];
-        if (window.Length <= RoutingSourceTextMaxLength)
-        {
-            return window;
-        }
-
-        return CollapseWhitespaceRuns(window);
-    }
-
-    /// <summary>
-    /// 末尾から空白以外の Unicode scalar を <paramref name="window"/> 個含む範囲の開始 UTF-16 オフセット。
-    /// <see cref="SpokenLanguageDetector.RecentEvidence"/> と同じ走査契約。
-    /// </summary>
-    private static int RecentEvidenceWindowStart(string text, int window)
-    {
-        if (window <= 0 || text.Length == 0)
-        {
-            return 0;
-        }
-
-        var starts = new List<int>(text.Length);
-        var offset = 0;
-        while (offset < text.Length)
-        {
-            starts.Add(offset);
-            offset += Rune.GetRuneAt(text, offset).Utf16SequenceLength;
-        }
-
-        var nonWhitespaceCount = 0;
-        var position = starts.Count;
-        var start = 0;
-        while (position > 0 && nonWhitespaceCount < window)
-        {
-            position -= 1;
-            start = starts[position];
-            if (!Rune.IsWhiteSpace(Rune.GetRuneAt(text, start)))
-            {
-                nonWhitespaceCount += 1;
-            }
-        }
-
-        return nonWhitespaceCount == 0 ? text.Length : start;
-    }
-
-    /// <summary>UTF-16 上限を超える分を捨て、切り位置は Unicode scalar 境界に揃える。</summary>
-    private static string PrefixCappedToMaxLength(string text)
-    {
-        if (text.Length <= RoutingSourceTextMaxLength)
-        {
-            return text;
-        }
-
-        var utf16Count = 0;
-        var builder = new StringBuilder(RoutingSourceTextMaxLength);
-        foreach (var rune in text.EnumerateRunes())
-        {
-            var width = rune.Utf16SequenceLength;
-            if (utf16Count + width > RoutingSourceTextMaxLength)
-            {
-                break;
-            }
-
-            utf16Count += width;
-            builder.Append(rune.ToString());
-        }
-
-        return builder.ToString();
-    }
-
-    /// <summary>連続する空白 scalar を U+0020 1 個へ潰す。ラテン語境界を残しつつ保持長を抑える。</summary>
-    private static string CollapseWhitespaceRuns(string text)
-    {
-        var builder = new StringBuilder(Math.Min(text.Length, RoutingSourceTextMaxLength));
-        var previousWasWhitespace = false;
-        foreach (var rune in text.EnumerateRunes())
-        {
-            if (Rune.IsWhiteSpace(rune))
-            {
-                if (previousWasWhitespace)
-                {
-                    continue;
-                }
-
-                previousWasWhitespace = true;
-                builder.Append(' ');
-                continue;
-            }
-
-            previousWasWhitespace = false;
-            builder.Append(rune.ToString());
-        }
-
-        return builder.ToString();
     }
 
     private async Task ResetAudioRoutingForNextSegmentAsync()

@@ -1134,6 +1134,17 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(trimmed, "")
     }
 
+    func testTrimEnEsWhitespaceOnlyBecomesEmpty() {
+        // Given: 空白と改行だけの原文
+        let text = "  \n\t  "
+
+        // When: en-es の語窓切り詰めを行う
+        let trimmed = RoutingSourceTextWindow.trim(text, pair: .enEs)
+
+        // Then: 語が無いため空文字になり、空白 run 圧縮の " " を残さない
+        XCTAssertEqual(trimmed, "")
+    }
+
     func testTrimEnEsCollapsesLongWhitespaceRunAndKeepsWordWindow() {
         // Given: en-es 語窓内に長い語と、上限を超える空白 run がある
         let discarded = "old1 old2 old3 "
