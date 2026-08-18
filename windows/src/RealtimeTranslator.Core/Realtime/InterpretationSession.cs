@@ -43,8 +43,9 @@ public sealed class InterpretationSession : IDisposable
 
     /// <summary>
     /// ルーティング判定用に保持する原文の上限 (UTF-16 char)。
-    /// 通常は末尾の非空白 scalar ウィンドウへ切り詰めるが、ウィンドウ内の空白が異常に長い場合の
-    /// 安全弁として使い、空白 run を圧縮してこの長さへ収める。
+    /// ja-* は末尾の非空白 scalar ウィンドウへ切り詰め、ウィンドウ内の空白が異常に長い場合の
+    /// 安全弁として空白 run を圧縮してこの長さへ収める。en-es は語窓へ切り詰め、空白 run を圧縮し、
+    /// なお上限を超える場合は Unicode scalar 境界で先頭から切り詰める。
     /// </summary>
     internal const int RoutingSourceTextMaxLength = 16 * SpokenLanguageDetector.RecentEvidenceWindow;
 
@@ -707,8 +708,8 @@ public sealed class InterpretationSession : IDisposable
 
     /// <summary>
     /// <see cref="SpokenLanguageDetector.RecentEvidence"/> と同じ判定窓を残す。
-    /// `en-es` は語窓へ切り詰めたあと空白 run を圧縮する。それ以外は末尾非空白 scalar 窓で、
-    /// 空白 run が異常に長い場合だけ圧縮する。
+    /// `en-es` は語窓へ切り詰めたあと空白 run を圧縮し、上限を超えた分は scalar 境界で切る。
+    /// それ以外は末尾非空白 scalar 窓で、空白 run が異常に長い場合だけ圧縮する。
     /// </summary>
     internal static string TrimRoutingSourceText(string text, LanguagePair pair)
     {
@@ -722,7 +723,7 @@ public sealed class InterpretationSession : IDisposable
             var wordStart = SpokenLanguageDetector.RecentWordWindowStart(
                 text,
                 SpokenLanguageDetector.EnEsWindow);
-            return CollapseWhitespaceRuns(text[wordStart..]);
+            return PrefixCappedToMaxLength(CollapseWhitespaceRuns(text[wordStart..]));
         }
 
         var start = RecentEvidenceWindowStart(text, SpokenLanguageDetector.RecentEvidenceWindow);
@@ -767,7 +768,32 @@ public sealed class InterpretationSession : IDisposable
             }
         }
 
-        return start;
+        return nonWhitespaceCount == 0 ? text.Length : start;
+    }
+
+    /// <summary>UTF-16 上限を超える分を捨て、切り位置は Unicode scalar 境界に揃える。</summary>
+    private static string PrefixCappedToMaxLength(string text)
+    {
+        if (text.Length <= RoutingSourceTextMaxLength)
+        {
+            return text;
+        }
+
+        var utf16Count = 0;
+        var builder = new StringBuilder(RoutingSourceTextMaxLength);
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var width = rune.Utf16SequenceLength;
+            if (utf16Count + width > RoutingSourceTextMaxLength)
+            {
+                break;
+            }
+
+            utf16Count += width;
+            builder.Append(rune.ToString());
+        }
+
+        return builder.ToString();
     }
 
     /// <summary>連続する空白 scalar を U+0020 1 個へ潰す。ラテン語境界を残しつつ保持長を抑える。</summary>
