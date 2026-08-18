@@ -11,14 +11,17 @@ enum RoutingSourceTextWindow {
     static let maxLength = 16 * SpokenLanguageDetector.recentEvidenceWindow
 
     /// `en-es` は語窓へ切り詰めたあと空白 run を圧縮し、上限を超えた分は scalar 境界で切る。
+    /// 語が無く空白だけになった入力は空文字にする。
     /// それ以外は末尾非空白 scalar 窓で、空白 run が異常に長い場合だけ圧縮する。
     static func trim(_ text: String, pair: LanguagePair) -> String {
         guard !text.isEmpty else { return text }
         if pair == .enEs {
             let start = SpokenLanguageDetector.recentWordWindowStart(in: text)
-            return prefixCappedToMaxLength(
-                collapseWhitespaceRuns(String(text.unicodeScalars[start...]))
-            )
+            let collapsed = collapseWhitespaceRuns(String(text.unicodeScalars[start...]))
+            if collapsed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return ""
+            }
+            return prefixCappedToMaxLength(collapsed)
         }
         let window = recentEvidenceWindowSubstring(
             text,

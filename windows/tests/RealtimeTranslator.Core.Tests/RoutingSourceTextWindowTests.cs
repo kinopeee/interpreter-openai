@@ -36,6 +36,19 @@ public sealed class RoutingSourceTextWindowTests
         Assert.Equal(string.Empty, trimmed);
     }
 
+    // Given: 空白と改行だけの原文
+    // When: en-es の語窓切り詰めを行う
+    // Then: 語が無いため空文字になり、空白 run 圧縮の " " を残さない
+    [Fact]
+    public void TrimEnEsWhitespaceOnlyBecomesEmpty()
+    {
+        var text = "  \n\t  ";
+
+        var trimmed = RoutingSourceTextWindow.Trim(text, LanguagePair.EnEs);
+
+        Assert.Equal(string.Empty, trimmed);
+    }
+
     // Given: 空文字
     // When: ja-en で切り詰める
     // Then: 空文字のまま返す
