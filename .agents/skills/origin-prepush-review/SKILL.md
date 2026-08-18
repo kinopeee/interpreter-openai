@@ -30,5 +30,6 @@ Origin のホスト側レビューは使えない。push 前にローカルで `
 
 - `coderabbit` が無い、または未ログインならインストール／`coderabbit auth login` を案内して止まる。
 - `--base` はスクリプト既定（`cursor/main`、なければ `main`）に任せる。ユーザーが比較先を指定したときだけ `--base` を付ける。
+- レビュー強度は `.coderabbit.yaml` の `reviews.profile: assertive`。スクリプトが `-c` で渡す。
 - GitHub の CodeRabbit ボットコメントを取りに行かない。捨てた `autofix` スキルは使わない。
 - レビュー失敗を merge blocker にしない。指摘ゼロでも、妥当な指摘を直したあとも、`cursor` へ push する。レビューコマンド自体が失敗したときだけ push を止める。

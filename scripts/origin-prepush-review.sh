@@ -61,6 +61,9 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 
 cmd=(coderabbit review --committed --base "$base")
+if [[ -f .coderabbit.yaml ]]; then
+  cmd+=(-c .coderabbit.yaml)
+fi
 if [[ "$agent" -eq 1 ]]; then
   cmd+=(--agent)
 fi
