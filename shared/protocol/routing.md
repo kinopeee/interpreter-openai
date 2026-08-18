@@ -64,6 +64,11 @@
 `none`、同一言語 evidence が挟まった場合はカウンタをリセットする。`ja-en` / `ja-es`
 は確定 evidence で即時反転する。
 
+判定に使う原文バッファは上限 `16 * recentEvidenceWindow`（UTF-16）で切り詰める。
+
+- `ja-en` / `ja-es`: 末尾の非空白 scalar 窓。窓内の空白 run が異常に長い場合だけ 1 個の U+0020 へ圧縮する。非空白が無ければ空文字。
+- `en-es`: 末尾 8 語窓のあと空白 run を圧縮し、なお上限を超える場合は Unicode scalar 境界で先頭から切る。
+
 ## 字幕 lane 選択
 
 原文イベントは `source` lane、翻訳イベントは出力言語 wire 値（`en`、`ja`、`es`）の
