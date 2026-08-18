@@ -43,6 +43,11 @@ if ! command -v coderabbit >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! coderabbit auth status >/dev/null 2>&1; then
+  echo "CodeRabbit に未ログインです。coderabbit auth login を実行してください。" >&2
+  exit 1
+fi
+
 if [[ -z "$base" ]]; then
   if git rev-parse --verify --quiet cursor/main >/dev/null; then
     base="cursor/main"
@@ -52,7 +57,7 @@ if [[ -z "$base" ]]; then
 fi
 
 if [[ -n "$(git status --porcelain)" ]]; then
-  echo "未コミットの変更があります。レビュー対象はコミット済み差分だけです。"
+  echo "未コミットの変更があります。レビュー対象はコミット済み差分だけです。" >&2
 fi
 
 cmd=(coderabbit review --committed --base "$base")
@@ -63,9 +68,11 @@ if [[ "$light" -eq 1 ]]; then
   cmd+=(--light)
 fi
 
-echo "Reviewing committed changes against ${base}..."
-"${cmd[@]}"
+echo "Reviewing committed changes against ${base}..." >&2
+if ! "${cmd[@]}"; then
+  echo "CodeRabbit review failed with exit status $?. Continue after reviewing the error." >&2
+fi
 
-echo
-echo "次: 指摘を直してコミットし、git push cursor <branch>"
-echo "そのあと xcodebuild test と scripts/origin-report-check.mjs で Origin の check を更新する。"
+echo >&2
+echo "次: 指摘を直してコミットし、git push cursor <branch>" >&2
+echo "そのあと xcodebuild test と scripts/origin-report-check.mjs で Origin の check を更新する。" >&2

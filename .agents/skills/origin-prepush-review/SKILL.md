@@ -1,15 +1,16 @@
 ---
 name: origin-prepush-review
 description: >-
-  Reviews committed local changes with CodeRabbit CLI, applies agreed fixes, then
-  pushes the branch to the Origin remote named `cursor`. Use when the user asks
-  to review before Origin push, run CodeRabbit before push, origin-prepush-review,
+  Reviews committed local changes with CodeRabbit CLI and applies agreed fixes.
+  Pushes to the Origin remote named `cursor` only when the user explicitly asks.
+  Use when the user asks to review before Origin push, run CodeRabbit before push,
+  origin-prepush-review,
   or 「レビューしてからOriginにpush」.
 ---
 
 # Origin push 前の CodeRabbit レビュー
 
-Origin のホスト側レビューは使えない。push 前にローカルで `coderabbit review` を回し、直してから `cursor` remote へ送る。マージゲートではない。必須 check はあとから `scripts/origin-report-check.mjs` が担う。
+Origin のホスト側レビューは使えない。push 前にローカルで `coderabbit review` を回し、妥当な指摘を直す。`cursor` remote への push は、ユーザーが明示したときだけ行う。マージゲートではない。必須 check はあとから `scripts/origin-report-check.mjs` が担う。
 
 ## 手順
 
