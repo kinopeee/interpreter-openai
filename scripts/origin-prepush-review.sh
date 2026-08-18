@@ -76,9 +76,10 @@ if "${cmd[@]}"; then
   :
 else
   status=$?
-  echo "CodeRabbit review failed with exit status ${status}. Continue after reviewing the error." >&2
+  echo "CodeRabbit review failed with exit status ${status}. Do not push." >&2
+  exit "$status"
 fi
 
 echo >&2
 echo "次: 妥当な指摘を直してコミットし、git push cursor <branch>" >&2
-echo "そのあと xcodebuild test と scripts/origin-report-check.mjs で Origin の check を更新する。" >&2
+echo "CI を頼まれたときだけ、xcodebuild test と scripts/origin-report-check.mjs で Origin の check を更新する。" >&2
