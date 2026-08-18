@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using RealtimeTranslator.Core.Audio;
@@ -10,6 +11,7 @@ namespace RealtimeTranslator.Core.Tests;
 
 /// <summary>
 /// ja-en の日本語 lane halt と、セグメント境界の ResetAudioRouting が連続失敗カウンタを捨てること。
+/// halt 後の Reset ではポンプを再開せず、Start（再接続）だけが再開する契約もここで固定する。
 /// routing.json の英語 lane / スペイン語ペア halt とは交差しない。
 /// </summary>
 public sealed class DualRealtimeTranslationClientHaltTests
@@ -72,6 +74,108 @@ public sealed class DualRealtimeTranslationClientHaltTests
         Assert.Contains("stillFlowing", harness.English.AppendedFrameTexts());
     }
 
+    // Given: 翻訳送信が 3 回連続失敗してポンプが halt した Dual
+    // When: セグメント境界相当の ResetAudioRouting のあと、同じ target を選び直して frame を送る
+    // Then: halt は残り翻訳 lane へは流れない（死にかけ socket へ再開しない）。原文は継続する
+    [Fact]
+    public async Task ResetAudioRoutingAfterHaltDoesNotResumeTranslation()
+    {
+        await using var harness = await HaltHarness.StartAsync();
+        await harness.SelectAsync(RealtimeTranslationOutputLanguage.English);
+        await harness.AppendAsync("ok1");
+
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail1");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail2");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail3");
+        Assert.Equal(1, harness.DrainTransportErrorCount());
+
+        await harness.Dual.ResetAudioRoutingAsync();
+        await harness.SelectAsync(RealtimeTranslationOutputLanguage.English);
+        await harness.AppendAsync("afterReset");
+
+        Assert.Equal(["ok1"], harness.English.AppendedFrameTexts());
+        Assert.Contains("afterReset", harness.Source.AppendedFrameTexts());
+        Assert.Empty(harness.Japanese.AppendedFrameTexts());
+        Assert.Equal(0, harness.DrainTransportErrorCount());
+    }
+
+    // Given: 翻訳ポンプが halt した Dual
+    // When: StartAsync で再接続し、同じ target へ frame を送る
+    // Then: halt が解け、新しい接続の翻訳 lane へ届く（再接続後の字幕欠落を防ぐ）
+    [Fact]
+    public async Task StartAfterHaltResumesTranslationPump()
+    {
+        await using var harness = await HaltHarness.StartAsync();
+        await harness.SelectAsync(RealtimeTranslationOutputLanguage.English);
+        await harness.AppendAsync("ok1");
+
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail1");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail2");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail3");
+        Assert.Equal(1, harness.DrainTransportErrorCount());
+        var connectCountAfterHalt = harness.English.ConnectCount;
+
+        await harness.Dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn);
+        await harness.SelectAsync(RealtimeTranslationOutputLanguage.English);
+        await harness.AppendAsync("afterReconnect");
+
+        Assert.True(harness.English.ConnectCount > connectCountAfterHalt);
+        Assert.Contains("afterReconnect", harness.English.AppendedFrameTexts());
+        Assert.Contains("afterReconnect", harness.Source.AppendedFrameTexts());
+        Assert.Equal(0, harness.DrainTransportErrorCount());
+    }
+
+    // Given: 翻訳ポンプが halt した Dual（graceful close 応答あり）
+    // When: CloseGracefullyAsync する
+    // Then: halt していても原文は commit、翻訳 lane は session.close を送り、Events を完了する
+    [Fact]
+    public async Task CloseGracefullyAfterHaltStillClosesAllLanes()
+    {
+        await using var harness = await HaltHarness.StartAsync(autoCloseResponses: true);
+        await harness.SelectAsync(RealtimeTranslationOutputLanguage.English);
+        await harness.AppendAsync("ok1");
+
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail1");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail2");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail3");
+        Assert.Equal(1, harness.DrainTransportErrorCount());
+
+        await harness.Dual.CloseGracefullyAsync();
+
+        Assert.Contains("input_audio_buffer.commit", SentTypes(harness.Source));
+        Assert.Contains("session.close", SentTypes(harness.English));
+        Assert.Contains("session.close", SentTypes(harness.Japanese));
+        while (harness.Dual.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await harness.Dual.Events.WaitToReadAsync());
+    }
+
+    private static List<string> SentTypes(FakeRealtimeServerTransport transport)
+    {
+        var types = new List<string>();
+        foreach (var payload in transport.Sent)
+        {
+            var type = System.Text.Json.Nodes.JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>();
+            if (type is { } value)
+            {
+                types.Add(value);
+            }
+        }
+
+        return types;
+    }
+
     private sealed class HaltHarness : IAsyncDisposable
     {
         private HaltHarness(
@@ -94,11 +198,11 @@ public sealed class DualRealtimeTranslationClientHaltTests
 
         public DualRealtimeTranslationClient Dual { get; }
 
-        public static async Task<HaltHarness> StartAsync()
+        public static async Task<HaltHarness> StartAsync(bool autoCloseResponses = false)
         {
-            var source = new FakeRealtimeServerTransport();
-            var english = new FakeRealtimeServerTransport();
-            var japanese = new FakeRealtimeServerTransport();
+            var source = new FakeRealtimeServerTransport { AutoCloseResponses = autoCloseResponses };
+            var english = new FakeRealtimeServerTransport { AutoCloseResponses = autoCloseResponses };
+            var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = autoCloseResponses };
             var dual = new DualRealtimeTranslationClient(
                 new RealtimeSourceTranscriptionConnection(source, "test-safety"),
                 new RealtimeTranslationConnection(
