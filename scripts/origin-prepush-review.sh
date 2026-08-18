@@ -69,8 +69,11 @@ if [[ "$light" -eq 1 ]]; then
 fi
 
 echo "Reviewing committed changes against ${base}..." >&2
-if ! "${cmd[@]}"; then
-  echo "CodeRabbit review failed with exit status $?. Continue after reviewing the error." >&2
+if "${cmd[@]}"; then
+  :
+else
+  status=$?
+  echo "CodeRabbit review failed with exit status ${status}. Continue after reviewing the error." >&2
 fi
 
 echo >&2
