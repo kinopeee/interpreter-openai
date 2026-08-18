@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Origin へ push する前に、コミット済み差分を CodeRabbit CLI でレビューする。
-# マージゲートにはしない。指摘の修正と push は人が判断する。
+# マージゲートにはしない。妥当な指摘の修正と cursor への push はスキル側が行う。
 #
 # 使い方:
 #   ./scripts/origin-prepush-review.sh
@@ -74,5 +74,5 @@ if ! "${cmd[@]}"; then
 fi
 
 echo >&2
-echo "次: 指摘を直してコミットし、git push cursor <branch>" >&2
+echo "次: 妥当な指摘を直してコミットし、git push cursor <branch>" >&2
 echo "そのあと xcodebuild test と scripts/origin-report-check.mjs で Origin の check を更新する。" >&2
