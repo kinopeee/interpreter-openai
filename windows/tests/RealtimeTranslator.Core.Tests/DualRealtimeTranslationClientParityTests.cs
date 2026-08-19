@@ -342,14 +342,15 @@ public sealed class DualRealtimeTranslationClientParityTests
         await WaitUntilSessionUpdatedAsync(source, english);
         var closeCountBeforeCleanup = (
             Source: source.CloseCount,
-            English: english.CloseCount);
+            English: english.CloseCount,
+            Japanese: japanese.CloseCount);
 
         await caller.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => startTask);
         Assert.True(source.CloseCount > closeCountBeforeCleanup.Source);
         Assert.True(english.CloseCount > closeCountBeforeCleanup.English);
-        Assert.True(japanese.CloseCount >= 1);
+        Assert.True(japanese.CloseCount > closeCountBeforeCleanup.Japanese);
 
         var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
             () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
