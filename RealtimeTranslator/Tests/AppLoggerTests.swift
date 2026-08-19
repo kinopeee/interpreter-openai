@@ -82,6 +82,25 @@ final class AppLoggerTests: XCTestCase {
         XCTAssertTrue(redacted.contains(AppLogger.redactedPlaceholder))
     }
 
+    func testRedactReplacesTabSplitAPIKeyHyphenAndBody() {
+        // Given: TAB が k とハイフン、またはキー本体を分断している
+        let inputs = [
+            "invalid key sk\u{0009}-abcdefghi",
+            "invalid key sk-\u{0009}abcdefghi",
+            "invalid key sk-abcd\u{0009}efghi",
+        ]
+
+        for input in inputs {
+            // When: redact する
+            let redacted = AppLogger.redact(input)
+
+            // Then: 空白を挟んでもキー断片は残らない
+            XCTAssertFalse(redacted.localizedCaseInsensitiveContains("abcdefghi"), input)
+            XCTAssertFalse(redacted.contains("abcd"), input)
+            XCTAssertTrue(redacted.contains(AppLogger.redactedPlaceholder), input)
+        }
+    }
+
     func testRedactReplacesTabSeparatedBearerCredentials() {
         // Given: TAB で語を分けた Bearer 資格情報
         let input = "token Bearer\u{0009}abc+def/ghi== extra"

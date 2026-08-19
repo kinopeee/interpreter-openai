@@ -36,7 +36,10 @@ public static partial class LogSecretRedactor
         }
     }
 
-    [GeneratedRegex(@"(?i)(?<![A-Za-z0-9])s\s*k-[A-Za-z0-9_\-]{4,}", RegexOptions.None, matchTimeoutMilliseconds: 200)]
+    [GeneratedRegex(
+        @"(?i)(?<![A-Za-z0-9])s\s*k\s*-\s*[A-Za-z0-9_\-](?:\s*[A-Za-z0-9_\-]){3,}",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 200)]
     private static partial Regex ApiKeyPattern();
 
     [GeneratedRegex(@"(?i)bearer\s+\S+", RegexOptions.None, matchTimeoutMilliseconds: 200)]

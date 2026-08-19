@@ -82,6 +82,27 @@ public sealed class LogSecretRedactorTests
         Assert.Contains(LogSecretRedactor.Placeholder, redacted, StringComparison.Ordinal);
     }
 
+    // Given: TAB が k とハイフン、またはキー本体を分断している
+    // When: 伏字化する
+    // Then: 空白を挟んでもキー断片は残らない
+    [Fact]
+    public void RedactReplacesTabSplitApiKeyHyphenAndBody()
+    {
+        foreach (var input in new[]
+        {
+            "invalid key sk\t-abcdefghi",
+            "invalid key sk-\tabcdefghi",
+            "invalid key sk-abcd\tefghi",
+        })
+        {
+            var redacted = LogSecretRedactor.Redact(input);
+
+            Assert.DoesNotContain("abcdefghi", redacted, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("abcd", redacted, StringComparison.Ordinal);
+            Assert.Contains(LogSecretRedactor.Placeholder, redacted, StringComparison.Ordinal);
+        }
+    }
+
     // Given: TAB で語を分けた Bearer 資格情報
     // When: 伏字化する
     // Then: 制御空白を消して連結せず、トークンは残らない
