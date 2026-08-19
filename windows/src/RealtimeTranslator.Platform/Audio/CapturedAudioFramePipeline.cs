@@ -8,13 +8,24 @@ namespace RealtimeTranslator.Platform.Audio;
 
 /// <summary>
 /// デバイス形式の PCM を 24 kHz / mono / PCM16 の 100 ms frame へ変換する。
-/// 供給が追いつかない分は無音で埋める。Realtime 側の VAD は無音 frame を必要とするため、間引かない。
-/// 端数の実音声に無音を混ぜて 100ms へ強制しない。遅延が溜まったら oldest を捨てて最新を残す。
+/// 端数の実音声に無音を混ぜて 100ms へ強制しない。完全飢餓、または端数が
+/// <see cref="KeepAliveEmptyTicks"/> tick 残ったときだけ keep-alive 無音を出す。
+/// 遅延が溜まったら oldest を捨てて最新を残す。
 /// </summary>
 public sealed class CapturedAudioFramePipeline
 {
     private const int MaxFramesPerTick = 32;
 
+    /// <summary>
+    /// WDL <c>ResamplePrepare</c> が output-driven 時に足す入力フレーム数。
+    /// 不足入力で Read すると内部で 0 埋め flush され、実サンプルが捨てられる。
+    /// </summary>
+    private const int WdlResamplePrepareExtraInputFrames = 4;
+
+    /// <summary>端数だけの空 tick がこの回数に達したら keep-alive frame を出す。</summary>
+    internal const int KeepAliveEmptyTicks = 2;
+
+    private readonly WaveFormat _sourceFormat;
     private readonly BufferedWaveProvider _buffered;
     private readonly ISampleProvider _resampled;
     private readonly AdaptiveMicrophoneGain _gain;
@@ -23,11 +34,13 @@ public sealed class CapturedAudioFramePipeline
 
     private float[] _readBuffer = [];
     private byte[] _overflowDiscard = [];
+    private int _emptyTicks;
 
     public CapturedAudioFramePipeline(WaveFormat sourceFormat, AdaptiveMicrophoneGain? gain = null)
     {
         ArgumentNullException.ThrowIfNull(sourceFormat);
 
+        _sourceFormat = sourceFormat;
         _gain = gain ?? new AdaptiveMicrophoneGain();
         _buffered = new BufferedWaveProvider(sourceFormat)
         {
@@ -107,8 +120,9 @@ public sealed class CapturedAudioFramePipeline
     }
 
     /// <summary>
-    /// 100ms pump tick。溜まっている complete frame をすべて返し、完全飢餓のときだけ無音 1 frame。
-    /// packetizer 端数があるときは空を返し、実音声へ無音を混ぜない。
+    /// 100ms pump tick。溜まっている complete frame をすべて返す。
+    /// 端数だけの直後は空。完全飢餓、または端数が <see cref="KeepAliveEmptyTicks"/> tick
+    /// 残ったときは無音 1 frame。端数そのものへ無音は混ぜない。
     /// </summary>
     public IReadOnlyList<byte[]> TakeTickFrames(int sampleCount)
     {
@@ -132,15 +146,66 @@ public sealed class CapturedAudioFramePipeline
 
             if (frames is { Count: > 0 })
             {
+                _emptyTicks = 0;
                 return frames;
             }
 
             if (HasUnsentAudioLocked())
             {
-                return Array.Empty<byte[]>();
+                _emptyTicks++;
+                if (_emptyTicks < KeepAliveEmptyTicks)
+                {
+                    return Array.Empty<byte[]>();
+                }
+
+                // 端数を無音に混ぜず保持したまま、録音中の 100ms 送出契約だけ満たす。
+                return [new byte[Pcm16FramePacketizer.BytesPerFrame]];
             }
 
+            _emptyTicks = 0;
             return [new byte[Pcm16FramePacketizer.BytesPerFrame]];
+        }
+    }
+
+    /// <summary>
+    /// 停止時に端数を 100ms frame へ揃えて返す。macOS feeder の stream-end
+    /// <c>flushWithSilencePadding</c> に相当する。
+    /// </summary>
+    public IReadOnlyList<byte[]> FlushRemainder()
+    {
+        lock (_sync)
+        {
+            List<byte[]>? frames = null;
+            while (true)
+            {
+                var batch = ReadFramesLocked(Pcm16FramePacketizer.SamplesPerFrame);
+                if (batch.Count == 0)
+                {
+                    break;
+                }
+
+                frames ??= new List<byte[]>(batch.Count);
+                frames.AddRange(batch);
+            }
+
+            if (_buffered.BufferedBytes > 0)
+            {
+                var forced = ReadFramesLocked(Pcm16FramePacketizer.SamplesPerFrame, requireFullInput: false);
+                if (forced.Count > 0)
+                {
+                    frames ??= new List<byte[]>(forced.Count);
+                    frames.AddRange(forced);
+                }
+            }
+
+            if (_packetizer.FlushWithSilencePadding() is { } padded)
+            {
+                frames ??= new List<byte[]>(1);
+                frames.Add(padded);
+            }
+
+            _emptyTicks = 0;
+            return frames ?? (IReadOnlyList<byte[]>)Array.Empty<byte[]>();
         }
     }
 
@@ -150,11 +215,17 @@ public sealed class CapturedAudioFramePipeline
         {
             _buffered.ClearBuffer();
             _packetizer.Reset();
+            _emptyTicks = 0;
         }
     }
 
-    private IReadOnlyList<byte[]> ReadFramesLocked(int sampleCount)
+    private IReadOnlyList<byte[]> ReadFramesLocked(int sampleCount, bool requireFullInput = true)
     {
+        if (requireFullInput && _buffered.BufferedBytes < BytesRequiredForOutputSamples(sampleCount))
+        {
+            return Array.Empty<byte[]>();
+        }
+
         if (_readBuffer.Length < sampleCount)
         {
             _readBuffer = new float[sampleCount];
@@ -173,6 +244,17 @@ public sealed class CapturedAudioFramePipeline
 
     private bool HasUnsentAudioLocked() =>
         _packetizer.PendingByteCount > 0 || _buffered.BufferedBytes > 0;
+
+    private int BytesRequiredForOutputSamples(int outputSamples)
+    {
+        var inputFrames = (int)((long)outputSamples * _sourceFormat.SampleRate / Pcm16FramePacketizer.SampleRate);
+        if (_sourceFormat.SampleRate != Pcm16FramePacketizer.SampleRate)
+        {
+            inputFrames += WdlResamplePrepareExtraInputFrames;
+        }
+
+        return inputFrames * _sourceFormat.BlockAlign;
+    }
 
     private void DiscardOldestBytesLocked(int byteCount)
     {

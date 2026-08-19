@@ -207,7 +207,7 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
                 // 溜まり分はまとめて channel へ渡し、満杯時は DropOldest で遅延を落とす。
-                // 端数の実音声がある tick では無音を混ぜない。完全飢餓のときだけ無音 1 frame。
+                // 端数の直後は無音を混ぜない。完全飢餓または端数タイムアウト時だけ無音 1 frame。
                 var frames = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
                 foreach (var frame in frames)
                 {
@@ -221,6 +221,11 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         }
         finally
         {
+            foreach (var frame in pipeline.FlushRemainder())
+            {
+                writer.TryWrite(frame);
+            }
+
             writer.TryComplete();
         }
     }

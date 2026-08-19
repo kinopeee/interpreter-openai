@@ -126,6 +126,96 @@ public sealed class CapturedAudioFramePipelineTests
         Assert.True(trailing.ToArray().Any(value => value != 0), "second half must stay real audio, not baked silence");
     }
 
+    // Given: 50ms の端数だけあり、その後デバイス供給が止まる
+    // When: tick を連続で読む
+    // Then: 直後は padding せず、KeepAliveEmptyTicks 到達後は無音 frame を送り続ける
+    [Fact]
+    public void EmitsKeepAliveAfterPartialAudioStarves()
+    {
+        var pipeline = new CapturedAudioFramePipeline(
+            new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1),
+            new AdaptiveMicrophoneGain(1f));
+        var halfBytes = Pcm16FramePacketizer.BytesPerFrame / 2;
+
+        pipeline.Push(SineWave(Pcm16FramePacketizer.SamplesPerFrame / 2, 1), halfBytes);
+
+        var held = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
+        Assert.Empty(held);
+        Assert.True(pipeline.HasUnsentAudio);
+
+        for (var tick = 1; tick < CapturedAudioFramePipeline.KeepAliveEmptyTicks - 1; tick++)
+        {
+            var waiting = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
+            Assert.Empty(waiting);
+        }
+
+        var keepAlive = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
+        Assert.Single(keepAlive);
+        Assert.Equal(Pcm16FramePacketizer.BytesPerFrame, keepAlive[0].Length);
+        Assert.All(keepAlive[0], value => Assert.Equal(0, value));
+        Assert.True(pipeline.HasUnsentAudio);
+
+        var next = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
+        Assert.Single(next);
+        Assert.All(next[0], value => Assert.Equal(0, value));
+
+        pipeline.Push(SineWave(Pcm16FramePacketizer.SamplesPerFrame / 2, 1), halfBytes);
+        var resumed = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
+        Assert.Single(resumed);
+        Assert.Contains(resumed[0], value => value != 0);
+        var trailing = resumed[0].AsSpan(Pcm16FramePacketizer.BytesPerFrame / 2);
+        Assert.True(trailing.ToArray().Any(value => value != 0), "held remainder must stay real audio after keep-alive");
+    }
+
+    // Given: 50ms の端数が保持されている
+    // When: 停止相当で FlushRemainder する
+    // Then: 端数が 1 frame として出る（macOS stream-end flush と同値）
+    [Fact]
+    public void FlushRemainderEmitsHeldPartialAudio()
+    {
+        var pipeline = new CapturedAudioFramePipeline(
+            new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1),
+            new AdaptiveMicrophoneGain(1f));
+        var halfBytes = Pcm16FramePacketizer.BytesPerFrame / 2;
+
+        pipeline.Push(SineWave(Pcm16FramePacketizer.SamplesPerFrame / 2, 1), halfBytes);
+        Assert.Empty(pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame));
+
+        var flushed = pipeline.FlushRemainder();
+
+        Assert.Single(flushed);
+        Assert.Equal(Pcm16FramePacketizer.BytesPerFrame, flushed[0].Length);
+        Assert.Contains(flushed[0], value => value != 0);
+        Assert.False(pipeline.HasUnsentAudio);
+    }
+
+    // Given: 48kHz mono で 1 sample だけ届いた
+    // When: 100ms tick を読み、その後 100ms 分を足す
+    // Then: 短い入力をリサンプラへ渡して捨てず、後続 frame の先頭に残る
+    [Fact]
+    public void DoesNotDropSubResamplerRemainderOnShortDeviceRead()
+    {
+        var pipeline = new CapturedAudioFramePipeline(
+            new WaveFormat(48_000, 16, 1),
+            new AdaptiveMicrophoneGain(1f));
+        var loud = BitConverter.GetBytes((short)32_000);
+
+        pipeline.Push(loud, loud.Length);
+        var first = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
+
+        Assert.Empty(first);
+        Assert.True(pipeline.HasUnsentAudio);
+
+        var rest = new byte[(48_000 / 10 * 2) + 16];
+        pipeline.Push(rest, rest.Length);
+        var second = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
+
+        Assert.True(second.Count >= 1);
+        Assert.True(
+            BitConverter.ToInt16(second[0], 0) != 0,
+            "first device sample must survive until a complete frame can be resampled");
+    }
+
     // Given: 300ms 分の実音声がバッファに溜まっている
     // When: 1 tick で吸い出す
     // Then: 100ms を 1 枚ずつにせず 3 frame まとめて返し、遅延を残さない
