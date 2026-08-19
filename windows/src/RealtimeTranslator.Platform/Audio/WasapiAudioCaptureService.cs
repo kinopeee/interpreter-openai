@@ -113,6 +113,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
             _capture = capture;
             _pumpCts = cts;
             _frames = frames;
+            // StartRecording より先に pump を登録し、StopAsync が orphan writer を
+            // 先に閉じて FlushRemainder を落とす隙間を作らない。
+            _pumpTask = Task.Run(() => PumpAsync(pipeline, frames.Writer, pumpToken), CancellationToken.None);
         }
 
         try
@@ -121,37 +124,8 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         }
         catch (Exception error) when (error is COMException or InvalidOperationException)
         {
-            // pump 未起動のため StopAsync 側で writer を完了させる。
             await StopAsync().ConfigureAwait(false);
             throw new AudioCaptureException(UserCopy.Current.Text("error.micStartFailed"), error);
-        }
-
-        // StartRecording 成功後に pump を登録し、StopAsync と交差しても await 対象を失わない。
-        var pumpTask = Task.Run(() => PumpAsync(pipeline, frames.Writer, pumpToken), CancellationToken.None);
-        bool shouldAwaitOrphan;
-        lock (_sync)
-        {
-            if (ReferenceEquals(_capture, capture) && ReferenceEquals(_pumpCts, cts))
-            {
-                _pumpTask = pumpTask;
-                shouldAwaitOrphan = false;
-            }
-            else
-            {
-                shouldAwaitOrphan = true;
-            }
-        }
-
-        if (shouldAwaitOrphan)
-        {
-            try
-            {
-                await pumpTask.ConfigureAwait(false);
-            }
-            catch (Exception)
-            {
-                // 停止経路の例外は呼び出し側へ伝播しない。
-            }
         }
     }
 
