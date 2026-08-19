@@ -522,6 +522,52 @@ public sealed class RealtimeConnectionTests
         Assert.True(transport.CloseCount >= 1);
     }
 
+    // Given: session.created を返さない翻訳接続。handshake timeout は長い
+    // When: 呼び出し側 token を Connect 後にキャンセルする
+    // Then: SessionUpdateTimeout（再接続対象）ではなく OperationCanceledException になる
+    [Fact]
+    public async Task TranslationConnectionStartCanceledByCallerIsNotHandshakeTimeout()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety",
+            sessionUpdateTimeout: TimeSpan.FromSeconds(15));
+        using var caller = new CancellationTokenSource();
+        var startTask = connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription(),
+            caller.Token);
+
+        await WaitUntilAsync(() => transport.ConnectCount >= 1);
+        await caller.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => startTask);
+        Assert.True(transport.CloseCount >= 1);
+    }
+
+    // Given: session.created を返さない原文接続。handshake timeout は長い
+    // When: 呼び出し側 token を Connect 後にキャンセルする
+    // Then: SessionUpdateTimeout（再接続対象）ではなく OperationCanceledException になる
+    [Fact]
+    public async Task SourceConnectionStartCanceledByCallerIsNotHandshakeTimeout()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            handshakeTimeout: TimeSpan.FromSeconds(15));
+        using var caller = new CancellationTokenSource();
+        var startTask = connection.StartAsync("sk-test", RealtimeSessionTuning.Default, caller.Token);
+
+        await WaitUntilAsync(() => transport.ConnectCount >= 1);
+        await caller.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => startTask);
+        Assert.True(transport.CloseCount >= 1);
+    }
+
     // Given: handshake 前（未 ready）の原文接続。closeTimeout は長く、誤って待つとテストが固まる
     // When: ready 前に graceful close する
     // Then: completed 待ちへ入らず即完了し、commit も送らない
@@ -770,6 +816,22 @@ public sealed class RealtimeConnectionTests
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         return await reader.ReadAsync(timeout.Token);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition())
+            {
+                return;
+            }
+
+            await Task.Delay(10);
+        }
+
+        Assert.Fail("condition was not met in time");
     }
 
     private static string? TypeOf(byte[] payload) =>
