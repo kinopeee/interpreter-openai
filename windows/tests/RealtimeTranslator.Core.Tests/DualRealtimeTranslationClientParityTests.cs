@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -316,6 +317,86 @@ public sealed class DualRealtimeTranslationClientParityTests
         await caller.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => startTask);
+        Assert.True(source.CloseCount >= 1);
+        Assert.True(english.CloseCount >= 1);
+        Assert.True(japanese.CloseCount >= 1);
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
+    // Given: 英語 lane は ready、日本語 handshake だけが停滞している Dual
+    // When: 呼び出し側 token をキャンセルする
+    // Then: leftover の英語・原文も ForceClose し、再 Start できる
+    [Fact]
+    public async Task CallerCancelDuringPartialReadyHandshakeForceClosesReadyLanes()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport { AutoHandshake = false };
+        using var dual = CreateDual(source, english, japanese);
+        using var caller = new CancellationTokenSource();
+        var startTask = dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn, caller.Token);
+
+        await WaitUntilSessionUpdatedAsync(source, english);
+        var closeCountBeforeCleanup = (
+            Source: source.CloseCount,
+            English: english.CloseCount);
+
+        await caller.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => startTask);
+        Assert.True(source.CloseCount > closeCountBeforeCleanup.Source);
+        Assert.True(english.CloseCount > closeCountBeforeCleanup.English);
+        Assert.True(japanese.CloseCount >= 1);
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+
+        japanese.AutoHandshake = true;
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn);
+        Assert.Equal(2, source.ConnectCount);
+        Assert.Equal(2, english.ConnectCount);
+        await dual.ForceCloseAsync();
+    }
+
+    // Given: 英語 Connect が即失敗し、原文は ready、日本語 handshake だけが停滞する Dual
+    // When: StartAsync する
+    // Then: 日本語の handshake timeout まで leftover 原文を残さず、即 ForceClose して失敗を伝播する
+    [Fact]
+    public async Task FastLaneFailureCancelsSiblingHandshakeAndForceClosesReadyLanes()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport
+        {
+            ConnectError = new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.RecoverableTransportFailure,
+                "english connect failed"),
+        };
+        var japanese = new FakeRealtimeServerTransport { AutoHandshake = false };
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(source, "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.English,
+                english,
+                "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Japanese,
+                japanese,
+                "test-safety",
+                sessionUpdateTimeout: TimeSpan.FromSeconds(2)));
+
+        var started = Stopwatch.StartNew();
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn));
+        started.Stop();
+
+        Assert.Equal(RealtimeTranslationErrorKind.RecoverableTransportFailure, error.Kind);
+        Assert.True(
+            started.Elapsed < TimeSpan.FromMilliseconds(500),
+            $"sibling handshake was not cancelled; elapsed {started.Elapsed.TotalMilliseconds:0}ms");
         Assert.True(source.CloseCount >= 1);
         Assert.True(english.CloseCount >= 1);
         Assert.True(japanese.CloseCount >= 1);

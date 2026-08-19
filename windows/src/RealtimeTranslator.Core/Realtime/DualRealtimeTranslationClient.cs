@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -160,14 +161,15 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
         EnsureConnectionsForPair(pair);
 
+        using var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
         {
-            await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await _lifecycleGate.WaitAsync(handshakeCts.Token).ConfigureAwait(false);
             try
             {
                 var starts = new List<Task>
                 {
-                    _sourceConnection.StartAsync(apiKey, tuning, pair, cancellationToken),
+                    _sourceConnection.StartAsync(apiKey, tuning, pair, handshakeCts.Token),
                 };
                 starts.AddRange(pair.Languages().Select(language =>
                     {
@@ -178,9 +180,36 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                                 target,
                                 null,
                                 tuning.NoiseReduction),
-                            cancellationToken);
+                            handshakeCts.Token);
                     }));
-                await Task.WhenAll(starts).ConfigureAwait(false);
+
+                // Swift の throwing TaskGroup と同じく、1 本が失敗したら残り handshake を
+                // timeout まで待たずキャンセルし、ready leftover をすぐ ForceClose する。
+                var pending = new List<Task>(starts);
+                while (pending.Count > 0)
+                {
+                    var done = await Task.WhenAny(pending).ConfigureAwait(false);
+                    pending.Remove(done);
+                    if (!done.IsCompletedSuccessfully)
+                    {
+                        await handshakeCts.CancelAsync().ConfigureAwait(false);
+                        break;
+                    }
+                }
+
+                try
+                {
+                    await Task.WhenAll(starts).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    if (FirstHandshakeFault(starts) is { } fault)
+                    {
+                        ExceptionDispatchInfo.Capture(fault).Throw();
+                    }
+
+                    throw;
+                }
             }
             finally
             {
@@ -485,6 +514,20 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         {
             // 停止時のキャンセルは正常終了として扱う。
         }
+    }
+
+    /// <summary>WhenAll が sibling の OCE を先に返すとき、元の handshake 失敗を優先する。</summary>
+    private static Exception? FirstHandshakeFault(IReadOnlyList<Task> starts)
+    {
+        foreach (var start in starts)
+        {
+            if (start.IsFaulted)
+            {
+                return start.Exception!.GetBaseException();
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
