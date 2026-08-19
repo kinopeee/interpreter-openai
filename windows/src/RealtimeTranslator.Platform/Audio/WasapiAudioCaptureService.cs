@@ -269,9 +269,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
             _pumpCts = null;
         }
 
-        cts?.Cancel();
-        cts?.Dispose();
-
+        // DataAvailable は capture スレッドから同期で来る。pump を先に cancel すると
+        // FlushRemainder の後に Push が入り、停止時の端数が落ちる。
+        // Dispose は capture スレッドを join するので、その後に pump を止める。
         if (capture is not null)
         {
             try
@@ -287,5 +287,8 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         }
 
         ownedDevice?.Dispose();
+
+        cts?.Cancel();
+        cts?.Dispose();
     }
 }
