@@ -137,4 +137,19 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         // Then: exclusive word が照合でき english になる
         XCTAssertEqual(evidence, .english)
     }
+
+    func testEnEsRecentEvidencePreservesInvertedPunctuationSeparatedBySpace() {
+        // Given: 8語窓の先頭語の直前に空白付きの逆疑問符がある
+        let text = "aaa bbb ccc ¿ Hello there friend people world today extra more"
+
+        // When: en-es の recent evidence を求める
+        let evidence = SpokenLanguageDetector.recentEvidence(
+            in: text,
+            pair: .enEs,
+            window: SpokenLanguageDetector.enEsWindow
+        )
+
+        // Then: 空白を挟んでも ¿ を窓に残し spanish を即時確定する
+        XCTAssertEqual(evidence, .spanish)
+    }
 }

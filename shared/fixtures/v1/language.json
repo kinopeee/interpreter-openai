@@ -174,6 +174,30 @@
       "window": 4,
       "expected": "spanish",
       "fullEvidence": "japanese"
+    },
+    {
+      "name": "en-es inverted punctuation before the word window keeps a following space",
+      "pair": "en-es",
+      "input": "aaa bbb ccc ¿ Hello there friend people world today extra more",
+      "window": 8,
+      "expected": "spanish",
+      "fullEvidence": "spanish"
+    },
+    {
+      "name": "en-es inverted exclamation before the word window keeps a following space",
+      "pair": "en-es",
+      "input": "aaa bbb ccc ¡ Hello there friend people world today extra more",
+      "window": 8,
+      "expected": "spanish",
+      "fullEvidence": "spanish"
+    },
+    {
+      "name": "en-es word window does not walk back into earlier exclusive words",
+      "pair": "en-es",
+      "input": "the and is are of to it that Hello there friend people world today extra more",
+      "window": 8,
+      "expected": "ambiguousLatin",
+      "fullEvidence": "english"
     }
   ],
   "targets": [
