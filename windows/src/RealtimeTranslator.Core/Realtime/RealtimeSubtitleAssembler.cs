@@ -67,8 +67,12 @@ public sealed class RealtimeSubtitleAssembler
             // 一次信号: first-output / echo で lock 済みでも期待 lane へ付け替える。
             if (_translationText.GetValueOrDefault(expectedLane, string.Empty).Length > 0)
             {
+                var alreadySelected = _selectedLane == expectedLane;
                 _selectedLane = expectedLane;
-                _translationIsCurrent = true;
+                if (!alreadySelected)
+                {
+                    _translationIsCurrent = true;
+                }
             }
             else if (_selectedLane != expectedLane)
             {

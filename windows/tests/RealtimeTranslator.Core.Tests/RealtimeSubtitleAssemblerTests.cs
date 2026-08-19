@@ -10,8 +10,8 @@ public sealed class RealtimeSubtitleAssemblerTests
     private static readonly DateTimeOffset Origin = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     // Given: 訳文が付いたあとに原文だけが伸びたセグメント
-    // When: idle finalize 間隔を超えて Tick する
-    // Then: 旧訳文を現行扱いして確定しない
+    // When: 同じ期待 lane を再指定してから idle finalize 間隔を超えて Tick する
+    // Then: 再指定だけでは旧訳文を現行扱いして確定しない
     [Fact]
     public void IdleTickDoesNotFinalizeStaleTranslationAfterSourceContinues()
     {
@@ -23,6 +23,7 @@ public sealed class RealtimeSubtitleAssemblerTests
         var continued = assembler.Ingest(
             Source("、皆さん", "s2", 300),
             Origin.AddMilliseconds(400));
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
         var idle = assembler.Tick(Origin.AddSeconds(9));
 
         Assert.NotNull(continued);

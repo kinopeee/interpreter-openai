@@ -59,8 +59,11 @@ struct RealtimeSubtitleAssembler: Sendable {
         if let expectedLane {
             // 一次信号: first-output / echo で lock 済みでも期待 lane へ付け替える。
             if !(translationText[expectedLane] ?? "").isEmpty {
+                let alreadySelected = selectedLane == expectedLane
                 selectedLane = expectedLane
-                translationIsCurrent = true
+                if !alreadySelected {
+                    translationIsCurrent = true
+                }
             } else if selectedLane != expectedLane {
                 selectedLane = nil
                 translationIsCurrent = false

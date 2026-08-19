@@ -250,14 +250,15 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
             now: start
         )
 
-        // When: 原文だけ継続してから idle tick する
+        // When: 原文だけ継続し、同じ期待 lane を再指定してから idle tick する
         let continued = assembler.ingest(
             event(.english, .inputTranscriptDelta(delta: "、皆さん", eventID: "s2", elapsedMs: 300)),
             now: start.addingTimeInterval(0.4)
         )
+        assembler.expectLane(.english)
         let idle = assembler.tick(now: start.addingTimeInterval(9))
 
-        // Then: 旧訳文を現行扱いして確定しない
+        // Then: 同じ期待 lane の再指定だけでは旧訳文を現行に戻して確定しない
         XCTAssertEqual(continued?.sourceText, "こんにちは、皆さん")
         XCTAssertEqual(continued?.translatedText, "Hello")
         XCTAssertEqual(continued?.isTranslationCurrent, false)
