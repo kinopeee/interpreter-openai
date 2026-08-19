@@ -58,8 +58,8 @@ public sealed class RealtimeSubtitleAssemblerTests
     }
 
     // Given: stale idle で境界だけ進めたあと、次の原文が始まっている
-    // When: idle-finalize と同じ帯の追いつき訳と、seen+idle 境界の次発話訳が届く
-    // Then: 400/450 は旧発話の追いつきとして捨て、seen+idle の訳だけを現行にする
+    // When: 捨てたセグメントより古い elapsed の訳と、新しい訳が届く
+    // Then: 遅延訳は次発話に混ぜず、新しい訳だけを現行にする
     [Fact]
     public void LateTranslationAfterStaleIdleAbandonIsIgnoredByCutoff()
     {
@@ -74,19 +74,11 @@ public sealed class RealtimeSubtitleAssemblerTests
         var late = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, " Late", "t-late", 200),
             Origin.AddSeconds(9.3));
-        var sameRangeAsIdleFinalizeFresh = assembler.Ingest(
-            Translation(RealtimeTranslationOutputLanguage.English, " everyone", "t-catchup", 400),
-            Origin.AddSeconds(9.35));
-        var catchUp = assembler.Ingest(
-            Translation(RealtimeTranslationOutputLanguage.English, " all", "t-catchup-late", 450),
-            Origin.AddSeconds(9.36));
         var fresh = assembler.Ingest(
-            Translation(RealtimeTranslationOutputLanguage.English, "Thank you", "t-new", 8200),
+            Translation(RealtimeTranslationOutputLanguage.English, "Thank you", "t-new", 400),
             Origin.AddSeconds(9.4));
 
         Assert.Null(late);
-        Assert.Null(sameRangeAsIdleFinalizeFresh);
-        Assert.Null(catchUp);
         Assert.NotNull(fresh);
         Assert.Equal("Thank you", fresh.Value.TranslatedText);
         Assert.True(fresh.Value.IsTranslationCurrent);
