@@ -397,9 +397,10 @@ public sealed class DualRealtimeTranslationClientParityTests
         Assert.True(
             started.Elapsed < TimeSpan.FromMilliseconds(500),
             $"sibling handshake was not cancelled; elapsed {started.Elapsed.TotalMilliseconds:0}ms");
-        Assert.True(source.CloseCount >= 1);
-        Assert.True(english.CloseCount >= 1);
-        Assert.True(japanese.CloseCount >= 1);
+        // Start 先頭の ForceClose で CloseCount は 1。失敗後 cleanup で 2 以上になる。
+        Assert.True(source.CloseCount >= 2);
+        Assert.True(english.CloseCount >= 2);
+        Assert.True(japanese.CloseCount >= 2);
 
         var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
             () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
@@ -445,9 +446,10 @@ public sealed class DualRealtimeTranslationClientParityTests
         Assert.True(
             started.Elapsed < TimeSpan.FromMilliseconds(500),
             $"sibling handshake was not cancelled; elapsed {started.Elapsed.TotalMilliseconds:0}ms");
-        Assert.True(source.CloseCount >= 1);
-        Assert.True(english.CloseCount >= 1);
-        Assert.True(japanese.CloseCount >= 1);
+        // Start 先頭の ForceClose で CloseCount は 1。失敗後 cleanup で 2 以上になる。
+        Assert.True(source.CloseCount >= 2);
+        Assert.True(english.CloseCount >= 2);
+        Assert.True(japanese.CloseCount >= 2);
 
         var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
             () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
