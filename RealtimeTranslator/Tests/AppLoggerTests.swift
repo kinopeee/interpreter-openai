@@ -15,7 +15,10 @@ final class AppLoggerTests: XCTestCase {
 
     func testRedactReplacesUppercaseAPIKeyFragments() {
         // Given: 大文字 SK- 断片
-        let redacted = AppLogger.redact("invalid key SK-ABCDEFGHI")
+        let input = "invalid key SK-ABCDEFGHI"
+
+        // When: redact する
+        let redacted = AppLogger.redact(input)
 
         // Then: キー断片は伏字化される
         XCTAssertFalse(redacted.contains("SK-ABCDEFGHI"))
@@ -25,7 +28,10 @@ final class AppLoggerTests: XCTestCase {
 
     func testRedactReplacesZeroWidthObfuscatedAPIKeyFragments() {
         // Given: ZWSP を挟んだ sk- 断片
-        let redacted = AppLogger.redact("invalid key s\u{200B}k-abcdefghi")
+        let input = "invalid key s\u{200B}k-abcdefghi"
+
+        // When: redact する
+        let redacted = AppLogger.redact(input)
 
         // Then: 不可視文字を除いたキー断片は残らない
         XCTAssertFalse(redacted.localizedCaseInsensitiveContains("sk-abcdefghi"))
@@ -48,8 +54,12 @@ final class AppLoggerTests: XCTestCase {
 
     func testRedactReplacesCompleteBearerAndAuthorizationCredentials() {
         // Given: Base64 文字を含む Bearer と scheme + 資格情報の Authorization
-        let bearer = AppLogger.redact("token Bearer abc+def/ghi== extra")
-        let basic = AppLogger.redact("Authorization: Basic YWJjZA==")
+        let bearerInput = "token Bearer abc+def/ghi== extra"
+        let basicInput = "Authorization: Basic YWJjZA=="
+
+        // When: redact する
+        let bearer = AppLogger.redact(bearerInput)
+        let basic = AppLogger.redact(basicInput)
 
         // Then: `+` `/` `=` や Basic の続きも残らない
         XCTAssertFalse(bearer.contains("abc+def/ghi=="))
@@ -61,7 +71,10 @@ final class AppLoggerTests: XCTestCase {
 
     func testRedactReplacesTabObfuscatedAPIKeyFragments() {
         // Given: TAB で分断した sk- 断片
-        let redacted = AppLogger.redact("invalid key s\u{0009}k-abcdefghi")
+        let input = "invalid key s\u{0009}k-abcdefghi"
+
+        // When: redact する
+        let redacted = AppLogger.redact(input)
 
         // Then: 制御空白を除いたキー断片は残らない
         XCTAssertFalse(redacted.localizedCaseInsensitiveContains("sk-abcdefghi"))
