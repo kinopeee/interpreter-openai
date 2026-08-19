@@ -206,6 +206,26 @@
         }
       },
       {
+        "name": "catch-up translation after stale idle abandon does not attach to next source",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 0.4, "kind": "sourceDelta", "lane": "source", "text": "、皆さん", "eventId": "s2", "elapsedMs": 300 },
+          { "at": 9, "kind": "tick" },
+          { "at": 9.2, "kind": "sourceDelta", "lane": "source", "text": "ありがとう", "eventId": "s3", "elapsedMs": null },
+          { "at": 9.3, "kind": "translationDelta", "lane": "en", "text": " everyone", "eventId": "t-catchup", "elapsedMs": 450 },
+          { "at": 9.4, "kind": "translationDelta", "lane": "en", "text": "Thank you", "eventId": "t-new", "elapsedMs": 9000 }
+        ],
+        "expectedFinal": {
+          "sourceText": "ありがとう",
+          "translatedText": "Thank you",
+          "isTranslationCurrent": true,
+          "shouldFinalize": false
+        }
+      },
+      {
         "name": "late translation after idle finalize is ignored until next source",
         "epoch": 1,
         "expectLane": "en",

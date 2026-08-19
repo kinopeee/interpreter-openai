@@ -323,18 +323,23 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
             now: start.addingTimeInterval(9.2)
         )
 
-        // When: 捨てたセグメントより古い elapsed の訳と、新しい訳が届く
+        // When: 既知 elapsed より大きい追いつき訳と、idle 無音より後の新しい訳が届く
         let late = assembler.ingest(
             event(.english, .outputTranscriptDelta(delta: " Late", eventID: "t-late", elapsedMs: 200)),
             now: start.addingTimeInterval(9.3)
         )
+        let catchUp = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: " everyone", eventID: "t-catchup", elapsedMs: 450)),
+            now: start.addingTimeInterval(9.35)
+        )
         let fresh = assembler.ingest(
-            event(.english, .outputTranscriptDelta(delta: "Thank you", eventID: "t-new", elapsedMs: 400)),
+            event(.english, .outputTranscriptDelta(delta: "Thank you", eventID: "t-new", elapsedMs: 9_000)),
             now: start.addingTimeInterval(9.4)
         )
 
-        // Then: 遅延訳は次発話に混ぜず、新しい訳だけを現行にする
+        // Then: 追いつき訳は次発話に混ぜず、新しい訳だけを現行にする
         XCTAssertNil(late)
+        XCTAssertNil(catchUp)
         XCTAssertEqual(fresh?.translatedText, "Thank you")
         XCTAssertEqual(fresh?.isTranslationCurrent, true)
     }

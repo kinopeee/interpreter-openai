@@ -143,7 +143,13 @@ public sealed class RealtimeSubtitleAssembler
 
     private RealtimeSubtitleUpdate? AppendSource(string delta, string? eventId, int? elapsedMs, DateTimeOffset now)
     {
-        if (delta.Length == 0 || IsDuplicateOrStale(eventId, elapsedMs))
+        if (delta.Length == 0)
+        {
+            return null;
+        }
+
+        // 次セグメント先頭の原文は、abandon で上げた訳文 cutoff に巻き込まない。
+        if (IsDuplicateOrStale(eventId, elapsedMs, applyElapsedCutoff: !_awaitingSourceAfterFinalize))
         {
             return null;
         }
@@ -216,14 +222,17 @@ public sealed class RealtimeSubtitleAssembler
         return Snapshot();
     }
 
-    private bool IsDuplicateOrStale(string? eventId, int? elapsedMs)
+    private bool IsDuplicateOrStale(string? eventId, int? elapsedMs, bool applyElapsedCutoff = true)
     {
         if (eventId is not null && !_seenEventIds.Add(eventId))
         {
             return true;
         }
 
-        return elapsedMs is { } elapsed && _finalizedCutoffElapsedMs is { } cutoff && elapsed <= cutoff;
+        return applyElapsedCutoff
+            && elapsedMs is { } elapsed
+            && _finalizedCutoffElapsedMs is { } cutoff
+            && elapsed <= cutoff;
     }
 
     private void ResolveLaneIfNeeded()
@@ -327,7 +336,10 @@ public sealed class RealtimeSubtitleAssembler
 
     private void AbandonStaleSegment(DateTimeOffset now)
     {
-        _finalizedCutoffElapsedMs = _maxTranslationElapsedMs;
+        // 追いつき訳は既知の elapsed より大きいことがある。idle 無音分を足して
+        // 次の原文（elapsed なし）へ旧発話の訳が混ざらないようにする。
+        var seen = _maxTranslationElapsedMs ?? 0;
+        _finalizedCutoffElapsedMs = seen + (int)IdleFinalizeInterval.TotalMilliseconds;
         ClearSegmentBuffers(advancingGeneration: true);
         _awaitingSourceAfterFinalize = true;
         _lastActivityAt = now;

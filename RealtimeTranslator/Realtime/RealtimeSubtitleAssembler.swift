@@ -130,7 +130,9 @@ struct RealtimeSubtitleAssembler: Sendable {
         if let eventID, !seenEventIDs.insert(eventID).inserted {
             return nil
         }
-        if let elapsedMs, let cutoff = finalizedCutoffElapsedMs, elapsedMs <= cutoff {
+        // 次セグメント先頭の原文は、abandon で上げた訳文 cutoff に巻き込まない。
+        if !awaitingSourceAfterFinalize,
+           let elapsedMs, let cutoff = finalizedCutoffElapsedMs, elapsedMs <= cutoff {
             return nil
         }
 
@@ -299,7 +301,10 @@ struct RealtimeSubtitleAssembler: Sendable {
     }
 
     private mutating func abandonStaleSegment(now: Date) {
-        finalizedCutoffElapsedMs = maxTranslationElapsedMs
+        // 追いつき訳は既知の elapsed より大きいことがある。idle 無音分を足して
+        // 次の原文（elapsed なし）へ旧発話の訳が混ざらないようにする。
+        let seen = maxTranslationElapsedMs ?? 0
+        finalizedCutoffElapsedMs = seen + Int(Self.idleFinalizeInterval * 1_000)
         clearSegmentBuffers(advancingGeneration: true)
         awaitingSourceAfterFinalize = true
         lastActivityAt = now
