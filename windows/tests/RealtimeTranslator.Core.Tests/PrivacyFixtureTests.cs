@@ -105,6 +105,66 @@ public sealed class PrivacyFixtureTests
 
         // Then: 表示用 Message は汎用文言になる
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
+        Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.ServerMessage);
+        Assert.DoesNotContain("sk-", error.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Bearer", error.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Given: 認証失敗例外に生のキー断片を渡す
+    // When: ServerMessage / ToString を取る
+    // Then: 生文言は保持されず、表示にも出ない
+    [Fact]
+    public void NonFatalExceptionDoesNotRetainRawServerMessage()
+    {
+        var error = new RealtimeTranslationException(
+            RealtimeTranslationErrorKind.AuthenticationFailed,
+            "Incorrect API key provided: sk-should-never-surface");
+
+        Assert.Null(error.ServerMessage);
+        Assert.DoesNotContain("sk-", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("sk-", error.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Given: Format 文字や Unicode 空白で伏せたキー断片・api key 文言
+    // When: Sanitize する
+    // Then: 汎用文言へ落ち、原文のキー断片を返さない
+    [Fact]
+    public void SanitizeRedactsUnicodeObfuscatedKeyMaterial()
+    {
+        Assert.Equal(
+            RealtimeTranslationException.GenericServerMessage,
+            RealtimeTranslationException.SanitizeServerMessage("invalid key s\u200bk-abcdef"));
+        Assert.Equal(
+            RealtimeTranslationException.GenericServerMessage,
+            RealtimeTranslationException.SanitizeServerMessage("Incorrect API\u00a0key provided"));
+        Assert.Equal(
+            RealtimeTranslationException.GenericServerMessage,
+            RealtimeTranslationException.SanitizeServerMessage("Missing bearer\u00a0or basic authentication"));
+        Assert.Equal("bearerless request", RealtimeTranslationException.SanitizeServerMessage("bearerless request"));
+    }
+
+    // Given: ZWSP を挟んだ認証失敗フレーズ
+    // When: 認証失敗判定する
+    // Then: authority / 4010 は誤爆せず、api key フレーズは検出する
+    [Fact]
+    public void AuthenticationDetectionSurvivesUnicodeObfuscationWithoutFalsePositives()
+    {
+        Assert.True(
+            RealtimeTranslationException.IsAuthenticationFailure(
+                null,
+                "Incorrect API\u00a0key provided"));
+        Assert.True(
+            RealtimeTranslationException.IsAuthenticationFailure(
+                "invalid_api\u200b_key",
+                string.Empty));
+        Assert.False(
+            RealtimeTranslationException.IsAuthenticationFailure(
+                "authority_error",
+                "authority mismatch"));
+        Assert.False(
+            RealtimeTranslationException.IsAuthenticationFailure(
+                null,
+                "error 4010 occurred"));
     }
 
     // Given: 各エラー種別

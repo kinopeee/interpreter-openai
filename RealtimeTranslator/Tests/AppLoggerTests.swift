@@ -13,6 +13,26 @@ final class AppLoggerTests: XCTestCase {
         XCTAssertEqual(redacted, "invalid key \(AppLogger.redactedPlaceholder)")
     }
 
+    func testRedactReplacesUppercaseAPIKeyFragments() {
+        // Given: 大文字 SK- 断片
+        let redacted = AppLogger.redact("invalid key SK-ABCDEFGHI")
+
+        // Then: キー断片は伏字化される
+        XCTAssertFalse(redacted.contains("SK-ABCDEFGHI"))
+        XCTAssertFalse(redacted.localizedCaseInsensitiveContains("sk-abcdefgh"))
+        XCTAssertTrue(redacted.contains(AppLogger.redactedPlaceholder))
+    }
+
+    func testRedactReplacesZeroWidthObfuscatedAPIKeyFragments() {
+        // Given: ZWSP を挟んだ sk- 断片
+        let redacted = AppLogger.redact("invalid key s\u{200B}k-abcdefghi")
+
+        // Then: 不可視文字を除いたキー断片は残らない
+        XCTAssertFalse(redacted.localizedCaseInsensitiveContains("sk-abcdefghi"))
+        XCTAssertFalse(redacted.contains("abcdefghi"))
+        XCTAssertTrue(redacted.contains(AppLogger.redactedPlaceholder))
+    }
+
     func testRedactReplacesBearerAndAuthorization() {
         // Given: Bearer と Authorization ヘッダ断片
         let bearer = "Bearer abc.def-ghi"

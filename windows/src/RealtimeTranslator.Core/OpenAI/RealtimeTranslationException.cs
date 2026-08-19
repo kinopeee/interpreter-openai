@@ -1,6 +1,7 @@
 using System;
 using System.Text.RegularExpressions;
 using RealtimeTranslator.Core.Localization;
+using RealtimeTranslator.Core.Security;
 
 namespace RealtimeTranslator.Core.OpenAI;
 
@@ -35,12 +36,15 @@ public sealed partial class RealtimeTranslationException : Exception
         : base(DescribeFor(kind, serverMessage, copy))
     {
         Kind = kind;
-        ServerMessage = serverMessage;
+        // 生のサーバー文言は保持しない。ToString / プロパティ列挙でも資格情報を残さない。
+        ServerMessage = kind == RealtimeTranslationErrorKind.FatalServerError
+            ? SanitizeServerMessage(serverMessage ?? string.Empty)
+            : null;
     }
 
     public RealtimeTranslationErrorKind Kind { get; }
 
-    /// <summary>サーバー由来の生文言。UI/ログへは <see cref="Exception.Message"/> だけを出す。</summary>
+    /// <summary>正規化済みのサーバー文言。生の資格情報は載せない。UI/ログは <see cref="Exception.Message"/> を使う。</summary>
     public string? ServerMessage { get; }
 
     public bool IsRecoverable => Kind is RealtimeTranslationErrorKind.RecoverableTransportFailure
@@ -49,7 +53,9 @@ public sealed partial class RealtimeTranslationException : Exception
     /// <summary>アラート・バナー・ログへ出してよいサーバー文言へ正規化する。</summary>
     public static string SanitizeServerMessage(string message)
     {
-        var lowered = message.ToLowerInvariant();
+        ArgumentNullException.ThrowIfNull(message);
+
+        var lowered = SecretText.NormalizeForMatch(message);
         if (lowered.Contains("sk-", StringComparison.Ordinal)
             || lowered.Contains("api key", StringComparison.Ordinal)
             || lowered.Contains("authorization", StringComparison.Ordinal)
@@ -67,8 +73,8 @@ public sealed partial class RealtimeTranslationException : Exception
     /// </summary>
     public static bool IsAuthenticationFailure(string? code, string message)
     {
-        var codeLowered = (code ?? string.Empty).Trim().ToLowerInvariant();
-        var messageLowered = message.ToLowerInvariant();
+        var codeLowered = SecretText.NormalizeForMatch(code ?? string.Empty).Trim();
+        var messageLowered = SecretText.NormalizeForMatch(message);
 
         if (Array.IndexOf(KnownAuthenticationFailureCodes, codeLowered) >= 0)
         {

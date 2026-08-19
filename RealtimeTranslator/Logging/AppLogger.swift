@@ -16,7 +16,7 @@ enum AppLogger {
     /// Swift の `NSRegularExpression` にはタイムアウト API が無いため、
     /// バックトラック爆発しない線形パターンだけを使う（Windows 版の matchTimeout 相当）。
     static func redact(_ message: String) -> String {
-        var redacted = message
+        var redacted = SecretText.stripFormatAndControl(message)
         for pattern in secretPatterns {
             redacted = pattern.stringByReplacingMatches(
                 in: redacted,
@@ -29,7 +29,7 @@ enum AppLogger {
     }
 
     private static let secretPatterns: [NSRegularExpression] = [
-        try! NSRegularExpression(pattern: #"sk-[A-Za-z0-9_\-]{4,}"#),
+        try! NSRegularExpression(pattern: #"(?i)sk-[A-Za-z0-9_\-]{4,}"#),
         try! NSRegularExpression(pattern: #"(?i)bearer\s+[A-Za-z0-9_\-\.]+"#),
         try! NSRegularExpression(pattern: #"(?i)authorization:\s*\S+"#),
         try! NSRegularExpression(pattern: #"(?i)openai-safety-identifier:\s*\S+"#),

@@ -122,7 +122,7 @@ enum RealtimeTranslationServerEvent: Sendable, Equatable {
     case unknown(type: String)
 }
 
-enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
+enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
     case missingAPIKey
     case notConnected
     case invalidMessage
@@ -150,6 +150,11 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
     var errorDescription: String? {
         description(using: UserCopyStore.current)
     }
+
+    /// `String(describing:)` / debug dump が associated value の生文言を出さないようにする。
+    var description: String { errorDescription ?? "" }
+
+    var debugDescription: String { description }
 
     /// 表示文言の `UserCopy` を明示する。未指定時は Current。
     func description(using copy: UserCopy) -> String {
@@ -189,10 +194,8 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
     /// bare `auth` / `401` / `403` 部分一致は `authority` や `4010` に誤爆するため使わない。
     /// `authorization` は単語として一致し、`authority` には一致しない。
     static func isAuthenticationFailure(code: String?, message: String) -> Bool {
-        let codeLowered = (code ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let messageLowered = message.lowercased()
+        let codeLowered = SecretText.normalizeForMatch(code ?? "").trimmingCharacters(in: .whitespaces)
+        let messageLowered = SecretText.normalizeForMatch(message)
 
         if knownAuthenticationFailureCodes.contains(codeLowered) {
             return true
@@ -228,7 +231,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
 
     /// アラート・バナー・ログへ出してよいサーバー文言へ正規化する。
     static func sanitizedServerMessage(_ message: String) -> String {
-        let lowered = message.lowercased()
+        let lowered = SecretText.normalizeForMatch(message)
         if lowered.contains("sk-")
             || lowered.contains("api key")
             || lowered.contains("authorization")

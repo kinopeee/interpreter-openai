@@ -271,13 +271,11 @@ actor RealtimeTranslationConnection {
                 "DBG_TRANSCRIPT_EVENT target=\(self.target.rawValue, privacy: .public) kind=output epoch=\(currentEpoch, privacy: .public)"
             )
             #endif
-        case .error(_, let code):
-            AppLogger.realtime.error(
-                "Realtime translation error code=\(code ?? "none", privacy: .public)"
-            )
+        case .error:
+            break
         case .unknown(let type):
             AppLogger.realtime.notice(
-                "Unknown realtime event type=\(type, privacy: .public)"
+                "Unknown realtime event type=\(AppLogger.redact(type), privacy: .public)"
             )
         default:
             break
@@ -292,9 +290,6 @@ actor RealtimeTranslationConnection {
     }
 
     private func classifyServerError(message: String, code: String?) -> RealtimeTranslationError {
-        AppLogger.realtime.error(
-            "Realtime translation error code=\(code ?? "none", privacy: .public)"
-        )
         if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
             return .authenticationFailed
         }

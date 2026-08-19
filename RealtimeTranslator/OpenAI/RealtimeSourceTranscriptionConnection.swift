@@ -271,9 +271,6 @@ actor RealtimeSourceTranscriptionConnection {
         let body = object["error"] as? [String: Any]
         let message = body?["message"] as? String ?? UiCopy.text("error.sourceSessionGeneric")
         let code = body?["code"] as? String
-        AppLogger.realtime.error(
-            "Realtime transcription error code=\(code ?? "none", privacy: .public)"
-        )
         if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
             return .authenticationFailed
         }
