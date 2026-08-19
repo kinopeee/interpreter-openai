@@ -143,6 +143,12 @@ public sealed class PrivacyFixtureTests
         Assert.Equal(
             RealtimeTranslationException.GenericServerMessage,
             RealtimeTranslationException.SanitizeServerMessage("invalid key s\tk-abcdef"));
+        Assert.Equal(
+            RealtimeTranslationException.GenericServerMessage,
+            RealtimeTranslationException.SanitizeServerMessage("Incorrect API\tkey provided"));
+        Assert.Equal(
+            RealtimeTranslationException.GenericServerMessage,
+            RealtimeTranslationException.SanitizeServerMessage("Bearer\tabc123 is not valid"));
         Assert.Equal("bearerless request", RealtimeTranslationException.SanitizeServerMessage("bearerless request"));
     }
 
@@ -172,6 +178,10 @@ public sealed class PrivacyFixtureTests
             RealtimeTranslationException.IsAuthenticationFailure(
                 null,
                 "error 4010 occurred"));
+        Assert.False(
+            RealtimeTranslationException.IsAuthenticationFailure(
+                null,
+                "error 4\t01 occurred"));
     }
 
     // Given: 各エラー種別

@@ -208,7 +208,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, Custo
     /// bare `auth` / `401` / `403` 部分一致は `authority` や `4010` に誤爆するため使わない。
     /// `authorization` は単語として一致し、`authority` には一致しない。
     static func isAuthenticationFailure(code: String?, message: String) -> Bool {
-        let codeLowered = SecretText.normalizeForMatch(code ?? "").trimmingCharacters(in: .whitespaces)
+        let codeLowered = SecretText.normalizeForMatch(code ?? "").replacingOccurrences(of: " ", with: "")
         let messageLowered = SecretText.normalizeForMatch(message)
 
         if knownAuthenticationFailureCodes.contains(codeLowered) {
@@ -246,7 +246,8 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, Custo
     /// アラート・バナー・ログへ出してよいサーバー文言へ正規化する。
     static func sanitizedServerMessage(_ message: String) -> String {
         let lowered = SecretText.normalizeForMatch(message)
-        if lowered.contains("sk-")
+        let compact = lowered.replacingOccurrences(of: " ", with: "")
+        if compact.contains("sk-")
             || lowered.contains("api key")
             || lowered.contains("authorization")
             || lowered.contains("bearer ")

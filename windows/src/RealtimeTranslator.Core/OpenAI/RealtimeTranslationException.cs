@@ -56,7 +56,8 @@ public sealed partial class RealtimeTranslationException : Exception
         ArgumentNullException.ThrowIfNull(message);
 
         var lowered = SecretText.NormalizeForMatch(message);
-        if (lowered.Contains("sk-", StringComparison.Ordinal)
+        var compact = lowered.Replace(" ", string.Empty, StringComparison.Ordinal);
+        if (compact.Contains("sk-", StringComparison.Ordinal)
             || lowered.Contains("api key", StringComparison.Ordinal)
             || lowered.Contains("authorization", StringComparison.Ordinal)
             || lowered.Contains("bearer ", StringComparison.Ordinal))
@@ -73,7 +74,8 @@ public sealed partial class RealtimeTranslationException : Exception
     /// </summary>
     public static bool IsAuthenticationFailure(string? code, string message)
     {
-        var codeLowered = SecretText.NormalizeForMatch(code ?? string.Empty).Trim();
+        var codeLowered = SecretText.NormalizeForMatch(code ?? string.Empty)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
         var messageLowered = SecretText.NormalizeForMatch(message);
 
         if (Array.IndexOf(KnownAuthenticationFailureCodes, codeLowered) >= 0)

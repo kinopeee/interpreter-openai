@@ -15,39 +15,45 @@ public static class SecretText
     public static string NormalizeForMatch(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
+        return MapScalars(value).ToLowerInvariant();
+    }
 
+    /// <summary>
+    /// ログ伏字の前に Format を落とし、制御空白は ASCII 空白へ寄せる。
+    /// TAB を消して <c>api key</c> / <c>bearer </c> を連結しない。ZWSP は除去して <c>sk-</c> を復元する。
+    /// </summary>
+    public static string StripFormatAndControl(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        return MapScalars(value);
+    }
+
+    private static string MapScalars(string value)
+    {
         var builder = new StringBuilder(value.Length);
         foreach (var rune in value.EnumerateRunes())
         {
-            // TAB/CR 等は whitespace かつ control。先に control を落とさないと
-            // キー断片が分断され、照合・伏字をすり抜ける。
-            if (Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control or UnicodeCategory.Format)
+            var category = Rune.GetUnicodeCategory(rune);
+            if (category == UnicodeCategory.Format)
             {
+                // ZWSP 等。キー断片の間に入れても照合できるよう落とす。
+                continue;
+            }
+
+            if (category == UnicodeCategory.Control)
+            {
+                // TAB/CR/LF は語区切りとして残す。消すと api key や 401 判定が壊れる。
+                if (Rune.IsWhiteSpace(rune))
+                {
+                    builder.Append(' ');
+                }
+
                 continue;
             }
 
             if (Rune.IsWhiteSpace(rune))
             {
                 builder.Append(' ');
-                continue;
-            }
-
-            builder.Append(rune);
-        }
-
-        return builder.ToString().ToLowerInvariant();
-    }
-
-    /// <summary>ログ伏字の前に Format/Control を落とし、ZWSP 挿入キーを正規表現へ載せる。</summary>
-    public static string StripFormatAndControl(string value)
-    {
-        ArgumentNullException.ThrowIfNull(value);
-
-        var builder = new StringBuilder(value.Length);
-        foreach (var rune in value.EnumerateRunes())
-        {
-            if (Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control or UnicodeCategory.Format)
-            {
                 continue;
             }
 

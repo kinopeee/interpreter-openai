@@ -82,6 +82,18 @@ final class AppLoggerTests: XCTestCase {
         XCTAssertTrue(redacted.contains(AppLogger.redactedPlaceholder))
     }
 
+    func testRedactReplacesTabSeparatedBearerCredentials() {
+        // Given: TAB で語を分けた Bearer 資格情報
+        let input = "token Bearer\u{0009}abc+def/ghi== extra"
+
+        // When: redact する
+        let redacted = AppLogger.redact(input)
+
+        // Then: 制御空白を消して連結せず、トークンは残らない
+        XCTAssertFalse(redacted.contains("abc+def/ghi=="))
+        XCTAssertEqual(redacted, "token \(AppLogger.redactedPlaceholder) extra")
+    }
+
     func testRedactReplacesSafetyIdentifierAndUUID() {
         // Given: Safety Identifier と UUID
         let safety = "OpenAI-Safety-Identifier: deadbeefcafe"

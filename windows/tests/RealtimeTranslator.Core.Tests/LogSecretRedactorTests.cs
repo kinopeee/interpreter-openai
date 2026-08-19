@@ -82,6 +82,18 @@ public sealed class LogSecretRedactorTests
         Assert.Contains(LogSecretRedactor.Placeholder, redacted, StringComparison.Ordinal);
     }
 
+    // Given: TAB で語を分けた Bearer 資格情報
+    // When: 伏字化する
+    // Then: 制御空白を消して連結せず、トークンは残らない
+    [Fact]
+    public void RedactReplacesTabSeparatedBearerCredentials()
+    {
+        var redacted = LogSecretRedactor.Redact("token Bearer\tabc+def/ghi== extra");
+
+        Assert.DoesNotContain("abc+def/ghi==", redacted, StringComparison.Ordinal);
+        Assert.Equal("token " + LogSecretRedactor.Placeholder + " extra", redacted);
+    }
+
     // Given: 秘密を含まないメッセージ
     // When: 伏字化する
     // Then: そのまま残る

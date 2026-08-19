@@ -110,6 +110,14 @@ final class PrivacyFixtureTests: XCTestCase {
             RealtimeTranslationError.genericServerMessage
         )
         XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage("Incorrect API\u{0009}key provided"),
+            RealtimeTranslationError.genericServerMessage
+        )
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage("Bearer\u{0009}abc123 is not valid"),
+            RealtimeTranslationError.genericServerMessage
+        )
+        XCTAssertEqual(
             RealtimeTranslationError.sanitizedServerMessage("bearerless request"),
             "bearerless request"
         )
@@ -147,6 +155,12 @@ final class PrivacyFixtureTests: XCTestCase {
             RealtimeTranslationError.isAuthenticationFailure(
                 code: nil,
                 message: "error 4010 occurred"
+            )
+        )
+        XCTAssertFalse(
+            RealtimeTranslationError.isAuthenticationFailure(
+                code: nil,
+                message: "error 4\u{0009}01 occurred"
             )
         )
     }
