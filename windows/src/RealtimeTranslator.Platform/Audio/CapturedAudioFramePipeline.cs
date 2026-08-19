@@ -16,12 +16,6 @@ public sealed class CapturedAudioFramePipeline
 {
     private const int MaxFramesPerTick = 32;
 
-    /// <summary>
-    /// WDL <c>ResamplePrepare</c> が output-driven 時に足す入力フレーム数。
-    /// 不足入力で Read すると内部で 0 埋め flush され、実サンプルが捨てられる。
-    /// </summary>
-    private const int WdlResamplePrepareExtraInputFrames = 4;
-
     /// <summary>端数だけの空 tick がこの回数に達したら keep-alive frame を出す。</summary>
     internal const int KeepAliveEmptyTicks = 2;
 
@@ -247,12 +241,10 @@ public sealed class CapturedAudioFramePipeline
 
     private int BytesRequiredForOutputSamples(int outputSamples)
     {
+        // 比率ちょうどの 100ms を待つ。WDL の +4 を足すと 48/44.1/16 kHz の
+        // ちょうど 100ms が端数扱いになり、keep-alive 無音が実音声の前に入る。
+        // 1 sample など短い入力は 100ms 分に満たないので、ここでもリサンプラへ渡さない。
         var inputFrames = (int)((long)outputSamples * _sourceFormat.SampleRate / Pcm16FramePacketizer.SampleRate);
-        if (_sourceFormat.SampleRate != Pcm16FramePacketizer.SampleRate)
-        {
-            inputFrames += WdlResamplePrepareExtraInputFrames;
-        }
-
         return inputFrames * _sourceFormat.BlockAlign;
     }
 

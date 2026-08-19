@@ -189,6 +189,25 @@ public sealed class CapturedAudioFramePipelineTests
         Assert.False(pipeline.HasUnsentAudio);
     }
 
+    // Given: 48kHz mono でちょうど 100ms の実音声がある
+    // When: 1 tick で読む
+    // Then: WDL +4 ゲートで空→keep-alive 無音にせず、実音声 frame を出す
+    [Fact]
+    public void ExactHundredMillisecondsAtResampledRateEmitsAudioNotKeepAlive()
+    {
+        var pipeline = new CapturedAudioFramePipeline(
+            new WaveFormat(48_000, 16, 1),
+            new AdaptiveMicrophoneGain(1f));
+        var samples = 48_000 / 10;
+        var audio = SineWave(samples, 1);
+
+        pipeline.Push(audio, audio.Length);
+        var first = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
+
+        Assert.True(first.Count >= 1, "exactly 100ms at 48kHz must produce a frame, not a gated empty tick");
+        Assert.Contains(first[0], value => value != 0);
+    }
+
     // Given: 48kHz mono で 1 sample だけ届いた
     // When: 100ms tick を読み、その後 100ms 分を足す
     // Then: 短い入力をリサンプラへ渡して捨てず、後続 frame の先頭に残る
