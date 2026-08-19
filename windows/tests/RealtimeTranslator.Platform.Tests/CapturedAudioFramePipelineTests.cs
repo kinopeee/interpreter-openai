@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using NAudio.Wave;
 using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Platform.Audio;
@@ -25,30 +26,56 @@ public sealed class CapturedAudioFramePipelineTests
     }
 
     // Given: 48kHz ステレオのデバイス入力
-    // When: 200ms 分を投入して 200ms 分読み出す
-    // Then: 24kHz mono に変換され 100ms frame が 2 つ出る
+    // When: 300ms 分を投入して tick 相当で吸い出す（リサンプラ遅延分の余裕）
+    // Then: 24kHz mono の 100ms frame が 2 つ以上出る
     [Fact]
     public void ResamplesAndDownmixesDeviceAudio()
     {
         var pipeline = new CapturedAudioFramePipeline(new WaveFormat(48_000, 16, 2));
-        var samplesPerChannel = 48_000 / 5;
+        var samplesPerChannel = 48_000 * 3 / 10;
 
         pipeline.Push(SineWave(samplesPerChannel * 2, 2), samplesPerChannel * 2 * 2);
-        var frames = pipeline.ReadFrames(Pcm16FramePacketizer.SamplesPerFrame * 2);
+        var frames = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
 
-        Assert.Equal(2, frames.Count);
+        Assert.True(frames.Count >= 2, "resampled 300ms should yield at least two 100ms frames");
         Assert.All(frames, frame => Assert.Equal(Pcm16FramePacketizer.BytesPerFrame, frame.Length));
     }
 
+    // Given: 24kHz ステレオで左だけ / 右だけに正弦波
+    // When: 100ms を読み出す
+    // Then: どちらもモノラル frame が無音にならない（片チャンネル破棄の防止）
+    [Fact]
+    public void DownmixesStereoSoNeitherChannelIsDropped()
+    {
+        var format = new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 2);
+        var leftOnly = new CapturedAudioFramePipeline(format, new AdaptiveMicrophoneGain(1f));
+        leftOnly.Push(
+            InterleavedSine(Pcm16FramePacketizer.SamplesPerFrame, [0.5, 0.0]),
+            Pcm16FramePacketizer.SamplesPerFrame * 4);
+
+        var rightOnly = new CapturedAudioFramePipeline(format, new AdaptiveMicrophoneGain(1f));
+        rightOnly.Push(
+            InterleavedSine(Pcm16FramePacketizer.SamplesPerFrame, [0.0, 0.5]),
+            Pcm16FramePacketizer.SamplesPerFrame * 4);
+
+        var leftFrames = leftOnly.ReadFrames(Pcm16FramePacketizer.SamplesPerFrame);
+        var rightFrames = rightOnly.ReadFrames(Pcm16FramePacketizer.SamplesPerFrame);
+
+        Assert.Single(leftFrames);
+        Assert.Single(rightFrames);
+        Assert.Contains(leftFrames[0], value => value != 0);
+        Assert.Contains(rightFrames[0], value => value != 0);
+    }
+
     // Given: デバイスから何も届いていない状態
-    // When: 100ms 分を読み出す
+    // When: 100ms tick 相当を読み出す
     // Then: 無音 frame を出し続ける (VAD のため無音も送る契約)
     [Fact]
     public void EmitsSilenceFramesWhenTheDeviceStarves()
     {
         var pipeline = new CapturedAudioFramePipeline(new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1));
 
-        var frames = pipeline.ReadFrames(Pcm16FramePacketizer.SamplesPerFrame);
+        var frames = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
 
         Assert.Single(frames);
         Assert.All(frames[0], value => Assert.Equal(0, value));
@@ -64,12 +91,84 @@ public sealed class CapturedAudioFramePipelineTests
 
         for (var tick = 0; tick < 5; tick++)
         {
-            var frames = pipeline.ReadFrames(Pcm16FramePacketizer.SamplesPerFrame);
+            var frames = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
 
             Assert.Single(frames);
             Assert.Equal(Pcm16FramePacketizer.BytesPerFrame, frames[0].Length);
             Assert.All(frames[0], value => Assert.Equal(0, value));
         }
+    }
+
+    // Given: 50ms 分だけ実音声がある 24kHz mono
+    // When: 100ms 相当を読む
+    // Then: 無音 padding で 1 frame を作らず端数を保持する（時間軸の引き伸ばし防止）
+    [Fact]
+    public void DoesNotPadPartialAudioWithSilence()
+    {
+        var pipeline = new CapturedAudioFramePipeline(
+            new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1),
+            new AdaptiveMicrophoneGain(1f));
+        var halfBytes = Pcm16FramePacketizer.BytesPerFrame / 2;
+
+        pipeline.Push(SineWave(Pcm16FramePacketizer.SamplesPerFrame / 2, 1), halfBytes);
+        var first = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
+
+        Assert.Empty(first);
+        Assert.True(pipeline.HasUnsentAudio);
+
+        pipeline.Push(SineWave(Pcm16FramePacketizer.SamplesPerFrame / 2, 1), halfBytes);
+        var second = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
+
+        Assert.Single(second);
+        Assert.Equal(Pcm16FramePacketizer.BytesPerFrame, second[0].Length);
+        Assert.Contains(second[0], value => value != 0);
+        var trailing = second[0].AsSpan(Pcm16FramePacketizer.BytesPerFrame / 2);
+        Assert.True(trailing.ToArray().Any(value => value != 0), "second half must stay real audio, not baked silence");
+    }
+
+    // Given: 300ms 分の実音声がバッファに溜まっている
+    // When: 1 tick で吸い出す
+    // Then: 100ms を 1 枚ずつにせず 3 frame まとめて返し、遅延を残さない
+    [Fact]
+    public void TakeTickFramesDrainsBacklogInsteadOfPacingOneFrame()
+    {
+        var pipeline = new CapturedAudioFramePipeline(new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1));
+        pipeline.Push(
+            SineWave(Pcm16FramePacketizer.SamplesPerFrame * 3, 1),
+            Pcm16FramePacketizer.BytesPerFrame * 3);
+
+        var frames = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
+
+        Assert.Equal(3, frames.Count);
+        Assert.All(frames, frame => Assert.Equal(Pcm16FramePacketizer.BytesPerFrame, frame.Length));
+    }
+
+    // Given: 2 秒バッファを超える入力（先頭 0.5 秒だけ非無音）
+    // When: 溢れた分を Push する
+    // Then: 古い非無音が捨てられ、読み出し先頭は無音（DropOldest。NAudio 既定の newest 切り捨ては使わない）
+    [Fact]
+    public void CaptureOverflowDropsOldestDeviceBytes()
+    {
+        var pipeline = new CapturedAudioFramePipeline(
+            new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1),
+            new AdaptiveMicrophoneGain(1f));
+        var loud = SineWave(Pcm16FramePacketizer.SamplesPerFrame, 1, amplitude: 0.5);
+        var silence = new byte[Pcm16FramePacketizer.BytesPerFrame];
+
+        for (var index = 0; index < 5; index++)
+        {
+            pipeline.Push(loud, loud.Length);
+        }
+
+        for (var index = 0; index < 20; index++)
+        {
+            pipeline.Push(silence, silence.Length);
+        }
+
+        var frames = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
+
+        Assert.True(frames.Count >= 1);
+        Assert.All(frames[0], value => Assert.Equal(0, value));
     }
 
     // Given: macOS bufferingNewest(32) 相当の frame channel
@@ -122,13 +221,25 @@ public sealed class CapturedAudioFramePipelineTests
 
     private static byte[] SineWave(int totalSamples, int channels, double amplitude = 0.5)
     {
-        var bytes = new byte[totalSamples * 2];
-        for (var index = 0; index < totalSamples; index++)
+        var amplitudes = new double[channels];
+        Array.Fill(amplitudes, amplitude);
+        return InterleavedSine(totalSamples / channels, amplitudes);
+    }
+
+    private static byte[] InterleavedSine(int frames, double[] amplitudes)
+    {
+        var channels = amplitudes.Length;
+        var bytes = new byte[frames * channels * 2];
+        for (var frame = 0; frame < frames; frame++)
         {
-            var frameIndex = index / channels;
-            var value = (short)(amplitude * short.MaxValue * Math.Sin(2 * Math.PI * 440 * frameIndex / 24_000.0));
-            bytes[index * 2] = (byte)(value & 0xFF);
-            bytes[(index * 2) + 1] = (byte)((value >> 8) & 0xFF);
+            for (var channel = 0; channel < channels; channel++)
+            {
+                var value = (short)(amplitudes[channel] * short.MaxValue
+                    * Math.Sin(2 * Math.PI * 440 * frame / 24_000.0));
+                var index = ((frame * channels) + channel) * 2;
+                bytes[index] = (byte)(value & 0xFF);
+                bytes[index + 1] = (byte)((value >> 8) & 0xFF);
+            }
         }
 
         return bytes;

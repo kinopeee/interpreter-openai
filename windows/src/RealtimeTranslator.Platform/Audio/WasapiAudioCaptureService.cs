@@ -206,14 +206,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         {
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
-                var frames = pipeline.ReadFrames(Pcm16FramePacketizer.SamplesPerFrame);
-                if (frames.Count == 0)
-                {
-                    // 契約: 録音中は無音 frame も 100ms ごとに送り続ける。
-                    writer.TryWrite(new byte[Pcm16FramePacketizer.BytesPerFrame]);
-                    continue;
-                }
-
+                // 溜まり分はまとめて channel へ渡し、満杯時は DropOldest で遅延を落とす。
+                // 端数の実音声がある tick では無音を混ぜない。完全飢餓のときだけ無音 1 frame。
+                var frames = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
                 foreach (var frame in frames)
                 {
                     writer.TryWrite(frame);
