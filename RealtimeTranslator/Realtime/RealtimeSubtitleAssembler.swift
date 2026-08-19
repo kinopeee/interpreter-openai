@@ -130,7 +130,9 @@ struct RealtimeSubtitleAssembler: Sendable {
         if let eventID, !seenEventIDs.insert(eventID).inserted {
             return nil
         }
-        if let elapsedMs, let cutoff = finalizedCutoffElapsedMs, elapsedMs <= cutoff {
+        // 次セグメント先頭の原文は、abandon で上げた訳文 cutoff に巻き込まない。
+        if !awaitingSourceAfterFinalize,
+           let elapsedMs, let cutoff = finalizedCutoffElapsedMs, elapsedMs <= cutoff {
             return nil
         }
 
@@ -299,7 +301,12 @@ struct RealtimeSubtitleAssembler: Sendable {
     }
 
     private mutating func abandonStaleSegment(now: Date) {
-        finalizedCutoffElapsedMs = maxTranslationElapsedMs
+        // 翻訳接続は abandon しても張りっぱなしで、無音frame分だけ elapsed が進む。
+        // 旧発話の追いつきは seen+idle 未満。`elapsed <= cutoff` のため -1 し、
+        // seen+idle ちょうどの次発話訳は通す。
+        let seen = maxTranslationElapsedMs ?? 0
+        let idleMs = Int(Self.idleFinalizeInterval * 1_000)
+        finalizedCutoffElapsedMs = seen + max(idleMs - 1, 0)
         clearSegmentBuffers(advancingGeneration: true)
         awaitingSourceAfterFinalize = true
         lastActivityAt = now

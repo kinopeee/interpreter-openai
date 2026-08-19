@@ -323,18 +323,31 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
             now: start.addingTimeInterval(9.2)
         )
 
-        // When: 捨てたセグメントより古い elapsed の訳と、新しい訳が届く
+        // When: idle-finalize と同じ帯の追いつき訳と、seen+idle 境界の次発話訳が届く
         let late = assembler.ingest(
             event(.english, .outputTranscriptDelta(delta: " Late", eventID: "t-late", elapsedMs: 200)),
             now: start.addingTimeInterval(9.3)
         )
+        let sameRangeAsIdleFinalizeFresh = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: " everyone", eventID: "t-catchup", elapsedMs: 400)),
+            now: start.addingTimeInterval(9.35)
+        )
+        let catchUp = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: " all", eventID: "t-catchup-late", elapsedMs: 450)),
+            now: start.addingTimeInterval(9.36)
+        )
         let fresh = assembler.ingest(
-            event(.english, .outputTranscriptDelta(delta: "Thank you", eventID: "t-new", elapsedMs: 400)),
+            event(
+                .english,
+                .outputTranscriptDelta(delta: "Thank you", eventID: "t-new", elapsedMs: 8_200)
+            ),
             now: start.addingTimeInterval(9.4)
         )
 
-        // Then: 遅延訳は次発話に混ぜず、新しい訳だけを現行にする
+        // Then: 400/450 は旧発話の追いつきとして捨て、seen+idle の訳だけを現行にする
         XCTAssertNil(late)
+        XCTAssertNil(sameRangeAsIdleFinalizeFresh)
+        XCTAssertNil(catchUp)
         XCTAssertEqual(fresh?.translatedText, "Thank you")
         XCTAssertEqual(fresh?.isTranslationCurrent, true)
     }
