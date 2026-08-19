@@ -74,6 +74,7 @@ struct RealtimeSubtitleAssembler: Sendable {
     }
 
     /// 言語切替時に現行ペアを確定する。完全ペアがなければbufferだけクリアする。
+    /// hysteresis で原文が伸びて訳が stale でも、切替境界としては既存ペアを確定する。
     mutating func finalizeForLanguageSwitch(now: Date = Date()) -> RealtimeSubtitleUpdate? {
         let hasCompletePair =
             !sourceText.isEmpty
@@ -247,12 +248,15 @@ struct RealtimeSubtitleAssembler: Sendable {
 
     private mutating func evaluateFinalize(now: Date) -> RealtimeSubtitleUpdate? {
         guard !sourceText.isEmpty, selectedLane != nil else { return nil }
-        let translation = currentTranslation
-        guard !translation.isEmpty, translationIsCurrent else { return nil }
+        guard now.timeIntervalSince(lastActivityAt) >= Self.idleFinalizeInterval else { return nil }
 
-        let idleExpired = now.timeIntervalSince(lastActivityAt) >= Self.idleFinalizeInterval
-        if idleExpired {
+        let translation = currentTranslation
+        if !translation.isEmpty, translationIsCurrent {
             return finalizeCurrent(elapsedHint: nil, now: now)
+        }
+        if !translation.isEmpty {
+            // 旧訳文は確定しないが、次発話の原文が同一セグメントへ連結しないよう境界だけ進める。
+            abandonStaleSegment(now: now)
         }
         return nil
     }
@@ -289,6 +293,13 @@ struct RealtimeSubtitleAssembler: Sendable {
             shouldFinalize: false,
             segmentGeneration: segmentGeneration
         )
+    }
+
+    private mutating func abandonStaleSegment(now: Date) {
+        finalizedCutoffElapsedMs = maxTranslationElapsedMs
+        clearSegmentBuffers(advancingGeneration: true)
+        awaitingSourceAfterFinalize = true
+        lastActivityAt = now
     }
 
     private mutating func rememberTranslationElapsed(_ elapsedMs: Int?) {

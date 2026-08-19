@@ -33,6 +33,56 @@ public sealed class RealtimeSubtitleAssemblerTests
         Assert.Null(idle);
     }
 
+    // Given: 訳文が stale のまま idle したセグメント
+    // When: 次の発話の原文が届く
+    // Then: 前の原文へ連結せず、新セグメントとして表示する
+    [Fact]
+    public void IdleTickAbandonsStaleTranslationSoNextSourceStartsFresh()
+    {
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+        assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
+        assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200), Origin);
+        assembler.Ingest(Source("、皆さん", "s2", 300), Origin.AddMilliseconds(400));
+        Assert.Null(assembler.Tick(Origin.AddSeconds(9)));
+
+        var next = assembler.Ingest(Source("ありがとう", "s3", 400), Origin.AddSeconds(9.2));
+
+        Assert.NotNull(next);
+        Assert.Equal("ありがとう", next.Value.SourceText);
+        Assert.Equal(string.Empty, next.Value.TranslatedText);
+        Assert.False(next.Value.IsTranslationCurrent);
+        Assert.False(next.Value.ShouldFinalize);
+        Assert.Equal(1, next.Value.SegmentGeneration);
+    }
+
+    // Given: stale idle で境界だけ進めたあと、次の原文が始まっている
+    // When: 捨てたセグメントより古い elapsed の訳と、新しい訳が届く
+    // Then: 遅延訳は次発話に混ぜず、新しい訳だけを現行にする
+    [Fact]
+    public void LateTranslationAfterStaleIdleAbandonIsIgnoredByCutoff()
+    {
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+        assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
+        assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200), Origin);
+        assembler.Ingest(Source("、皆さん", "s2", 300), Origin.AddMilliseconds(400));
+        Assert.Null(assembler.Tick(Origin.AddSeconds(9)));
+        assembler.Ingest(Source("ありがとう", "s3", null), Origin.AddSeconds(9.2));
+
+        var late = assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, " Late", "t-late", 200),
+            Origin.AddSeconds(9.3));
+        var fresh = assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, "Thank you", "t-new", 400),
+            Origin.AddSeconds(9.4));
+
+        Assert.Null(late);
+        Assert.NotNull(fresh);
+        Assert.Equal("Thank you", fresh.Value.TranslatedText);
+        Assert.True(fresh.Value.IsTranslationCurrent);
+    }
+
     // Given: 原文継続で古くなった訳文のあと、選択 lane の訳文が追いつく
     // When: 新しい訳文 delta を取り込む
     // Then: 訳文を現行に戻し、その後の idle Tick で確定できる

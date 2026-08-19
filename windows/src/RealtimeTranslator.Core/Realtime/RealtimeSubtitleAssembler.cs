@@ -85,7 +85,10 @@ public sealed class RealtimeSubtitleAssembler
         }
     }
 
-    /// <summary>言語切替時に現行ペアを確定する。完全ペアがなければ buffer だけクリアする。</summary>
+    /// <summary>
+    /// 言語切替時に現行ペアを確定する。完全ペアがなければ buffer だけクリアする。
+    /// hysteresis で原文が伸びて訳が stale でも、切替境界としては既存ペアを確定する。
+    /// </summary>
     public RealtimeSubtitleUpdate? FinalizeForLanguageSwitch(DateTimeOffset now)
     {
         var hasCompletePair = _sourceText.Length > 0
@@ -259,15 +262,28 @@ public sealed class RealtimeSubtitleAssembler
 
     private RealtimeSubtitleUpdate? EvaluateFinalize(DateTimeOffset now)
     {
-        if (_sourceText.Length == 0
-            || _selectedLane is null
-            || CurrentTranslation.Length == 0
-            || !_translationIsCurrent)
+        if (_sourceText.Length == 0 || _selectedLane is null)
         {
             return null;
         }
 
-        return now - _lastActivityAt >= IdleFinalizeInterval ? FinalizeCurrent(elapsedHint: null, now) : null;
+        if (now - _lastActivityAt < IdleFinalizeInterval)
+        {
+            return null;
+        }
+
+        if (CurrentTranslation.Length > 0 && _translationIsCurrent)
+        {
+            return FinalizeCurrent(elapsedHint: null, now);
+        }
+
+        if (CurrentTranslation.Length > 0)
+        {
+            // 旧訳文は確定しないが、次発話の原文が同一セグメントへ連結しないよう境界だけ進める。
+            AbandonStaleSegment(now);
+        }
+
+        return null;
     }
 
     private RealtimeSubtitleUpdate FinalizeCurrent(int? elapsedHint, DateTimeOffset now)
@@ -303,6 +319,14 @@ public sealed class RealtimeSubtitleAssembler
             _translationIsCurrent && translation.Length > 0,
             ShouldFinalize: false,
             _segmentGeneration);
+    }
+
+    private void AbandonStaleSegment(DateTimeOffset now)
+    {
+        _finalizedCutoffElapsedMs = _maxTranslationElapsedMs;
+        ClearSegmentBuffers(advancingGeneration: true);
+        _awaitingSourceAfterFinalize = true;
+        _lastActivityAt = now;
     }
 
     private void RememberTranslationElapsed(int? elapsedMs)
