@@ -81,6 +81,12 @@ final class PrivacyFixtureTests: XCTestCase {
         XCTAssertFalse(String(describing: error).localizedCaseInsensitiveContains("sk-"))
         XCTAssertFalse(String(reflecting: error).localizedCaseInsensitiveContains("sk-"))
         XCTAssertFalse(String(describing: error).localizedCaseInsensitiveContains("Bearer"))
+        if case .fatalServerError(let stored) = error {
+            XCTAssertEqual(stored.value, RealtimeTranslationError.genericServerMessage)
+            XCTAssertFalse(stored.value.localizedCaseInsensitiveContains("sk-"))
+        } else {
+            XCTFail("Expected fatalServerError")
+        }
     }
 
     // Given: Format 文字や Unicode 空白で伏せたキー断片・api key 文言
@@ -97,6 +103,10 @@ final class PrivacyFixtureTests: XCTestCase {
         )
         XCTAssertEqual(
             RealtimeTranslationError.sanitizedServerMessage("Missing bearer\u{00A0}or basic authentication"),
+            RealtimeTranslationError.genericServerMessage
+        )
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage("invalid key s\u{0009}k-abcdef"),
             RealtimeTranslationError.genericServerMessage
         )
         XCTAssertEqual(
@@ -118,6 +128,12 @@ final class PrivacyFixtureTests: XCTestCase {
         XCTAssertTrue(
             RealtimeTranslationError.isAuthenticationFailure(
                 code: "invalid_api\u{200B}_key",
+                message: ""
+            )
+        )
+        XCTAssertTrue(
+            RealtimeTranslationError.isAuthenticationFailure(
+                code: "invalid_api\u{0009}_key",
                 message: ""
             )
         )

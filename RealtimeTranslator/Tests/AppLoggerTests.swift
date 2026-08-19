@@ -46,6 +46,29 @@ final class AppLoggerTests: XCTestCase {
         )
     }
 
+    func testRedactReplacesCompleteBearerAndAuthorizationCredentials() {
+        // Given: Base64 文字を含む Bearer と scheme + 資格情報の Authorization
+        let bearer = AppLogger.redact("token Bearer abc+def/ghi== extra")
+        let basic = AppLogger.redact("Authorization: Basic YWJjZA==")
+
+        // Then: `+` `/` `=` や Basic の続きも残らない
+        XCTAssertFalse(bearer.contains("abc+def/ghi=="))
+        XCTAssertEqual(bearer, "token \(AppLogger.redactedPlaceholder) extra")
+        XCTAssertFalse(basic.contains("YWJjZA=="))
+        XCTAssertFalse(basic.contains("Basic"))
+        XCTAssertEqual(basic, AppLogger.redactedPlaceholder)
+    }
+
+    func testRedactReplacesTabObfuscatedAPIKeyFragments() {
+        // Given: TAB で分断した sk- 断片
+        let redacted = AppLogger.redact("invalid key s\u{0009}k-abcdefghi")
+
+        // Then: 制御空白を除いたキー断片は残らない
+        XCTAssertFalse(redacted.localizedCaseInsensitiveContains("sk-abcdefghi"))
+        XCTAssertFalse(redacted.contains("abcdefghi"))
+        XCTAssertTrue(redacted.contains(AppLogger.redactedPlaceholder))
+    }
+
     func testRedactReplacesSafetyIdentifierAndUUID() {
         // Given: Safety Identifier と UUID
         let safety = "OpenAI-Safety-Identifier: deadbeefcafe"

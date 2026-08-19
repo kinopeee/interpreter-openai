@@ -53,6 +53,35 @@ public sealed class LogSecretRedactorTests
         Assert.Equal(LogSecretRedactor.Placeholder, LogSecretRedactor.Redact("Authorization: secret-token"));
     }
 
+    // Given: Base64 文字を含む Bearer と scheme + 資格情報の Authorization
+    // When: 伏字化する
+    // Then: `+` `/` `=` や Basic の続きも残らない
+    [Fact]
+    public void RedactReplacesCompleteBearerAndAuthorizationCredentials()
+    {
+        var bearer = LogSecretRedactor.Redact("token Bearer abc+def/ghi== extra");
+        Assert.DoesNotContain("abc+def/ghi==", bearer, StringComparison.Ordinal);
+        Assert.Equal("token " + LogSecretRedactor.Placeholder + " extra", bearer);
+
+        var basic = LogSecretRedactor.Redact("Authorization: Basic YWJjZA==");
+        Assert.DoesNotContain("YWJjZA==", basic, StringComparison.Ordinal);
+        Assert.DoesNotContain("Basic", basic, StringComparison.Ordinal);
+        Assert.Equal(LogSecretRedactor.Placeholder, basic);
+    }
+
+    // Given: TAB で分断した sk- 断片
+    // When: 伏字化する
+    // Then: 制御空白を除いたキー断片は残らない
+    [Fact]
+    public void RedactReplacesTabObfuscatedApiKeyFragments()
+    {
+        var redacted = LogSecretRedactor.Redact("invalid key s\tk-abcdefghi");
+
+        Assert.DoesNotContain("sk-abcdefghi", redacted, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("abcdefghi", redacted, StringComparison.Ordinal);
+        Assert.Contains(LogSecretRedactor.Placeholder, redacted, StringComparison.Ordinal);
+    }
+
     // Given: 秘密を含まないメッセージ
     // When: 伏字化する
     // Then: そのまま残る

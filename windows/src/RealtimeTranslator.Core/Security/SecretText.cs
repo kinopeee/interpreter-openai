@@ -19,14 +19,16 @@ public static class SecretText
         var builder = new StringBuilder(value.Length);
         foreach (var rune in value.EnumerateRunes())
         {
-            if (Rune.IsWhiteSpace(rune))
+            // TAB/CR 等は whitespace かつ control。先に control を落とさないと
+            // キー断片が分断され、照合・伏字をすり抜ける。
+            if (Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control or UnicodeCategory.Format)
             {
-                builder.Append(' ');
                 continue;
             }
 
-            if (Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control or UnicodeCategory.Format)
+            if (Rune.IsWhiteSpace(rune))
             {
+                builder.Append(' ');
                 continue;
             }
 
@@ -44,12 +46,6 @@ public static class SecretText
         var builder = new StringBuilder(value.Length);
         foreach (var rune in value.EnumerateRunes())
         {
-            if (Rune.IsWhiteSpace(rune))
-            {
-                builder.Append(rune);
-                continue;
-            }
-
             if (Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control or UnicodeCategory.Format)
             {
                 continue;

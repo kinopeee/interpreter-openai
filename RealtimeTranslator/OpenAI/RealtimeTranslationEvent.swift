@@ -123,15 +123,29 @@ enum RealtimeTranslationServerEvent: Sendable, Equatable {
 }
 
 enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+    /// 正規化済みのサーバー文言。生の資格情報は保持できない。
+    struct SanitizedMessage: Sendable, Equatable, Hashable {
+        let value: String
+
+        init(_ raw: String) {
+            value = RealtimeTranslationError.sanitizedServerMessage(raw)
+        }
+    }
+
     case missingAPIKey
     case notConnected
     case invalidMessage
     case authenticationFailed
-    case fatalServerError(String)
+    case fatalServerError(SanitizedMessage)
     case recoverableTransportFailure(String)
     case sessionUpdateTimeout
     case closeTimeout
     case cancelled
+
+    /// 生のサーバー文言を渡しても保持前に正規化する。
+    static func fatalServerError(_ raw: String) -> RealtimeTranslationError {
+        .fatalServerError(SanitizedMessage(raw))
+    }
 
     static var genericServerMessage: String { UiCopy.text("error.genericServer") }
 
@@ -168,7 +182,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, Custo
         case .authenticationFailed:
             return copy.text("error.authenticationFailed")
         case .fatalServerError(let message):
-            return Self.sanitizedServerMessage(message)
+            return message.value
         case .recoverableTransportFailure:
             return copy.text("error.transportDisconnected")
         case .sessionUpdateTimeout:

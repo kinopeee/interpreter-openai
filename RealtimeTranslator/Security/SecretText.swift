@@ -7,14 +7,17 @@ enum SecretText {
         var scalars: [Unicode.Scalar] = []
         scalars.reserveCapacity(value.unicodeScalars.count)
         for scalar in value.unicodeScalars {
-            if scalar.properties.isWhitespace {
-                scalars.append(" ")
-                continue
-            }
+            // TAB/CR 等は whitespace かつ control。先に control を落とさないと
+            // `s\\tk-` のようにキー断片が分断され、照合・伏字をすり抜ける。
             switch scalar.properties.generalCategory {
             case .control, .format:
                 continue
             default:
+                break
+            }
+            if scalar.properties.isWhitespace {
+                scalars.append(" ")
+            } else {
                 scalars.append(scalar)
             }
         }
@@ -26,16 +29,13 @@ enum SecretText {
         var scalars: [Unicode.Scalar] = []
         scalars.reserveCapacity(value.unicodeScalars.count)
         for scalar in value.unicodeScalars {
-            if scalar.properties.isWhitespace {
-                scalars.append(scalar)
-                continue
-            }
             switch scalar.properties.generalCategory {
             case .control, .format:
                 continue
             default:
-                scalars.append(scalar)
+                break
             }
+            scalars.append(scalar)
         }
         return String(String.UnicodeScalarView(scalars))
     }

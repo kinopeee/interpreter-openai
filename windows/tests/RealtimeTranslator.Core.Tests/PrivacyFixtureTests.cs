@@ -140,6 +140,9 @@ public sealed class PrivacyFixtureTests
         Assert.Equal(
             RealtimeTranslationException.GenericServerMessage,
             RealtimeTranslationException.SanitizeServerMessage("Missing bearer\u00a0or basic authentication"));
+        Assert.Equal(
+            RealtimeTranslationException.GenericServerMessage,
+            RealtimeTranslationException.SanitizeServerMessage("invalid key s\tk-abcdef"));
         Assert.Equal("bearerless request", RealtimeTranslationException.SanitizeServerMessage("bearerless request"));
     }
 
@@ -156,6 +159,10 @@ public sealed class PrivacyFixtureTests
         Assert.True(
             RealtimeTranslationException.IsAuthenticationFailure(
                 "invalid_api\u200b_key",
+                string.Empty));
+        Assert.True(
+            RealtimeTranslationException.IsAuthenticationFailure(
+                "invalid_api\t_key",
                 string.Empty));
         Assert.False(
             RealtimeTranslationException.IsAuthenticationFailure(

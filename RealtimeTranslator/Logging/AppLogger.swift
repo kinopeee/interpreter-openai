@@ -30,8 +30,8 @@ enum AppLogger {
 
     private static let secretPatterns: [NSRegularExpression] = [
         try! NSRegularExpression(pattern: #"(?i)sk-[A-Za-z0-9_\-]{4,}"#),
-        try! NSRegularExpression(pattern: #"(?i)bearer\s+[A-Za-z0-9_\-\.]+"#),
-        try! NSRegularExpression(pattern: #"(?i)authorization:\s*\S+"#),
+        try! NSRegularExpression(pattern: #"(?i)bearer\s+\S+"#),
+        try! NSRegularExpression(pattern: #"(?i)authorization\s*:\s*[^\r\n]*"#),
         try! NSRegularExpression(pattern: #"(?i)openai-safety-identifier:\s*\S+"#),
         try! NSRegularExpression(
             pattern: #"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"#
