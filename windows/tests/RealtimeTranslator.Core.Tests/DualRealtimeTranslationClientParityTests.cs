@@ -173,6 +173,70 @@ public sealed class DualRealtimeTranslationClientParityTests
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
     }
 
+    // Given: 原文 handshake だけが停滞し、翻訳両 lane は ready になる Dual
+    // When: 原文が SessionUpdateTimeout する
+    // Then: 例外を伝播し、すでに繋がった翻訳 lane も含めて ForceClose する
+    [Fact]
+    public async Task SourceHandshakeStallForceClosesReadyTranslationLanes()
+    {
+        var source = new FakeRealtimeServerTransport { AutoHandshake = false };
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(
+                source,
+                "test-safety",
+                handshakeTimeout: TimeSpan.FromMilliseconds(300)),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.English,
+                english,
+                "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Japanese,
+                japanese,
+                "test-safety"));
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.StartAsync("sk-test", RealtimeSessionTuning.Default));
+
+        Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, error.Kind);
+        Assert.True(english.ConnectCount >= 1);
+        Assert.True(japanese.ConnectCount >= 1);
+        Assert.True(source.CloseCount >= 1);
+        Assert.True(english.CloseCount >= 1);
+        Assert.True(japanese.CloseCount >= 1);
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
+    // Given: 全 lane が session.created を返さない Dual
+    // When: Connect 後に呼び出し側 token をキャンセルする
+    // Then: SessionUpdateTimeout ではなくキャンセルになり、3 接続とも閉じる
+    [Fact]
+    public async Task StartCanceledDuringHandshakeForceClosesAllLanes()
+    {
+        var source = new FakeRealtimeServerTransport { AutoHandshake = false };
+        var english = new FakeRealtimeServerTransport { AutoHandshake = false };
+        var japanese = new FakeRealtimeServerTransport { AutoHandshake = false };
+        using var dual = CreateDual(source, english, japanese);
+        using var caller = new CancellationTokenSource();
+        var startTask = dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn, caller.Token);
+
+        await WaitUntilConnectedAsync(source, english, japanese);
+        await caller.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => startTask);
+        Assert.True(source.CloseCount >= 1);
+        Assert.True(english.CloseCount >= 1);
+        Assert.True(japanese.CloseCount >= 1);
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
     // Given: 形式不正の API キー
     // When: Dual を開始する
     // Then: どの lane も Connect せず AuthenticationFailed になり、鍵断片を出さない
@@ -612,6 +676,19 @@ public sealed class DualRealtimeTranslationClientParityTests
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (transport.Sent.Count < minimum)
+        {
+            timeout.Token.ThrowIfCancellationRequested();
+            await Task.Delay(10, timeout.Token);
+        }
+    }
+
+    private static async Task WaitUntilConnectedAsync(
+        FakeRealtimeServerTransport source,
+        FakeRealtimeServerTransport english,
+        FakeRealtimeServerTransport japanese)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (source.ConnectCount < 1 || english.ConnectCount < 1 || japanese.ConnectCount < 1)
         {
             timeout.Token.ThrowIfCancellationRequested();
             await Task.Delay(10, timeout.Token);
