@@ -185,16 +185,28 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
                 // Swift の throwing TaskGroup と同じく、1 本が失敗したら残り handshake を
                 // timeout まで待たずキャンセルし、ready leftover をすぐ ForceClose する。
+                Exception? handshakeFault = null;
                 var pending = new List<Task>(starts);
                 while (pending.Count > 0)
                 {
                     var done = await Task.WhenAny(pending).ConfigureAwait(false);
                     pending.Remove(done);
-                    if (!done.IsCompletedSuccessfully)
+                    if (done.IsCompletedSuccessfully)
                     {
-                        await handshakeCts.CancelAsync().ConfigureAwait(false);
-                        break;
+                        continue;
                     }
+
+                    try
+                    {
+                        await done.ConfigureAwait(false);
+                    }
+                    catch (Exception error)
+                    {
+                        handshakeFault = error;
+                    }
+
+                    await handshakeCts.CancelAsync().ConfigureAwait(false);
+                    break;
                 }
 
                 try
@@ -203,12 +215,17 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                 }
                 catch (Exception)
                 {
-                    if (FirstHandshakeFault(starts) is { } fault)
+                    if (handshakeFault is not null)
                     {
-                        ExceptionDispatchInfo.Capture(fault).Throw();
+                        ExceptionDispatchInfo.Capture(handshakeFault).Throw();
                     }
 
                     throw;
+                }
+
+                if (handshakeFault is not null)
+                {
+                    ExceptionDispatchInfo.Capture(handshakeFault).Throw();
                 }
             }
             finally
@@ -218,7 +235,17 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
         catch
         {
-            await ForceCloseAsync().ConfigureAwait(false);
+            try
+            {
+                await ForceCloseAsync().ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // leftover close 失敗で handshake / cancel の例外を消さない。
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+                // Swift の forceClose は throw しない。cleanup 失敗で元例外を置換しない。
+            }
+
             throw;
         }
 
@@ -514,20 +541,6 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         {
             // 停止時のキャンセルは正常終了として扱う。
         }
-    }
-
-    /// <summary>WhenAll が sibling の OCE を先に返すとき、元の handshake 失敗を優先する。</summary>
-    private static Exception? FirstHandshakeFault(IReadOnlyList<Task> starts)
-    {
-        foreach (var start in starts)
-        {
-            if (start.IsFaulted)
-            {
-                return start.Exception!.GetBaseException();
-            }
-        }
-
-        return null;
     }
 
     /// <summary>

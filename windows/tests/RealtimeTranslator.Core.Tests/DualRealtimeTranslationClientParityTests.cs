@@ -406,6 +406,54 @@ public sealed class DualRealtimeTranslationClientParityTests
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
     }
 
+    // Given: 英語 Connect が即失敗し、原文は Connect 後に Close 失敗が仕込まれ、日本語 handshake は停滞する Dual
+    // When: StartAsync する
+    // Then: leftover ForceClose が失敗しても handshake の RecoverableTransportFailure を返す
+    [Fact]
+    public async Task FastLaneFailurePreservesHandshakeErrorWhenLeftoverCloseFails()
+    {
+        var source = new FakeRealtimeServerTransport
+        {
+            CloseErrorAfterConnect = new InvalidOperationException("source close boom"),
+        };
+        var english = new FakeRealtimeServerTransport
+        {
+            ConnectError = new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.RecoverableTransportFailure,
+                "english connect failed"),
+        };
+        var japanese = new FakeRealtimeServerTransport { AutoHandshake = false };
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(source, "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.English,
+                english,
+                "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Japanese,
+                japanese,
+                "test-safety",
+                sessionUpdateTimeout: TimeSpan.FromSeconds(2)));
+
+        var started = Stopwatch.StartNew();
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn));
+        started.Stop();
+
+        Assert.Equal(RealtimeTranslationErrorKind.RecoverableTransportFailure, error.Kind);
+        Assert.Equal("english connect failed", error.ServerMessage);
+        Assert.True(
+            started.Elapsed < TimeSpan.FromMilliseconds(500),
+            $"sibling handshake was not cancelled; elapsed {started.Elapsed.TotalMilliseconds:0}ms");
+        Assert.True(source.CloseCount >= 1);
+        Assert.True(english.CloseCount >= 1);
+        Assert.True(japanese.CloseCount >= 1);
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
     // Given: 形式不正の API キー
     // When: Dual を開始する
     // Then: どの lane も Connect せず AuthenticationFailed になり、鍵断片を出さない
