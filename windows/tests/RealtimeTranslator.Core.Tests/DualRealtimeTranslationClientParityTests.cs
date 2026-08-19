@@ -175,7 +175,7 @@ public sealed class DualRealtimeTranslationClientParityTests
 
     // Given: 原文 handshake だけが停滞し、翻訳両 lane は ready になる Dual
     // When: 原文が SessionUpdateTimeout する
-    // Then: 例外を伝播し、すでに繋がった翻訳 lane も含めて ForceClose する
+    // Then: 例外を伝播し、すでに ready だった翻訳 lane も ForceClose する
     [Fact]
     public async Task SourceHandshakeStallForceClosesReadyTranslationLanes()
     {
@@ -186,7 +186,7 @@ public sealed class DualRealtimeTranslationClientParityTests
             new RealtimeSourceTranscriptionConnection(
                 source,
                 "test-safety",
-                handshakeTimeout: TimeSpan.FromMilliseconds(300)),
+                handshakeTimeout: TimeSpan.FromSeconds(2)),
             new RealtimeTranslationConnection(
                 RealtimeTranslationOutputLanguage.English,
                 english,
@@ -196,15 +196,19 @@ public sealed class DualRealtimeTranslationClientParityTests
                 japanese,
                 "test-safety"));
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.StartAsync("sk-test", RealtimeSessionTuning.Default));
+        var startTask = dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await WaitUntilSessionUpdatedAsync(english, japanese);
+        // Start 冒頭の ForceClose と各接続 Start の TearDown でも CloseCount は進む。
+        // leftover 判定は、handshake 完了後から cleanup 後に増えたことだけを見る。
+        var closeCountBeforeCleanup = (
+            English: english.CloseCount,
+            Japanese: japanese.CloseCount);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => startTask);
 
         Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, error.Kind);
-        Assert.True(english.ConnectCount >= 1);
-        Assert.True(japanese.ConnectCount >= 1);
-        Assert.True(source.CloseCount >= 1);
-        Assert.True(english.CloseCount >= 1);
-        Assert.True(japanese.CloseCount >= 1);
+        Assert.True(english.CloseCount > closeCountBeforeCleanup.English);
+        Assert.True(japanese.CloseCount > closeCountBeforeCleanup.Japanese);
 
         var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
             () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
@@ -689,6 +693,18 @@ public sealed class DualRealtimeTranslationClientParityTests
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (source.ConnectCount < 1 || english.ConnectCount < 1 || japanese.ConnectCount < 1)
+        {
+            timeout.Token.ThrowIfCancellationRequested();
+            await Task.Delay(10, timeout.Token);
+        }
+    }
+
+    private static async Task WaitUntilSessionUpdatedAsync(
+        FakeRealtimeServerTransport english,
+        FakeRealtimeServerTransport japanese)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (SessionUpdates(english).Count < 1 || SessionUpdates(japanese).Count < 1)
         {
             timeout.Token.ThrowIfCancellationRequested();
             await Task.Delay(10, timeout.Token);
