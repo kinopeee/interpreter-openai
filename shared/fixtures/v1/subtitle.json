@@ -248,7 +248,7 @@
         "expectedFinal": {
           "sourceText": "今日は meeting",
           "translatedText": "Today",
-          "isTranslationCurrent": true,
+          "isTranslationCurrent": false,
           "shouldFinalize": false
         }
       },

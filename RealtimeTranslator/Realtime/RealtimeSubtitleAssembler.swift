@@ -25,7 +25,9 @@ struct RealtimeSubtitleAssembler: Sendable {
     private var seenEventIDs = Set<String>()
     private var lastActivityAt = Date.distantPast
     private var finalizedCutoffElapsedMs: Int?
+    private var maxTranslationElapsedMs: Int?
     private var awaitingSourceAfterFinalize = false
+    private var translationIsCurrent = false
 
     init(languagePair: LanguagePair = .jaEn) {
         self.languagePair = languagePair
@@ -42,7 +44,9 @@ struct RealtimeSubtitleAssembler: Sendable {
         expectedLane = nil
         seenEventIDs.removeAll(keepingCapacity: true)
         finalizedCutoffElapsedMs = nil
+        maxTranslationElapsedMs = nil
         awaitingSourceAfterFinalize = false
+        translationIsCurrent = false
     }
 
     mutating func beginNewEpoch(_ epoch: Int) {
@@ -52,6 +56,18 @@ struct RealtimeSubtitleAssembler: Sendable {
     /// セッションが判定した期待翻訳lane。同言語echoより優先する。
     mutating func expectLane(_ lane: RealtimeTranslationOutputLanguage?) {
         expectedLane = lane
+        if let expectedLane {
+            // 一次信号: first-output / echo で lock 済みでも期待 lane へ付け替える。
+            if !(translationText[expectedLane] ?? "").isEmpty {
+                selectedLane = expectedLane
+                translationIsCurrent = true
+            } else if selectedLane != expectedLane {
+                selectedLane = nil
+                translationIsCurrent = false
+            }
+            return
+        }
+
         if selectedLane == nil {
             resolveLaneIfNeeded()
         }
@@ -114,16 +130,22 @@ struct RealtimeSubtitleAssembler: Sendable {
             return nil
         }
 
+        var extendingExistingSource = !sourceText.isEmpty
         if awaitingSourceAfterFinalize {
             awaitingSourceAfterFinalize = false
         } else if shouldStartNewSegmentForSourceUpdate() {
             clearSegmentBuffers(advancingGeneration: true)
+            extendingExistingSource = false
         }
 
         sourceText += delta
         lastActivityAt = now
+        if extendingExistingSource && !currentTranslation.isEmpty {
+            // 原文が伸びた間の旧訳文は表示用に残すが、現行でも確定対象でもない。
+            translationIsCurrent = false
+        }
         resolveLaneIfNeeded()
-        return snapshot(isTranslationCurrent: selectedLane != nil && !currentTranslation.isEmpty)
+        return snapshot()
     }
 
     private mutating func appendTranslation(
@@ -145,6 +167,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         }
 
         translationText[target, default: ""] += delta
+        rememberTranslationElapsed(elapsedMs)
 
         lastActivityAt = now
 
@@ -166,12 +189,12 @@ struct RealtimeSubtitleAssembler: Sendable {
             }
         }
 
+        if selectedLane == target && !currentTranslation.isEmpty {
+            translationIsCurrent = true
+        }
+
         // 非選択laneはbufferのみ。表示中の選択laneの現行フラグは維持する。
-        return snapshot(
-            isTranslationCurrent: selectedLane != nil
-                && !sourceText.isEmpty
-                && !currentTranslation.isEmpty
-        )
+        return snapshot()
     }
 
     private mutating func resolveLaneIfNeeded() {
@@ -181,12 +204,15 @@ struct RealtimeSubtitleAssembler: Sendable {
             switch expectedLane {
             case .english where !(translationText[.english] ?? "").isEmpty:
                 selectedLane = .english
+                translationIsCurrent = true
                 return
             case .japanese where !(translationText[.japanese] ?? "").isEmpty:
                 selectedLane = .japanese
+                translationIsCurrent = true
                 return
             case .spanish where !(translationText[.spanish] ?? "").isEmpty:
                 selectedLane = .spanish
+                translationIsCurrent = true
                 return
             default:
                 // 期待laneがまだ出力していない間は、他laneのfirst-outputで確定しない。
@@ -199,6 +225,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         let available = pairTargets.filter { !(translationText[$0] ?? "").isEmpty }
         if available.count == 1 {
             selectedLane = available[0]
+            translationIsCurrent = true
             return
         }
 
@@ -213,12 +240,15 @@ struct RealtimeSubtitleAssembler: Sendable {
         case .unknown:
             break
         }
+        if let selectedLane, !(translationText[selectedLane] ?? "").isEmpty {
+            translationIsCurrent = true
+        }
     }
 
     private mutating func evaluateFinalize(now: Date) -> RealtimeSubtitleUpdate? {
         guard !sourceText.isEmpty, selectedLane != nil else { return nil }
         let translation = currentTranslation
-        guard !translation.isEmpty else { return nil }
+        guard !translation.isEmpty, translationIsCurrent else { return nil }
 
         let idleExpired = now.timeIntervalSince(lastActivityAt) >= Self.idleFinalizeInterval
         if idleExpired {
@@ -231,9 +261,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         elapsedHint: Int?,
         now: Date
     ) -> RealtimeSubtitleUpdate {
-        if let elapsedHint {
-            finalizedCutoffElapsedMs = elapsedHint
-        }
+        finalizedCutoffElapsedMs = elapsedHint ?? maxTranslationElapsedMs
         let update = RealtimeSubtitleUpdate(
             sourceText: sourceText,
             translatedText: currentTranslation,
@@ -252,21 +280,27 @@ struct RealtimeSubtitleAssembler: Sendable {
         selectedLane.flatMap { translationText[$0] } ?? ""
     }
 
-    private func snapshot(isTranslationCurrent: Bool) -> RealtimeSubtitleUpdate {
+    private func snapshot() -> RealtimeSubtitleUpdate {
         let translation = selectedLane == nil ? "" : currentTranslation
         return RealtimeSubtitleUpdate(
             sourceText: sourceText,
             translatedText: translation,
-            isTranslationCurrent: isTranslationCurrent && !translation.isEmpty,
+            isTranslationCurrent: translationIsCurrent && !translation.isEmpty,
             shouldFinalize: false,
             segmentGeneration: segmentGeneration
         )
+    }
+
+    private mutating func rememberTranslationElapsed(_ elapsedMs: Int?) {
+        guard let elapsedMs else { return }
+        maxTranslationElapsedMs = max(maxTranslationElapsedMs ?? elapsedMs, elapsedMs)
     }
 
     private mutating func clearSegmentBuffers(advancingGeneration: Bool) {
         sourceText = ""
         translationText.removeAll(keepingCapacity: true)
         selectedLane = nil
+        translationIsCurrent = false
         if advancingGeneration {
             segmentGeneration += 1
         }
