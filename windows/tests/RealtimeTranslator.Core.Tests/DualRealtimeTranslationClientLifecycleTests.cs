@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using RealtimeTranslator.Core.Audio;
@@ -152,6 +153,36 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
             DualRealtimeTranslationClient.ResolveTranslationDrainTimeout(baseTimeout, pendingFrameCount: 3),
             dual.CloseDrainTimeoutForTests);
         await dual.ForceCloseAsync();
+    }
+
+    // Given: 言語判定済みで原文送信が停滞している Dual
+    // When: 原文 Append の await 中に ForceClose する
+    // Then: 復帰後も翻訳 lane へはその frame を enqueue せず、停止後の誤送信を許さない
+    [Fact]
+    public async Task ForceCloseDuringSourceAppendDoesNotEnqueueTranslationFrame()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+        await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("beforeClose"));
+        await dual.WaitForTranslationDrainAsync();
+        Assert.Equal(["beforeClose"], english.AppendedFrameTexts());
+
+        source.SendDelay = TimeSpan.FromSeconds(2);
+        var appendTask = dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("duringClose"));
+        await Task.Delay(50);
+        await dual.ForceCloseAsync();
+        await appendTask;
+
+        Assert.Equal(["beforeClose"], english.AppendedFrameTexts());
+        Assert.DoesNotContain("duringClose", english.AppendedFrameTexts());
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("afterClose")));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
     }
 
     private static DualRealtimeTranslationClient CreateDual(
