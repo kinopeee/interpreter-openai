@@ -404,7 +404,22 @@ public sealed class DualRealtimeTranslationClientParityTests
         source.EnqueueJson(
             """{"type":"conversation.item.input_audio_transcription.delta","item_id":"item-1","delta":"alive"}""");
 
-        var sourceDeltas = await CollectSourceDeltasAsync(dual, count: 1);
+        // CollectSourceDeltasAsync は非原文イベントを捨てるので、unused leftover が
+        // source より先に merge されても緑のままになる。待ち中も leftover を落とす。
+        var sourceDeltas = new List<string>(1);
+        using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+        {
+            while (sourceDeltas.Count < 1)
+            {
+                var streamEvent = await dual.Events.ReadAsync(timeout.Token);
+                Assert.IsNotType<RealtimeTranslationServerEvent.OutputTranscriptDelta>(streamEvent.Event);
+                if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta delta)
+                {
+                    sourceDeltas.Add(delta.Delta);
+                }
+            }
+        }
+
         Assert.Equal(["alive"], sourceDeltas);
         while (dual.Events.TryRead(out var leftover))
         {
