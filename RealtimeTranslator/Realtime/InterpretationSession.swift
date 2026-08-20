@@ -364,10 +364,11 @@ final class InterpretationSession {
     private func consumeEvents(generation: Int, epoch: Int) async throws {
         let stream = await dualClient.events
         for await streamEvent in stream {
-            guard generation == lifecycleGeneration else { return }
             guard streamEvent.epoch == epoch else { continue }
+            let isCurrentGeneration = generation == lifecycleGeneration
 
             if case .error(let message, let code) = streamEvent.event {
+                guard isCurrentGeneration else { return }
                 if code == "transport" {
                     throw RealtimeTranslationError.recoverableTransportFailure(message)
                 }
@@ -379,7 +380,9 @@ final class InterpretationSession {
             }
 
             // 原文 routing は専用 transcription の source lane だけを使う。
-            if case .inputTranscriptDelta(let delta, _, _) = streamEvent.event,
+            // stop 開始後は Dual 切替を走らせず、取り出済み delta だけ assembler へ渡す。
+            if isCurrentGeneration,
+               case .inputTranscriptDelta(let delta, _, _) = streamEvent.event,
                streamEvent.lane.isSource {
                 try await updateAudioRouting(withSourceDelta: delta)
             }
@@ -392,16 +395,24 @@ final class InterpretationSession {
                 )
                 #endif
                 enqueueRender(update)
-                if update.shouldFinalize {
+                if isCurrentGeneration, update.shouldFinalize {
                     await resetAudioRoutingForNextSegment()
                 }
             }
+
+            // stream から取り出した delta を generation mismatch で捨てると、
+            // AsyncStream.finish() 後に再読できず停止時の最終字幕が欠ける。
+            guard isCurrentGeneration else { return }
         }
         guard generation == lifecycleGeneration else { return }
         throw RealtimeTranslationError.recoverableTransportFailure("event stream ended")
     }
 
     private func performStop() async {
+        // consumer 停止前に武装する。AsyncStream.finish() は未読を捨てるため、
+        // 既に yield した最新窓と、これ以降の close 窓を Dual 側で保持する。
+        await dualClient.beginStopDrainCapture()
+
         lifecycleGeneration += 1
         state = .closing
         aggregator.setStatusBanner(UiCopy.text("banner.closing"))
@@ -422,10 +433,6 @@ final class InterpretationSession {
         if let runningSessionTask {
             await runningSessionTask.value
         }
-
-        // consumer 終了直後から drain を蓄え、translation pump drain / session.close の
-        // 窓で届く最終 delta を AsyncStream の読み捨てにしない。
-        await dualClient.beginStopDrainCapture()
 
         // スロットル中の旧 snapshot を先に適用し、その後の close drain で上書きする。
         if let pending {
