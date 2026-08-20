@@ -54,6 +54,20 @@ public sealed class LanguageFixtureTests
                 SpokenLanguageDetector.EnEsWindow));
     }
 
+    // Given: 8語窓の先頭語の直前に空白付きの逆疑問符がある
+    // When: en-es の recent evidence を求める
+    // Then: 空白を挟んでも ¿ を窓に残し spanish を即時確定する
+    [Fact]
+    public void EnEsRecentEvidencePreservesInvertedPunctuationSeparatedBySpace()
+    {
+        Assert.Equal(
+            SpokenLanguageEvidence.Spanish,
+            SpokenLanguageDetector.RecentEvidence(
+                "aaa bbb ccc ¿ Hello there friend people world today extra more",
+                LanguagePair.EnEs,
+                SpokenLanguageDetector.EnEsWindow));
+    }
+
     // Given: 非 BMP 文字を含む単語境界
     // When: en-es の recent evidence を評価する
     // Then: UTF-16 の下位サロゲートを Rune として誤読せず判定できる

@@ -158,7 +158,7 @@ enum SpokenLanguageDetector {
         return spanishScore > englishScore ? .spanish : .english
     }
 
-    /// en-es RecentEvidence と同じ語窓の開始（¿ / ¡ を語前に含める）。
+    /// en-es RecentEvidence と同じ語窓の開始（¿ / ¡ と、その直前の空白を語前に含める）。
     /// 語数が window 以下なら文字列先頭を返す。
     static func recentWordWindowStart(
         in text: String,
@@ -170,12 +170,17 @@ enum SpokenLanguageDetector {
         guard spans.count > window else { return scalars.startIndex }
 
         var start = spans[spans.count - window].start
-        while start > scalars.startIndex {
-            let previous = scalars.index(before: start)
-            guard scalars[previous].value == 0x00BF
-                || scalars[previous].value == 0x00A1
-            else { break }
-            start = previous
+        var probe = start
+        while probe > scalars.startIndex {
+            let previous = scalars.index(before: probe)
+            let scalar = scalars[previous]
+            if scalar.value == 0x00BF || scalar.value == 0x00A1 {
+                start = previous
+                probe = previous
+                continue
+            }
+            guard CharacterSet.whitespacesAndNewlines.contains(scalar) else { break }
+            probe = previous
         }
         return start
     }
