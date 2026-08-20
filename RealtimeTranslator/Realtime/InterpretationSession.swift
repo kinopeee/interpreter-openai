@@ -374,10 +374,8 @@ final class InterpretationSession {
                 if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
                     throw RealtimeTranslationError.authenticationFailed
                 }
-                // サーバー文言にキー断片が含まれる場合があるため、ユーザー向け文言はサニタイズする。
-                throw RealtimeTranslationError.fatalServerError(
-                    RealtimeTranslationError.sanitizedServerMessage(message)
-                )
+                // サーバー文言にキー断片が含まれる場合があるため、保持前に正規化する。
+                throw RealtimeTranslationError.fatalServerError(message)
             }
 
             // 原文 routing は専用 transcription の source lane だけを使う。

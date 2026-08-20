@@ -241,6 +241,12 @@ public sealed class SecurityAndAppServicesTests
             Assert.DoesNotContain(installId, line, StringComparison.OrdinalIgnoreCase);
             Assert.Contains(AppLogger.RedactedPlaceholder, line, StringComparison.Ordinal);
             Assert.Contains("connect failed", line, StringComparison.Ordinal);
+
+            AppLogger.Error(LogCategory.Realtime, "invalid key SK-ABCDEFGHIJ");
+            Assert.DoesNotContain("SK-ABCDEFGHIJ", sink.Lines[^1], StringComparison.Ordinal);
+
+            AppLogger.Error(LogCategory.Realtime, "invalid key s\u200bk-abcdefghi");
+            Assert.DoesNotContain("abcdefghi", sink.Lines[^1], StringComparison.Ordinal);
         }
         finally
         {

@@ -122,16 +122,30 @@ enum RealtimeTranslationServerEvent: Sendable, Equatable {
     case unknown(type: String)
 }
 
-enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
+enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+    /// 正規化済みのサーバー文言。生の資格情報は保持できない。
+    struct SanitizedMessage: Sendable, Equatable, Hashable {
+        let value: String
+
+        init(_ raw: String) {
+            value = RealtimeTranslationError.sanitizedServerMessage(raw)
+        }
+    }
+
     case missingAPIKey
     case notConnected
     case invalidMessage
     case authenticationFailed
-    case fatalServerError(String)
+    case fatalServerError(SanitizedMessage)
     case recoverableTransportFailure(String)
     case sessionUpdateTimeout
     case closeTimeout
     case cancelled
+
+    /// 生のサーバー文言を渡しても保持前に正規化する。
+    static func fatalServerError(_ raw: String) -> RealtimeTranslationError {
+        .fatalServerError(SanitizedMessage(raw))
+    }
 
     static var genericServerMessage: String { UiCopy.text("error.genericServer") }
 
@@ -151,6 +165,11 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
         description(using: UserCopyStore.current)
     }
 
+    /// `String(describing:)` / debug dump が associated value の生文言を出さないようにする。
+    var description: String { errorDescription ?? "" }
+
+    var debugDescription: String { description }
+
     /// 表示文言の `UserCopy` を明示する。未指定時は Current。
     func description(using copy: UserCopy) -> String {
         switch self {
@@ -163,7 +182,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
         case .authenticationFailed:
             return copy.text("error.authenticationFailed")
         case .fatalServerError(let message):
-            return Self.sanitizedServerMessage(message)
+            return message.value
         case .recoverableTransportFailure:
             return copy.text("error.transportDisconnected")
         case .sessionUpdateTimeout:
@@ -189,10 +208,8 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
     /// bare `auth` / `401` / `403` 部分一致は `authority` や `4010` に誤爆するため使わない。
     /// `authorization` は単語として一致し、`authority` には一致しない。
     static func isAuthenticationFailure(code: String?, message: String) -> Bool {
-        let codeLowered = (code ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let messageLowered = message.lowercased()
+        let codeLowered = SecretText.normalizeForMatch(code ?? "").replacingOccurrences(of: " ", with: "")
+        let messageLowered = SecretText.normalizeForMatch(message)
 
         if knownAuthenticationFailureCodes.contains(codeLowered) {
             return true
@@ -228,8 +245,9 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable {
 
     /// アラート・バナー・ログへ出してよいサーバー文言へ正規化する。
     static func sanitizedServerMessage(_ message: String) -> String {
-        let lowered = message.lowercased()
-        if lowered.contains("sk-")
+        let lowered = SecretText.normalizeForMatch(message)
+        let compact = lowered.replacingOccurrences(of: " ", with: "")
+        if compact.contains("sk-")
             || lowered.contains("api key")
             || lowered.contains("authorization")
             || lowered.contains("bearer ")

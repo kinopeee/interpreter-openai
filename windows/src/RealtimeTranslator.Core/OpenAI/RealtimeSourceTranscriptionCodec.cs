@@ -1,7 +1,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Immutable;
-using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -165,7 +164,6 @@ public static class RealtimeSourceTranscriptionCodec
         var body = payload["error"] as JsonObject;
         var message = ReadString(body?["message"]) ?? DefaultErrorMessage;
         var code = ReadString(body?["code"]);
-        Trace.WriteLine("Realtime transcription error code=" + (code ?? "none"));
 
         return RealtimeTranslationException.IsAuthenticationFailure(code, message)
             ? new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed)
