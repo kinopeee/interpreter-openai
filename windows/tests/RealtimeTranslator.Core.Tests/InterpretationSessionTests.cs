@@ -1259,6 +1259,27 @@ public sealed class InterpretationSessionTests
         Assert.Equal(0, client.UpdateTranscriptionTuningCount);
     }
 
+    // Given: 致命エラーで Error になったセッション
+    // When: ApplyTuningChangeAsync する
+    // Then: 切断済み dual へ session.update を送らない
+    [Fact]
+    public async Task ApplyTuningChangeIsNoOpWhenError()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+
+        client.PublishServerError("Incorrect API key provided", "invalid_api_key");
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        await session.ApplyTuningChangeAsync();
+
+        Assert.Equal(TranslationState.Error, session.State);
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+    }
+
     // Given: Listening 中に dual の tuning 更新が RealtimeTranslationException を投げる
     // When: ApplyTuningChangeAsync する
     // Then: 例外を握りつぶして Listening を維持し、Error へ落とさない
