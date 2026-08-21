@@ -299,6 +299,143 @@ public sealed class DualRealtimeTranslationClientParityTests
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
     }
 
+    // Given: ja-es で日本語 handshake だけが停滞し、原文とスペイン語 lane は ready
+    // When: 日本語が SessionUpdateTimeout する
+    // Then: leftover の原文・スペイン語を ForceClose し、未使用 English は接続しない
+    [Fact]
+    public async Task JapaneseHandshakeStallForceClosesReadyJaEsLanesWithoutStartingEnglish()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport { AutoHandshake = false };
+        var spanish = new FakeRealtimeServerTransport();
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(source, "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.English,
+                english,
+                "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Japanese,
+                japanese,
+                "test-safety",
+                sessionUpdateTimeout: TimeSpan.FromSeconds(2)),
+            spanishConnection: new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Spanish,
+                spanish,
+                "test-safety"));
+
+        var startTask = dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs);
+        await WaitUntilSessionUpdatedAsync(source, spanish);
+        // leftover 判定は handshake 完了後から cleanup 後に CloseCount が増えたことだけを見る。
+        var closeCountBeforeCleanup = (
+            Source: source.CloseCount,
+            Spanish: spanish.CloseCount);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => startTask);
+
+        Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, error.Kind);
+        Assert.Equal(0, english.ConnectCount);
+        Assert.True(source.CloseCount > closeCountBeforeCleanup.Source);
+        Assert.True(spanish.CloseCount > closeCountBeforeCleanup.Spanish);
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
+    // Given: ja-es で原文 handshake だけが停滞し、日本語とスペイン語 lane は ready
+    // When: 原文が SessionUpdateTimeout する
+    // Then: leftover の翻訳 lane を ForceClose し、未使用 English は接続しない
+    [Fact]
+    public async Task SourceHandshakeStallForceClosesReadyJaEsLanesWithoutStartingEnglish()
+    {
+        var source = new FakeRealtimeServerTransport { AutoHandshake = false };
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        var spanish = new FakeRealtimeServerTransport();
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(
+                source,
+                "test-safety",
+                handshakeTimeout: TimeSpan.FromSeconds(2)),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.English,
+                english,
+                "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Japanese,
+                japanese,
+                "test-safety"),
+            spanishConnection: new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Spanish,
+                spanish,
+                "test-safety"));
+
+        var startTask = dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs);
+        await WaitUntilSessionUpdatedAsync(japanese, spanish);
+        // leftover 判定は handshake 完了後から cleanup 後に CloseCount が増えたことだけを見る。
+        var closeCountBeforeCleanup = (
+            Japanese: japanese.CloseCount,
+            Spanish: spanish.CloseCount);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => startTask);
+
+        Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, error.Kind);
+        Assert.Equal(0, english.ConnectCount);
+        Assert.True(japanese.CloseCount > closeCountBeforeCleanup.Japanese);
+        Assert.True(spanish.CloseCount > closeCountBeforeCleanup.Spanish);
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
+    // Given: en-es で英語 handshake だけが停滞し、原文とスペイン語 lane は ready
+    // When: 英語が SessionUpdateTimeout する
+    // Then: leftover の原文・スペイン語を ForceClose し、未使用 Japanese は接続しない
+    [Fact]
+    public async Task EnglishHandshakeStallForceClosesReadyEnEsLanesWithoutStartingJapanese()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport { AutoHandshake = false };
+        var japanese = new FakeRealtimeServerTransport();
+        var spanish = new FakeRealtimeServerTransport();
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(source, "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.English,
+                english,
+                "test-safety",
+                sessionUpdateTimeout: TimeSpan.FromSeconds(2)),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Japanese,
+                japanese,
+                "test-safety"),
+            spanishConnection: new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Spanish,
+                spanish,
+                "test-safety"));
+
+        var startTask = dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.EnEs);
+        await WaitUntilSessionUpdatedAsync(source, spanish);
+        // leftover 判定は handshake 完了後から cleanup 後に CloseCount が増えたことだけを見る。
+        var closeCountBeforeCleanup = (
+            Source: source.CloseCount,
+            Spanish: spanish.CloseCount);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => startTask);
+
+        Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, error.Kind);
+        Assert.Equal(0, japanese.ConnectCount);
+        Assert.True(source.CloseCount > closeCountBeforeCleanup.Source);
+        Assert.True(spanish.CloseCount > closeCountBeforeCleanup.Spanish);
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
     // Given: 全 lane が session.created を返さない Dual
     // When: Connect 後に呼び出し側 token をキャンセルする
     // Then: SessionUpdateTimeout ではなくキャンセルになり、3 接続とも閉じる
