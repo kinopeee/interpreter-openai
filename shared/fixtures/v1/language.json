@@ -198,6 +198,38 @@
       "window": 8,
       "expected": "ambiguousLatin",
       "fullEvidence": "english"
+    },
+    {
+      "name": "en-es inverted punctuation before the word window keeps a following tab",
+      "pair": "en-es",
+      "input": "aaa bbb ccc ¿\tHello there friend people world today extra more",
+      "window": 8,
+      "expected": "spanish",
+      "fullEvidence": "spanish"
+    },
+    {
+      "name": "en-es inverted punctuation before the word window keeps a following newline",
+      "pair": "en-es",
+      "input": "aaa bbb ccc ¿\nHello there friend people world today extra more",
+      "window": 8,
+      "expected": "spanish",
+      "fullEvidence": "spanish"
+    },
+    {
+      "name": "en-es both inverted marks before the word window stay in the window",
+      "pair": "en-es",
+      "input": "aaa bbb ccc ¿ ¡ Hello there friend people world today extra more",
+      "window": 8,
+      "expected": "spanish",
+      "fullEvidence": "spanish"
+    },
+    {
+      "name": "en-es inverted punctuation after discarded exclusive words stays spanish",
+      "pair": "en-es",
+      "input": "the and is are of to it that ¿ Hello there friend people world today extra more",
+      "window": 8,
+      "expected": "spanish",
+      "fullEvidence": "spanish"
     }
   ],
   "targets": [
