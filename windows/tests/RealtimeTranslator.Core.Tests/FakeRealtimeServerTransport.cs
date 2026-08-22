@@ -41,6 +41,12 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
     /// </summary>
     public Exception? CloseError { get; set; }
 
+    /// <summary>
+    /// Connect 成功後に <see cref="CloseError"/> をセットする。
+    /// Dual.Start 先頭の ForceClose は通し、handshake 失敗後の leftover cleanup だけ失敗させる。
+    /// </summary>
+    public Exception? CloseErrorAfterConnect { get; set; }
+
     public TimeSpan SendDelay { get; set; }
 
     public int ConnectCount { get; private set; }
@@ -88,6 +94,11 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
         if (ConnectError is not null)
         {
             return Task.FromException(ConnectError);
+        }
+
+        if (CloseErrorAfterConnect is not null)
+        {
+            CloseError = CloseErrorAfterConnect;
         }
 
         if (AutoHandshake)
