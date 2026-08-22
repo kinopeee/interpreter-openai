@@ -152,4 +152,26 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         // Then: 空白を挟んでも ¿ を窓に残し spanish を即時確定する
         XCTAssertEqual(evidence, .spanish)
     }
+
+    func testEnEsRecentWordWindowStartIncludesInvertedPunctuationAcrossControlWhitespace() {
+        // Given: 8語窓の先頭語の直前に TAB / 改行付きの逆疑問符がある
+        let cases = ["\t", "\n", "\r"]
+
+        for separator in cases {
+            let text = "aaa bbb ccc ¿\(separator)Hello there friend people world today extra more"
+
+            // When: 語窓開始と recent evidence を求める
+            let start = SpokenLanguageDetector.recentWordWindowStart(in: text)
+            let window = String(text.unicodeScalars[start...])
+            let evidence = SpokenLanguageDetector.recentEvidence(
+                in: text,
+                pair: .enEs,
+                window: SpokenLanguageDetector.enEsWindow
+            )
+
+            // Then: 制御空白を跨いで ¿ が窓先頭に残り spanish になる
+            XCTAssertTrue(window.hasPrefix("¿"), "separator scalar \(separator.unicodeScalars.first!.value)")
+            XCTAssertEqual(evidence, .spanish)
+        }
+    }
 }

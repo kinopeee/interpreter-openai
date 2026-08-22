@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
@@ -64,6 +65,53 @@ public sealed class LanguageFixtureTests
             SpokenLanguageEvidence.Spanish,
             SpokenLanguageDetector.RecentEvidence(
                 "aaa bbb ccc ¿ Hello there friend people world today extra more",
+                LanguagePair.EnEs,
+                SpokenLanguageDetector.EnEsWindow));
+    }
+
+    // Given: 8語窓の先頭語の直前に TAB / 改行付きの逆疑問符がある
+    // When: RecentWordWindowStart と RecentEvidence を求める
+    // Then: 制御空白を跨いで ¿ が窓先頭に残り spanish になる
+    [Theory]
+    [InlineData("\t")]
+    [InlineData("\n")]
+    [InlineData("\r")]
+    public void EnEsRecentWordWindowStartIncludesInvertedPunctuationAcrossControlWhitespace(
+        string separator)
+    {
+        var text = $"aaa bbb ccc ¿{separator}Hello there friend people world today extra more";
+
+        var start = SpokenLanguageDetector.RecentWordWindowStart(text);
+        var window = text[start..];
+
+        Assert.StartsWith("¿", window, StringComparison.Ordinal);
+        Assert.Equal(
+            SpokenLanguageEvidence.Spanish,
+            SpokenLanguageDetector.RecentEvidence(
+                text,
+                LanguagePair.EnEs,
+                SpokenLanguageDetector.EnEsWindow));
+        Assert.Equal(
+            SpokenLanguageEvidence.Spanish,
+            SpokenLanguageDetector.Evidence(window, LanguagePair.EnEs));
+    }
+
+    // Given: 8語窓の先頭語の直前に ¿ と ¡ が空白区切りである
+    // When: RecentWordWindowStart を求める
+    // Then: 両方の逆句読点が窓に残り spanish になる
+    [Fact]
+    public void EnEsRecentWordWindowStartIncludesBothInvertedMarksSeparatedBySpace()
+    {
+        const string text = "aaa bbb ccc ¿ ¡ Hello there friend people world today extra more";
+
+        var window = text[SpokenLanguageDetector.RecentWordWindowStart(text)..];
+
+        Assert.StartsWith("¿", window, StringComparison.Ordinal);
+        Assert.Contains("¡", window, StringComparison.Ordinal);
+        Assert.Equal(
+            SpokenLanguageEvidence.Spanish,
+            SpokenLanguageDetector.RecentEvidence(
+                text,
                 LanguagePair.EnEs,
                 SpokenLanguageDetector.EnEsWindow));
     }

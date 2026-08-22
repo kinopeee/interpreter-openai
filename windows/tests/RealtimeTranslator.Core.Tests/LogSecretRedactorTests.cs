@@ -125,4 +125,59 @@ public sealed class LogSecretRedactorTests
 
         Assert.Equal(input, LogSecretRedactor.Redact(input));
     }
+
+    // Given: OpenAI-Safety-Identifier ヘッダ断片
+    // When: 伏字化する
+    // Then: 識別子は残らず、前後の文言だけが残る
+    [Fact]
+    public void RedactReplacesOpenAISafetyIdentifierHeader()
+    {
+        const string identifier = "deadbeefcafebabe0123456789abcdef";
+        var redacted = LogSecretRedactor.Redact(
+            "hdr OpenAI-Safety-Identifier: " + identifier + " extra");
+
+        Assert.DoesNotContain(identifier, redacted, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Safety-Identifier", redacted, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("hdr " + LogSecretRedactor.Placeholder + " extra", redacted);
+    }
+
+    // Given: ZWSP で分断した Safety-Identifier ヘッダ
+    // When: 伏字化する
+    // Then: 不可視文字を除いた識別子は残らない
+    [Fact]
+    public void RedactReplacesZeroWidthObfuscatedSafetyIdentifierHeader()
+    {
+        const string identifier = "deadbeefcafebabe0123456789abcdef";
+        var redacted = LogSecretRedactor.Redact(
+            "hdr OpenAI-Safety-\u200bIdentifier: " + identifier + " extra");
+
+        Assert.DoesNotContain(identifier, redacted, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(LogSecretRedactor.Placeholder, redacted, StringComparison.Ordinal);
+    }
+
+    // Given: ログメッセージに混入した install UUID
+    // When: 伏字化する
+    // Then: UUID は残らず、周辺テキストは残る
+    [Fact]
+    public void RedactReplacesRawInstallUuid()
+    {
+        const string installId = "550e8400-e29b-41d4-a716-446655440000";
+        var redacted = LogSecretRedactor.Redact("install id " + installId + " stored");
+
+        Assert.DoesNotContain(installId, redacted, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("install id " + LogSecretRedactor.Placeholder + " stored", redacted);
+    }
+
+    // Given: TAB で語を分けた api key フレーズ
+    // When: 照合用に正規化する
+    // Then: 制御空白は ASCII 空白へ寄り、連結して 401 を誤検出しない
+    [Fact]
+    public void SecretTextNormalizesControlWhitespaceWithoutJoiningStatusCodes()
+    {
+        Assert.Equal(
+            "invalid api key provided",
+            SecretText.NormalizeForMatch("invalid api\tkey provided"));
+        Assert.Equal("code 4 01", SecretText.NormalizeForMatch("code 4\t01"));
+        Assert.DoesNotContain("401", SecretText.NormalizeForMatch("code 4\t01"), StringComparison.Ordinal);
+    }
 }
