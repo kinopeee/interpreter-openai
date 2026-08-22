@@ -128,6 +128,36 @@ public sealed class InterpretationSessionTests
         Assert.False(audio.IsRunning);
     }
 
+    // Given: Dual Start は完了したが capture Start 待ち
+    // When: その間に Stop する
+    // Then: Listening に到達せず Idle に戻り、capture は開始されないか停止済みになる
+    [Fact]
+    public async Task StopAfterDualStartBeforeCaptureNeverReachesListening()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        audio.StartGate = gate;
+        using var session = NewSession(client, audio: audio);
+
+        var startTask = session.StartAsync();
+        await WaitUntilAsync(() =>
+            client.StartCount == 1 && audio.StartCallCount == 1);
+        Assert.Equal(TranslationState.Connecting, session.State);
+
+        var stopTask = session.StopAsync();
+        await WaitUntilAsync(() =>
+            session.State is TranslationState.Closing or TranslationState.Idle);
+        audio.StartGate = null;
+        gate.TrySetResult();
+        await stopTask;
+        await startTask;
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        Assert.False(audio.IsRunning);
+        Assert.NotEqual(TranslationState.Listening, session.State);
+    }
+
     // Given: 録音中のセッション
     // When: Stop を二重に呼ぶ
     // Then: 2 回目は no-op で Idle のまま壊れない
@@ -1259,6 +1289,43 @@ public sealed class InterpretationSessionTests
         Assert.Equal(0, client.UpdateTranscriptionTuningCount);
     }
 
+    // Given: Listening 中に CloseGracefully が遅く Closing のまま
+    // When: ApplyTuningChangeAsync する
+    // Then: teardown 中の socket へ session.update を送らない
+    [Fact]
+    public async Task ApplyTuningChangeIsNoOpWhenClosing()
+    {
+        var closeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowCloseFinish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        // StartAsync がフックを消すため、Listening 到達後に遅い Close を仕込む。
+        client.OnCloseGracefully = async () =>
+        {
+            closeStarted.TrySetResult();
+            await allowCloseFinish.Task.ConfigureAwait(false);
+            client.Complete();
+        };
+
+        var stopTask = session.StopAsync();
+        await closeStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(TranslationState.Closing, session.State);
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+
+        await session.ApplyTuningChangeAsync();
+
+        Assert.Equal(TranslationState.Closing, session.State);
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+
+        allowCloseFinish.TrySetResult();
+        await stopTask;
+        Assert.Equal(TranslationState.Idle, session.State);
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+    }
+
     // Given: Listening 中に dual の tuning 更新が RealtimeTranslationException を投げる
     // When: ApplyTuningChangeAsync する
     // Then: 例外を握りつぶして Listening を維持し、Error へ落とさない
@@ -2199,6 +2266,9 @@ public sealed class InterpretationSessionTests
 
         public bool IsRunning { get; private set; }
 
+        /// <summary>StartAsync 入口で待つゲート（Dual 完了後・capture 開始前の Stop 用）。</summary>
+        public TaskCompletionSource? StartGate { get; set; }
+
         public ChannelReader<ReadOnlyMemory<byte>> Frames
         {
             get
@@ -2210,20 +2280,30 @@ public sealed class InterpretationSessionTests
             }
         }
 
-        public Task StartAsync(CancellationToken cancellationToken = default)
+        public async Task StartAsync(CancellationToken cancellationToken = default)
         {
+            Task? gateTask;
             lock (_sync)
             {
                 StartCallCount += 1;
-                IsRunning = true;
                 // 再接続時に完了済み channel を使い回すと即 recoverable になるため張り直す。
                 if (_frames.Reader.Completion.IsCompleted)
                 {
                     _frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
                 }
+
+                gateTask = StartGate?.Task;
             }
 
-            return Task.CompletedTask;
+            if (gateTask is not null)
+            {
+                await gateTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            lock (_sync)
+            {
+                IsRunning = true;
+            }
         }
 
         public Task StopAsync()

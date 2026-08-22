@@ -198,6 +198,14 @@
       "window": 8,
       "expected": "ambiguousLatin",
       "fullEvidence": "english"
+    },
+    {
+      "name": "en-es word window does not walk back past latin to a distant inverted question",
+      "pair": "en-es",
+      "input": "¿ Dónde estás hello there friend people world today extra more",
+      "window": 8,
+      "expected": "ambiguousLatin",
+      "fullEvidence": "spanish"
     }
   ],
   "targets": [

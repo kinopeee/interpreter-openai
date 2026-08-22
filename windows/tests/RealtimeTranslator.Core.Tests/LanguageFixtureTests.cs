@@ -68,6 +68,25 @@ public sealed class LanguageFixtureTests
                 SpokenLanguageDetector.EnEsWindow));
     }
 
+    // Given: 8語窓より前に ¿ があり、その間にラテン語がある
+    // When: en-es の recent evidence を求める
+    // Then: 直前のラテン語で walk-back を止め、遠い ¿ だけでは spanish にしない
+    [Fact]
+    public void EnEsRecentEvidenceDoesNotWalkBackPastLatinToDistantInvertedPunct()
+    {
+        const string text = "¿ Dónde estás hello there friend people world today extra more";
+
+        Assert.Equal(
+            SpokenLanguageEvidence.AmbiguousLatin,
+            SpokenLanguageDetector.RecentEvidence(
+                text,
+                LanguagePair.EnEs,
+                SpokenLanguageDetector.EnEsWindow));
+        Assert.Equal(SpokenLanguageEvidence.Spanish, SpokenLanguageDetector.Evidence(text, LanguagePair.EnEs));
+        Assert.True(
+            SpokenLanguageDetector.RecentWordWindowStart(text) > text.IndexOf('¿'));
+    }
+
     // Given: 非 BMP 文字を含む単語境界
     // When: en-es の recent evidence を評価する
     // Then: UTF-16 の下位サロゲートを Rune として誤読せず判定できる
