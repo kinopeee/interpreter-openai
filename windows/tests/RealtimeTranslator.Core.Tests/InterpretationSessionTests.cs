@@ -1219,6 +1219,56 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: Listening 中に現行 epoch で原文と訳文が揃っている
+    // When: 古い epoch の訳文 delta が届く
+    // Then: 画面の訳文を上書きしない
+    [Fact]
+    public async Task StaleEpochTranslationDeltaIsIgnored()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("good morning everyone");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.Japanese, "おはようございます");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.TranslatedText.Length > 0);
+            }
+        });
+
+        var staleEpoch = client.ConnectionEpoch - 1;
+        Assert.True(staleEpoch >= 0);
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.Japanese,
+            "これは古い接続です",
+            epoch: staleEpoch);
+        await Task.Delay(80);
+
+        RealtimeSubtitleUpdate latest;
+        lock (updates)
+        {
+            latest = updates.FindLast(update => update.TranslatedText.Length > 0);
+            Assert.DoesNotContain(updates, update => update.TranslatedText.Contains("古い接続", StringComparison.Ordinal));
+        }
+
+        Assert.Equal("おはようございます", latest.TranslatedText);
+        await session.StopAsync();
+    }
+
     // Given: Listening 中のセッションとカスタム tuningProvider
     // When: tuning を変えて ApplyTuningChangeAsync する
     // Then: dual へ最新 tuning が転送される
@@ -2460,9 +2510,13 @@ public sealed class InterpretationSessionTests
             new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
             epoch);
 
-        public void PublishTranslationDelta(RealtimeTranslationOutputLanguage target, string delta) => Publish(
+        public void PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage target,
+            string delta,
+            int? epoch = null) => Publish(
             target,
-            new RealtimeTranslationServerEvent.OutputTranscriptDelta(delta, Guid.NewGuid().ToString(), null));
+            new RealtimeTranslationServerEvent.OutputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
+            epoch);
 
         public void PublishTransportError() => Publish(
             RealtimeTranslationOutputLanguage.English,

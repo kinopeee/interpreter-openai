@@ -89,6 +89,32 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         Assert.False(await dual.Events.WaitToReadAsync());
     }
 
+    // Given: CloseGracefully 済みの Dual（通常の録音停止）
+    // When: Select / UpdateTuning / Append する
+    // Then: いずれも NotConnected になり、閉じかけ socket への誤送信を許さない
+    [Fact]
+    public async Task SelectAndUpdateAfterCloseGracefullyAreNotConnected()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.CloseGracefullyAsync();
+
+        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English));
+        var tuningError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.UpdateTranscriptionTuningAsync(RealtimeSessionTuning.Default));
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(Frame(0x41)));
+
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, selectError.Kind);
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, tuningError.Kind);
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
     // Given: 翻訳送信が停滞して drain 待ち中の Dual
     // When: キャンセル済み token で WaitForTranslationDrainAsync する
     // Then: timeout まで待たず OperationCanceledException になる
