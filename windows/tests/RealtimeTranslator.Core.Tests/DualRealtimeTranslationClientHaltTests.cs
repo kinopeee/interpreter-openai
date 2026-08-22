@@ -10,8 +10,9 @@ using Xunit;
 namespace RealtimeTranslator.Core.Tests;
 
 /// <summary>
-/// ja-en の日本語 lane halt と、セグメント境界の ResetAudioRouting が連続失敗カウンタを捨てること。
-/// halt 後の Reset ではポンプを再開せず、Start（再接続）だけが再開する契約もここで固定する。
+/// ja-en の翻訳 halt、成功による連続失敗カウンタのリセット、
+/// セグメント境界の ResetAudioRouting、halt 後の兄弟 lane 選択、
+/// Start（再接続）だけが再開する契約。
 /// routing.json の英語 lane / スペイン語ペア halt とは交差しない。
 /// </summary>
 public sealed class DualRealtimeTranslationClientHaltTests
@@ -74,6 +75,37 @@ public sealed class DualRealtimeTranslationClientHaltTests
         Assert.Contains("stillFlowing", harness.English.AppendedFrameTexts());
     }
 
+    // Given: 翻訳送信が 2 回連続失敗した Dual
+    // When: 1 回成功したあと、さらに 2 回失敗させる
+    // Then: 成功で連続失敗カウンタが 0 に戻り、3 回目相当では halt しない
+    [Fact]
+    public async Task SuccessfulSendResetsConsecutiveTranslationFailureCounter()
+    {
+        await using var harness = await HaltHarness.StartAsync();
+        await harness.SelectAsync(RealtimeTranslationOutputLanguage.English);
+        await harness.AppendAsync("ok1");
+
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail1");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail2");
+
+        await harness.AppendAsync("recovered");
+        Assert.Equal(0, harness.DrainTransportErrorCount());
+        Assert.Contains("recovered", harness.English.AppendedFrameTexts());
+
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail3");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail4");
+
+        Assert.Equal(0, harness.DrainTransportErrorCount());
+        var englishBeforeProbe = harness.English.AppendedFrameTexts();
+        await harness.AppendAsync("stillFlowing");
+        Assert.Contains("stillFlowing", harness.English.AppendedFrameTexts());
+        Assert.NotEqual(englishBeforeProbe, harness.English.AppendedFrameTexts());
+    }
+
     // Given: 翻訳送信が 3 回連続失敗してポンプが halt した Dual
     // When: セグメント境界相当の ResetAudioRouting のあと、同じ target を選び直して frame を送る
     // Then: halt は残り翻訳 lane へは流れない（死にかけ socket へ再開しない）。原文は継続する
@@ -99,6 +131,33 @@ public sealed class DualRealtimeTranslationClientHaltTests
         Assert.Equal(["ok1"], harness.English.AppendedFrameTexts());
         Assert.Contains("afterReset", harness.Source.AppendedFrameTexts());
         Assert.Empty(harness.Japanese.AppendedFrameTexts());
+        Assert.Equal(0, harness.DrainTransportErrorCount());
+    }
+
+    // Given: 英語 lane の翻訳送信が 3 回連続失敗してポンプが halt した Dual
+    // When: Reset せずに日本語 lane を選んで frame を送る
+    // Then: halt は Dual 全体なので日本語 lane にも流れない。原文は継続する
+    [Fact]
+    public async Task HaltDoesNotResumeWhenSelectingSiblingLane()
+    {
+        await using var harness = await HaltHarness.StartAsync();
+        await harness.SelectAsync(RealtimeTranslationOutputLanguage.English);
+        await harness.AppendAsync("ok1");
+
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail1");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail2");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail3");
+        Assert.Equal(1, harness.DrainTransportErrorCount());
+
+        await harness.SelectAsync(RealtimeTranslationOutputLanguage.Japanese);
+        await harness.AppendAsync("afterSiblingSelect");
+
+        Assert.Equal(["ok1"], harness.English.AppendedFrameTexts());
+        Assert.Empty(harness.Japanese.AppendedFrameTexts());
+        Assert.Contains("afterSiblingSelect", harness.Source.AppendedFrameTexts());
         Assert.Equal(0, harness.DrainTransportErrorCount());
     }
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -911,6 +912,35 @@ public sealed class DualRealtimeTranslationClientParityTests
         }
 
         Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
+    // Given: preroll を英語 lane へ flush 済みの Dual
+    // When: 同じ target を再選択してから後続 frame を送る
+    // Then: rolling preroll を再 flush せず、翻訳 lane の frame は増えない
+    [Fact]
+    public async Task SelectSameTargetDoesNotReflushPreroll()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("frame-a"));
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+        await dual.WaitForTranslationDrainAsync();
+        Assert.Equal(["frame-a"], english.AppendedFrameTexts());
+
+        await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("frame-b"));
+        await dual.WaitForTranslationDrainAsync();
+        Assert.Equal(["frame-a", "frame-b"], english.AppendedFrameTexts());
+
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+        await dual.WaitForTranslationDrainAsync();
+
+        Assert.Equal(["frame-a", "frame-b"], english.AppendedFrameTexts());
+        Assert.Empty(japanese.AppendedFrameTexts());
+        await dual.ForceCloseAsync();
     }
 
     // Given: ForceClose 済みの Dual
