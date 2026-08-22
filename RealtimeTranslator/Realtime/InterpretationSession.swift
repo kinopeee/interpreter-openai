@@ -364,11 +364,13 @@ final class InterpretationSession {
     private func consumeEvents(generation: Int, epoch: Int) async throws {
         let stream = await dualClient.events
         for await streamEvent in stream {
+            // stop 後の未読 delta は Dual recentYields → close drain が assembler へ同期適用する。
+            // ここで ingest/enqueueRender すると、performStop が消した renderTask が再生成され、
+            // forceFinalize 後に replaceCurrent で確定ペアを live へ戻す。
+            guard generation == lifecycleGeneration else { return }
             guard streamEvent.epoch == epoch else { continue }
-            let isCurrentGeneration = generation == lifecycleGeneration
 
             if case .error(let message, let code) = streamEvent.event {
-                guard isCurrentGeneration else { return }
                 if code == "transport" {
                     throw RealtimeTranslationError.recoverableTransportFailure(message)
                 }
@@ -380,9 +382,7 @@ final class InterpretationSession {
             }
 
             // 原文 routing は専用 transcription の source lane だけを使う。
-            // stop 開始後は Dual 切替を走らせず、取り出済み delta だけ assembler へ渡す。
-            if isCurrentGeneration,
-               case .inputTranscriptDelta(let delta, _, _) = streamEvent.event,
+            if case .inputTranscriptDelta(let delta, _, _) = streamEvent.event,
                streamEvent.lane.isSource {
                 try await updateAudioRouting(withSourceDelta: delta)
             }
@@ -395,14 +395,10 @@ final class InterpretationSession {
                 )
                 #endif
                 enqueueRender(update)
-                if isCurrentGeneration, update.shouldFinalize {
+                if update.shouldFinalize {
                     await resetAudioRoutingForNextSegment()
                 }
             }
-
-            // stream から取り出した delta を generation mismatch で捨てると、
-            // AsyncStream.finish() 後に再読できず停止時の最終字幕が欠ける。
-            guard isCurrentGeneration else { return }
         }
         guard generation == lifecycleGeneration else { return }
         throw RealtimeTranslationError.recoverableTransportFailure("event stream ended")
