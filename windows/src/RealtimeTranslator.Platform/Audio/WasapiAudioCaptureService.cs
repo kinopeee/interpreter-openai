@@ -113,6 +113,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
             _capture = capture;
             _pumpCts = cts;
             _frames = frames;
+            // StartRecording より先に pump を登録し、StopAsync が orphan writer を
+            // 先に閉じて FlushRemainder を落とす隙間を作らない。
+            _pumpTask = Task.Run(() => PumpAsync(pipeline, frames.Writer, pumpToken), CancellationToken.None);
         }
 
         try
@@ -121,37 +124,8 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         }
         catch (Exception error) when (error is COMException or InvalidOperationException)
         {
-            // pump 未起動のため StopAsync 側で writer を完了させる。
             await StopAsync().ConfigureAwait(false);
             throw new AudioCaptureException(UserCopy.Current.Text("error.micStartFailed"), error);
-        }
-
-        // StartRecording 成功後に pump を登録し、StopAsync と交差しても await 対象を失わない。
-        var pumpTask = Task.Run(() => PumpAsync(pipeline, frames.Writer, pumpToken), CancellationToken.None);
-        bool shouldAwaitOrphan;
-        lock (_sync)
-        {
-            if (ReferenceEquals(_capture, capture) && ReferenceEquals(_pumpCts, cts))
-            {
-                _pumpTask = pumpTask;
-                shouldAwaitOrphan = false;
-            }
-            else
-            {
-                shouldAwaitOrphan = true;
-            }
-        }
-
-        if (shouldAwaitOrphan)
-        {
-            try
-            {
-                await pumpTask.ConfigureAwait(false);
-            }
-            catch (Exception)
-            {
-                // 停止経路の例外は呼び出し側へ伝播しない。
-            }
         }
     }
 
@@ -206,14 +180,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         {
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
-                var frames = pipeline.ReadFrames(Pcm16FramePacketizer.SamplesPerFrame);
-                if (frames.Count == 0)
-                {
-                    // 契約: 録音中は無音 frame も 100ms ごとに送り続ける。
-                    writer.TryWrite(new byte[Pcm16FramePacketizer.BytesPerFrame]);
-                    continue;
-                }
-
+                // 溜まり分はまとめて channel へ渡し、満杯時は DropOldest で遅延を落とす。
+                // 端数の直後は無音を混ぜない。完全飢餓または端数タイムアウト時だけ無音 1 frame。
+                var frames = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
                 foreach (var frame in frames)
                 {
                     writer.TryWrite(frame);
@@ -226,6 +195,11 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         }
         finally
         {
+            foreach (var frame in pipeline.FlushRemainder())
+            {
+                writer.TryWrite(frame);
+            }
+
             writer.TryComplete();
         }
     }
@@ -269,9 +243,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
             _pumpCts = null;
         }
 
-        cts?.Cancel();
-        cts?.Dispose();
-
+        // DataAvailable は capture スレッドから同期で来る。pump を先に cancel すると
+        // FlushRemainder の後に Push が入り、停止時の端数が落ちる。
+        // Dispose は capture スレッドを join するので、その後に pump を止める。
         if (capture is not null)
         {
             try
@@ -287,5 +261,8 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         }
 
         ownedDevice?.Dispose();
+
+        cts?.Cancel();
+        cts?.Dispose();
     }
 }
