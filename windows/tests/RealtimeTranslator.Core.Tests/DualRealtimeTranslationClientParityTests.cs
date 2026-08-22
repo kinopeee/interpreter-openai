@@ -300,6 +300,136 @@ public sealed class DualRealtimeTranslationClientParityTests
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
     }
 
+    // Given: en-es でスペイン語 handshake だけが停滞し、原文と英語 lane は ready
+    // When: スペイン語が SessionUpdateTimeout する
+    // Then: leftover の原文・英語を ForceClose し、未使用 Japanese は接続しない
+    [Fact]
+    public async Task SpanishHandshakeStallForceClosesReadyEnEsLanesWithoutStartingJapanese()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        var spanish = new FakeRealtimeServerTransport { AutoHandshake = false };
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(source, "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.English,
+                english,
+                "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Japanese,
+                japanese,
+                "test-safety"),
+            spanishConnection: new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Spanish,
+                spanish,
+                "test-safety",
+                sessionUpdateTimeout: TimeSpan.FromSeconds(2)));
+
+        var startTask = dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.EnEs);
+        await WaitUntilSessionUpdatedAsync(source, english);
+        var closeCountBeforeCleanup = (
+            Source: source.CloseCount,
+            English: english.CloseCount);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => startTask);
+
+        Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, error.Kind);
+        Assert.Equal(0, japanese.ConnectCount);
+        Assert.True(source.CloseCount > closeCountBeforeCleanup.Source);
+        Assert.True(english.CloseCount > closeCountBeforeCleanup.English);
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
+    // Given: 3 本の翻訳接続を持つ Dual で 1 つ目の pair を開始したあと
+    // When: 同じ Dual を別 pair で再 Start する
+    // Then: 新 pair に無い lane は ForceClose されて再接続せず、その leftover delta は Events に混線しない
+    [Theory]
+    [InlineData(LanguagePair.JaEn, LanguagePair.JaEs)]
+    [InlineData(LanguagePair.JaEn, LanguagePair.EnEs)]
+    [InlineData(LanguagePair.JaEs, LanguagePair.JaEn)]
+    public async Task RestartWithDifferentPairForceClosesUnusedLaneAndDropsLeftoverDeltas(
+        LanguagePair first,
+        LanguagePair second)
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        var spanish = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese, spanish);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, first);
+        var closeCountAfterFirst = (
+            English: english.CloseCount,
+            Japanese: japanese.CloseCount,
+            Spanish: spanish.CloseCount);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, second);
+
+        var firstLanguages = first.Languages().Select(language => language.ToOutputLanguage()).ToHashSet();
+        var secondLanguages = second.Languages().Select(language => language.ToOutputLanguage()).ToHashSet();
+        Assert.Equal(
+            ConnectCountAfterPairSwitch(firstLanguages, secondLanguages, RealtimeTranslationOutputLanguage.English),
+            english.ConnectCount);
+        Assert.Equal(
+            ConnectCountAfterPairSwitch(firstLanguages, secondLanguages, RealtimeTranslationOutputLanguage.Japanese),
+            japanese.ConnectCount);
+        Assert.Equal(
+            ConnectCountAfterPairSwitch(firstLanguages, secondLanguages, RealtimeTranslationOutputLanguage.Spanish),
+            spanish.ConnectCount);
+        if (!secondLanguages.Contains(RealtimeTranslationOutputLanguage.English))
+        {
+            Assert.True(english.CloseCount > closeCountAfterFirst.English);
+        }
+
+        if (!secondLanguages.Contains(RealtimeTranslationOutputLanguage.Japanese))
+        {
+            Assert.True(japanese.CloseCount > closeCountAfterFirst.Japanese);
+        }
+
+        if (!secondLanguages.Contains(RealtimeTranslationOutputLanguage.Spanish))
+        {
+            Assert.True(spanish.CloseCount > closeCountAfterFirst.Spanish);
+        }
+
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        var unused = UnusedLaneTransport(first, second, english, japanese, spanish);
+        unused.EnqueueJson(
+            """{"type":"session.output_transcript.delta","delta":"leftover unused lane","event_id":"unused-1"}""");
+        source.EnqueueJson(
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"item-1","delta":"alive"}""");
+
+        // CollectSourceDeltasAsync は非原文イベントを捨てるので、unused leftover が
+        // source より先に merge されても緑のままになる。待ち中も leftover を落とす。
+        var sourceDeltas = new List<string>(1);
+        using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+        {
+            while (sourceDeltas.Count < 1)
+            {
+                var streamEvent = await dual.Events.ReadAsync(timeout.Token);
+                Assert.IsNotType<RealtimeTranslationServerEvent.OutputTranscriptDelta>(streamEvent.Event);
+                if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta delta)
+                {
+                    sourceDeltas.Add(delta.Delta);
+                }
+            }
+        }
+
+        Assert.Equal(["alive"], sourceDeltas);
+        while (dual.Events.TryRead(out var leftover))
+        {
+            Assert.IsNotType<RealtimeTranslationServerEvent.OutputTranscriptDelta>(leftover.Event);
+        }
+
+        await dual.ForceCloseAsync();
+    }
+
     // Given: 全 lane が session.created を返さない Dual
     // When: Connect 後に呼び出し側 token をキャンセルする
     // Then: SessionUpdateTimeout ではなくキャンセルになり、3 接続とも閉じる
@@ -913,6 +1043,42 @@ public sealed class DualRealtimeTranslationClientParityTests
             timeout.Token.ThrowIfCancellationRequested();
             await Task.Delay(10, timeout.Token);
         }
+    }
+
+    private static int ConnectCountAfterPairSwitch(
+        HashSet<RealtimeTranslationOutputLanguage> firstLanguages,
+        HashSet<RealtimeTranslationOutputLanguage> secondLanguages,
+        RealtimeTranslationOutputLanguage target) =>
+        (firstLanguages.Contains(target) ? 1 : 0) + (secondLanguages.Contains(target) ? 1 : 0);
+
+    private static FakeRealtimeServerTransport UnusedLaneTransport(
+        LanguagePair first,
+        LanguagePair second,
+        FakeRealtimeServerTransport english,
+        FakeRealtimeServerTransport japanese,
+        FakeRealtimeServerTransport spanish)
+    {
+        var firstLanguages = first.Languages().Select(language => language.ToOutputLanguage()).ToHashSet();
+        var secondLanguages = second.Languages().Select(language => language.ToOutputLanguage()).ToHashSet();
+        if (firstLanguages.Contains(RealtimeTranslationOutputLanguage.English)
+            && !secondLanguages.Contains(RealtimeTranslationOutputLanguage.English))
+        {
+            return english;
+        }
+
+        if (firstLanguages.Contains(RealtimeTranslationOutputLanguage.Japanese)
+            && !secondLanguages.Contains(RealtimeTranslationOutputLanguage.Japanese))
+        {
+            return japanese;
+        }
+
+        if (firstLanguages.Contains(RealtimeTranslationOutputLanguage.Spanish)
+            && !secondLanguages.Contains(RealtimeTranslationOutputLanguage.Spanish))
+        {
+            return spanish;
+        }
+
+        throw new InvalidOperationException($"No unused leftover lane from {first} to {second}.");
     }
 
     private static async Task WaitUntilSessionUpdatedAsync(

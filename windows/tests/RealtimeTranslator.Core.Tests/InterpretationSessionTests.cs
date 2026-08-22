@@ -1259,6 +1259,54 @@ public sealed class InterpretationSessionTests
         Assert.Equal(0, client.UpdateTranscriptionTuningCount);
     }
 
+    // Given: Dual Start 待ちで Connecting のセッション
+    // When: ApplyTuningChangeAsync する
+    // Then: handshake 未完了の接続へ session.update を送らず、Listening になるまで待つ
+    [Fact]
+    public async Task ApplyTuningChangeIsNoOpWhenConnecting()
+    {
+        var client = new FakeDualClient();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StartGate = gate;
+        using var session = NewSession(client);
+
+        var startTask = session.StartAsync();
+        await WaitUntilAsync(() =>
+            session.State == TranslationState.Connecting && client.StartCount == 1);
+
+        await session.ApplyTuningChangeAsync();
+
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+        gate.SetResult();
+        client.StartGate = null;
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        await startTask;
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+        await session.StopAsync();
+    }
+
+    // Given: transport error 後の再接続待ち
+    // When: ApplyTuningChangeAsync する
+    // Then: 切断中の Dual へ live update せず、Listening 復帰後にだけ送れる
+    [Fact]
+    public async Task ApplyTuningChangeIsNoOpWhenReconnecting()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, initialReconnectDelay: TimeSpan.FromSeconds(2));
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishTransportError();
+        await WaitUntilAsync(() => session.State == TranslationState.Reconnecting);
+
+        await session.ApplyTuningChangeAsync();
+
+        Assert.Equal(TranslationState.Reconnecting, session.State);
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+        await session.StopAsync();
+        Assert.Equal(TranslationState.Idle, session.State);
+    }
+
     // Given: Listening 中に dual の tuning 更新が RealtimeTranslationException を投げる
     // When: ApplyTuningChangeAsync する
     // Then: 例外を握りつぶして Listening を維持し、Error へ落とさない
