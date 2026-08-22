@@ -621,7 +621,9 @@ public sealed class DualRealtimeTranslationClientParityTests
         started.Stop();
 
         Assert.Equal(RealtimeTranslationErrorKind.RecoverableTransportFailure, error.Kind);
-        Assert.Equal("english connect failed", error.ServerMessage);
+        // Recoverable は生サーバー文言を保持しない。leftover close の例外にも置換しない。
+        Assert.Null(error.ServerMessage);
+        Assert.DoesNotContain("source close boom", error.ToString(), StringComparison.Ordinal);
         Assert.True(
             started.Elapsed < TimeSpan.FromMilliseconds(500),
             $"sibling handshake was not cancelled; elapsed {started.Elapsed.TotalMilliseconds:0}ms");
