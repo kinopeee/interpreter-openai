@@ -148,6 +148,22 @@ public sealed class AppSettingsCodecTests
             AppSettingsCodec.Decode("{\"languagePair\":\"xx-yy\"}").LanguagePair);
     }
 
+    // Given: 型が違う settings.json（数値・真偽が文字列）
+    // When: 読み込む
+    // Then: 壊れた欄だけ既定へ倒し、正しい languagePair は残す。字幕記録を誤って有効化しない
+    [Fact]
+    public void DecodeWrongJsonTypesFallBackWithoutEnablingRecording()
+    {
+        var settings = AppSettingsCodec.Decode(
+            """{"fontSize":"40","recordSubtitles":"true","hasCustomOverlayOrigin":"true","overlayOriginX":"NaN","languagePair":"en-es"}""");
+
+        Assert.Equal(AppSettingsData.DefaultFontSize, settings.FontSize);
+        Assert.False(settings.RecordSubtitles);
+        Assert.False(settings.HasCustomOverlayOrigin);
+        Assert.Equal(0, settings.OverlayOriginX);
+        Assert.Equal(LanguagePair.EnEs, settings.LanguagePair);
+    }
+
     // Given: 範囲外のフォントサイズ
     // When: 読み込む
     // Then: 18..48 にクランプされる
