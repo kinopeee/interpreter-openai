@@ -578,6 +578,57 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(finalized.translatedText, "Final source on close failure")
     }
 
+    func testStopDoesNotLetStaleConsumerRenderOverwriteFinalizedPair() async throws {
+        // Given: 完全ペア表示中。stop 中に旧 generation の consumer が未読 live delta を読む
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "こんにちは", eventID: "s1", elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Hello", eventID: "t1", elapsedMs: 20)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText.contains("こんにちは") == true
+                && delegate.latestSnapshot?.current.translatedText.contains("Hello") == true
+        }
+        audio.onStop = {
+            dual.emit(
+                target: .english,
+                event: .inputTranscriptDelta(
+                    delta: "遅延consumerの残骸",
+                    eventID: "orphan-1",
+                    elapsedMs: 99
+                )
+            )
+        }
+
+        // When: 停止後にスロットル描画間隔を超えて待つ
+        await session.stop()
+        try await Task.sleep(nanoseconds: 250_000_000)
+
+        // Then: forceFinalize したペアを enqueueRender の遅延 apply で live に戻さない
+        let snapshot = try XCTUnwrap(delegate.latestSnapshot)
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertEqual(snapshot.current.state, .finalized)
+        XCTAssertTrue(snapshot.current.sourceText.contains("こんにちは"))
+        XCTAssertEqual(snapshot.current.translatedText, "Hello")
+        XCTAssertFalse(snapshot.current.sourceText.contains("遅延consumerの残骸"))
+    }
+
     func testReconnectFinalizesCompletePairBeforeNewEpoch() async throws {
         // Given: idle finalize 前の完全な原文+訳文ペア
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
@@ -1247,6 +1298,8 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     private(set) var isRunning = false
     private(set) var terminationError: Error?
     var startError: Error?
+    /// performStop が renderTask を消した直後に consumer へイベントを届ける。
+    var onStop: (() -> Void)?
 
     init() {
         var continuation: AsyncStream<Data>.Continuation!
@@ -1270,6 +1323,7 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     func stop() async {
         stopCallCount += 1
         isRunning = false
+        onStop?()
         continuation?.finish()
         continuation = nil
     }
