@@ -352,6 +352,9 @@ public sealed class DualRealtimeTranslationClientParityTests
     [InlineData(LanguagePair.JaEn, LanguagePair.JaEs)]
     [InlineData(LanguagePair.JaEn, LanguagePair.EnEs)]
     [InlineData(LanguagePair.JaEs, LanguagePair.JaEn)]
+    [InlineData(LanguagePair.JaEs, LanguagePair.EnEs)]
+    [InlineData(LanguagePair.EnEs, LanguagePair.JaEn)]
+    [InlineData(LanguagePair.EnEs, LanguagePair.JaEs)]
     public async Task RestartWithDifferentPairForceClosesUnusedLaneAndDropsLeftoverDeltas(
         LanguagePair first,
         LanguagePair second)

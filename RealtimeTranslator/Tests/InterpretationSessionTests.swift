@@ -889,6 +889,75 @@ final class InterpretationSessionTests: XCTestCase {
         await session.stop()
     }
 
+    func testLanguageFlipFinalizesStalePairAfterSourceContinues() async throws {
+        // Given: 訳文のあと同一言語の原文が伸びて stale になった listening セッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "今日は会議です", eventID: "s1", elapsedMs: 1)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Today is a meeting", eventID: "t1", elapsedMs: 2)
+        )
+        await waitUntil { dual.spokenLanguages == [.japanese] }
+        await waitUntil {
+            delegate.latestSnapshot?.current.translatedText.contains("Today") == true
+        }
+
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "、続きです", eventID: "s1b", elapsedMs: 2)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText.contains("続きです") == true
+                && delegate.latestSnapshot?.current.isTranslationCurrent == false
+        }
+        let resetsAfterJapanese = dual.resetAudioRoutingCallCount
+
+        // When: 英語へ文字種が反転する
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: " Hello how are you today",
+                eventID: "s2",
+                elapsedMs: 3
+            )
+        )
+
+        // Then: idle では確定しない stale ペアでも切替境界として確定する
+        await waitUntil { dual.spokenLanguages == [.japanese, .english] }
+        XCTAssertGreaterThan(dual.resetAudioRoutingCallCount, resetsAfterJapanese)
+        var finalizedSource: String?
+        var finalizedTranslation: String?
+        await waitUntil {
+            guard let current = delegate.latestSnapshot?.current,
+                  current.state == .finalized,
+                  current.sourceText.contains("続きです") else {
+                return false
+            }
+            finalizedSource = current.sourceText
+            finalizedTranslation = current.translatedText
+            return true
+        }
+        XCTAssertEqual(finalizedSource, "今日は会議です、続きです")
+        XCTAssertEqual(finalizedTranslation, "Today is a meeting")
+        await session.stop()
+    }
+
     func testApplyTuningChangeForwardsWhileListening() async throws {
         // Given: listening中のセッションとカスタムtuningProvider
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
