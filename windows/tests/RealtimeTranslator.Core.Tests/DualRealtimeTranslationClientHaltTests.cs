@@ -190,6 +190,40 @@ public sealed class DualRealtimeTranslationClientHaltTests
         Assert.Equal(0, harness.DrainTransportErrorCount());
     }
 
+    // Given: ja-en で翻訳ポンプが halt した Dual
+    // When: 同じ Dual を EnEs で再 Start し、Spanish target へ frame を送る
+    // Then: halt が解け、新 pair の Spanish だけへ届く。未使用 Japanese は再接続しない
+    [Fact]
+    public async Task StartAfterHaltWithDifferentPairResumesOnNewPairLanes()
+    {
+        await using var harness = await HaltHarness.StartAsync();
+        await harness.SelectAsync(RealtimeTranslationOutputLanguage.English);
+        await harness.AppendAsync("ok1");
+
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail1");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail2");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail3");
+        Assert.Equal(1, harness.DrainTransportErrorCount());
+        var japaneseConnectAfterHalt = harness.Japanese.ConnectCount;
+        var englishConnectAfterHalt = harness.English.ConnectCount;
+
+        await harness.Dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.EnEs);
+        await harness.SelectAsync(RealtimeTranslationOutputLanguage.Spanish);
+        await harness.AppendAsync("afterPairSwitch");
+
+        Assert.Equal(japaneseConnectAfterHalt, harness.Japanese.ConnectCount);
+        Assert.True(harness.English.ConnectCount > englishConnectAfterHalt);
+        Assert.Equal(1, harness.Spanish.ConnectCount);
+        Assert.Contains("afterPairSwitch", harness.Spanish.AppendedFrameTexts());
+        Assert.Contains("afterPairSwitch", harness.Source.AppendedFrameTexts());
+        Assert.DoesNotContain("afterPairSwitch", harness.English.AppendedFrameTexts());
+        Assert.DoesNotContain("afterPairSwitch", harness.Japanese.AppendedFrameTexts());
+        Assert.Equal(0, harness.DrainTransportErrorCount());
+    }
+
     // Given: 翻訳ポンプが halt した Dual（graceful close 応答あり）
     // When: CloseGracefullyAsync する
     // Then: halt していても原文は commit、翻訳 lane は session.close を送り、Events を完了する
@@ -241,11 +275,13 @@ public sealed class DualRealtimeTranslationClientHaltTests
             FakeRealtimeServerTransport source,
             FakeRealtimeServerTransport english,
             FakeRealtimeServerTransport japanese,
+            FakeRealtimeServerTransport spanish,
             DualRealtimeTranslationClient dual)
         {
             Source = source;
             English = english;
             Japanese = japanese;
+            Spanish = spanish;
             Dual = dual;
         }
 
@@ -255,6 +291,8 @@ public sealed class DualRealtimeTranslationClientHaltTests
 
         public FakeRealtimeServerTransport Japanese { get; }
 
+        public FakeRealtimeServerTransport Spanish { get; }
+
         public DualRealtimeTranslationClient Dual { get; }
 
         public static async Task<HaltHarness> StartAsync(bool autoCloseResponses = false)
@@ -262,6 +300,7 @@ public sealed class DualRealtimeTranslationClientHaltTests
             var source = new FakeRealtimeServerTransport { AutoCloseResponses = autoCloseResponses };
             var english = new FakeRealtimeServerTransport { AutoCloseResponses = autoCloseResponses };
             var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = autoCloseResponses };
+            var spanish = new FakeRealtimeServerTransport { AutoCloseResponses = autoCloseResponses };
             var dual = new DualRealtimeTranslationClient(
                 new RealtimeSourceTranscriptionConnection(source, "test-safety"),
                 new RealtimeTranslationConnection(
@@ -271,10 +310,14 @@ public sealed class DualRealtimeTranslationClientHaltTests
                 new RealtimeTranslationConnection(
                     RealtimeTranslationOutputLanguage.Japanese,
                     japanese,
+                    "test-safety"),
+                spanishConnection: new RealtimeTranslationConnection(
+                    RealtimeTranslationOutputLanguage.Spanish,
+                    spanish,
                     "test-safety"));
 
             await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn);
-            return new HaltHarness(source, english, japanese, dual);
+            return new HaltHarness(source, english, japanese, spanish, dual);
         }
 
         public async Task AppendAsync(string frameName)
