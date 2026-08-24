@@ -95,8 +95,9 @@ xcodebuild test -scheme RealtimeTranslator \
 - 実行状態はDEBUGビルドのみ`/tmp/realtimetranslator.status`へ書き出す（Releaseでは作らない）。
 - クラッシュ時は最新のDiagnosticReportsと該当スレッドを確認し、推測だけで修正しない。
 - ログへ認識した発話内容、APIキー、Authorizationを出力しない。
-- `shared/fixtures/v1` は両実装の契約正本。Swiftテストからも読み、Windows版と同値性を保つ。
-- PR CI は Windows / shared-contracts を実行する。macOS の `xcodebuild test` はローカルおよび `.github/workflows/release.yml` の package (macOS) ジョブで検証する。
+- `shared/fixtures/v1` は両実装の契約正本。Swiftテストからも読み、Windows版と同値性を保つ。契約検査の正本は `scripts/ci-shared-contracts.sh`。
+- Origin の PR CI は Depot（`.depot/workflows/` の `shared-contracts` と `windows-core`）。GitHub Actions は `shared-contracts`（同じスクリプト）に加え、Windows の Platform / App / publish、`macos.yml`、`release.yml` を残す。Depot に Windows / macOS サンドボックスは無い。
+- macOS の `xcodebuild test` はローカルおよび `.github/workflows/release.yml` の package (macOS) ジョブでも検証する。
 
 ## テスト方針
 
@@ -146,6 +147,12 @@ dotnet list  windows/RealtimeTranslator.slnx package --vulnerable --include-tran
 
 # 配布物（自己完結）。framework-dependentにするとランタイム要求ダイアログが出る。
 pwsh -File scripts/publish-windows.ps1
+```
+
+Linux / macOS でも回せる Core だけは、Depot `windows-core` と同じ正本を使う。
+
+```bash
+./scripts/ci-windows-core.sh
 ```
 
 - 警告は`TreatWarningsAsErrors`で失敗する。抑制ではなく修正する。
