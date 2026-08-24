@@ -153,6 +153,26 @@ final class SpokenLanguageDetectorTests: XCTestCase {
         XCTAssertEqual(evidence, .spanish)
     }
 
+    func testEnEsRecentEvidenceDoesNotWalkBackPastLatinToDistantInvertedPunct() throws {
+        // Given: 8語窓より前に ¿ があり、その間にラテン語がある
+        let text = "¿ Dónde estás hello there friend people world today extra more"
+
+        // When: en-es の recent evidence と語窓開始位置を求める
+        let recent = SpokenLanguageDetector.recentEvidence(
+            in: text,
+            pair: .enEs,
+            window: SpokenLanguageDetector.enEsWindow
+        )
+        let full = SpokenLanguageDetector.evidence(in: text, pair: .enEs)
+        let windowStart = SpokenLanguageDetector.recentWordWindowStart(in: text)
+        let invertedMark = try XCTUnwrap(text.unicodeScalars.firstIndex(of: Unicode.Scalar(0x00BF)!))
+
+        // Then: 直前のラテン語で walk-back を止め、遠い ¿ だけでは spanish にしない
+        XCTAssertEqual(recent, .ambiguousLatin)
+        XCTAssertEqual(full, .spanish)
+        XCTAssertGreaterThan(windowStart, invertedMark)
+    }
+
     func testEnEsRecentWordWindowStartIncludesInvertedPunctuationAcrossControlWhitespace() {
         // Given: 8語窓の先頭語の直前に TAB / 改行付きの逆疑問符がある
         let cases = ["\t", "\n", "\r"]
