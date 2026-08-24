@@ -364,6 +364,9 @@ final class InterpretationSession {
     private func consumeEvents(generation: Int, epoch: Int) async throws {
         let stream = await dualClient.events
         for await streamEvent in stream {
+            // stop 後の未読 delta は Dual recentYields → close drain が assembler へ同期適用する。
+            // ここで ingest/enqueueRender すると、performStop が消した renderTask が再生成され、
+            // forceFinalize 後に replaceCurrent で確定ペアを live へ戻す。
             guard generation == lifecycleGeneration else { return }
             guard streamEvent.epoch == epoch else { continue }
 
@@ -402,6 +405,10 @@ final class InterpretationSession {
     }
 
     private func performStop() async {
+        // consumer 停止前に武装する。AsyncStream.finish() は未読を捨てるため、
+        // 既に yield した最新窓と、これ以降の close 窓を Dual 側で保持する。
+        await dualClient.beginStopDrainCapture()
+
         lifecycleGeneration += 1
         state = .closing
         aggregator.setStatusBanner(UiCopy.text("banner.closing"))
@@ -422,10 +429,6 @@ final class InterpretationSession {
         if let runningSessionTask {
             await runningSessionTask.value
         }
-
-        // consumer 終了直後から drain を蓄え、translation pump drain / session.close の
-        // 窓で届く最終 delta を AsyncStream の読み捨てにしない。
-        await dualClient.beginStopDrainCapture()
 
         // スロットル中の旧 snapshot を先に適用し、その後の close drain で上書きする。
         if let pending {

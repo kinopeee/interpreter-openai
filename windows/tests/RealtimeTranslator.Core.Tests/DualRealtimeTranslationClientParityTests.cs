@@ -489,6 +489,9 @@ public sealed class DualRealtimeTranslationClientParityTests
     [InlineData(LanguagePair.JaEn, LanguagePair.JaEs)]
     [InlineData(LanguagePair.JaEn, LanguagePair.EnEs)]
     [InlineData(LanguagePair.JaEs, LanguagePair.JaEn)]
+    [InlineData(LanguagePair.JaEs, LanguagePair.EnEs)]
+    [InlineData(LanguagePair.EnEs, LanguagePair.JaEn)]
+    [InlineData(LanguagePair.EnEs, LanguagePair.JaEs)]
     public async Task RestartWithDifferentPairForceClosesUnusedLaneAndDropsLeftoverDeltas(
         LanguagePair first,
         LanguagePair second)
@@ -711,9 +714,10 @@ public sealed class DualRealtimeTranslationClientParityTests
         started.Stop();
 
         Assert.Equal(RealtimeTranslationErrorKind.RecoverableTransportFailure, error.Kind);
-        // RecoverableTransportFailure は生 server message を保持しない（#85）。
-        // leftover ForceClose 失敗でも handshake の Kind が残ることだけを見る。
+        // RecoverableTransportFailure は生サーバー文言を保持しない（#85）。
+        // leftover ForceClose の InvalidOperationException に置換されていないことだけ見る。
         Assert.Null(error.ServerMessage);
+        Assert.DoesNotContain("source close boom", error.Message, StringComparison.Ordinal);
         Assert.True(
             started.Elapsed < TimeSpan.FromMilliseconds(500),
             $"sibling handshake was not cancelled; elapsed {started.Elapsed.TotalMilliseconds:0}ms");

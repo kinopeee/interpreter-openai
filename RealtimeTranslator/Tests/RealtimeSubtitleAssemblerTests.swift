@@ -360,6 +360,35 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         XCTAssertEqual(update?.isTranslationCurrent, true)
     }
 
+    func testExpectLaneSwitchesImmediatelyWhenExpectedTranslationIsAlreadyBuffered() {
+        // Given: echo が first-output で lock したあと、本命 lane の訳文がすでに buffer にある
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        let start = Date()
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "Tokyo", eventID: "s1", elapsedMs: 100)),
+            now: start
+        )
+        _ = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: "Tokyo", eventID: "echo", elapsedMs: 150)),
+            now: start.addingTimeInterval(0.15)
+        )
+        let buffered = assembler.ingest(
+            event(.japanese, .outputTranscriptDelta(delta: "東京", eventID: "ja", elapsedMs: 200)),
+            now: start.addingTimeInterval(0.2)
+        )
+
+        // When: ExpectLane で本命 lane を指定してから idle Tick する
+        assembler.expectLane(.japanese)
+        let idle = assembler.tick(now: start.addingTimeInterval(9))
+
+        // Then: 後着の本命訳を待たず、buffer 済みの期待 lane を即選択して確定する
+        XCTAssertEqual(buffered?.translatedText, "Tokyo")
+        XCTAssertEqual(idle?.shouldFinalize, true)
+        XCTAssertEqual(idle?.translatedText, "東京")
+        XCTAssertEqual(idle?.isTranslationCurrent, true)
+    }
+
     func testLateTranslationAfterNextSourceIsIgnoredByFinalizedCutoff() {
         // Given: idle 確定したセグメントのあと次の原文が始まっている
         var assembler = RealtimeSubtitleAssembler()

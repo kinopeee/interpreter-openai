@@ -602,6 +602,44 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         XCTAssertTrue(sourceTexts.contains("drain前の原文"))
     }
 
+    func testCloseGracefullyReturnsEventsBufferedBeforeDrainCapture() async throws {
+        // Given: session consumer がおらず、原文 delta が Dual events に溜まっている
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+
+        // When: drain 武装より前に最終原文が届き、その後 stop する
+        try await sourceTransport.enqueueJSON([
+            "type": "conversation.item.input_audio_transcription.delta",
+            "item_id": "pre-drain-1",
+            "event_id": "pre-drain-event-1",
+            "delta": "consumer停止後の未読原文",
+        ])
+        try await Task.sleep(nanoseconds: 80_000_000)
+        let drained = await dual.closeGracefully()
+
+        // Then: AsyncStream に残った未読 delta を finish で捨てず close drain へ返す
+        let sourceTexts = drained.compactMap { event -> String? in
+            guard case .inputTranscriptDelta(let delta, _, _) = event.event else { return nil }
+            return delta
+        }
+        XCTAssertTrue(
+            sourceTexts.contains("consumer停止後の未読原文"),
+            "unread source delta must survive stop drain, got \(sourceTexts)"
+        )
+    }
+
     func testStopDrainIgnoresOutputAudioAndKeepsTranscript() async throws {
         // Given: stop drain 武装済み。Windows DropOldest 相当の洪水でも訳文を守る
         let sourceTransport = FakeRealtimeWebSocketTransport()
