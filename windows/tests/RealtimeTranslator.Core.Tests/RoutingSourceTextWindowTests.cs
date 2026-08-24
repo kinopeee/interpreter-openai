@@ -72,6 +72,27 @@ public sealed class RoutingSourceTextWindowTests
         Assert.Equal("text", exception.ParamName);
     }
 
+    // Given: 8語窓の先頭語の直前に TAB / 改行付きの逆疑問符がある
+    // When: en-es の語窓切り詰めを行う
+    // Then: 制御空白を跨いだ ¿ が残り、ルーティング窓と detector が一致する
+    [Theory]
+    [InlineData("\t")]
+    [InlineData("\n")]
+    public void TrimEnEsKeepsInvertedPunctuationSeparatedByControlWhitespace(string separator)
+    {
+        var text = $"aaa bbb ccc ¿{separator}Hello there friend people world today extra more";
+
+        var trimmed = RoutingSourceTextWindow.Trim(text, LanguagePair.EnEs);
+        var detectorWindow = text[SpokenLanguageDetector.RecentWordWindowStart(text)..];
+
+        Assert.StartsWith("¿", detectorWindow, StringComparison.Ordinal);
+        Assert.Contains("¿", trimmed, StringComparison.Ordinal);
+        Assert.DoesNotContain("aaa", trimmed, StringComparison.Ordinal);
+        Assert.Equal(
+            SpokenLanguageEvidence.Spanish,
+            SpokenLanguageDetector.Evidence(trimmed, LanguagePair.EnEs));
+    }
+
     // Given: en-es 語窓内に長い語と、上限を超える空白 run がある
     // When: en-es の語窓切り詰めを行う
     // Then: 語窓の語は残り、空白 run は 1 個へ圧縮され、保持長は語窓より短い
