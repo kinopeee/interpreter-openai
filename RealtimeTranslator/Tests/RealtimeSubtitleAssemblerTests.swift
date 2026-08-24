@@ -427,6 +427,58 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         XCTAssertEqual(fresh?.isTranslationCurrent, true)
     }
 
+    func testNilEventIDReplayDoesNotDuplicateSourceOrTranslation() {
+        // Given: event_id の無い原文と訳文を1回ずつ適用済み
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        _ = assembler.ingest(event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 1)))
+        _ = assembler.ingest(event(.english, .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 2)))
+
+        // When: close drain が同じ delta を再適用する
+        let replayedSource = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 1))
+        )
+        let replayedTranslation = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 2))
+        )
+
+        // Then: 二重表示せず、現行テキストは1回分のまま
+        XCTAssertNil(replayedSource)
+        XCTAssertNil(replayedTranslation)
+        let current = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "、皆さん", eventID: nil, elapsedMs: 3))
+        )
+        XCTAssertEqual(current?.sourceText, "こんにちは、皆さん")
+        XCTAssertEqual(current?.translatedText, "Hello")
+    }
+
+    func testNilEventIDCanRepeatAfterNewSegment() {
+        // Given: event_id の無い完全ペアを idle 確定する
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        let start = Date()
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 100)),
+            now: start
+        )
+        _ = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 200)),
+            now: start
+        )
+        let finalized = assembler.tick(now: start.addingTimeInterval(9))
+
+        // When: 次発話が同じ原文 delta で始まる
+        let next = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 400)),
+            now: start.addingTimeInterval(9.2)
+        )
+
+        // Then: 新 segment では同じ nil event_id キーを再利用できる
+        XCTAssertEqual(finalized?.shouldFinalize, true)
+        XCTAssertEqual(next?.sourceText, "こんにちは")
+        XCTAssertEqual(next?.translatedText, "")
+    }
+
     private func event(
         _ target: RealtimeTranslationOutputLanguage,
         _ serverEvent: RealtimeTranslationServerEvent,
