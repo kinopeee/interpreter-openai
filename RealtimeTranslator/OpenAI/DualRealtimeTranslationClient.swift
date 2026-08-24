@@ -108,6 +108,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         pair: LanguagePair
     ) async throws {
         await forceClose()
+        // 新しい録音が、停止途中に残した drain 窓を closeGracefully で返さない。
+        stopDrainBuffer = nil
         recreateEventStream()
         connectionEpoch += 1
         let epoch = connectionEpoch
@@ -353,7 +355,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         consecutiveTranslationFailures = 0
         translationPumpHaltedForTransportFailure = false
-        stopDrainBuffer = nil
+        // beginStopDrainCapture 済みの窓は残す。reconnect の tearDown / generation
+        // mismatch の forceClose が、stop が close drain へ渡す未読 delta を消さない。
         recentYields.removeAll(keepingCapacity: true)
         connectionEpoch += 1
         translationPumpTask?.cancel()
