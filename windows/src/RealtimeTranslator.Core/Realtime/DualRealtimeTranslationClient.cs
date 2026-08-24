@@ -373,12 +373,22 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
     public async Task CloseGracefullyAsync(CancellationToken cancellationToken = default)
     {
+        ChannelWriter<RealtimeTranslationStreamEvent>? idleWriter = null;
         lock (_sync)
         {
             if (!_isRunning)
             {
-                return;
+                // Start 前や ForceClose 後でも Events を完了させる。
+                // 未完了のままだと InterpretationSession の stop drain が
+                // WaitToReadAsync で Closing に固まり、次の録音を開始できない。
+                idleWriter = _events.Writer;
             }
+        }
+
+        if (idleWriter is not null)
+        {
+            idleWriter.TryComplete();
+            return;
         }
 
         // 未送信の翻訳フレームを先に送り、停止時の訳文欠落を防ぐ。
