@@ -771,6 +771,107 @@ public sealed class DualRealtimeTranslationClientParityTests
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
     }
 
+    // Given: en-es で英語 Connect が即失敗し、原文は ready、スペイン語 handshake だけが停滞する Dual
+    // When: StartAsync(EnEs) する
+    // Then: スペイン語の handshake timeout まで leftover を残さず即失敗し、未使用 Japanese は接続しない
+    [Fact]
+    public async Task FastLaneEnEsEnglishFailureCancelsSiblingHandshakeAndForceClosesReadyLanes()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport
+        {
+            ConnectError = new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.RecoverableTransportFailure,
+                "english connect failed"),
+        };
+        var japanese = new FakeRealtimeServerTransport();
+        var spanish = new FakeRealtimeServerTransport { AutoHandshake = false };
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(source, "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.English,
+                english,
+                "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Japanese,
+                japanese,
+                "test-safety"),
+            spanishConnection: new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Spanish,
+                spanish,
+                "test-safety",
+                sessionUpdateTimeout: TimeSpan.FromSeconds(2)));
+
+        var started = Stopwatch.StartNew();
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.EnEs));
+        started.Stop();
+
+        Assert.Equal(RealtimeTranslationErrorKind.RecoverableTransportFailure, error.Kind);
+        Assert.True(
+            started.Elapsed < TimeSpan.FromMilliseconds(500),
+            $"sibling handshake was not cancelled; elapsed {started.Elapsed.TotalMilliseconds:0}ms");
+        Assert.Equal(0, japanese.ConnectCount);
+        // Start 先頭の ForceClose で CloseCount は 1。失敗後 cleanup で 2 以上になる。
+        Assert.True(source.CloseCount >= 2);
+        Assert.True(english.CloseCount >= 2);
+        Assert.True(spanish.CloseCount >= 2);
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
+    // Given: en-es でスペイン語 Connect が即失敗し、原文は ready、英語 handshake だけが停滞する Dual
+    // When: StartAsync(EnEs) する
+    // Then: 英語の handshake timeout まで leftover を残さず即失敗し、未使用 Japanese は接続しない
+    [Fact]
+    public async Task FastLaneEnEsSpanishFailureCancelsSiblingHandshakeAndForceClosesReadyLanes()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport { AutoHandshake = false };
+        var japanese = new FakeRealtimeServerTransport();
+        var spanish = new FakeRealtimeServerTransport
+        {
+            ConnectError = new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.RecoverableTransportFailure,
+                "spanish connect failed"),
+        };
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(source, "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.English,
+                english,
+                "test-safety",
+                sessionUpdateTimeout: TimeSpan.FromSeconds(2)),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Japanese,
+                japanese,
+                "test-safety"),
+            spanishConnection: new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Spanish,
+                spanish,
+                "test-safety"));
+
+        var started = Stopwatch.StartNew();
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.EnEs));
+        started.Stop();
+
+        Assert.Equal(RealtimeTranslationErrorKind.RecoverableTransportFailure, error.Kind);
+        Assert.True(
+            started.Elapsed < TimeSpan.FromMilliseconds(500),
+            $"sibling handshake was not cancelled; elapsed {started.Elapsed.TotalMilliseconds:0}ms");
+        Assert.Equal(0, japanese.ConnectCount);
+        Assert.True(source.CloseCount >= 2);
+        Assert.True(english.CloseCount >= 2);
+        Assert.True(spanish.CloseCount >= 2);
+
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(new byte[Pcm16FramePacketizer.BytesPerFrame]));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
     // Given: 英語 Connect が即失敗し、原文は Connect 後に Close 失敗が仕込まれ、日本語 handshake は停滞する Dual
     // When: StartAsync する
     // Then: leftover ForceClose が失敗しても handshake の RecoverableTransportFailure を返す
