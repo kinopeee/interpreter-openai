@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      sed -n '2,10p' "$0"
+      sed -n '2,9p' "$0"
       exit 0
       ;;
     *)

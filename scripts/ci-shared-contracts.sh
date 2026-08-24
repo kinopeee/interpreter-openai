@@ -59,7 +59,7 @@ case "$target" in
     validate_locales
     ;;
   -h|--help)
-    sed -n '2,11p' "$0"
+    sed -n '2,9p' "$0"
     exit 0
     ;;
   *)
