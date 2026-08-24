@@ -459,7 +459,7 @@ DEBUG の環境変数取り込み（`OPENAI_API_KEY`）より前に `UserCopy` �
 - `shared/protocol/privacy.md`（固定文言がロケールされる旨）
 - `shared/README.md`（locales/ をツリーに追加）
 - `shared/locales/ui.json` + `ui.schema.json`（新規ディレクトリ）
-- `.github/workflows/shared-contracts.yml`（locales の schema 検査ステップ追加）
+- `.github/workflows/shared-contracts.yml` / `.depot/workflows/shared-contracts.yml`（locales の schema 検査。正本は `scripts/ci-shared-contracts.sh`）
 - `shared/fixtures/v1/` は**変更しない**（一致断言はテスト側に置く）
 
 ### macOS

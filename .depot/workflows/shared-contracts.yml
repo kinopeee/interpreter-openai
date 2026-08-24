@@ -1,3 +1,8 @@
+# Origin + Depot CI 向け。GitHub の .github/workflows/shared-contracts.yml から移植。
+# 検査手順の正本は scripts/ci-shared-contracts.sh。
+# 有効化: Origin リポジトリの Apps から Depot を接続し、このディレクトリを default branch へマージする。
+# Depot CI に Windows / macOS サンドボックスは無い。ubuntu のみ。
+# https://depot.dev/blog/depot-in-cursor-origin
 name: shared-contracts
 
 on:
@@ -11,7 +16,7 @@ permissions:
 jobs:
   validate-fixtures:
     name: validate shared fixtures
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:

@@ -135,6 +135,13 @@ xcodebuild test \
   -enableCodeCoverage YES
 ```
 
+Origin の PR CI（Depot）と GitHub の `shared-contracts` が使う検査:
+
+```bash
+./scripts/ci-shared-contracts.sh
+./scripts/ci-windows-core.sh   # Linux で回せる Windows Core のみ
+```
+
 ## 注意
 
 - OpenAI APIへ送信されるのはマイク音声です。原文と訳文はAPIから受信します。
@@ -168,7 +175,7 @@ pwsh -File scripts/publish-windows.ps1
 powershell -ExecutionPolicy Bypass -File scripts/publish-windows.ps1
 ```
 
-`windows` ワークフローは同じ手順を `windows-latest` で実行し、`RealtimeTranslator-win-x64` artifactを添付します。
+GitHub の `windows` ワークフローは同じ手順を `windows-latest` で実行し、`RealtimeTranslator-win-x64` artifactを添付します。Origin の PR CI は Depot CI（`.depot/workflows/windows-core.yml`）が Linux 上で Core の restore / build / test / audit だけを実行します。Platform / App / publish は GitHub 側に残します。
 
 ### ダウンロード（リリース）
 

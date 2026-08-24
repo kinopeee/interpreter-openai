@@ -1,3 +1,5 @@
+# GitHub Release と Developer ID 署名・公証。Origin / Depot CI へは移植しない。
+# 成果物の配布と署名シークレットは GitHub 側に残す。
 name: release
 
 on:
