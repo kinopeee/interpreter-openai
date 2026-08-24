@@ -130,7 +130,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         now: Date
     ) -> RealtimeSubtitleUpdate? {
         guard !delta.isEmpty else { return nil }
-        if hasSeenTranscriptEvent(eventID: eventID, key: "source|\(delta)|\(elapsedMs.map(String.init) ?? "")") {
+        if let eventID, !seenEventIDs.insert(eventID).inserted {
             return nil
         }
         if let elapsedMs, let cutoff = finalizedCutoffElapsedMs, elapsedMs <= cutoff {
@@ -143,6 +143,11 @@ struct RealtimeSubtitleAssembler: Sendable {
         } else if shouldStartNewSegmentForSourceUpdate() {
             clearSegmentBuffers(advancingGeneration: true)
             extendingExistingSource = false
+        }
+        // nil-id キーは新 segment の clear より後に登録する。先に入れると safety-net が消える。
+        if eventID == nil,
+           !seenNilEventKeys.insert("source|\(delta)|\(elapsedMs.map(String.init) ?? "")").inserted {
+            return nil
         }
 
         sourceText += delta
