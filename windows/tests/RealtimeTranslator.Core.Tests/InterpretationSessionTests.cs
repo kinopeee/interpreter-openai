@@ -128,6 +128,36 @@ public sealed class InterpretationSessionTests
         Assert.False(audio.IsRunning);
     }
 
+    // Given: Dual Start は完了したが capture Start 待ち
+    // When: その間に Stop する
+    // Then: Listening に到達せず Idle に戻り、capture は開始されないか停止済みになる
+    [Fact]
+    public async Task StopAfterDualStartBeforeCaptureNeverReachesListening()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        audio.StartGate = gate;
+        using var session = NewSession(client, audio: audio);
+
+        var startTask = session.StartAsync();
+        await WaitUntilAsync(() =>
+            client.StartCount == 1 && audio.StartCallCount == 1);
+        Assert.Equal(TranslationState.Connecting, session.State);
+
+        var stopTask = session.StopAsync();
+        await WaitUntilAsync(() =>
+            session.State is TranslationState.Closing or TranslationState.Idle);
+        audio.StartGate = null;
+        gate.TrySetResult();
+        await stopTask;
+        await startTask;
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        Assert.False(audio.IsRunning);
+        Assert.NotEqual(TranslationState.Listening, session.State);
+    }
+
     // Given: 録音中のセッション
     // When: Stop を二重に呼ぶ
     // Then: 2 回目は no-op で Idle のまま壊れない
@@ -416,6 +446,68 @@ public sealed class InterpretationSessionTests
             }
         });
         Assert.Equal("これはテストです", finalized.SourceText);
+        Assert.Equal("This is a test", finalized.TranslatedText);
+        await session.StopAsync();
+    }
+
+    // Given: 訳文のあと同一言語の原文が伸びて stale になったセグメント
+    // When: 英語へ文字種が反転する
+    // Then: idle では確定しない stale ペアでも切替境界として確定する
+    [Fact]
+    public async Task LanguageFlipFinalizesStalePairAfterSourceContinues()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("これはテストです");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "This is a test");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.TranslatedText.Length > 0);
+            }
+        });
+
+        client.PublishSourceDelta("、続きです");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText.Contains("続きです", StringComparison.Ordinal)
+                    && !update.IsTranslationCurrent);
+            }
+        });
+        var resetsAfterJapanese = client.ResetAudioRoutingCount;
+
+        client.PublishSourceDelta(" now we continue in english for a while");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
+
+        Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
+        Assert.True(client.ResetAudioRoutingCount > resetsAfterJapanese);
+        RealtimeSubtitleUpdate finalized = default;
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                finalized = updates.Find(update => update.ShouldFinalize);
+                return finalized.ShouldFinalize;
+            }
+        });
+        Assert.Equal("これはテストです、続きです", finalized.SourceText);
         Assert.Equal("This is a test", finalized.TranslatedText);
         await session.StopAsync();
     }
@@ -1306,6 +1398,64 @@ public sealed class InterpretationSessionTests
 
         await session.ApplyTuningChangeAsync();
 
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+    }
+
+    // Given: Listening 中に CloseGracefully が遅く Closing のまま
+    // When: ApplyTuningChangeAsync する
+    // Then: teardown 中の socket へ session.update を送らない
+    [Fact]
+    public async Task ApplyTuningChangeIsNoOpWhenClosing()
+    {
+        var closeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowCloseFinish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        // StartAsync がフックを消すため、Listening 到達後に遅い Close を仕込む。
+        client.OnCloseGracefully = async () =>
+        {
+            closeStarted.TrySetResult();
+            await allowCloseFinish.Task.ConfigureAwait(false);
+            client.Complete();
+        };
+
+        var stopTask = session.StopAsync();
+        await closeStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(TranslationState.Closing, session.State);
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+
+        await session.ApplyTuningChangeAsync();
+
+        Assert.Equal(TranslationState.Closing, session.State);
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+
+        allowCloseFinish.TrySetResult();
+        await stopTask;
+        Assert.Equal(TranslationState.Idle, session.State);
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+    }
+
+    // Given: 致命エラーで Error になったセッション
+    // When: ApplyTuningChangeAsync する
+    // Then: 切断済み dual へ session.update を送らない
+    [Fact]
+    public async Task ApplyTuningChangeIsNoOpWhenError()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        Assert.Equal(0, client.UpdateTranscriptionTuningCount);
+
+        client.PublishServerError("Incorrect API key provided", "invalid_api_key");
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        await session.ApplyTuningChangeAsync();
+
+        Assert.Equal(TranslationState.Error, session.State);
         Assert.Equal(0, client.UpdateTranscriptionTuningCount);
     }
 
@@ -2341,6 +2491,9 @@ public sealed class InterpretationSessionTests
 
         public bool IsRunning { get; private set; }
 
+        /// <summary>StartAsync 入口で待つゲート（Dual 完了後・capture 開始前の Stop 用）。</summary>
+        public TaskCompletionSource? StartGate { get; set; }
+
         public ChannelReader<ReadOnlyMemory<byte>> Frames
         {
             get
@@ -2352,20 +2505,30 @@ public sealed class InterpretationSessionTests
             }
         }
 
-        public Task StartAsync(CancellationToken cancellationToken = default)
+        public async Task StartAsync(CancellationToken cancellationToken = default)
         {
+            Task? gateTask;
             lock (_sync)
             {
                 StartCallCount += 1;
-                IsRunning = true;
                 // 再接続時に完了済み channel を使い回すと即 recoverable になるため張り直す。
                 if (_frames.Reader.Completion.IsCompleted)
                 {
                     _frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
                 }
+
+                gateTask = StartGate?.Task;
             }
 
-            return Task.CompletedTask;
+            if (gateTask is not null)
+            {
+                await gateTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            lock (_sync)
+            {
+                IsRunning = true;
+            }
         }
 
         public Task StopAsync()
