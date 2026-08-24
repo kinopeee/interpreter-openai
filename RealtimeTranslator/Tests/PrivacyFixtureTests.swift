@@ -78,6 +78,91 @@ final class PrivacyFixtureTests: XCTestCase {
     func testFatalServerErrorNeverLeaksCredentials() {
         let error = RealtimeTranslationError.fatalServerError("Bearer sk-should-never-surface")
         XCTAssertEqual(error.errorDescription, RealtimeTranslationError.genericServerMessage)
+        XCTAssertFalse(String(describing: error).localizedCaseInsensitiveContains("sk-"))
+        XCTAssertFalse(String(reflecting: error).localizedCaseInsensitiveContains("sk-"))
+        XCTAssertFalse(String(describing: error).localizedCaseInsensitiveContains("Bearer"))
+        if case .fatalServerError(let stored) = error {
+            XCTAssertEqual(stored.value, RealtimeTranslationError.genericServerMessage)
+            XCTAssertFalse(stored.value.localizedCaseInsensitiveContains("sk-"))
+        } else {
+            XCTFail("Expected fatalServerError")
+        }
+    }
+
+    // Given: Format 文字や Unicode 空白で伏せたキー断片・api key 文言
+    // When: Sanitize する
+    // Then: 汎用文言へ落ち、原文のキー断片を返さない
+    func testSanitizeRedactsUnicodeObfuscatedKeyMaterial() {
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage("invalid key s\u{200B}k-abcdef"),
+            RealtimeTranslationError.genericServerMessage
+        )
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage("Incorrect API\u{00A0}key provided"),
+            RealtimeTranslationError.genericServerMessage
+        )
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage("Missing bearer\u{00A0}or basic authentication"),
+            RealtimeTranslationError.genericServerMessage
+        )
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage("invalid key s\u{0009}k-abcdef"),
+            RealtimeTranslationError.genericServerMessage
+        )
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage("Incorrect API\u{0009}key provided"),
+            RealtimeTranslationError.genericServerMessage
+        )
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage("Bearer\u{0009}abc123 is not valid"),
+            RealtimeTranslationError.genericServerMessage
+        )
+        XCTAssertEqual(
+            RealtimeTranslationError.sanitizedServerMessage("bearerless request"),
+            "bearerless request"
+        )
+    }
+
+    // Given: ZWSP を挟んだ認証失敗フレーズ
+    // When: 認証失敗判定する
+    // Then: authority / 4010 は誤爆せず、api key フレーズは検出する
+    func testAuthenticationDetectionSurvivesUnicodeObfuscationWithoutFalsePositives() {
+        XCTAssertTrue(
+            RealtimeTranslationError.isAuthenticationFailure(
+                code: nil,
+                message: "Incorrect API\u{00A0}key provided"
+            )
+        )
+        XCTAssertTrue(
+            RealtimeTranslationError.isAuthenticationFailure(
+                code: "invalid_api\u{200B}_key",
+                message: ""
+            )
+        )
+        XCTAssertTrue(
+            RealtimeTranslationError.isAuthenticationFailure(
+                code: "invalid_api\u{0009}_key",
+                message: ""
+            )
+        )
+        XCTAssertFalse(
+            RealtimeTranslationError.isAuthenticationFailure(
+                code: "authority_error",
+                message: "authority mismatch"
+            )
+        )
+        XCTAssertFalse(
+            RealtimeTranslationError.isAuthenticationFailure(
+                code: nil,
+                message: "error 4010 occurred"
+            )
+        )
+        XCTAssertFalse(
+            RealtimeTranslationError.isAuthenticationFailure(
+                code: nil,
+                message: "error 4\u{0009}01 occurred"
+            )
+        )
     }
 
     // Given: 各エラー種別

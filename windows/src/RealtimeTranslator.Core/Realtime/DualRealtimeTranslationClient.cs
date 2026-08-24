@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -160,14 +161,15 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
         EnsureConnectionsForPair(pair);
 
+        using var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
         {
-            await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await _lifecycleGate.WaitAsync(handshakeCts.Token).ConfigureAwait(false);
             try
             {
                 var starts = new List<Task>
                 {
-                    _sourceConnection.StartAsync(apiKey, tuning, pair, cancellationToken),
+                    _sourceConnection.StartAsync(apiKey, tuning, pair, handshakeCts.Token),
                 };
                 starts.AddRange(pair.Languages().Select(language =>
                     {
@@ -178,9 +180,53 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                                 target,
                                 null,
                                 tuning.NoiseReduction),
-                            cancellationToken);
+                            handshakeCts.Token);
                     }));
-                await Task.WhenAll(starts).ConfigureAwait(false);
+
+                // Swift の throwing TaskGroup と同じく、1 本が失敗したら残り handshake を
+                // timeout まで待たずキャンセルし、ready leftover をすぐ ForceClose する。
+                Exception? handshakeFault = null;
+                var pending = new List<Task>(starts);
+                while (pending.Count > 0)
+                {
+                    var done = await Task.WhenAny(pending).ConfigureAwait(false);
+                    pending.Remove(done);
+                    if (done.IsCompletedSuccessfully)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        await done.ConfigureAwait(false);
+                    }
+                    catch (Exception error)
+                    {
+                        handshakeFault = error;
+                    }
+
+                    await handshakeCts.CancelAsync().ConfigureAwait(false);
+                    break;
+                }
+
+                try
+                {
+                    await Task.WhenAll(starts).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    if (handshakeFault is not null)
+                    {
+                        ExceptionDispatchInfo.Capture(handshakeFault).Throw();
+                    }
+
+                    throw;
+                }
+
+                if (handshakeFault is not null)
+                {
+                    ExceptionDispatchInfo.Capture(handshakeFault).Throw();
+                }
             }
             finally
             {
@@ -189,7 +235,17 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
         catch
         {
-            await ForceCloseAsync().ConfigureAwait(false);
+            try
+            {
+                await ForceCloseAsync().ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // leftover close 失敗で handshake / cancel の例外を消さない。
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+                // Swift の forceClose は throw しない。cleanup 失敗で元例外を置換しない。
+            }
+
             throw;
         }
 

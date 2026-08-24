@@ -172,6 +172,23 @@
         }
       },
       {
+        "name": "language switch finalizes a stale pair after source continues",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 0.4, "kind": "sourceDelta", "lane": "source", "text": "、皆さん", "eventId": "s2", "elapsedMs": 300 },
+          { "at": 0.5, "kind": "finalizeForLanguageSwitch" }
+        ],
+        "expectedFinal": {
+          "sourceText": "こんにちは、皆さん",
+          "translatedText": "Hello",
+          "isTranslationCurrent": true,
+          "shouldFinalize": true
+        }
+      },
+      {
         "name": "language switch without pair clears buffers for the next source",
         "epoch": 1,
         "expectLane": "en",
@@ -182,6 +199,24 @@
         ],
         "expectedFinal": {
           "sourceText": "Hello there",
+          "translatedText": "",
+          "isTranslationCurrent": false,
+          "shouldFinalize": false
+        }
+      },
+      {
+        "name": "stale idle does not concatenate the next source",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 0.4, "kind": "sourceDelta", "lane": "source", "text": "、皆さん", "eventId": "s2", "elapsedMs": 300 },
+          { "at": 9, "kind": "tick" },
+          { "at": 9.2, "kind": "sourceDelta", "lane": "source", "text": "ありがとう", "eventId": "s3", "elapsedMs": 400 }
+        ],
+        "expectedFinal": {
+          "sourceText": "ありがとう",
           "translatedText": "",
           "isTranslationCurrent": false,
           "shouldFinalize": false
@@ -248,7 +283,7 @@
         "expectedFinal": {
           "sourceText": "今日は meeting",
           "translatedText": "Today",
-          "isTranslationCurrent": true,
+          "isTranslationCurrent": false,
           "shouldFinalize": false
         }
       },

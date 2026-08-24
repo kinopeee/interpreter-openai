@@ -578,6 +578,57 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(finalized.translatedText, "Final source on close failure")
     }
 
+    func testStopDoesNotLetStaleConsumerRenderOverwriteFinalizedPair() async throws {
+        // Given: 完全ペア表示中。stop 中に旧 generation の consumer が未読 live delta を読む
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "こんにちは", eventID: "s1", elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Hello", eventID: "t1", elapsedMs: 20)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText.contains("こんにちは") == true
+                && delegate.latestSnapshot?.current.translatedText.contains("Hello") == true
+        }
+        audio.onStop = {
+            dual.emit(
+                target: .english,
+                event: .inputTranscriptDelta(
+                    delta: "遅延consumerの残骸",
+                    eventID: "orphan-1",
+                    elapsedMs: 99
+                )
+            )
+        }
+
+        // When: 停止後にスロットル描画間隔を超えて待つ
+        await session.stop()
+        try await Task.sleep(nanoseconds: 250_000_000)
+
+        // Then: forceFinalize したペアを enqueueRender の遅延 apply で live に戻さない
+        let snapshot = try XCTUnwrap(delegate.latestSnapshot)
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertEqual(snapshot.current.state, .finalized)
+        XCTAssertTrue(snapshot.current.sourceText.contains("こんにちは"))
+        XCTAssertEqual(snapshot.current.translatedText, "Hello")
+        XCTAssertFalse(snapshot.current.sourceText.contains("遅延consumerの残骸"))
+    }
+
     func testReconnectFinalizesCompletePairBeforeNewEpoch() async throws {
         // Given: idle finalize 前の完全な原文+訳文ペア
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
@@ -835,6 +886,75 @@ final class InterpretationSessionTests: XCTestCase {
             delegate.latestSnapshot?.current.state == .finalized
                 || delegate.latestSnapshot?.current.sourceText.contains("Hello") == true
         }
+        await session.stop()
+    }
+
+    func testLanguageFlipFinalizesStalePairAfterSourceContinues() async throws {
+        // Given: 訳文のあと同一言語の原文が伸びて stale になった listening セッション
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "今日は会議です", eventID: "s1", elapsedMs: 1)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Today is a meeting", eventID: "t1", elapsedMs: 2)
+        )
+        await waitUntil { dual.spokenLanguages == [.japanese] }
+        await waitUntil {
+            delegate.latestSnapshot?.current.translatedText.contains("Today") == true
+        }
+
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "、続きです", eventID: "s1b", elapsedMs: 2)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText.contains("続きです") == true
+                && delegate.latestSnapshot?.current.isTranslationCurrent == false
+        }
+        let resetsAfterJapanese = dual.resetAudioRoutingCallCount
+
+        // When: 英語へ文字種が反転する
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: " Hello how are you today",
+                eventID: "s2",
+                elapsedMs: 3
+            )
+        )
+
+        // Then: idle では確定しない stale ペアでも切替境界として確定する
+        await waitUntil { dual.spokenLanguages == [.japanese, .english] }
+        XCTAssertGreaterThan(dual.resetAudioRoutingCallCount, resetsAfterJapanese)
+        var finalizedSource: String?
+        var finalizedTranslation: String?
+        await waitUntil {
+            guard let current = delegate.latestSnapshot?.current,
+                  current.state == .finalized,
+                  current.sourceText.contains("続きです") else {
+                return false
+            }
+            finalizedSource = current.sourceText
+            finalizedTranslation = current.translatedText
+            return true
+        }
+        XCTAssertEqual(finalizedSource, "今日は会議です、続きです")
+        XCTAssertEqual(finalizedTranslation, "Today is a meeting")
         await session.stop()
     }
 
@@ -1134,6 +1254,17 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(trimmed, "")
     }
 
+    func testTrimEnEsWhitespaceOnlyBecomesEmpty() {
+        // Given: 空白と改行だけの原文
+        let text = "  \n\t  "
+
+        // When: en-es の語窓切り詰めを行う
+        let trimmed = RoutingSourceTextWindow.trim(text, pair: .enEs)
+
+        // Then: 語が無いため空文字になり、空白 run 圧縮の " " を残さない
+        XCTAssertEqual(trimmed, "")
+    }
+
     func testTrimEnEsCollapsesLongWhitespaceRunAndKeepsWordWindow() {
         // Given: en-es 語窓内に長い語と、上限を超える空白 run がある
         let discarded = "old1 old2 old3 "
@@ -1236,6 +1367,8 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     private(set) var isRunning = false
     private(set) var terminationError: Error?
     var startError: Error?
+    /// performStop が renderTask を消した直後に consumer へイベントを届ける。
+    var onStop: (() -> Void)?
 
     init() {
         var continuation: AsyncStream<Data>.Continuation!
@@ -1259,6 +1392,7 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     func stop() async {
         stopCallCount += 1
         isRunning = false
+        onStop?()
         continuation?.finish()
         continuation = nil
     }

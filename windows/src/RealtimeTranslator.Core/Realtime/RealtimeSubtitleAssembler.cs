@@ -32,7 +32,9 @@ public sealed class RealtimeSubtitleAssembler
     private LanguagePair _languagePair;
     private DateTimeOffset _lastActivityAt = DateTimeOffset.MinValue;
     private int? _finalizedCutoffElapsedMs;
+    private int? _maxTranslationElapsedMs;
     private bool _awaitingSourceAfterFinalize;
+    private bool _translationIsCurrent;
 
     public RealtimeSubtitleAssembler(LanguagePair languagePair = LanguagePair.JaEn)
     {
@@ -49,7 +51,9 @@ public sealed class RealtimeSubtitleAssembler
         _expectedLane = null;
         _seenEventIds.Clear();
         _finalizedCutoffElapsedMs = null;
+        _maxTranslationElapsedMs = null;
         _awaitingSourceAfterFinalize = false;
+        _translationIsCurrent = false;
     }
 
     public void BeginNewEpoch(int epoch) => Reset(epoch);
@@ -58,13 +62,37 @@ public sealed class RealtimeSubtitleAssembler
     public void ExpectLane(RealtimeTranslationOutputLanguage? lane)
     {
         _expectedLane = lane;
+        if (lane is { } expectedLane)
+        {
+            // 一次信号: first-output / echo で lock 済みでも期待 lane へ付け替える。
+            if (_translationText.GetValueOrDefault(expectedLane, string.Empty).Length > 0)
+            {
+                var alreadySelected = _selectedLane == expectedLane;
+                _selectedLane = expectedLane;
+                if (!alreadySelected)
+                {
+                    _translationIsCurrent = true;
+                }
+            }
+            else if (_selectedLane != expectedLane)
+            {
+                _selectedLane = null;
+                _translationIsCurrent = false;
+            }
+
+            return;
+        }
+
         if (_selectedLane is null)
         {
             ResolveLaneIfNeeded();
         }
     }
 
-    /// <summary>言語切替時に現行ペアを確定する。完全ペアがなければ buffer だけクリアする。</summary>
+    /// <summary>
+    /// 言語切替時に現行ペアを確定する。完全ペアがなければ buffer だけクリアする。
+    /// hysteresis で原文が伸びて訳が stale でも、切替境界としては既存ペアを確定する。
+    /// </summary>
     public RealtimeSubtitleUpdate? FinalizeForLanguageSwitch(DateTimeOffset now)
     {
         var hasCompletePair = _sourceText.Length > 0
@@ -120,6 +148,7 @@ public sealed class RealtimeSubtitleAssembler
             return null;
         }
 
+        var extendingExistingSource = _sourceText.Length > 0;
         if (_awaitingSourceAfterFinalize)
         {
             _awaitingSourceAfterFinalize = false;
@@ -127,12 +156,19 @@ public sealed class RealtimeSubtitleAssembler
         else if (ShouldStartNewSegmentForSourceUpdate())
         {
             ClearSegmentBuffers(advancingGeneration: true);
+            extendingExistingSource = false;
         }
 
         _sourceText += delta;
         _lastActivityAt = now;
+        if (extendingExistingSource && CurrentTranslation.Length > 0)
+        {
+            // 原文が伸びた間の旧訳文は表示用に残すが、現行でも確定対象でもない。
+            _translationIsCurrent = false;
+        }
+
         ResolveLaneIfNeeded();
-        return Snapshot(_selectedLane is not null && CurrentTranslation.Length > 0);
+        return Snapshot();
     }
 
     private RealtimeSubtitleUpdate? AppendTranslation(
@@ -150,6 +186,7 @@ public sealed class RealtimeSubtitleAssembler
         }
 
         _translationText[target] = _translationText.GetValueOrDefault(target, string.Empty) + delta;
+        RememberTranslationElapsed(elapsedMs);
 
         _lastActivityAt = now;
 
@@ -170,8 +207,13 @@ public sealed class RealtimeSubtitleAssembler
             }
         }
 
+        if (_selectedLane == target && CurrentTranslation.Length > 0)
+        {
+            _translationIsCurrent = true;
+        }
+
         // 非選択 lane は buffer のみ。表示中の選択 lane の現行フラグは維持する。
-        return Snapshot(_selectedLane is not null && _sourceText.Length > 0 && CurrentTranslation.Length > 0);
+        return Snapshot();
     }
 
     private bool IsDuplicateOrStale(string? eventId, int? elapsedMs)
@@ -197,6 +239,7 @@ public sealed class RealtimeSubtitleAssembler
             if (_translationText.GetValueOrDefault(expectedLane, string.Empty).Length > 0)
             {
                 _selectedLane = expectedLane;
+                _translationIsCurrent = true;
             }
 
             return;
@@ -207,30 +250,49 @@ public sealed class RealtimeSubtitleAssembler
         if (populated.Length == 1)
         {
             _selectedLane = populated[0].Key;
+            _translationIsCurrent = true;
             return;
         }
 
         // 補助: 原文の文字種。
         _selectedLane = _languagePair.TranslationTarget(
             SpokenLanguageDetector.Detect(_sourceText, _languagePair));
+        if (_selectedLane is { } detected
+            && _translationText.GetValueOrDefault(detected, string.Empty).Length > 0)
+        {
+            _translationIsCurrent = true;
+        }
     }
 
     private RealtimeSubtitleUpdate? EvaluateFinalize(DateTimeOffset now)
     {
-        if (_sourceText.Length == 0 || _selectedLane is null || CurrentTranslation.Length == 0)
+        if (_sourceText.Length == 0 || _selectedLane is null)
         {
             return null;
         }
 
-        return now - _lastActivityAt >= IdleFinalizeInterval ? FinalizeCurrent(elapsedHint: null, now) : null;
+        if (now - _lastActivityAt < IdleFinalizeInterval)
+        {
+            return null;
+        }
+
+        if (CurrentTranslation.Length > 0 && _translationIsCurrent)
+        {
+            return FinalizeCurrent(elapsedHint: null, now);
+        }
+
+        if (CurrentTranslation.Length > 0)
+        {
+            // 旧訳文は確定しないが、次発話の原文が同一セグメントへ連結しないよう境界だけ進める。
+            AbandonStaleSegment(now);
+        }
+
+        return null;
     }
 
     private RealtimeSubtitleUpdate FinalizeCurrent(int? elapsedHint, DateTimeOffset now)
     {
-        if (elapsedHint is { } hint)
-        {
-            _finalizedCutoffElapsedMs = hint;
-        }
+        _finalizedCutoffElapsedMs = elapsedHint ?? _maxTranslationElapsedMs;
 
         var update = new RealtimeSubtitleUpdate(
             _sourceText,
@@ -252,15 +314,35 @@ public sealed class RealtimeSubtitleAssembler
         _ => string.Empty,
     };
 
-    private RealtimeSubtitleUpdate Snapshot(bool isTranslationCurrent)
+    private RealtimeSubtitleUpdate Snapshot()
     {
         var translation = _selectedLane is null ? string.Empty : CurrentTranslation;
         return new RealtimeSubtitleUpdate(
             _sourceText,
             translation,
-            isTranslationCurrent && translation.Length > 0,
+            _translationIsCurrent && translation.Length > 0,
             ShouldFinalize: false,
             _segmentGeneration);
+    }
+
+    private void AbandonStaleSegment(DateTimeOffset now)
+    {
+        _finalizedCutoffElapsedMs = _maxTranslationElapsedMs;
+        ClearSegmentBuffers(advancingGeneration: true);
+        _awaitingSourceAfterFinalize = true;
+        _lastActivityAt = now;
+    }
+
+    private void RememberTranslationElapsed(int? elapsedMs)
+    {
+        if (elapsedMs is not { } elapsed)
+        {
+            return;
+        }
+
+        _maxTranslationElapsedMs = _maxTranslationElapsedMs is { } max
+            ? Math.Max(max, elapsed)
+            : elapsed;
     }
 
     private void ClearSegmentBuffers(bool advancingGeneration)
@@ -268,6 +350,7 @@ public sealed class RealtimeSubtitleAssembler
         _sourceText = string.Empty;
         _translationText.Clear();
         _selectedLane = null;
+        _translationIsCurrent = false;
         if (advancingGeneration)
         {
             _segmentGeneration += 1;

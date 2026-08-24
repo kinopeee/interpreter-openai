@@ -380,6 +380,58 @@
         "translationPumpHalted": true,
         "signalsSessionReconnect": true
       }
+    },
+    {
+      "name": "ja-es halted translation pump does not resume when the target switches",
+      "pair": "ja-es",
+      "steps": [
+        { "kind": "selectTranslationTarget", "target": "es" },
+        { "kind": "appendFrame", "frame": "ok1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail2" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail3" },
+        { "kind": "selectTranslationTarget", "target": "ja" },
+        { "kind": "appendFrame", "frame": "afterSwitch" }
+      ],
+      "expected": {
+        "sourceFrames": ["ok1", "fail1", "fail2", "fail3", "afterSwitch"],
+        "frames": {
+          "es": ["ok1"],
+          "ja": []
+        },
+        "transportErrorCount": 1,
+        "translationPumpHalted": true,
+        "signalsSessionReconnect": true
+      }
+    },
+    {
+      "name": "en-es halted translation pump does not resume when the target switches",
+      "pair": "en-es",
+      "steps": [
+        { "kind": "selectTranslationTarget", "target": "en" },
+        { "kind": "appendFrame", "frame": "ok1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail1" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail2" },
+        { "kind": "translationSendFailure" },
+        { "kind": "appendFrame", "frame": "fail3" },
+        { "kind": "selectTranslationTarget", "target": "es" },
+        { "kind": "appendFrame", "frame": "afterSwitch" }
+      ],
+      "expected": {
+        "sourceFrames": ["ok1", "fail1", "fail2", "fail3", "afterSwitch"],
+        "frames": {
+          "en": ["ok1"],
+          "es": []
+        },
+        "transportErrorCount": 1,
+        "translationPumpHalted": true,
+        "signalsSessionReconnect": true
+      }
     }
   ],
   "targetSelectionDescription": "target は話者言語ではなく出力言語。話者言語は pair.counterpart(target) で求める。",

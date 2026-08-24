@@ -224,7 +224,7 @@ public static class SpokenLanguageDetector
         return words;
     }
 
-    /// <summary>en-es RecentEvidence と同じ語窓の開始 UTF-16 オフセット。</summary>
+    /// <summary>en-es RecentEvidence と同じ語窓の開始 UTF-16 オフセット。語前の ¿ / ¡ は空白付きでも含める。</summary>
     public static int RecentWordWindowStart(string text, int window = EnEsWindow)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -248,14 +248,33 @@ public static class SpokenLanguageDetector
         int window)
     {
         var start = words[^window].Start;
-        while (start > 0)
+        // 語前の ¿ / ¡ は空白を挟んでも窓に残す。空白だけの prefix や直前のラテン語には踏み込まない。
+        var probe = start;
+        while (probe > 0)
         {
-            if (text[start - 1] is not ('¿' or '¡'))
+            var previousOffset = probe - 1;
+            if (char.IsLowSurrogate(text[previousOffset])
+                && previousOffset > 0
+                && char.IsHighSurrogate(text[previousOffset - 1]))
             {
-                break;
+                previousOffset -= 1;
             }
 
-            start -= 1;
+            var previous = Rune.GetRuneAt(text, previousOffset);
+            if (previous.Value is 0x00BF or 0x00A1)
+            {
+                start = previousOffset;
+                probe = previousOffset;
+                continue;
+            }
+
+            if (Rune.IsWhiteSpace(previous))
+            {
+                probe = previousOffset;
+                continue;
+            }
+
+            break;
         }
 
         return start;

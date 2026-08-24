@@ -320,7 +320,6 @@ public sealed class RealtimeTranslationConnection : IDisposable
 
     private static RealtimeTranslationException ClassifyServerError(RealtimeTranslationServerEvent.ServerError error)
     {
-        Trace.WriteLine("Realtime translation error code=" + (error.Code ?? "none"));
         return RealtimeTranslationException.IsAuthenticationFailure(error.Code, error.Message)
             ? new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed)
             : new RealtimeTranslationException(
@@ -401,11 +400,6 @@ public sealed class RealtimeTranslationConnection : IDisposable
                 or RealtimeTranslationServerEvent.InputTranscriptDelta)
             {
                 continue;
-            }
-
-            if (serverEvent is RealtimeTranslationServerEvent.ServerError errorEvent)
-            {
-                Trace.WriteLine("Realtime translation error code=" + (errorEvent.Code ?? "none"));
             }
 
             writer.TryWrite(new RealtimeTranslationStreamEvent(_target, serverEvent, currentEpoch));

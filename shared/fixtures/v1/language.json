@@ -174,6 +174,70 @@
       "window": 4,
       "expected": "spanish",
       "fullEvidence": "japanese"
+    },
+    {
+      "name": "en-es inverted punctuation before the word window keeps a following space",
+      "pair": "en-es",
+      "input": "aaa bbb ccc ¿ Hello there friend people world today extra more",
+      "window": 8,
+      "expected": "spanish",
+      "fullEvidence": "spanish"
+    },
+    {
+      "name": "en-es inverted exclamation before the word window keeps a following space",
+      "pair": "en-es",
+      "input": "aaa bbb ccc ¡ Hello there friend people world today extra more",
+      "window": 8,
+      "expected": "spanish",
+      "fullEvidence": "spanish"
+    },
+    {
+      "name": "en-es word window does not walk back into earlier exclusive words",
+      "pair": "en-es",
+      "input": "the and is are of to it that Hello there friend people world today extra more",
+      "window": 8,
+      "expected": "ambiguousLatin",
+      "fullEvidence": "english"
+    },
+    {
+      "name": "en-es word window does not walk back past latin to a distant inverted question",
+      "pair": "en-es",
+      "input": "¿ Dónde estás hello there friend people world today extra more",
+      "window": 8,
+      "expected": "ambiguousLatin",
+      "fullEvidence": "spanish"
+    },
+    {
+      "name": "en-es inverted punctuation before the word window keeps a following tab",
+      "pair": "en-es",
+      "input": "aaa bbb ccc ¿\tHello there friend people world today extra more",
+      "window": 8,
+      "expected": "spanish",
+      "fullEvidence": "spanish"
+    },
+    {
+      "name": "en-es inverted punctuation before the word window keeps a following newline",
+      "pair": "en-es",
+      "input": "aaa bbb ccc ¿\nHello there friend people world today extra more",
+      "window": 8,
+      "expected": "spanish",
+      "fullEvidence": "spanish"
+    },
+    {
+      "name": "en-es both inverted marks before the word window stay in the window",
+      "pair": "en-es",
+      "input": "aaa bbb ccc ¿ ¡ Hello there friend people world today extra more",
+      "window": 8,
+      "expected": "spanish",
+      "fullEvidence": "spanish"
+    },
+    {
+      "name": "en-es inverted punctuation after discarded exclusive words stays spanish",
+      "pair": "en-es",
+      "input": "the and is are of to it that ¿ Hello there friend people world today extra more",
+      "window": 8,
+      "expected": "spanish",
+      "fullEvidence": "spanish"
     }
   ],
   "targets": [
