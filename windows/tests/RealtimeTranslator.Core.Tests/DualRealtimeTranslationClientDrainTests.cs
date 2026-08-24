@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
@@ -155,6 +156,43 @@ public sealed class DualRealtimeTranslationClientDrainTests
         }
 
         Assert.Contains("drain survivor", transcripts);
+    }
+
+    // Given: session consumer がおらず、原文 delta が Dual Events に届いている
+    // When: Stop 相当で ForceClose したあと CloseGracefully する
+    // Then: merge 済みの未読 delta を channel 差し替えで捨てない（macOS #98 の Windows 側）
+    [Fact]
+    public async Task ForceCloseAfterUnreadDeltaStillReturnsEventsOnCloseGracefully()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(source, english, japanese, ShortCloseTimeout);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        source.EnqueueJson(
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"pre-force-close-1","event_id":"pre-force-close-event-1","delta":"teardown中の未読原文"}""");
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        Assert.True(await dual.Events.WaitToReadAsync(timeout.Token));
+
+        await dual.ForceCloseAsync();
+        await dual.CloseGracefullyAsync();
+
+        var sourceTexts = new List<string>();
+        while (await dual.Events.WaitToReadAsync())
+        {
+            while (dual.Events.TryRead(out var streamEvent))
+            {
+                if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta delta)
+                {
+                    sourceTexts.Add(delta.Delta);
+                }
+            }
+        }
+
+        Assert.Contains("teardown中の未読原文", sourceTexts);
     }
 
     // Given: session.closed / transcription completed を返さない dual
