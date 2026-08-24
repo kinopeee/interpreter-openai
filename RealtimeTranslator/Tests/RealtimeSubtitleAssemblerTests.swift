@@ -479,6 +479,29 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         XCTAssertEqual(next?.translatedText, "")
     }
 
+    func testNilEventIDReplayAfterNewSegmentStartDoesNotDuplicate() {
+        // Given: 期待lane以外の訳文だけが残り、次の原文で新 segment が始まる
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        assembler.expectLane(.japanese)
+        _ = assembler.ingest(event(.english, .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 2)))
+        _ = assembler.ingest(event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 1)))
+
+        // When: 同じ nil-id 原文が close drain で再適用される
+        let replayed = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 1))
+        )
+
+        // Then: 新 segment 開始時の clear でキーを消さず、二重表示しない
+        XCTAssertNil(replayed)
+        XCTAssertEqual(
+            assembler.ingest(
+                event(.english, .inputTranscriptDelta(delta: "、皆さん", eventID: nil, elapsedMs: 3))
+            )?.sourceText,
+            "こんにちは、皆さん"
+        )
+    }
+
     private func event(
         _ target: RealtimeTranslationOutputLanguage,
         _ serverEvent: RealtimeTranslationServerEvent,
