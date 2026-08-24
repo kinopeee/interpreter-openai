@@ -420,6 +420,68 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 訳文のあと同一言語の原文が伸びて stale になったセグメント
+    // When: 英語へ文字種が反転する
+    // Then: idle では確定しない stale ペアでも切替境界として確定する
+    [Fact]
+    public async Task LanguageFlipFinalizesStalePairAfterSourceContinues()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("これはテストです");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "This is a test");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.TranslatedText.Length > 0);
+            }
+        });
+
+        client.PublishSourceDelta("、続きです");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText.Contains("続きです", StringComparison.Ordinal)
+                    && !update.IsTranslationCurrent);
+            }
+        });
+        var resetsAfterJapanese = client.ResetAudioRoutingCount;
+
+        client.PublishSourceDelta(" now we continue in english for a while");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
+
+        Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
+        Assert.True(client.ResetAudioRoutingCount > resetsAfterJapanese);
+        RealtimeSubtitleUpdate finalized = default;
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                finalized = updates.Find(update => update.ShouldFinalize);
+                return finalized.ShouldFinalize;
+            }
+        });
+        Assert.Equal("これはテストです、続きです", finalized.SourceText);
+        Assert.Equal("This is a test", finalized.TranslatedText);
+        await session.StopAsync();
+    }
+
     // Given: ja-es で日本語→es の完全ペアが揃ったあとスペイン語へ反転する原文
     // When: 文字種の反転を検出する
     // Then: 前セグメントを確定し、音声 routing を日本語 target へ切り替え直す
