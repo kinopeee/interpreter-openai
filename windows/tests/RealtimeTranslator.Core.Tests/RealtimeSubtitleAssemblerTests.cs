@@ -109,6 +109,31 @@ public sealed class RealtimeSubtitleAssemblerTests
         Assert.Equal("Hello everyone", idle.Value.TranslatedText);
     }
 
+    // Given: echo が first-output で lock したあと、本命 lane の訳文がすでに buffer にある
+    // When: ExpectLane で本命 lane を指定してから idle Tick する
+    // Then: 後着の本命訳を待たず、buffer 済みの期待 lane を即選択して確定する
+    [Fact]
+    public void ExpectLaneSwitchesImmediatelyWhenExpectedTranslationIsAlreadyBuffered()
+    {
+        var assembler = NewAssembler();
+        assembler.Ingest(Source("Tokyo", "s1", 100), Origin);
+        assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, "Tokyo", "echo", 150),
+            Origin.AddMilliseconds(150));
+        var buffered = assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.Japanese, "東京", "ja", 200),
+            Origin.AddMilliseconds(200));
+
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.Japanese);
+        var idle = assembler.Tick(Origin.AddSeconds(9));
+
+        Assert.Equal("Tokyo", buffered?.TranslatedText);
+        Assert.NotNull(idle);
+        Assert.True(idle.Value.ShouldFinalize);
+        Assert.Equal("東京", idle.Value.TranslatedText);
+        Assert.True(idle.Value.IsTranslationCurrent);
+    }
+
     // Given: 期待 lane がまだ無く、同言語 echo が先に first-output で lock した
     // When: その後 ExpectLane で本命 lane を指定し、本命の訳文が来る
     // Then: echo では lane を固定せず、期待 lane の訳文を表示する
