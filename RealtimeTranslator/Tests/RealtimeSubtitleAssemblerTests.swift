@@ -436,10 +436,12 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
 
         // When: close drain が同じ delta を再適用する
         let replayedSource = assembler.ingest(
-            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 1))
+            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 1)),
+            fromStopDrain: true
         )
         let replayedTranslation = assembler.ingest(
-            event(.english, .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 2))
+            event(.english, .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 2)),
+            fromStopDrain: true
         )
 
         // Then: 二重表示せず、現行テキストは1回分のまま
@@ -489,7 +491,8 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
 
         // When: 同じ nil-id 原文が close drain で再適用される
         let replayed = assembler.ingest(
-            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 1))
+            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 1)),
+            fromStopDrain: true
         )
 
         // Then: 新 segment 開始時の clear でキーを消さず、二重表示しない
@@ -500,6 +503,41 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
             )?.sourceText,
             "こんにちは、皆さん"
         )
+    }
+
+    func testNilEventIDSourceRepeatsSameTextInSegment() {
+        // Given: 原文 transcription は elapsedMs が無く、同一本文の delta が続き得る
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+
+        // When: 同一セグメントで同じ句読点が二度届く
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "はい", eventID: nil, elapsedMs: nil))
+        )
+        let firstPause = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "、", eventID: nil, elapsedMs: nil))
+        )
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "はい", eventID: nil, elapsedMs: nil))
+        )
+        let secondPause = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "、", eventID: nil, elapsedMs: nil))
+        )
+        let rest = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "そうです", eventID: nil, elapsedMs: nil))
+        )
+
+        // Then: 本文キーでは棄てず、繰り返しを原文へ残す
+        XCTAssertEqual(firstPause?.sourceText, "はい、")
+        XCTAssertEqual(secondPause?.sourceText, "はい、はい、")
+        XCTAssertEqual(rest?.sourceText, "はい、はい、そうです")
+
+        // And: close drain の再送だけは増やさない
+        let replayedPause = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "、", eventID: nil, elapsedMs: nil)),
+            fromStopDrain: true
+        )
+        XCTAssertNil(replayedPause)
     }
 
     private func event(

@@ -461,7 +461,7 @@ final class InterpretationSession {
             if case .error = streamEvent.event {
                 continue
             }
-            if let update = assembler.ingest(streamEvent) {
+            if let update = assembler.ingest(streamEvent, fromStopDrain: true) {
                 apply(update)
             }
         }
