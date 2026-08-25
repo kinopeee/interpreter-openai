@@ -577,6 +577,36 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertTrue(snapshot.current.translatedText.hasPrefix("Hello"))
     }
 
+    func testStopStopsTickerBeforeCloseDrain() async throws {
+        // Given: listening 中は ticker が動いている
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        await session.start()
+        await waitUntil { session.state == .listening }
+        XCTAssertTrue(session.isTickerRunning)
+
+        let gate = CheckedContinuationBox()
+        dual.closeGracefullyGate = gate
+
+        // When: closeGracefully 待ちのあいだを観測する
+        let stopping = Task { await session.stop() }
+        await waitUntil { dual.closeGracefullyCallCount >= 1 }
+
+        // Then: idle finalize で nil-id キーを消す前に ticker を止めている
+        XCTAssertFalse(session.isTickerRunning)
+        gate.resume()
+        dual.closeGracefullyGate = nil
+        await stopping.value
+        XCTAssertEqual(session.state, .idle)
+    }
+
     func testStopIngestsCompletePairPublishedDuringGracefulClose() async throws {
         // Given: 停止時点では字幕がまだ無く、commit/session.close の drain で完全ペアが届く
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
@@ -1546,6 +1576,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     private(set) var beginStopDrainCaptureCallCount = 0
     private(set) var acknowledgeCallCount = 0
     var acknowledgeGate: CheckedContinuationBox?
+    var closeGracefullyGate: CheckedContinuationBox?
 
     var connectionEpoch: Int {
         get async {
@@ -1656,6 +1687,11 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     @discardableResult
     func closeGracefully() async -> [RealtimeTranslationStreamEvent] {
         closeGracefullyCallCount += 1
+        if let closeGracefullyGate {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                closeGracefullyGate.continuation = continuation
+            }
+        }
         let drained = closeGracefullyEvents
         closeGracefullyEvents = []
         finishEvents()

@@ -420,6 +420,9 @@ final class InterpretationSession {
         lifecycleGeneration += 1
         await dualClient.beginStopDrainCapture()
         state = .closing
+        // close drain 待ち中に idle finalize すると seenNilEventKeys が消え、
+        // 未読の nil-id 原文を新 segment として二重表示する。
+        stopTicker()
         aggregator.setStatusBanner(UiCopy.text("banner.closing"))
         publishSubtitles()
 
