@@ -525,6 +525,58 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(snapshot.current.translatedText, "Hello")
     }
 
+    func testStopDoesNotReplaceFinalizedPairAfterAcknowledgeSuspends() async throws {
+        // Given: 完全ペア表示済み。ack は Dual actor hop 相当で止められる
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "こんにちは", eventID: "s1", elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Hello", eventID: "t1", elapsedMs: 20)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText == "こんにちは"
+                && delegate.latestSnapshot?.current.translatedText == "Hello"
+        }
+
+        let gate = CheckedContinuationBox()
+        dual.acknowledgeGate = gate
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: " there", eventID: "t2", elapsedMs: 30)
+        )
+        await waitUntil { dual.acknowledgeCallCount >= 3 }
+
+        // When: ack 待ちのあいだに stop し、再開後の遅延描画を待つ
+        let stopping = Task { await session.stop() }
+        await waitUntil { dual.beginStopDrainCaptureCallCount >= 1 }
+        gate.resume()
+        dual.acknowledgeGate = nil
+        await stopping.value
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        // Then: forceFinalize 後に live replaceCurrent で確定ペアを戻さない
+        XCTAssertEqual(session.state, .idle)
+        let snapshot = try XCTUnwrap(delegate.latestSnapshot)
+        XCTAssertEqual(snapshot.current.state, .finalized)
+        XCTAssertEqual(snapshot.current.sourceText, "こんにちは")
+        XCTAssertTrue(snapshot.current.translatedText.hasPrefix("Hello"))
+    }
+
     func testStopIngestsCompletePairPublishedDuringGracefulClose() async throws {
         // Given: 停止時点では字幕がまだ無く、commit/session.close の drain で完全ペアが届く
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
@@ -1492,6 +1544,8 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     /// CloseGracefully 中に失敗したことにして forceClose へ回す（drain 自体は返す）。
     var closeGracefullyShouldFail = false
     private(set) var beginStopDrainCaptureCallCount = 0
+    private(set) var acknowledgeCallCount = 0
+    var acknowledgeGate: CheckedContinuationBox?
 
     var connectionEpoch: Int {
         get async {
@@ -1590,7 +1644,14 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         beginStopDrainCaptureCallCount += 1
     }
 
-    func acknowledgeConsumedStreamEvent() async {}
+    func acknowledgeConsumedStreamEvent() async {
+        acknowledgeCallCount += 1
+        if let acknowledgeGate {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                acknowledgeGate.continuation = continuation
+            }
+        }
+    }
 
     @discardableResult
     func closeGracefully() async -> [RealtimeTranslationStreamEvent] {

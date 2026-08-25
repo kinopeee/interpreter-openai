@@ -460,18 +460,18 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         assembler.beginNewEpoch(1)
         let start = Date()
         _ = assembler.ingest(
-            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 100)),
+            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: nil)),
             now: start
         )
         _ = assembler.ingest(
-            event(.english, .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 200)),
+            event(.english, .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: nil)),
             now: start
         )
         let finalized = assembler.tick(now: start.addingTimeInterval(9))
 
         // When: 次発話が同じ原文 delta で始まる
         let next = assembler.ingest(
-            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 400)),
+            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: nil)),
             now: start.addingTimeInterval(9.2)
         )
 

@@ -388,10 +388,15 @@ final class InterpretationSession {
             if case .inputTranscriptDelta(let delta, _, _) = streamEvent.event,
                streamEvent.lane.isSource {
                 try await updateAudioRouting(withSourceDelta: delta)
+                // routing の await 中に stop が入ったら live ingest せず、未 ack のまま drain へ残す。
+                guard generation == lifecycleGeneration else { return }
             }
 
             beforeAssemblerIngestForTests?()
-            await dualClient.acknowledgeConsumedStreamEvent()
+            guard generation == lifecycleGeneration else { return }
+
+            // ingest を先に済ませ、ack の await で stop が割り込んでも
+            // 既読だけが drain から外れ、未適用のまま消えないようにする。
             if let update = assembler.ingest(streamEvent) {
                 #if DEBUG
                 AppLogger.session.notice(
@@ -403,6 +408,7 @@ final class InterpretationSession {
                     await resetAudioRoutingForNextSegment()
                 }
             }
+            await dualClient.acknowledgeConsumedStreamEvent()
         }
         guard generation == lifecycleGeneration else { return }
         throw RealtimeTranslationError.recoverableTransportFailure("event stream ended")
