@@ -1388,6 +1388,45 @@ public sealed class DualRealtimeTranslationClientParityTests
         await dual.ForceCloseAsync();
     }
 
+    // Given: ready な Dual
+    // When: 翻訳 lane へ復号できないメッセージが届く
+    // Then: merge 後の Events は transport error になり、原文 delta は引き続き届く
+    [Fact]
+    public async Task TranslationLaneBrokenMessageIsMergedAsTransportError()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        english.EnqueueRaw(Encoding.UTF8.GetBytes("{not json"));
+
+        RealtimeTranslationStreamEvent? errorEvent = null;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (errorEvent is null)
+        {
+            var streamEvent = await dual.Events.ReadAsync(timeout.Token);
+            if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError)
+            {
+                errorEvent = streamEvent;
+            }
+        }
+
+        var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(errorEvent.Event);
+        Assert.Equal(DualRealtimeTranslationClient.TransportErrorCode, error.Code);
+        Assert.Equal(
+            RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
+            errorEvent.Lane);
+
+        source.EnqueueJson(
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"alive"}""");
+        var deltas = await CollectSourceDeltasAsync(dual, count: 1);
+        Assert.Equal(["alive"], deltas);
+        await dual.ForceCloseAsync();
+    }
+
     // Given: 3 本の翻訳接続を持つ Dual と選択された言語ペア
     // When: その pair で Start する
     // Then: source と pair 内 2 lane だけが接続され、未使用 lane は接続されない

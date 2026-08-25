@@ -465,6 +465,32 @@ public sealed class RealtimeConnectionTests
         Assert.DoesNotContain(transport.Sent, payload => TypeOf(payload) == "session.close");
     }
 
+    // Given: session.closed を自動応答する ready な翻訳接続
+    // When: graceful close する
+    // Then: session.close を送り CloseTimeout にならず transport を閉じる
+    [Fact]
+    public async Task TranslationConnectionCloseWaitsForSessionClosed()
+    {
+        var transport = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety");
+        await connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+
+        await connection.CloseGracefullyAsync();
+
+        Assert.Equal("session.close", TypeOf(transport.Sent[^1]));
+        Assert.True(transport.CloseCount >= 1);
+        while (connection.Events.TryRead(out _))
+        {
+        }
+
+        Assert.False(await connection.Events.WaitToReadAsync());
+    }
+
     // Given: handshake 前（未 ready）の翻訳接続。closeTimeout は長く、誤って待つとテストが固まる
     // When: ready 前に graceful close する
     // Then: session.closed 待ちへ入らず即完了し、session.close も送らない

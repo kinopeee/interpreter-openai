@@ -2318,6 +2318,72 @@ public sealed class InterpretationSessionTests
         Assert.Equal("Complete pair before fence", finalized.TranslatedText);
     }
 
+    // Given: 完全ペア確定後に次イベントが generation 確認済み・Ingest 前で停止している
+    // When: その間に StopAsync して取り込みをフェンスする
+    // Then: 既存完全ペアは ShouldFinalize され、停止中イベントは assembler を更新しない
+    [Fact]
+    public async Task StopFencesInFlightIngestBeforeFlushingCompletePair()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("停止フェンス前の完全ペア");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Complete pair before stop fence");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+            }
+        });
+
+        using var enteredHook = new ManualResetEventSlim(false);
+        using var releaseHook = new ManualResetEventSlim(false);
+        session.BeforeAssemblerIngestForTests = () =>
+        {
+            enteredHook.Set();
+            if (!releaseHook.Wait(TimeSpan.FromSeconds(5)))
+            {
+                throw new TimeoutException("Stop fence test hook was not released");
+            }
+        };
+
+        client.PublishSourceDelta("Stop中に取り込ませない原文");
+        Assert.True(enteredHook.Wait(TimeSpan.FromSeconds(5)));
+
+        // Dispose と違い Stop は session loop 完了を待つ。generation を進めてから hook を解放する。
+        var stopTask = session.StopAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Closing);
+        releaseHook.Set();
+        await stopTask;
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+            Assert.DoesNotContain(
+                updates,
+                update => update.SourceText.Contains("取り込ませない", StringComparison.Ordinal));
+        }
+
+        Assert.Equal("停止フェンス前の完全ペア", finalized.SourceText);
+        Assert.Equal("Complete pair before stop fence", finalized.TranslatedText);
+    }
+
     // Given: 訳文がまだ無い原文だけのセグメント
     // When: StopAsync を経ずに Dispose される
     // Then: 不完全ペアを ShouldFinalize しない（字幕記録へゴミを書かない）
