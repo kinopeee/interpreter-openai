@@ -757,6 +757,83 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 長い英語原文で target が確定したあとに日本語へ反転する
+    // When: 切替を起こした delta を取り込む
+    // Then: routing バッファは反転 delta だけになり、切替前の英語尾を残さない
+    [Fact]
+    public async Task LanguageFlipResetsRoutingBufferToTheFlipDelta()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        const string flipDelta = "ここで日本語へ反転します";
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("we keep talking in english ");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+
+        var processedDeltaCount = 0;
+        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
+        client.PublishSourceDelta("and we never flip the script ");
+        await WaitUntilAsync(() => Volatile.Read(ref processedDeltaCount) >= 1);
+        Assert.Contains("english", session.RoutingSourceTextForTests, StringComparison.Ordinal);
+
+        client.PublishSourceDelta(flipDelta);
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
+
+        Assert.Equal([SpokenLanguage.English, SpokenLanguage.Japanese], client.SpokenLanguages);
+        Assert.Equal(
+            RoutingSourceTextWindow.Trim(flipDelta, LanguagePair.JaEn),
+            session.RoutingSourceTextForTests);
+        Assert.DoesNotContain("english", session.RoutingSourceTextForTests, StringComparison.Ordinal);
+        Assert.DoesNotContain("script", session.RoutingSourceTextForTests, StringComparison.Ordinal);
+        await session.StopAsync();
+    }
+
+    // Given: Listening 中のセッション
+    // When: 翻訳 lane から input_transcript が届く
+    // Then: 原文 authority にせず、routing も字幕も汚染しない
+    [Fact]
+    public async Task TranslationLaneInputTranscriptDoesNotRouteOrPolluteSource()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var processedDeltaCount = 0;
+        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
+        client.PublishTranslationLaneInputTranscript(
+            RealtimeTranslationOutputLanguage.English,
+            "polluting source that should never become authority");
+        await WaitUntilAsync(() => Volatile.Read(ref processedDeltaCount) >= 1);
+
+        Assert.Empty(client.SelectedTargets);
+        Assert.Equal(0, session.RoutingSourceTextLengthForTests);
+        lock (updates)
+        {
+            Assert.DoesNotContain(
+                updates,
+                update => update.SourceText.Contains("polluting", StringComparison.Ordinal));
+        }
+
+        client.PublishSourceDelta("こんにちは");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+
+        Assert.Equal([RealtimeTranslationOutputLanguage.English], client.SelectedTargets);
+        await session.StopAsync();
+    }
+
     // Given: en-es で英語 target 確定後、scalar 上限を超える長いスペイン語語窓
     // When: 逆方向ヒステリシス分の Spanish delta を送る
     // Then: 語窓を保ち English target へ切り替わる（scalar 切り詰めだと切り替わらない）
@@ -2950,6 +3027,15 @@ public sealed class InterpretationSessionTests
             RealtimeTranslationLane.Source,
             new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
             epoch);
+
+        public void PublishTranslationLaneInputTranscript(
+            RealtimeTranslationOutputLanguage target,
+            string delta,
+            int? epoch = null) =>
+            Publish(
+                target,
+                new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
+                epoch);
 
         public void PublishTranslationDelta(
             RealtimeTranslationOutputLanguage target,

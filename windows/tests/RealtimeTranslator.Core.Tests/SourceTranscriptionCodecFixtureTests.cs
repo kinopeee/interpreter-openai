@@ -113,6 +113,28 @@ public sealed class SourceTranscriptionCodecFixtureTests
         Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
     }
 
+    // Given: 鍵断片を含む非認証の runtime error
+    // When: 文字起こし専用 codec でデコードする
+    // Then: code は transcription に畳み、表示文言から鍵断片を除去する
+    [Fact]
+    public void FatalRuntimeErrorIsTaggedTranscriptionAndRedactsKeyMaterial()
+    {
+        var utf8 = Encoding.UTF8.GetBytes(
+            """{"type":"error","error":{"message":"upstream echo sk-codec-fatal","code":"server_error"}}""");
+
+        var classified = RealtimeSourceTranscriptionCodec.ClassifyError(
+            JsonNode.Parse(utf8)!.AsObject());
+        var actual = RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8);
+        var error = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
+
+        Assert.Equal(RealtimeTranslationErrorKind.FatalServerError, classified.Kind);
+        Assert.Equal(RealtimeTranslationException.GenericServerMessage, classified.Message);
+        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
+        Assert.DoesNotContain("sk-codec-fatal", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
+    }
+
     // Given: JSON として不正なペイロード
     // When: 文字起こし専用 codec でデコードする
     // Then: InvalidMessage へ正規化される

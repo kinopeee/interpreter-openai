@@ -83,6 +83,18 @@ public sealed class InterpretationSession : IDisposable
         }
     }
 
+    /// <summary>テスト用。言語切替後にバッファが反転 delta だけへ戻ったかを確認する。</summary>
+    internal string RoutingSourceTextForTests
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _routingSourceText;
+            }
+        }
+    }
+
     public InterpretationSession(
         IApiKeyStore apiKeyStore,
         IRealtimeAudioCapture audioCapture,
