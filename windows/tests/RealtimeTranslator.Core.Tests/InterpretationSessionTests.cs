@@ -777,7 +777,11 @@ public sealed class InterpretationSessionTests
         session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
         client.PublishSourceDelta("and we never flip the script ");
         await WaitUntilAsync(() => Volatile.Read(ref processedDeltaCount) >= 1);
-        Assert.Contains("english", session.RoutingSourceTextForTests, StringComparison.Ordinal);
+        var bufferBeforeFlip = session.RoutingSourceTextForTests;
+        Assert.Contains("script", bufferBeforeFlip, StringComparison.Ordinal);
+        Assert.True(
+            bufferBeforeFlip.Length > flipDelta.Length,
+            "pre-flip routing buffer should still hold the English tail");
 
         client.PublishSourceDelta(flipDelta);
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
@@ -786,8 +790,8 @@ public sealed class InterpretationSessionTests
         Assert.Equal(
             RoutingSourceTextWindow.Trim(flipDelta, LanguagePair.JaEn),
             session.RoutingSourceTextForTests);
-        Assert.DoesNotContain("english", session.RoutingSourceTextForTests, StringComparison.Ordinal);
         Assert.DoesNotContain("script", session.RoutingSourceTextForTests, StringComparison.Ordinal);
+        Assert.DoesNotContain("english", session.RoutingSourceTextForTests, StringComparison.Ordinal);
         await session.StopAsync();
     }
 
