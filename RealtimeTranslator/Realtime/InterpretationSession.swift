@@ -387,7 +387,7 @@ final class InterpretationSession {
             // 原文 routing は専用 transcription の source lane だけを使う。
             if case .inputTranscriptDelta(let delta, _, _) = streamEvent.event,
                streamEvent.lane.isSource {
-                try await updateAudioRouting(withSourceDelta: delta)
+                try await updateAudioRouting(withSourceDelta: delta, generation: generation)
                 // routing の await 中に stop が入ったら live ingest せず、未 ack のまま drain へ残す。
                 guard generation == lifecycleGeneration else { return }
             }
@@ -565,7 +565,7 @@ final class InterpretationSession {
         }
     }
 
-    private func updateAudioRouting(withSourceDelta delta: String) async throws {
+    private func updateAudioRouting(withSourceDelta delta: String, generation: Int) async throws {
         guard let pair = activeLanguagePair else { return }
         routingSourceText = RoutingSourceTextWindow.trim(routingSourceText + delta, pair: pair)
         let evidence = SpokenLanguageDetector.recentEvidence(
@@ -586,8 +586,10 @@ final class InterpretationSession {
                 enqueueRender(finalized)
             }
             await resetAudioRoutingForNextSegment()
+            guard generation == lifecycleGeneration else { return }
             routingSourceText = RoutingSourceTextWindow.trim(delta, pair: pair)
         }
+        guard generation == lifecycleGeneration else { return }
         selectedTranslationTarget = selection.target
         assembler.expectLane(selection.target)
         try await dualClient.selectTranslationTarget(selection.target)

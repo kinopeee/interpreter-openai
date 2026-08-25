@@ -607,6 +607,49 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(session.state, .idle)
     }
 
+    func testStopDoesNotSelectTargetAfterRoutingResetSuspends() async throws {
+        // Given: 日本語判定済み。切替時の resetAudioRouting を止められる
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        await session.start()
+        await waitUntil { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "今日は会議です", eventID: "s1", elapsedMs: 1)
+        )
+        await waitUntil { dual.selectedTargets == [.english] }
+
+        let gate = CheckedContinuationBox()
+        dual.resetAudioRoutingGate = gate
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: " Hello how are you today",
+                eventID: "s2",
+                elapsedMs: 3
+            )
+        )
+        await waitUntil { dual.resetAudioRoutingCallCount >= 1 }
+
+        // When: reset 待ちのあいだに stop する
+        let stopping = Task { await session.stop() }
+        await waitUntil { dual.beginStopDrainCaptureCallCount >= 1 }
+        gate.resume()
+        dual.resetAudioRoutingGate = nil
+        await stopping.value
+
+        // Then: closing 中に新しい target 選択を送らない
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertEqual(dual.selectedTargets, [.english])
+    }
+
     func testStopIngestsCompletePairPublishedDuringGracefulClose() async throws {
         // Given: 停止時点では字幕がまだ無く、commit/session.close の drain で完全ペアが届く
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
@@ -1577,6 +1620,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     private(set) var acknowledgeCallCount = 0
     var acknowledgeGate: CheckedContinuationBox?
     var closeGracefullyGate: CheckedContinuationBox?
+    var resetAudioRoutingGate: CheckedContinuationBox?
 
     var connectionEpoch: Int {
         get async {
@@ -1669,6 +1713,11 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
 
     func resetAudioRouting() async {
         resetAudioRoutingCallCount += 1
+        if let resetAudioRoutingGate {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                resetAudioRoutingGate.continuation = continuation
+            }
+        }
     }
 
     func beginStopDrainCapture() async {
