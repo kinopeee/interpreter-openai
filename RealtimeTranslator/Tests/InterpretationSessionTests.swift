@@ -628,6 +628,7 @@ final class InterpretationSessionTests: XCTestCase {
 
         let gate = CheckedContinuationBox()
         dual.resetAudioRoutingGate = gate
+        let resetCountBeforeSwitch = dual.resetAudioRoutingCallCount
         dual.emit(
             target: .english,
             event: .inputTranscriptDelta(
@@ -636,7 +637,9 @@ final class InterpretationSessionTests: XCTestCase {
                 elapsedMs: 3
             )
         )
-        await waitUntil { dual.resetAudioRoutingCallCount >= 1 }
+        await waitUntil {
+            dual.resetAudioRoutingCallCount > resetCountBeforeSwitch
+        }
 
         // When: reset 待ちのあいだに stop する
         let stopping = Task { await session.stop() }
