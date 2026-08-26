@@ -63,6 +63,31 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         Assert.False(await dual.Events.WaitToReadAsync(timeout.Token));
     }
 
+    // Given: 一度も Start していない Dual
+    // When: ForceCloseAsync する
+    // Then: 例外なく Events を完了し、接続は tearDown する（drain 待ちが固まらない）
+    [Fact]
+    public async Task ForceCloseWhenNeverStartedCompletesEvents()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.ForceCloseAsync();
+
+        Assert.Equal(0, source.ConnectCount);
+        Assert.True(source.CloseCount >= 1);
+        Assert.True(english.CloseCount >= 1);
+        Assert.True(japanese.CloseCount >= 1);
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        Assert.False(await dual.Events.WaitToReadAsync(timeout.Token));
+    }
+
     // Given: ForceClose 済みの Dual
     // When: CloseGracefullyAsync する
     // Then: session.close を再送せず、Events は完了したまま

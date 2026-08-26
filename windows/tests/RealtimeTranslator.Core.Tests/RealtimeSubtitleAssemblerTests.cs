@@ -158,6 +158,30 @@ public sealed class RealtimeSubtitleAssemblerTests
         Assert.False(update.Value.ShouldFinalize);
     }
 
+    // Given: 原文だけのセグメントで、空の英語訳が先に届く
+    // When: そのあと日本語訳が届く
+    // Then: 空 delta は first-output として lane を固定せず、日本語訳が現行になる
+    [Fact]
+    public void EmptyTranslationDeltaDoesNotLockFirstOutputLane()
+    {
+        var assembler = NewAssembler();
+        assembler.Ingest(Source("hello", "s1", 100), Origin);
+
+        var empty = assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, string.Empty, "t-empty", 150),
+            Origin.AddMilliseconds(150));
+        var japanese = assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.Japanese, "こんにちは", "t-ja", 200),
+            Origin.AddMilliseconds(200));
+
+        Assert.Null(empty);
+        Assert.NotNull(japanese);
+        Assert.Equal("hello", japanese.Value.SourceText);
+        Assert.Equal("こんにちは", japanese.Value.TranslatedText);
+        Assert.True(japanese.Value.IsTranslationCurrent);
+        Assert.False(japanese.Value.ShouldFinalize);
+    }
+
     // Given: idle 確定したセグメントのあと次の原文が始まっている
     // When: 確定済みセグメントより古い elapsed_ms の訳文が遅れて届く
     // Then: 次発話の訳文として混ぜない

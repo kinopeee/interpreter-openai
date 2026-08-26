@@ -2744,6 +2744,27 @@ public sealed class InterpretationSessionTests
         Assert.Equal(TranslationState.Idle, session.State);
     }
 
+    // Given: Dual handshake は成功し、capture Start が 1 回だけ失敗する
+    // When: セッションを開始する
+    // Then: Dual を ForceClose して recoverable 再接続し、2 回目の capture で Listening になる
+    [Fact]
+    public async Task CaptureStartFailureReconnectsAndForceClosesDual()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture { ThrowOnNextStart = true };
+        using var session = NewSession(client, audio: audio);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        Assert.True(client.StartCount >= 2);
+        Assert.True(client.ForceCloseCallCount >= 1);
+        Assert.True(audio.StartCallCount >= 2);
+        Assert.True(audio.StopCallCount >= 1);
+        await session.StopAsync();
+        Assert.Equal(TranslationState.Idle, session.State);
+    }
+
     private static InterpretationSession NewSession(
         FakeDualClient client,
         string? apiKey = "sk-test",
@@ -2814,6 +2835,9 @@ public sealed class InterpretationSessionTests
         /// <summary>StartAsync 入口で待つゲート（Dual 完了後・capture 開始前の Stop 用）。</summary>
         public TaskCompletionSource? StartGate { get; set; }
 
+        /// <summary>次の StartAsync だけ失敗させる（handshake 後のデバイス障害用）。</summary>
+        public bool ThrowOnNextStart { get; set; }
+
         public ChannelReader<ReadOnlyMemory<byte>> Frames
         {
             get
@@ -2827,7 +2851,7 @@ public sealed class InterpretationSessionTests
 
         public async Task StartAsync(CancellationToken cancellationToken = default)
         {
-            Task? gateTask;
+            Task? gateTask = null;
             lock (_sync)
             {
                 StartCallCount += 1;
@@ -2835,6 +2859,12 @@ public sealed class InterpretationSessionTests
                 if (_frames.Reader.Completion.IsCompleted)
                 {
                     _frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+                }
+
+                if (ThrowOnNextStart)
+                {
+                    ThrowOnNextStart = false;
+                    throw new InvalidOperationException("capture device failed");
                 }
 
                 gateTask = StartGate?.Task;

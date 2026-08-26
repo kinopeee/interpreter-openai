@@ -43,6 +43,31 @@ public sealed class DualRealtimeTranslationClientParityTests
         await dual.ForceCloseAsync();
     }
 
+    // Given: ready な Dual
+    // When: 空の原文 delta と未知 type のあとに実 delta が届く
+    // Then: Ignored は Events に出ず、実 delta だけが原文として届く（空文字で routing しない）
+    [Fact]
+    public async Task SourceEmptyAndUnknownPayloadsAreNotPublishedToEvents()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        source.EnqueueJson(
+            """{"type":"conversation.item.input_audio_transcription.delta","delta":"","event_id":"empty"}""");
+        source.EnqueueJson("""{"type":"session.unknown.noise","delta":"noise"}""");
+        source.EnqueueJson(
+            """{"type":"conversation.item.input_audio_transcription.delta","delta":"こんにちは","event_id":"real"}""");
+
+        var deltas = await CollectSourceDeltasAsync(dual, count: 1);
+
+        Assert.Equal(["こんにちは"], deltas);
+        await dual.ForceCloseAsync();
+    }
+
     // Given: near_field とカスタム prompt/keywords/delay の tuning
     // When: custom tuning で Dual を開始する
     // Then: 原文 session.update へ反映され、翻訳両 lane は noise_reduction のみ（transcription ブロックなし）
