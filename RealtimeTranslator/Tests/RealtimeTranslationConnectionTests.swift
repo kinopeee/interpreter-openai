@@ -111,6 +111,85 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
     }
 }
 
+/// `URLSessionWebSocketTask` と同様、Swift Task キャンセルでは解けず `close()` だけが待ちを解く。
+actor HangUntilCloseWebSocketTransport: RealtimeWebSocketTransport {
+    private var receiveWaiters: [CheckedContinuation<Data, Error>] = []
+    private var sendWaiters: [CheckedContinuation<Void, Error>] = []
+    private var isClosed = false
+    private(set) var closeCount = 0
+
+    func connect(url: URL, headers: [String: String]) async throws {
+        _ = url
+        _ = headers
+        isClosed = false
+    }
+
+    func send(_ data: Data) async throws {
+        _ = data
+        if isClosed {
+            throw URLSessionWebSocketTransportError.notConnected
+        }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            sendWaiters.append(continuation)
+        }
+    }
+
+    func receive() async throws -> Data {
+        if isClosed {
+            throw URLSessionWebSocketTransportError.notConnected
+        }
+        return try await withCheckedThrowingContinuation { continuation in
+            receiveWaiters.append(continuation)
+        }
+    }
+
+    func close() async {
+        closeCount += 1
+        isClosed = true
+        let receive = receiveWaiters
+        receiveWaiters.removeAll()
+        let send = sendWaiters
+        sendWaiters.removeAll()
+        for waiter in receive {
+            waiter.resume(throwing: CancellationError())
+        }
+        for waiter in send {
+            waiter.resume(throwing: CancellationError())
+        }
+    }
+}
+
+/// AsyncTimeout.onTimeout から continuation を再開する。
+private final class TimeoutResumeBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var resumePending = false
+
+    func store(_ continuation: CheckedContinuation<Void, Error>) {
+        lock.lock()
+        if resumePending {
+            resumePending = false
+            lock.unlock()
+            continuation.resume(returning: ())
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    func resume() {
+        lock.lock()
+        if let pending = continuation {
+            continuation = nil
+            lock.unlock()
+            pending.resume(returning: ())
+            return
+        }
+        resumePending = true
+        lock.unlock()
+    }
+}
+
 final class RealtimeTranslationConnectionTests: XCTestCase {
     func testHandshakeCreatedUpdateUpdated() async throws {
         // Given: created -> updated を返すtransport
@@ -560,6 +639,89 @@ final class RealtimeTranslationConnectionTests: XCTestCase {
         }
     }
 
+    func testHandshakeTimeoutAbortsReceiveThatIgnoresTaskCancellation() async {
+        // Given: receive が Swift キャンセルを無視し、close() だけが待ちを解く transport
+        let transport = HangUntilCloseWebSocketTransport()
+        let connection = RealtimeTranslationConnection(
+            target: .english,
+            transport: transport,
+            safetyIdentifier: "safety",
+            sessionUpdateTimeoutNanoseconds: 50_000_000
+        )
+        let started = ContinuousClock.now
+
+        // When
+        do {
+            try await connection.start(
+                apiKey: "sk-test",
+                config: .englishTargetWithSourceTranscription()
+            )
+            XCTFail("Expected timeout")
+        } catch {
+            // Then: TaskGroup が receive 完了を無限待ちせず、約 50ms で失敗する
+            let elapsed = ContinuousClock.now - started
+            XCTAssertLessThan(elapsed, Duration.seconds(2))
+            let closes = await transport.closeCount
+            XCTAssertGreaterThanOrEqual(closes, 1)
+        }
+    }
+
+    func testCancelledHandshakeClosesHungReceive() async {
+        // Given: handshake receive が close() まで戻らない
+        let transport = HangUntilCloseWebSocketTransport()
+        let connection = RealtimeTranslationConnection(
+            target: .english,
+            transport: transport,
+            safetyIdentifier: "safety",
+            sessionUpdateTimeoutNanoseconds: 30_000_000_000
+        )
+        let started = ContinuousClock.now
+        let startTask = Task {
+            try await connection.start(
+                apiKey: "sk-test",
+                config: .englishTargetWithSourceTranscription()
+            )
+        }
+
+        // When: start 直後にキャンセルする（timeout 15s を待たない）
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        startTask.cancel()
+
+        do {
+            try await startTask.value
+            XCTFail("Expected cancellation")
+        } catch {
+            // Then: 親 Task キャンセルが transport.close を呼び、停止待ちが解けない
+            let elapsed = ContinuousClock.now - started
+            XCTAssertLessThan(elapsed, Duration.seconds(2))
+            let closes = await transport.closeCount
+            XCTAssertGreaterThanOrEqual(closes, 1)
+        }
+    }
+
+    func testSourceHandshakeTimeoutAbortsReceiveThatIgnoresTaskCancellation() async {
+        // Given: 原文 handshake の receive も Swift キャンセルを無視する
+        let transport = HangUntilCloseWebSocketTransport()
+        let connection = RealtimeSourceTranscriptionConnection(
+            transport: transport,
+            safetyIdentifier: "safety",
+            handshakeTimeoutNanoseconds: 50_000_000
+        )
+        let started = ContinuousClock.now
+
+        // When
+        do {
+            try await connection.start(apiKey: "sk-test", tuning: .default, pair: .jaEn)
+            XCTFail("Expected timeout")
+        } catch {
+            // Then: 原文側も約 50ms で失敗し、stop 待ちに残らない
+            let elapsed = ContinuousClock.now - started
+            XCTAssertLessThan(elapsed, Duration.seconds(2))
+            let closes = await transport.closeCount
+            XCTAssertGreaterThanOrEqual(closes, 1)
+        }
+    }
+
     func testAsyncTimeoutThrowsRecoverableFailure() async {
         // Given: 50msでtimeoutする長時間処理
         // When
@@ -589,6 +751,33 @@ final class RealtimeTranslationConnectionTests: XCTestCase {
 
         // Then: timeoutせず結果を返す
         XCTAssertEqual(value, 42)
+    }
+
+    func testAsyncTimeoutOnTimeoutUnblocksUncancellableWait() async {
+        // Given: Swift キャンセルを見ない continuation 待ち
+        let box = TimeoutResumeBox()
+        let started = ContinuousClock.now
+
+        // When
+        do {
+            try await AsyncTimeout.run(
+                nanoseconds: 50_000_000,
+                onTimeout: { box.resume() }
+            ) {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    box.store(continuation)
+                }
+                throw RealtimeTranslationError.recoverableTransportFailure("send timeout")
+            }
+            XCTFail("Expected timeout")
+        } catch let error as RealtimeTranslationError {
+            // Then: onTimeout が待ちを解き、TaskGroup が固まらない
+            let elapsed = ContinuousClock.now - started
+            XCTAssertLessThan(elapsed, Duration.seconds(2))
+            XCTAssertEqual(error, .recoverableTransportFailure("send timeout"))
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
     }
 
     private func waitForSent(

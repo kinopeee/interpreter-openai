@@ -248,15 +248,34 @@ actor RealtimeSourceTranscriptionConnection {
     ) async throws -> [String: Any] {
         let data: Data
         if let timeoutNanoseconds {
-            data = try await withThrowingTaskGroup(of: Data.self) { group in
-                group.addTask { try await self.transport.receive() }
-                group.addTask {
-                    try await Task.sleep(nanoseconds: timeoutNanoseconds)
-                    throw RealtimeTranslationError.sessionUpdateTimeout
+            // URLSessionWebSocketTask.receive は Swift Task キャンセルを見ない。
+            // timeout / 親 Task キャンセルで transport を閉じ、TaskGroup の残り待ちを解く。
+            let transport = self.transport
+            data = try await withTaskCancellationHandler {
+                try await withThrowingTaskGroup(of: Data.self) { group in
+                    group.addTask { try await transport.receive() }
+                    group.addTask {
+                        try await Task.sleep(nanoseconds: timeoutNanoseconds)
+                        await transport.close()
+                        throw RealtimeTranslationError.sessionUpdateTimeout
+                    }
+                    do {
+                        let result = try await group.next()!
+                        group.cancelAll()
+                        return result
+                    } catch {
+                        group.cancelAll()
+                        if Task.isCancelled {
+                            throw CancellationError()
+                        }
+                        if error is CancellationError {
+                            throw RealtimeTranslationError.sessionUpdateTimeout
+                        }
+                        throw error
+                    }
                 }
-                let result = try await group.next()!
-                group.cancelAll()
-                return result
+            } onCancel: {
+                Task { await transport.close() }
             }
         } else {
             data = try await transport.receive()

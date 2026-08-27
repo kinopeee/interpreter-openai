@@ -895,6 +895,49 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         )
     }
 
+    func testCancelStartDuringHungHandshakeDoesNotHang() async {
+        // Given: 3 本とも handshake receive が Swift キャンセルを無視する
+        let sourceTransport = HangUntilCloseWebSocketTransport()
+        let englishTransport = HangUntilCloseWebSocketTransport()
+        let japaneseTransport = HangUntilCloseWebSocketTransport()
+        let dual = DualRealtimeTranslationClient(
+            sourceConnection: RealtimeSourceTranscriptionConnection(
+                transport: sourceTransport,
+                safetyIdentifier: "test-safety",
+                handshakeTimeoutNanoseconds: 30_000_000_000
+            ),
+            englishConnection: RealtimeTranslationConnection(
+                target: .english,
+                transport: englishTransport,
+                safetyIdentifier: "test-safety",
+                sessionUpdateTimeoutNanoseconds: 30_000_000_000
+            ),
+            japaneseConnection: RealtimeTranslationConnection(
+                target: .japanese,
+                transport: japaneseTransport,
+                safetyIdentifier: "test-safety",
+                sessionUpdateTimeoutNanoseconds: 30_000_000_000
+            )
+        )
+        let startTask = Task {
+            try await dual.start(apiKey: "sk-test", pair: .jaEn)
+        }
+        try? await Task.sleep(nanoseconds: 30_000_000)
+
+        // When: Connecting 相当でキャンセルする（Stop が sessionTask 完了を待つ経路）
+        let started = ContinuousClock.now
+        startTask.cancel()
+        _ = await startTask.result
+
+        // Then: handshake timeout まで待たず Dual.start が戻る
+        let elapsed = ContinuousClock.now - started
+        XCTAssertLessThan(elapsed, Duration.seconds(2))
+        let sourceCloses = await sourceTransport.closeCount
+        let englishCloses = await englishTransport.closeCount
+        let japaneseCloses = await japaneseTransport.closeCount
+        XCTAssertGreaterThanOrEqual(sourceCloses + englishCloses + japaneseCloses, 1)
+    }
+
     private func makeDual(
         sourceTransport: FakeRealtimeWebSocketTransport,
         englishTransport: FakeRealtimeWebSocketTransport,

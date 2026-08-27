@@ -188,20 +188,39 @@ actor RealtimeTranslationConnection {
     private func receiveDirectEvent(
         timeoutNanoseconds: UInt64
     ) async throws -> RealtimeTranslationServerEvent {
-        try await withThrowingTaskGroup(
-            of: RealtimeTranslationServerEvent.self
-        ) { group in
-            group.addTask {
-                let data = try await self.transport.receive()
-                return try RealtimeTranslationMessageCodec.decodeServerEvent(from: data)
+        // URLSessionWebSocketTask.receive は Swift Task キャンセルを見ない。
+        // timeout / 親 Task キャンセルで transport を閉じ、TaskGroup の残り待ちを解く。
+        let transport = self.transport
+        return try await withTaskCancellationHandler {
+            try await withThrowingTaskGroup(
+                of: RealtimeTranslationServerEvent.self
+            ) { group in
+                group.addTask {
+                    let data = try await transport.receive()
+                    return try RealtimeTranslationMessageCodec.decodeServerEvent(from: data)
+                }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: timeoutNanoseconds)
+                    await transport.close()
+                    throw RealtimeTranslationError.sessionUpdateTimeout
+                }
+                do {
+                    let result = try await group.next()!
+                    group.cancelAll()
+                    return result
+                } catch {
+                    group.cancelAll()
+                    if Task.isCancelled {
+                        throw CancellationError()
+                    }
+                    if error is CancellationError {
+                        throw RealtimeTranslationError.sessionUpdateTimeout
+                    }
+                    throw error
+                }
             }
-            group.addTask {
-                try await Task.sleep(nanoseconds: timeoutNanoseconds)
-                throw RealtimeTranslationError.sessionUpdateTimeout
-            }
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
+        } onCancel: {
+            Task { await transport.close() }
         }
     }
 
