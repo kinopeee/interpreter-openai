@@ -354,6 +354,40 @@ public sealed class RealtimeSubtitleAssemblerTests
         Assert.Equal(1, fresh.Value.SegmentGeneration);
     }
 
+    // Given: epoch 1 で event_id を消費し、idle 確定で elapsed cutoff が残っている assembler
+    // When: BeginNewEpoch(2) したあと、同じ event_id と旧 cutoff 以下の elapsed で新接続の delta が届く
+    // Then: 再接続後の字幕を重複/遅延扱いせず、原文も訳文も表示する
+    [Fact]
+    public void BeginNewEpochAcceptsReusedEventIdsAndElapsedBelowOldCutoff()
+    {
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+        assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
+        assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200),
+            Origin);
+        var finalized = assembler.Tick(Origin.AddSeconds(9));
+        Assert.True(finalized?.ShouldFinalize);
+
+        assembler.BeginNewEpoch(2);
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+
+        var reusedSource = assembler.Ingest(
+            Source("ありがとう", "s1", 50, epoch: 2),
+            Origin.AddSeconds(10));
+        var reusedTranslation = assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, "Thank you", "t1", 80, epoch: 2),
+            Origin.AddSeconds(10.1));
+
+        Assert.NotNull(reusedSource);
+        Assert.Equal("ありがとう", reusedSource.Value.SourceText);
+        Assert.Equal(string.Empty, reusedSource.Value.TranslatedText);
+        Assert.NotNull(reusedTranslation);
+        Assert.Equal("Thank you", reusedTranslation.Value.TranslatedText);
+        Assert.True(reusedTranslation.Value.IsTranslationCurrent);
+        Assert.False(reusedTranslation.Value.ShouldFinalize);
+    }
+
     private static RealtimeSubtitleAssembler NewAssembler()
     {
         var assembler = new RealtimeSubtitleAssembler();
@@ -361,19 +395,24 @@ public sealed class RealtimeSubtitleAssemblerTests
         return assembler;
     }
 
-    private static RealtimeTranslationStreamEvent Source(string text, string eventId, int? elapsedMs) =>
+    private static RealtimeTranslationStreamEvent Source(
+        string text,
+        string eventId,
+        int? elapsedMs,
+        int epoch = 1) =>
         new(
             RealtimeTranslationLane.Source,
             new RealtimeTranslationServerEvent.InputTranscriptDelta(text, eventId, elapsedMs),
-            1);
+            epoch);
 
     private static RealtimeTranslationStreamEvent Translation(
         RealtimeTranslationOutputLanguage target,
         string text,
         string eventId,
-        int? elapsedMs) =>
+        int? elapsedMs,
+        int epoch = 1) =>
         new(
             RealtimeTranslationLane.Translation(target),
             new RealtimeTranslationServerEvent.OutputTranscriptDelta(text, eventId, elapsedMs),
-            1);
+            epoch);
 }
