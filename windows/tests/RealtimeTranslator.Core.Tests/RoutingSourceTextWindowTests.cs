@@ -138,4 +138,27 @@ public sealed class RoutingSourceTextWindowTests
         Assert.True(trimmedWords.Length <= RoutingSourceTextWindow.MaxLength);
         Assert.True(trimmedScalarBoundary.Length <= RoutingSourceTextWindow.MaxLength);
     }
+
+    // Given: ja-* 末尾窓の非空白 scalar のあいだに上限を超える空白 run がある
+    // When: ja-en / ja-es の切り詰めを行う
+    // Then: 空白 run は 1 個へ圧縮され、判定に使う非空白は残る
+    [Theory]
+    [InlineData(LanguagePair.JaEn)]
+    [InlineData(LanguagePair.JaEs)]
+    public void TrimJaCollapsesOversizedWhitespaceInsideEvidenceWindow(LanguagePair pair)
+    {
+        var discarded = new string('ん', 8);
+        var gap = new string(' ', RoutingSourceTextWindow.MaxLength + 8);
+        var text = discarded + new string('あ', 8) + gap + new string('い', 8);
+
+        var trimmed = RoutingSourceTextWindow.Trim(text, pair);
+
+        Assert.Equal(new string('あ', 8) + " " + new string('い', 8), trimmed);
+        Assert.True(trimmed.Length < text.Length);
+        Assert.True(trimmed.Length <= RoutingSourceTextWindow.MaxLength);
+        Assert.DoesNotContain("ん", trimmed, StringComparison.Ordinal);
+        Assert.Equal(
+            SpokenLanguageEvidence.Japanese,
+            SpokenLanguageDetector.Evidence(trimmed, pair));
+    }
 }
