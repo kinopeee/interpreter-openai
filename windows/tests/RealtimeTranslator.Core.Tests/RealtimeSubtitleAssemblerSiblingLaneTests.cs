@@ -1,4 +1,5 @@
 using System;
+using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Realtime;
 using Xunit;

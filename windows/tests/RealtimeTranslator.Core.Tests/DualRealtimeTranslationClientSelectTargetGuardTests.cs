@@ -63,7 +63,8 @@ public sealed class DualRealtimeTranslationClientSelectTargetGuardTests
         var error = await Assert.ThrowsAsync<ArgumentException>(
             () => dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Spanish));
 
-        Assert.Contains("spanish", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("'es'", error.Message, StringComparison.Ordinal);
+        Assert.Equal("target", error.ParamName);
         await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("after-reject"));
         await dual.WaitForTranslationDrainAsync();
 
