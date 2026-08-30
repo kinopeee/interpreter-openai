@@ -1,3 +1,6 @@
+# Windows runner 上の solution 全体（Core + Platform + App）と self-contained publish。
+# Origin の PR CI は Depot に Windows サンドボックスが無いため、
+# Linux で回せる Core だけ .depot/workflows/windows-core.yml へ移植している。
 name: windows
 
 on:

@@ -1,5 +1,8 @@
-# Origin / Depot CI。正本は scripts/ci-shared-contracts.sh。
-# GitHub 側の同名 workflow も同じスクリプトを呼ぶ。
+# Origin + Depot CI 向け。GitHub の .github/workflows/shared-contracts.yml から移植。
+# 検査手順の正本は scripts/ci-shared-contracts.sh。
+# 有効化: Origin リポジトリの Apps から Depot を接続し、このディレクトリを default branch へマージする。
+# Depot CI に Windows / macOS サンドボックスは無い。ubuntu のみ。
+# https://depot.dev/blog/depot-in-cursor-origin
 name: shared-contracts
 
 on:
@@ -23,5 +26,8 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Validate shared contracts
-        run: ./scripts/ci-shared-contracts.sh
+      - name: Validate fixtures against JSON Schema
+        run: ./scripts/ci-shared-contracts.sh fixtures
+
+      - name: Validate UI locale catalog
+        run: ./scripts/ci-shared-contracts.sh locales

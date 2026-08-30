@@ -136,6 +136,13 @@ xcodebuild test \
   -enableCodeCoverage YES
 ```
 
+Checks used by Origin PR CI (Depot) and GitHub `shared-contracts`:
+
+```bash
+./scripts/ci-shared-contracts.sh
+./scripts/ci-windows-core.sh   # Windows Core only; runs on Linux
+```
+
 ## Notes
 
 - Microphone audio is sent to the OpenAI API. Source text and translations are received from the API.
@@ -169,7 +176,7 @@ pwsh -File scripts/publish-windows.ps1
 powershell -ExecutionPolicy Bypass -File scripts/publish-windows.ps1
 ```
 
-The `windows` workflow runs the same steps on `windows-latest` and attaches a `RealtimeTranslator-win-x64` artifact.
+The GitHub `windows` workflow runs the same steps on `windows-latest` and attaches a `RealtimeTranslator-win-x64` artifact. Origin PR CI uses Depot CI (`.depot/workflows/windows-core.yml`) to restore / build / test / audit Core on Linux. Platform / App / publish stay on GitHub.
 
 ### Download (releases)
 

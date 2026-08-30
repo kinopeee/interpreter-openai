@@ -10,7 +10,7 @@ description: >-
 
 # Origin push 前の CodeRabbit レビュー
 
-Origin のホスト側レビューは使えない。push 前にローカルで `coderabbit review` を回し、妥当な指摘を直してから `cursor` remote へ push する。マージゲートではない。必須 check はあとから `scripts/origin-report-check.mjs` が担う。
+Origin のホスト側レビューは使えない。push 前にローカルで `coderabbit review` を回し、妥当な指摘を直してから `cursor` remote へ push する。マージゲートではない。Origin の PR check は Depot CI（`.depot/workflows/`）が担う。Depot 未接続時やローカル macOS 結果の手動報告だけ `scripts/origin-report-check.mjs` を使う。
 
 ## 手順
 
@@ -24,7 +24,7 @@ Origin のホスト側レビューは使えない。push 前にローカルで `
 3. 指摘を表にする。列は Severity / Location (`file:line`) / Finding。重大度の高い順。
 4. 妥当な指摘だけ直す。秘密情報・無関係ファイル・インフラ変更は触らない。直したらコミットする。妥当でない指摘は表に残し、直さずに理由を一言書く。
 5. 妥当な指摘を直したあと（指摘ゼロ、または妥当な指摘が無いときも含む）`git push cursor <current-branch>` する。GitHub の `origin` には送らない。レビュー自体が失敗したら push しない。
-6. push 後は version が切れる。続けて CI を頼まれたときだけ `xcodebuild test` と `scripts/origin-report-check.mjs` を、**新しい head SHA** に対して実行する。
+6. push 後は version が切れる。Depot が接続済みなら Origin の check は `.depot/workflows/` が更新する。macOS `xcodebuild test` の手動報告を頼まれたときだけ `scripts/origin-report-check.mjs` を **新しい head SHA** に対して実行する。
 
 ## 制約
 
