@@ -368,7 +368,10 @@ final class InterpretationSession {
             // ここで ingest/enqueueRender すると、performStop が消した renderTask が再生成され、
             // forceFinalize 後に replaceCurrent で確定ペアを live へ戻す。
             guard generation == lifecycleGeneration else { return }
-            guard streamEvent.epoch == epoch else { continue }
+            guard streamEvent.epoch == epoch else {
+                await dualClient.acknowledgeConsumedStreamEvent()
+                continue
+            }
 
             if case .error(let message, let code) = streamEvent.event {
                 if code == "transport" {
@@ -388,6 +391,7 @@ final class InterpretationSession {
             }
 
             beforeAssemblerIngestForTests?()
+            await dualClient.acknowledgeConsumedStreamEvent()
             if let update = assembler.ingest(streamEvent) {
                 #if DEBUG
                 AppLogger.session.notice(
@@ -405,11 +409,10 @@ final class InterpretationSession {
     }
 
     private func performStop() async {
-        // consumer 停止前に武装する。AsyncStream.finish() は未読を捨てるため、
-        // 既に yield した最新窓と、これ以降の close 窓を Dual 側で保持する。
-        await dualClient.beginStopDrainCapture()
-
+        // ingest を先に止め、既読を acknowledge させてから未読窓だけを武装する。
+        // AsyncStream.finish() は未読を捨てるため、未消費の最新窓とこれ以降の close 窓を Dual 側で保持する。
         lifecycleGeneration += 1
+        await dualClient.beginStopDrainCapture()
         state = .closing
         aggregator.setStatusBanner(UiCopy.text("banner.closing"))
         publishSubtitles()

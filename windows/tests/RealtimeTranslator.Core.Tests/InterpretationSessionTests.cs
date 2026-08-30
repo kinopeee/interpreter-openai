@@ -1558,6 +1558,50 @@ public sealed class InterpretationSessionTests
         Assert.True(audio.StopCallCount >= 1);
     }
 
+    // Given: 原文は assembler へ取り込み済みで、transport error の後ろに未読の訳文が channel に残っている
+    // When: Reconnecting 中に利用者が録音を停止する
+    // Then: IngestStopDrainEventsAsync が未読訳文を取り込み、完全ペアを ShouldFinalize する
+    [Fact]
+    public async Task StopDuringReconnectingIngestsUnreadChannelTranslationAndFinalizes()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, initialReconnectDelay: TimeSpan.FromSeconds(2));
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("再接続前の原文");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        // consumer が先に error を見て落ちるよう、訳文は error の後ろへ積む。
+        client.PublishTransportError();
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "Unread translation after error");
+        await WaitUntilAsync(() => session.State == TranslationState.Reconnecting);
+        Assert.Equal(1, client.StartCount);
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        Assert.Equal(1, client.StartCount);
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("再接続前の原文", finalized.SourceText);
+        Assert.Equal("Unread translation after error", finalized.TranslatedText);
+    }
+
     // Given: transport error 後の再接続待ち
     // When: その間に StartAsync を再度呼ぶ
     // Then: Idle/Error 以外は受理せず Dual Start は増えない

@@ -211,10 +211,41 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
     }
 
+    // Given: en-es で Spanish target 選択済み、スペイン語送信が停滞して pending が溜まっている Dual
+    // When: drain せず English target へ切り替える
+    // Then: 旧 target 向け未送信 frame は破棄され、rolling preroll だけが新 target へ届く
+    [Fact]
+    public async Task SelectTranslationTargetWhileSendStalledClearsPendingOldTargetFrames()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        var spanish = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese, spanish);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.EnEs);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Spanish);
+        spanish.SendDelay = TimeSpan.FromMilliseconds(200);
+        await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("f1"));
+        await Task.Delay(50);
+        await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("f2"));
+        await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("f3"));
+
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+        await dual.WaitForTranslationDrainAsync();
+
+        Assert.Equal(0, japanese.ConnectCount);
+        Assert.DoesNotContain("f2", spanish.AppendedFrameTexts());
+        Assert.DoesNotContain("f3", spanish.AppendedFrameTexts());
+        Assert.Equal(["f1", "f2", "f3"], english.AppendedFrameTexts());
+        await dual.ForceCloseAsync();
+    }
+
     private static DualRealtimeTranslationClient CreateDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,
-        FakeRealtimeServerTransport japanese) =>
+        FakeRealtimeServerTransport japanese,
+        FakeRealtimeServerTransport? spanish = null) =>
         new(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
             new RealtimeTranslationConnection(
@@ -224,7 +255,13 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
             new RealtimeTranslationConnection(
                 RealtimeTranslationOutputLanguage.Japanese,
                 japanese,
-                "test-safety"));
+                "test-safety"),
+            spanishConnection: spanish is null
+                ? null
+                : new RealtimeTranslationConnection(
+                    RealtimeTranslationOutputLanguage.Spanish,
+                    spanish,
+                    "test-safety"));
 
     private static byte[] Frame(byte fill)
     {

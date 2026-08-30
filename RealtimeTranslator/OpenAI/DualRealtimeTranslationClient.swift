@@ -9,6 +9,9 @@ protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
     func resetAudioRouting() async
     /// 停止開始時に呼ぶ。未読の merge イベントとこれ以降の close 窓を stop drain へ蓄える。
     func beginStopDrainCapture() async
+    /// session consumer が stream から読んで適用／破棄したあとに呼ぶ。
+    /// stop drain は未消費の recentYields だけをコピーし、既読の nil event_id delta を再適用しない。
+    func acknowledgeConsumedStreamEvent() async
     /// 正常停止。commit/session.close 中の字幕イベントを返し、呼び出し側が assembler へ取り込む。
     /// 接続 close が失敗しても drain 済みイベントは返し、残接続は内部で forceClose する。
     @discardableResult
@@ -51,6 +54,10 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     private static let mergedEventBufferLimit = 512
     /// yield 済み字幕イベントの最新側。stream の bufferingNewest と同じ窓。
     private var recentYields: [RealtimeTranslationStreamEvent] = []
+    /// `forwardMergedEvent` が yield した回数。recentYields と同じ窓で数える。
+    private var yieldedEventCount = 0
+    /// session consumer が stream から読んで acknowledge した回数。
+    private var consumedEventCount = 0
 
     var events: AsyncStream<RealtimeTranslationStreamEvent> {
         eventStream
@@ -108,6 +115,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         pair: LanguagePair
     ) async throws {
         await forceClose()
+        // 新しい録音が、停止途中に残した drain 窓を closeGracefully で返さない。
+        stopDrainBuffer = nil
         recreateEventStream()
         connectionEpoch += 1
         let epoch = connectionEpoch
@@ -280,11 +289,16 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
 
     func beginStopDrainCapture() {
         if stopDrainBuffer == nil {
-            // consumer が generation bump / raceFirstResult で止まったあと、
+            // consumer が generation bump で ingest を止めたあと、
             // AsyncStream.finish() は未読要素を捨てる。Windows Channel と違い再読できないので、
-            // yield 時に残した最新窓を移す。assembler は event_id で既読を捨てる。
-            stopDrainBuffer = Array(recentYields)
+            // 未消費の最新窓だけを移す。既に ingest した nil event_id delta は再適用しない。
+            let unreadCount = min(recentYields.count, max(0, yieldedEventCount - consumedEventCount))
+            stopDrainBuffer = Array(recentYields.suffix(unreadCount))
         }
+    }
+
+    func acknowledgeConsumedStreamEvent() {
+        consumedEventCount += 1
     }
 
     @discardableResult
@@ -353,8 +367,11 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         consecutiveTranslationFailures = 0
         translationPumpHaltedForTransportFailure = false
-        stopDrainBuffer = nil
+        // beginStopDrainCapture 済みの窓は残す。reconnect の tearDown / generation
+        // mismatch の forceClose が、stop が close drain へ渡す未読 delta を消さない。
         recentYields.removeAll(keepingCapacity: true)
+        yieldedEventCount = 0
+        consumedEventCount = 0
         connectionEpoch += 1
         translationPumpTask?.cancel()
         translationPumpTask = nil
@@ -488,8 +505,12 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
             return
         }
         recentYields.append(event)
+        yieldedEventCount += 1
         if recentYields.count > Self.mergedEventBufferLimit {
-            recentYields.removeFirst(recentYields.count - Self.mergedEventBufferLimit)
+            let overflow = recentYields.count - Self.mergedEventBufferLimit
+            recentYields.removeFirst(overflow)
+            yieldedEventCount -= overflow
+            consumedEventCount = max(0, consumedEventCount - overflow)
         }
         eventContinuation?.yield(event)
         if stopDrainBuffer != nil {
@@ -515,6 +536,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     private func recreateEventStream() {
         eventContinuation?.finish()
         recentYields.removeAll(keepingCapacity: true)
+        yieldedEventCount = 0
+        consumedEventCount = 0
         let pair = Self.makeEventStream()
         eventStream = pair.stream
         eventContinuation = pair.continuation

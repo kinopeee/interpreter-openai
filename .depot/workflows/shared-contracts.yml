@@ -1,3 +1,5 @@
+# Origin / Depot CI。正本は scripts/ci-shared-contracts.sh。
+# GitHub 側の同名 workflow も同じスクリプトを呼ぶ。
 name: shared-contracts
 
 on:
@@ -11,7 +13,7 @@ permissions:
 jobs:
   validate-fixtures:
     name: validate shared fixtures
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:

@@ -23,6 +23,8 @@ struct RealtimeSubtitleAssembler: Sendable {
     private var expectedLane: RealtimeTranslationOutputLanguage?
     private var languagePair: LanguagePair
     private var seenEventIDs = Set<String>()
+    /// event_id が無い delta の再適用防止。segment 境界で捨てる。
+    private var seenNilEventKeys = Set<String>()
     private var lastActivityAt = Date.distantPast
     private var finalizedCutoffElapsedMs: Int?
     private var maxTranslationElapsedMs: Int?
@@ -43,6 +45,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         clearSegmentBuffers(advancingGeneration: false)
         expectedLane = nil
         seenEventIDs.removeAll(keepingCapacity: true)
+        seenNilEventKeys.removeAll(keepingCapacity: true)
         finalizedCutoffElapsedMs = nil
         maxTranslationElapsedMs = nil
         awaitingSourceAfterFinalize = false
@@ -141,6 +144,11 @@ struct RealtimeSubtitleAssembler: Sendable {
             clearSegmentBuffers(advancingGeneration: true)
             extendingExistingSource = false
         }
+        // nil-id キーは新 segment の clear より後に登録する。先に入れると safety-net が消える。
+        if eventID == nil,
+           !seenNilEventKeys.insert("source|\(delta)|\(elapsedMs.map(String.init) ?? "")").inserted {
+            return nil
+        }
 
         sourceText += delta
         lastActivityAt = now
@@ -163,7 +171,10 @@ struct RealtimeSubtitleAssembler: Sendable {
         // 確定後に届いた旧segmentの訳文で、保持中の完全ペアを上書きしない。
         // 次のsource deltaが来るまでtarget deltaは破棄する。
         guard !awaitingSourceAfterFinalize else { return nil }
-        if let eventID, !seenEventIDs.insert(eventID).inserted {
+        if hasSeenTranscriptEvent(
+            eventID: eventID,
+            key: "translation|\(target.rawValue)|\(delta)|\(elapsedMs.map(String.init) ?? "")"
+        ) {
             return nil
         }
         if let elapsedMs, let cutoff = finalizedCutoffElapsedMs, elapsedMs <= cutoff {
@@ -315,9 +326,17 @@ struct RealtimeSubtitleAssembler: Sendable {
         translationText.removeAll(keepingCapacity: true)
         selectedLane = nil
         translationIsCurrent = false
+        seenNilEventKeys.removeAll(keepingCapacity: true)
         if advancingGeneration {
             segmentGeneration += 1
         }
+    }
+
+    private mutating func hasSeenTranscriptEvent(eventID: String?, key: String) -> Bool {
+        if let eventID {
+            return !seenEventIDs.insert(eventID).inserted
+        }
+        return !seenNilEventKeys.insert(key).inserted
     }
 
     private func shouldStartNewSegmentForSourceUpdate() -> Bool {
