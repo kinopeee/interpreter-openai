@@ -46,6 +46,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     /// transport failure後、再接続まで翻訳ポンプを再開しない。
     private var translationPumpHaltedForTransportFailure = false
     private var selectedTranslationTarget: RealtimeTranslationOutputLanguage?
+    /// この世代で handshake した翻訳 lane。未使用 leftover 接続は merge しない。
+    private var startedTranslationTargets: [RealtimeTranslationOutputLanguage] = []
     private var translationPrerollFrames: [Data] = []
     private var pendingTranslationFrames: [(Data, RealtimeTranslationOutputLanguage)] = []
     /// closeGracefully 中だけ詰め、停止時の最終 delta 欠落を防ぐ。
@@ -165,6 +167,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         guard epoch == connectionEpoch, isRunning else {
             throw RealtimeTranslationError.cancelled
         }
+        startedTranslationTargets = pair.languages.map(Self.outputLanguage(for:))
         startEventMerge(epoch: epoch)
     }
 
@@ -363,6 +366,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     func forceClose() async {
         isRunning = false
         selectedTranslationTarget = nil
+        startedTranslationTargets = []
         translationPrerollFrames.removeAll(keepingCapacity: true)
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         consecutiveTranslationFailures = 0
@@ -464,7 +468,13 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                         )
                     }
                 }
-                for connection in self.connections.values {
+                // コンストラクタで用意した未使用 leftover lane は merge しない。
+                // Windows Channel と同様、完了済み stream に残った訳文 / transport error が
+                // 次世代へ混線しないように、handshake した target だけを購読する。
+                for target in self.startedTranslationTargets {
+                    guard let connection = self.connections[target] else {
+                        continue
+                    }
                     group.addTask {
                         let stream = await connection.events
                         for await event in stream {

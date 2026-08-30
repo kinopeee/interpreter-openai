@@ -663,6 +663,49 @@ public sealed class DualRealtimeTranslationClientParityTests
         await dual.ForceCloseAsync();
     }
 
+    // Given: JaEs で開始した Dual。JaEn 切替の StartEventMerge 直前に未使用 Spanish へ leftover を埋める
+    // When: JaEn で再 Start し、原文 delta を待つ
+    // Then: unused leftover の transport error / 訳文は新世代 Events に混線しない
+    [Fact]
+    public async Task PairSwitchDoesNotReplayUnusedLaneLeftoverIntoNewEpoch()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        var spanish = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese, spanish);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs);
+
+        dual.BeforeStartEventMergeForTests = () =>
+        {
+            dual.SeedCompletedTranslationEventForTests(
+                RealtimeTranslationOutputLanguage.Spanish,
+                new RealtimeTranslationServerEvent.ServerError("stale unused lane", "transport"));
+            dual.BeforeStartEventMergeForTests = null;
+        };
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn);
+
+        source.EnqueueJson(
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"item-1","delta":"alive"}""");
+
+        var seen = new List<RealtimeTranslationServerEvent>();
+        using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+        {
+            while (!seen.OfType<RealtimeTranslationServerEvent.InputTranscriptDelta>().Any())
+            {
+                seen.Add((await dual.Events.ReadAsync(timeout.Token)).Event);
+            }
+        }
+
+        Assert.DoesNotContain(seen, item => item is RealtimeTranslationServerEvent.ServerError);
+        Assert.Contains(
+            seen,
+            item => item is RealtimeTranslationServerEvent.InputTranscriptDelta sourceDelta
+                && sourceDelta.Delta == "alive");
+    }
+
     // Given: 全 lane が session.created を返さない Dual
     // When: Connect 後に呼び出し側 token をキャンセルする
     // Then: SessionUpdateTimeout ではなくキャンセルになり、3 接続とも閉じる

@@ -61,6 +61,23 @@ public sealed class RealtimeTranslationConnection : IDisposable
         }
     }
 
+    /// <summary>
+    /// テスト用。完了済み Channel に leftover イベントを 1 件入れて差し替える。
+    /// pair 切替後の Dual merge が未使用 lane を読むと次世代へ混線する。
+    /// </summary>
+    internal void SeedCompletedEventForTests(RealtimeTranslationServerEvent serverEvent)
+    {
+        ArgumentNullException.ThrowIfNull(serverEvent);
+
+        var channel = RealtimeEventChannel.Create();
+        channel.Writer.TryWrite(new RealtimeTranslationStreamEvent(_target, serverEvent, _epoch));
+        channel.Writer.TryComplete();
+        lock (_sync)
+        {
+            _events = channel;
+        }
+    }
+
     public int Epoch
     {
         get
