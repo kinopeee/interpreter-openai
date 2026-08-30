@@ -149,6 +149,10 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
         await ForceCloseAsync().ConfigureAwait(false);
 
+        // pair に必要な接続が無いときは running に入らない。
+        // Select / Append は未開始 Dual と同じ NotConnected になり、Events も完了したまま。
+        EnsureConnectionsForPair(pair);
+
         int epoch;
         lock (_sync)
         {
@@ -164,8 +168,6 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             _translationPumpCts.Dispose();
             _translationPumpCts = new CancellationTokenSource();
         }
-
-        EnsureConnectionsForPair(pair);
 
         using var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
