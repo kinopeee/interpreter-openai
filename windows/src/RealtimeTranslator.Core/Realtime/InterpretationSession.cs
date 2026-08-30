@@ -761,6 +761,11 @@ public sealed class InterpretationSession : IDisposable
 
     private async Task TearDownStreamingAsync()
     {
+        // ForceClose が Events を Complete する前に、consumer が ServerError で
+        // 抜けたあとの未読 delta を assembler へ取り込む。Complete 後の Stop drain
+        // だけに頼ると、再接続 Start が channel を張り替えたときに訳文が消える。
+        IngestAlreadyQueuedEvents();
+
         lock (_sync)
         {
             _activeLanguagePair = null;
@@ -804,23 +809,33 @@ public sealed class InterpretationSession : IDisposable
         var events = _dualClient.Events;
         while (await events.WaitToReadAsync().ConfigureAwait(false))
         {
-            while (events.TryRead(out var streamEvent))
+            IngestAlreadyQueuedEvents();
+        }
+    }
+
+    /// <summary>
+    /// すでに channel にあるイベントだけを取り込む。WaitToRead しないので、
+    /// ForceClose 前の再接続 teardown から呼んでも開いたままの channel で止まらない。
+    /// </summary>
+    private void IngestAlreadyQueuedEvents()
+    {
+        var events = _dualClient.Events;
+        while (events.TryRead(out var streamEvent))
+        {
+            if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError)
             {
-                if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError)
-                {
-                    continue;
-                }
+                continue;
+            }
 
-                RealtimeSubtitleUpdate? update;
-                lock (_sync)
-                {
-                    update = _assembler.Ingest(streamEvent, _timeProvider.GetUtcNow());
-                }
+            RealtimeSubtitleUpdate? update;
+            lock (_sync)
+            {
+                update = _assembler.Ingest(streamEvent, _timeProvider.GetUtcNow());
+            }
 
-                if (update is { } value)
-                {
-                    SubtitleUpdated?.Invoke(this, value);
-                }
+            if (update is { } value)
+            {
+                SubtitleUpdated?.Invoke(this, value);
             }
         }
     }

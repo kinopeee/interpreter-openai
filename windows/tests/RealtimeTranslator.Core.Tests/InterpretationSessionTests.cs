@@ -1581,10 +1581,15 @@ public sealed class InterpretationSessionTests
         client.PublishSourceDelta("再接続前の原文");
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
         // consumer が先に error を見て落ちるよう、訳文は error の後ろへ積む。
-        client.PublishTransportError();
-        client.PublishTranslationDelta(
-            RealtimeTranslationOutputLanguage.English,
-            "Unread translation after error");
+        // ForceClose の TryComplete が二つの Publish の間に割り込むと、後続の
+        // TryWrite は捨てられ、Stop drain の SourceText が null になる。
+        client.PublishAtomically(() =>
+        {
+            client.PublishTransportError();
+            client.PublishTranslationDelta(
+                RealtimeTranslationOutputLanguage.English,
+                "Unread translation after error");
+        });
         await WaitUntilAsync(() => session.State == TranslationState.Reconnecting);
         Assert.Equal(1, client.StartCount);
 
@@ -2772,6 +2777,19 @@ public sealed class InterpretationSessionTests
             target,
             new RealtimeTranslationServerEvent.OutputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
             epoch);
+
+        /// <summary>
+        /// 複数イベントを Complete と排他の同一 lock で積む。
+        /// ForceClose の TryComplete が逐次 Publish の間に割り込むのを防ぐ。
+        /// </summary>
+        public void PublishAtomically(Action publish)
+        {
+            ArgumentNullException.ThrowIfNull(publish);
+            lock (_sync)
+            {
+                publish();
+            }
+        }
 
         public void PublishTransportError() => Publish(
             RealtimeTranslationOutputLanguage.English,
