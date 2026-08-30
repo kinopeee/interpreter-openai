@@ -21,5 +21,8 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Validate shared contracts
-        run: ./scripts/ci-shared-contracts.sh
+      - name: Validate fixtures against JSON Schema
+        run: ./scripts/ci-shared-contracts.sh fixtures
+
+      - name: Validate UI locale catalog
+        run: ./scripts/ci-shared-contracts.sh locales

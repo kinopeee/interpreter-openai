@@ -1,6 +1,9 @@
-# Origin / Depot CI。正本は scripts/ci-windows-core.sh。
-# Depot に Windows サンドボックスが無いため、Linux で回せる Core だけを移植する。
-# Platform / App / self-contained publish は GitHub Actions の windows.yml に残す。
+# Origin + Depot CI 向け。GitHub の .github/workflows/windows.yml のうち
+# Linux で実行できる Core restore/build/test/audit だけを移植する。
+# Platform / App / self-contained publish は net10.0-windows のため
+# .github/workflows/windows.yml に残す。
+# 検査手順の正本は scripts/ci-windows-core.sh。
+# 有効化: Origin リポジトリの Apps から Depot を接続し、このディレクトリを default branch へマージする。
 name: windows-core
 
 on:
@@ -15,6 +18,7 @@ jobs:
   build-and-test:
     name: build and test (windows core)
     runs-on: depot-ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
