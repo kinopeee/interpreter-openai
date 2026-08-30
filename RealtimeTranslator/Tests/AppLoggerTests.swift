@@ -13,6 +13,32 @@ final class AppLoggerTests: XCTestCase {
         XCTAssertEqual(redacted, "invalid key \(AppLogger.redactedPlaceholder)")
     }
 
+    func testRedactReplacesUppercaseAPIKeyFragments() {
+        // Given: 大文字 SK- 断片
+        let input = "invalid key SK-ABCDEFGHI"
+
+        // When: redact する
+        let redacted = AppLogger.redact(input)
+
+        // Then: キー断片は伏字化される
+        XCTAssertFalse(redacted.contains("SK-ABCDEFGHI"))
+        XCTAssertFalse(redacted.localizedCaseInsensitiveContains("sk-abcdefgh"))
+        XCTAssertTrue(redacted.contains(AppLogger.redactedPlaceholder))
+    }
+
+    func testRedactReplacesZeroWidthObfuscatedAPIKeyFragments() {
+        // Given: ZWSP を挟んだ sk- 断片
+        let input = "invalid key s\u{200B}k-abcdefghi"
+
+        // When: redact する
+        let redacted = AppLogger.redact(input)
+
+        // Then: 不可視文字を除いたキー断片は残らない
+        XCTAssertFalse(redacted.localizedCaseInsensitiveContains("sk-abcdefghi"))
+        XCTAssertFalse(redacted.contains("abcdefghi"))
+        XCTAssertTrue(redacted.contains(AppLogger.redactedPlaceholder))
+    }
+
     func testRedactReplacesBearerAndAuthorization() {
         // Given: Bearer と Authorization ヘッダ断片
         let bearer = "Bearer abc.def-ghi"
@@ -24,6 +50,67 @@ final class AppLoggerTests: XCTestCase {
             AppLogger.redact(authorization),
             AppLogger.redactedPlaceholder
         )
+    }
+
+    func testRedactReplacesCompleteBearerAndAuthorizationCredentials() {
+        // Given: Base64 文字を含む Bearer と scheme + 資格情報の Authorization
+        let bearerInput = "token Bearer abc+def/ghi== extra"
+        let basicInput = "Authorization: Basic YWJjZA=="
+
+        // When: redact する
+        let bearer = AppLogger.redact(bearerInput)
+        let basic = AppLogger.redact(basicInput)
+
+        // Then: `+` `/` `=` や Basic の続きも残らない
+        XCTAssertFalse(bearer.contains("abc+def/ghi=="))
+        XCTAssertEqual(bearer, "token \(AppLogger.redactedPlaceholder) extra")
+        XCTAssertFalse(basic.contains("YWJjZA=="))
+        XCTAssertFalse(basic.contains("Basic"))
+        XCTAssertEqual(basic, AppLogger.redactedPlaceholder)
+    }
+
+    func testRedactReplacesTabObfuscatedAPIKeyFragments() {
+        // Given: TAB で分断した sk- 断片
+        let input = "invalid key s\u{0009}k-abcdefghi"
+
+        // When: redact する
+        let redacted = AppLogger.redact(input)
+
+        // Then: 制御空白を除いたキー断片は残らない
+        XCTAssertFalse(redacted.localizedCaseInsensitiveContains("sk-abcdefghi"))
+        XCTAssertFalse(redacted.contains("abcdefghi"))
+        XCTAssertTrue(redacted.contains(AppLogger.redactedPlaceholder))
+    }
+
+    func testRedactReplacesTabSplitAPIKeyHyphenAndBody() {
+        // Given: TAB が k とハイフン、またはキー本体を分断している
+        let inputs = [
+            "invalid key sk\u{0009}-abcdefghi",
+            "invalid key sk-\u{0009}abcdefghi",
+            "invalid key sk-abcd\u{0009}efghi",
+        ]
+
+        for input in inputs {
+            // When: redact する
+            let redacted = AppLogger.redact(input)
+
+            // Then: 空白を挟んでもキー断片は残らない
+            XCTAssertFalse(redacted.localizedCaseInsensitiveContains("abcdefghi"), input)
+            XCTAssertFalse(redacted.contains("abcd"), input)
+            XCTAssertTrue(redacted.contains(AppLogger.redactedPlaceholder), input)
+        }
+    }
+
+    func testRedactReplacesTabSeparatedBearerCredentials() {
+        // Given: TAB で語を分けた Bearer 資格情報
+        let input = "token Bearer\u{0009}abc+def/ghi== extra"
+
+        // When: redact する
+        let redacted = AppLogger.redact(input)
+
+        // Then: 制御空白を消して連結せず、トークンは残らない
+        XCTAssertFalse(redacted.contains("abc+def/ghi=="))
+        XCTAssertEqual(redacted, "token \(AppLogger.redactedPlaceholder) extra")
     }
 
     func testRedactReplacesSafetyIdentifierAndUUID() {

@@ -364,8 +364,14 @@ final class InterpretationSession {
     private func consumeEvents(generation: Int, epoch: Int) async throws {
         let stream = await dualClient.events
         for await streamEvent in stream {
+            // stop 後の未読 delta は Dual recentYields → close drain が assembler へ同期適用する。
+            // ここで ingest/enqueueRender すると、performStop が消した renderTask が再生成され、
+            // forceFinalize 後に replaceCurrent で確定ペアを live へ戻す。
             guard generation == lifecycleGeneration else { return }
-            guard streamEvent.epoch == epoch else { continue }
+            guard streamEvent.epoch == epoch else {
+                await dualClient.acknowledgeConsumedStreamEvent()
+                continue
+            }
 
             if case .error(let message, let code) = streamEvent.event {
                 if code == "transport" {
@@ -374,10 +380,8 @@ final class InterpretationSession {
                 if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
                     throw RealtimeTranslationError.authenticationFailed
                 }
-                // サーバー文言にキー断片が含まれる場合があるため、ユーザー向け文言はサニタイズする。
-                throw RealtimeTranslationError.fatalServerError(
-                    RealtimeTranslationError.sanitizedServerMessage(message)
-                )
+                // サーバー文言にキー断片が含まれる場合があるため、保持前に正規化する。
+                throw RealtimeTranslationError.fatalServerError(message)
             }
 
             // 原文 routing は専用 transcription の source lane だけを使う。
@@ -387,6 +391,7 @@ final class InterpretationSession {
             }
 
             beforeAssemblerIngestForTests?()
+            await dualClient.acknowledgeConsumedStreamEvent()
             if let update = assembler.ingest(streamEvent) {
                 #if DEBUG
                 AppLogger.session.notice(
@@ -404,7 +409,10 @@ final class InterpretationSession {
     }
 
     private func performStop() async {
+        // ingest を先に止め、既読を acknowledge させてから未読窓だけを武装する。
+        // AsyncStream.finish() は未読を捨てるため、未消費の最新窓とこれ以降の close 窓を Dual 側で保持する。
         lifecycleGeneration += 1
+        await dualClient.beginStopDrainCapture()
         state = .closing
         aggregator.setStatusBanner(UiCopy.text("banner.closing"))
         publishSubtitles()
@@ -424,10 +432,6 @@ final class InterpretationSession {
         if let runningSessionTask {
             await runningSessionTask.value
         }
-
-        // consumer 終了直後から drain を蓄え、translation pump drain / session.close の
-        // 窓で届く最終 delta を AsyncStream の読み捨てにしない。
-        await dualClient.beginStopDrainCapture()
 
         // スロットル中の旧 snapshot を先に適用し、その後の close drain で上書きする。
         if let pending {

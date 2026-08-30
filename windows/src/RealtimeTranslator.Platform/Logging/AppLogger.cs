@@ -1,8 +1,7 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Tracing;
-using System.Text.RegularExpressions;
+using RealtimeTranslator.Core.Security;
 
 namespace RealtimeTranslator.Platform.Logging;
 
@@ -34,9 +33,9 @@ public sealed class TraceLogSink : ILogSink
 /// API キー・認証ヘッダー・install UUID・音声バイト列・原文/訳文は決してログに出さない。
 /// 呼び出し側が誤って渡した場合も <see cref="Redact"/> で伏字化する。
 /// </summary>
-public static partial class AppLogger
+public static class AppLogger
 {
-    public const string RedactedPlaceholder = "[redacted]";
+    public const string RedactedPlaceholder = LogSecretRedactor.Placeholder;
 
     private static ILogSink _sink = new TraceLogSink();
 
@@ -58,46 +57,5 @@ public static partial class AppLogger
         _sink.Write(category, EventLevel.Error, Redact(message));
 
     /// <summary>秘密になりうる断片を伏字化する。ログ出力前に必ず通す。</summary>
-    public static string Redact(string message)
-    {
-        ArgumentNullException.ThrowIfNull(message);
-
-        var redacted = message;
-        foreach (var pattern in SecretPatterns)
-        {
-            redacted = pattern.Replace(redacted, RedactedPlaceholder);
-        }
-
-        return redacted;
-    }
-
-    private static IEnumerable<Regex> SecretPatterns
-    {
-        get
-        {
-            yield return ApiKeyPattern();
-            yield return BearerPattern();
-            yield return AuthorizationHeaderPattern();
-            yield return SafetyIdentifierPattern();
-            yield return UuidPattern();
-        }
-    }
-
-    [GeneratedRegex(@"sk-[A-Za-z0-9_\-]{4,}", RegexOptions.None, matchTimeoutMilliseconds: 200)]
-    private static partial Regex ApiKeyPattern();
-
-    [GeneratedRegex(@"(?i)bearer\s+[A-Za-z0-9_\-\.]+", RegexOptions.None, matchTimeoutMilliseconds: 200)]
-    private static partial Regex BearerPattern();
-
-    [GeneratedRegex(@"(?i)authorization:\s*\S+", RegexOptions.None, matchTimeoutMilliseconds: 200)]
-    private static partial Regex AuthorizationHeaderPattern();
-
-    [GeneratedRegex(@"(?i)openai-safety-identifier:\s*\S+", RegexOptions.None, matchTimeoutMilliseconds: 200)]
-    private static partial Regex SafetyIdentifierPattern();
-
-    [GeneratedRegex(
-        @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
-        RegexOptions.None,
-        matchTimeoutMilliseconds: 200)]
-    private static partial Regex UuidPattern();
+    public static string Redact(string message) => LogSecretRedactor.Redact(message);
 }
