@@ -23,7 +23,8 @@ struct RealtimeSubtitleAssembler: Sendable {
     private var expectedLane: RealtimeTranslationOutputLanguage?
     private var languagePair: LanguagePair
     private var seenEventIDs = Set<String>()
-    /// event_id が無い delta の close-drain 再適用防止。live の正当な反復は残す。segment 境界で捨てる。
+    /// event_id が無い delta の close-drain 再適用防止。live で記録したキーだけを
+    /// replay で落とす。未適用の同一本文反復は残す。segment 境界で捨てる。
     private var seenNilEventKeys = Set<String>()
     private var lastActivityAt = Date.distantPast
     private var finalizedCutoffElapsedMs: Int?
@@ -154,7 +155,7 @@ struct RealtimeSubtitleAssembler: Sendable {
             extendingExistingSource = false
         }
         // nil-id キーは新 segment の clear より後に登録する。先に入れると safety-net が消える。
-        // live の同一本文反復は残し、close drain の再送だけ落とす。
+        // live の同一本文反復は残す。replay では live 適用済みだけ落とす。
         if eventID == nil {
             let key = "source|\(delta)|\(elapsedMs.map(String.init) ?? "")"
             if rememberNilEventKey(key, isReplay: isReplay) {
@@ -357,10 +358,10 @@ struct RealtimeSubtitleAssembler: Sendable {
         return rememberNilEventKey(key, isReplay: isReplay)
     }
 
-    /// live ではキーを覚えるだけ。replay では既出キーを重複として落とす。
+    /// live ではキーを覚えるだけ。replay では live 適用済みだけ落とし、未適用の反復は残す。
     private mutating func rememberNilEventKey(_ key: String, isReplay: Bool) -> Bool {
         if isReplay {
-            return !seenNilEventKeys.insert(key).inserted
+            return seenNilEventKeys.contains(key)
         }
         seenNilEventKeys.insert(key)
         return false

@@ -536,6 +536,45 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         XCTAssertEqual(repeated?.translatedText, "yesyes")
     }
 
+    func testNilEventIDUnreadDrainRepeatKeepsBothSourceDeltas() {
+        // Given: live では一度も適用していない assembler
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+
+        // When: 未読の同一 nil-id 原文が close drain で2つ届く
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "はい", eventID: nil, elapsedMs: nil)),
+            isReplay: true
+        )
+        let second = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "はい", eventID: nil, elapsedMs: nil)),
+            isReplay: true
+        )
+
+        // Then: 未適用の反復なので両方残る
+        XCTAssertEqual(second?.sourceText, "はいはい")
+    }
+
+    func testNilEventIDUnreadDrainRepeatKeepsBothTranslationDeltas() {
+        // Given: 原文だけ live 適用済みで、訳文は未適用
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        _ = assembler.ingest(event(.english, .inputTranscriptDelta(delta: "はい", eventID: "s1", elapsedMs: 1)))
+
+        // When: 未読の同一 nil-id 訳文が close drain で2つ届く
+        _ = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: "yes", eventID: nil, elapsedMs: nil)),
+            isReplay: true
+        )
+        let second = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: "yes", eventID: nil, elapsedMs: nil)),
+            isReplay: true
+        )
+
+        // Then: 未適用の訳文反復も両方残る
+        XCTAssertEqual(second?.translatedText, "yesyes")
+    }
+
     private func event(
         _ target: RealtimeTranslationOutputLanguage,
         _ serverEvent: RealtimeTranslationServerEvent,
