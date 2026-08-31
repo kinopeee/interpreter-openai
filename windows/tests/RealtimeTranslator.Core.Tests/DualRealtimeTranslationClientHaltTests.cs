@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
+using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
@@ -254,12 +257,53 @@ public sealed class DualRealtimeTranslationClientHaltTests
         Assert.False(await harness.Dual.Events.WaitToReadAsync());
     }
 
+    // Given: 翻訳ポンプが halt した Dual
+    // When: 新しい prompt/delay で UpdateTranscriptionTuning し、その後 frame を送る
+    // Then: 原文 session.update は届くが、halt は解けず翻訳 lane へは流れない
+    [Fact]
+    public async Task UpdateTranscriptionTuningAfterHaltStillUpdatesSourceWithoutResumingTranslation()
+    {
+        await using var harness = await HaltHarness.StartAsync();
+        await harness.SelectAsync(RealtimeTranslationOutputLanguage.English);
+        await harness.AppendAsync("ok1");
+
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail1");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail2");
+        harness.English.FailNextSend();
+        await harness.AppendAsync("fail3");
+        Assert.Equal(1, harness.DrainTransportErrorCount());
+
+        var sentBefore = harness.Source.Sent.Count;
+        var englishBefore = harness.English.AppendedFrameTexts();
+        var updated = new RealtimeSessionTuning(
+            RealtimeTranslationNoiseReduction.FarField,
+            RealtimeTranscriptionDelay.High,
+            "After halt glossary",
+            ["Acme"]);
+        await harness.Dual.UpdateTranscriptionTuningAsync(updated);
+        await WaitUntilSentAsync(harness.Source, sentBefore + 1);
+
+        var lastUpdate = SessionUpdates(harness.Source)[^1];
+        var transcription = lastUpdate["session"]!["audio"]!["input"]!["transcription"]!.AsObject();
+        Assert.Equal("After halt glossary", transcription["prompt"]!.GetValue<string>());
+        Assert.Equal("high", transcription["delay"]!.GetValue<string>());
+
+        await harness.AppendAsync("afterTuning");
+
+        Assert.Equal(englishBefore, harness.English.AppendedFrameTexts());
+        Assert.Contains("afterTuning", harness.Source.AppendedFrameTexts());
+        Assert.Empty(harness.Japanese.AppendedFrameTexts());
+        Assert.Equal(0, harness.DrainTransportErrorCount());
+    }
+
     private static List<string> SentTypes(FakeRealtimeServerTransport transport)
     {
         var types = new List<string>();
         foreach (var payload in transport.Sent)
         {
-            var type = System.Text.Json.Nodes.JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>();
+            var type = JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>();
             if (type is { } value)
             {
                 types.Add(value);
@@ -267,6 +311,23 @@ public sealed class DualRealtimeTranslationClientHaltTests
         }
 
         return types;
+    }
+
+    private static List<JsonObject> SessionUpdates(FakeRealtimeServerTransport transport) =>
+        transport.Sent
+            .Select(payload => JsonNode.Parse(payload)?.AsObject())
+            .Where(node => node?["type"]?.GetValue<string>() == "session.update")
+            .Select(node => node!)
+            .ToList();
+
+    private static async Task WaitUntilSentAsync(FakeRealtimeServerTransport transport, int minimum)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (transport.Sent.Count < minimum)
+        {
+            timeout.Token.ThrowIfCancellationRequested();
+            await Task.Delay(10, timeout.Token);
+        }
     }
 
     private sealed class HaltHarness : IAsyncDisposable

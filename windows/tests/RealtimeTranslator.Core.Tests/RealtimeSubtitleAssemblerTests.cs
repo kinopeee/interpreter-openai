@@ -188,6 +188,53 @@ public sealed class RealtimeSubtitleAssemblerTests
         Assert.True(fresh.Value.IsTranslationCurrent);
     }
 
+    // Given: 翻訳 lane に乗った input_transcript
+    // When: assembler へ取り込む
+    // Then: 原文 authority にせず、後続の source lane 原文だけを表示する
+    [Fact]
+    public void InputTranscriptDeltaOnTranslationLaneIsIgnored()
+    {
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+
+        var polluted = assembler.Ingest(
+            new RealtimeTranslationStreamEvent(
+                RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
+                new RealtimeTranslationServerEvent.InputTranscriptDelta("polluting source", "p1", 10),
+                1),
+            Origin);
+        var source = assembler.Ingest(Source("こんにちは", "s1", 100), Origin.AddMilliseconds(80));
+
+        Assert.Null(polluted);
+        Assert.NotNull(source);
+        Assert.Equal("こんにちは", source.Value.SourceText);
+        Assert.Equal(string.Empty, source.Value.TranslatedText);
+        Assert.False(source.Value.IsTranslationCurrent);
+    }
+
+    // Given: 期待 lane 未出力のまま、別 lane の echo だけが先に buffer されている
+    // When: 最初の原文 delta を取り込む
+    // Then: orphan echo を捨てて新セグメントを始め、旧訳文と対にしない
+    [Fact]
+    public void FirstSourceAfterOrphanEchoClearsWrongLaneTranslation()
+    {
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.Japanese);
+        var echo = assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, "Tokyo", "echo", 50),
+            Origin);
+
+        var source = assembler.Ingest(Source("こんにちは", "s1", 80), Origin.AddMilliseconds(80));
+
+        Assert.NotNull(echo);
+        Assert.Equal(string.Empty, echo.Value.TranslatedText);
+        Assert.NotNull(source);
+        Assert.Equal("こんにちは", source.Value.SourceText);
+        Assert.Equal(string.Empty, source.Value.TranslatedText);
+        Assert.False(source.Value.IsTranslationCurrent);
+        Assert.Equal(1, source.Value.SegmentGeneration);
+    }
+
     // Given: 訳文が先に届いたセグメント
     // When: 最初の原文 delta を取り込む
     // Then: 同じ発話の訳文を stale 扱いにしない

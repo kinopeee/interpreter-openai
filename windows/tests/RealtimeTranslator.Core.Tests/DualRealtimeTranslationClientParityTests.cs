@@ -1357,6 +1357,37 @@ public sealed class DualRealtimeTranslationClientParityTests
         await dual.ForceCloseAsync();
     }
 
+    // Given: ready な Dual
+    // When: 原文接続へ鍵断片付きの非認証 runtime error が届く
+    // Then: merge 後の Events は transcription code と汎用文言だけを出し、鍵は出さない
+    [Fact]
+    public async Task SourceRuntimeFatalErrorIsMergedWithoutKeyMaterial()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        source.EnqueueJson(
+            """{"type":"error","error":{"message":"upstream echo sk-dual-fatal","code":"server_error"}}""");
+
+        RealtimeTranslationServerEvent.ServerError? error = null;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (error is null)
+        {
+            var streamEvent = await dual.Events.ReadAsync(timeout.Token);
+            error = streamEvent.Event as RealtimeTranslationServerEvent.ServerError;
+        }
+
+        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
+        Assert.DoesNotContain("sk-dual-fatal", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
+        await dual.ForceCloseAsync();
+    }
+
     // Given: 3 本の翻訳接続を持つ Dual と選択された言語ペア
     // When: その pair で Start する
     // Then: source と pair 内 2 lane だけが接続され、未使用 lane は接続されない
