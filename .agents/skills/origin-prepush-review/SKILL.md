@@ -10,7 +10,7 @@ description: >-
 
 # Origin push 前の CodeRabbit レビュー
 
-Origin のホスト側レビューは使えない。push 前にローカルで `coderabbit review` を回し、妥当な指摘を直してから `cursor` remote へ push する。マージゲートではない。Origin の PR check は Depot CI（`.depot/workflows/`）が担う。Depot 未接続時やローカル macOS 結果の手動報告だけ `scripts/origin-report-check.mjs` を使う。
+Origin のホスト側レビューは使えない。push 前にローカルで `coderabbit review` を回し、妥当な指摘を直してから `cursor` remote へ push する。マージゲートではない。Origin の PR check は Depot CI（`.depot/workflows/`）が担う。ローカル macOS 結果の手動報告だけ `scripts/origin-report-check.mjs` を使う。
 
 ## 手順
 

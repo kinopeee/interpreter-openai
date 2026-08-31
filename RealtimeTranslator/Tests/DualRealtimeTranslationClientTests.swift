@@ -656,6 +656,19 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
             englishTransport: englishTransport,
             japaneseTransport: japaneseTransport
         )
+        let bothYielded = expectation(description: "2 source deltas yielded")
+        let stream = await dual.events
+        let collector = Task {
+            var count = 0
+            for await event in stream {
+                guard case .inputTranscriptDelta = event.event else { continue }
+                count += 1
+                if count == 2 {
+                    bothYielded.fulfill()
+                    return
+                }
+            }
+        }
         try await sourceTransport.enqueueJSON([
             "type": "conversation.item.input_audio_transcription.delta",
             "item_id": "ack-1",
@@ -666,7 +679,8 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
             "item_id": "unread-1",
             "delta": "未読原文",
         ])
-        try await Task.sleep(nanoseconds: 80_000_000)
+        await fulfillment(of: [bothYielded], timeout: 1)
+        collector.cancel()
         await dual.acknowledgeConsumedStreamEvent()
 
         // When: stop drain を武装して close する

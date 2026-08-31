@@ -136,10 +136,15 @@ xcodebuild test \
   -enableCodeCoverage YES
 ```
 
-Checks used by Origin PR CI (Depot) and GitHub `shared-contracts`:
+Contract checks (shared by GitHub `shared-contracts` and Depot):
 
 ```bash
 ./scripts/ci-shared-contracts.sh
+```
+
+Depot Windows Core checks:
+
+```bash
 ./scripts/ci-windows-core.sh   # Windows Core only; runs on Linux
 ```
 

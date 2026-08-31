@@ -135,10 +135,15 @@ xcodebuild test \
   -enableCodeCoverage YES
 ```
 
-Origin の PR CI（Depot）と GitHub の `shared-contracts` が使う検査:
+契約検査（GitHub `shared-contracts` と Depot 共通）:
 
 ```bash
 ./scripts/ci-shared-contracts.sh
+```
+
+Depot の Windows Core 検査:
+
+```bash
 ./scripts/ci-windows-core.sh   # Linux で回せる Windows Core のみ
 ```
 
