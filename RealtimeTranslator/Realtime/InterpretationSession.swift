@@ -391,7 +391,9 @@ final class InterpretationSession {
             }
 
             beforeAssemblerIngestForTests?()
-            await dualClient.acknowledgeConsumedStreamEvent()
+            // 適用または明示破棄のあとで acknowledge する。ack を先にすると、
+            // この await 中に performStop が走ったとき未適用イベントが stop drain から外れる。
+            guard generation == lifecycleGeneration else { return }
             if let update = assembler.ingest(streamEvent) {
                 #if DEBUG
                 AppLogger.session.notice(
@@ -403,6 +405,7 @@ final class InterpretationSession {
                     await resetAudioRoutingForNextSegment()
                 }
             }
+            await dualClient.acknowledgeConsumedStreamEvent()
         }
         guard generation == lifecycleGeneration else { return }
         throw RealtimeTranslationError.recoverableTransportFailure("event stream ended")
@@ -461,7 +464,7 @@ final class InterpretationSession {
             if case .error = streamEvent.event {
                 continue
             }
-            if let update = assembler.ingest(streamEvent) {
+            if let update = assembler.ingest(streamEvent, isReplay: true) {
                 apply(update)
             }
         }

@@ -436,10 +436,12 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
 
         // When: close drain が同じ delta を再適用する
         let replayedSource = assembler.ingest(
-            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 1))
+            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 1)),
+            isReplay: true
         )
         let replayedTranslation = assembler.ingest(
-            event(.english, .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 2))
+            event(.english, .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 2)),
+            isReplay: true
         )
 
         // Then: 二重表示せず、現行テキストは1回分のまま
@@ -489,7 +491,8 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
 
         // When: 同じ nil-id 原文が close drain で再適用される
         let replayed = assembler.ingest(
-            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 1))
+            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 1)),
+            isReplay: true
         )
 
         // Then: 新 segment 開始時の clear でキーを消さず、二重表示しない
@@ -500,6 +503,37 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
             )?.sourceText,
             "こんにちは、皆さん"
         )
+    }
+
+    func testNilEventIDLiveRepeatKeepsBothSourceDeltas() {
+        // Given: event_id も elapsedMs も無い原文 delta
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        _ = assembler.ingest(event(.english, .inputTranscriptDelta(delta: "はい", eventID: nil, elapsedMs: nil)))
+
+        // When: 同一セグメントで同じ本文がもう一度 live で届く
+        let repeated = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "はい", eventID: nil, elapsedMs: nil))
+        )
+
+        // Then: 正当な反復として両方残る
+        XCTAssertEqual(repeated?.sourceText, "はいはい")
+    }
+
+    func testNilEventIDLiveRepeatKeepsBothTranslationDeltas() {
+        // Given: 原文と、event_id / elapsedMs の無い訳文
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        _ = assembler.ingest(event(.english, .inputTranscriptDelta(delta: "はい", eventID: "s1", elapsedMs: 1)))
+        _ = assembler.ingest(event(.english, .outputTranscriptDelta(delta: "yes", eventID: nil, elapsedMs: nil)))
+
+        // When: 同じ訳文 delta が live で続く
+        let repeated = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: "yes", eventID: nil, elapsedMs: nil))
+        )
+
+        // Then: 訳文も正当な反復として両方残る
+        XCTAssertEqual(repeated?.translatedText, "yesyes")
     }
 
     private func event(
