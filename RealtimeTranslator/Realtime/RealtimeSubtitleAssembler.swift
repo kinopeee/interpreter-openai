@@ -23,6 +23,9 @@ struct RealtimeSubtitleAssembler: Sendable {
     private var expectedLane: RealtimeTranslationOutputLanguage?
     private var languagePair: LanguagePair
     private var seenEventIDs = Set<String>()
+    /// event_id が無い delta の close-drain 再適用防止。live で記録したキーだけを
+    /// replay で落とす。未適用の同一本文反復は残す。segment 境界で捨てる。
+    private var seenNilEventKeys = Set<String>()
     private var lastActivityAt = Date.distantPast
     private var finalizedCutoffElapsedMs: Int?
     private var maxTranslationElapsedMs: Int?
@@ -43,6 +46,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         clearSegmentBuffers(advancingGeneration: false)
         expectedLane = nil
         seenEventIDs.removeAll(keepingCapacity: true)
+        seenNilEventKeys.removeAll(keepingCapacity: true)
         finalizedCutoffElapsedMs = nil
         maxTranslationElapsedMs = nil
         awaitingSourceAfterFinalize = false
@@ -94,14 +98,21 @@ struct RealtimeSubtitleAssembler: Sendable {
 
     mutating func ingest(
         _ streamEvent: RealtimeTranslationStreamEvent,
-        now: Date = Date()
+        now: Date = Date(),
+        isReplay: Bool = false
     ) -> RealtimeSubtitleUpdate? {
         guard streamEvent.epoch == epoch else { return nil }
 
         switch streamEvent.event {
         case .inputTranscriptDelta(let delta, let eventID, let elapsedMs):
             guard streamEvent.lane.isSource else { return nil }
-            return appendSource(delta, eventID: eventID, elapsedMs: elapsedMs, now: now)
+            return appendSource(
+                delta,
+                eventID: eventID,
+                elapsedMs: elapsedMs,
+                now: now,
+                isReplay: isReplay
+            )
         case .outputTranscriptDelta(let delta, let eventID, let elapsedMs):
             guard case .translation(let target) = streamEvent.lane else { return nil }
             return appendTranslation(
@@ -109,7 +120,8 @@ struct RealtimeSubtitleAssembler: Sendable {
                 target: target,
                 eventID: eventID,
                 elapsedMs: elapsedMs,
-                now: now
+                now: now,
+                isReplay: isReplay
             )
         default:
             return nil
@@ -124,7 +136,8 @@ struct RealtimeSubtitleAssembler: Sendable {
         _ delta: String,
         eventID: String?,
         elapsedMs: Int?,
-        now: Date
+        now: Date,
+        isReplay: Bool
     ) -> RealtimeSubtitleUpdate? {
         guard !delta.isEmpty else { return nil }
         if let eventID, !seenEventIDs.insert(eventID).inserted {
@@ -140,6 +153,14 @@ struct RealtimeSubtitleAssembler: Sendable {
         } else if shouldStartNewSegmentForSourceUpdate() {
             clearSegmentBuffers(advancingGeneration: true)
             extendingExistingSource = false
+        }
+        // nil-id キーは新 segment の clear より後に登録する。先に入れると safety-net が消える。
+        // live の同一本文反復は残す。replay では live 適用済みだけ落とす。
+        if eventID == nil {
+            let key = "source|\(delta)|\(elapsedMs.map(String.init) ?? "")"
+            if rememberNilEventKey(key, isReplay: isReplay) {
+                return nil
+            }
         }
 
         sourceText += delta
@@ -157,13 +178,18 @@ struct RealtimeSubtitleAssembler: Sendable {
         target: RealtimeTranslationOutputLanguage,
         eventID: String?,
         elapsedMs: Int?,
-        now: Date
+        now: Date,
+        isReplay: Bool
     ) -> RealtimeSubtitleUpdate? {
         guard !delta.isEmpty else { return nil }
         // 確定後に届いた旧segmentの訳文で、保持中の完全ペアを上書きしない。
         // 次のsource deltaが来るまでtarget deltaは破棄する。
         guard !awaitingSourceAfterFinalize else { return nil }
-        if let eventID, !seenEventIDs.insert(eventID).inserted {
+        if hasSeenTranscriptEvent(
+            eventID: eventID,
+            key: "translation|\(target.rawValue)|\(delta)|\(elapsedMs.map(String.init) ?? "")",
+            isReplay: isReplay
+        ) {
             return nil
         }
         if let elapsedMs, let cutoff = finalizedCutoffElapsedMs, elapsedMs <= cutoff {
@@ -315,9 +341,30 @@ struct RealtimeSubtitleAssembler: Sendable {
         translationText.removeAll(keepingCapacity: true)
         selectedLane = nil
         translationIsCurrent = false
+        seenNilEventKeys.removeAll(keepingCapacity: true)
         if advancingGeneration {
             segmentGeneration += 1
         }
+    }
+
+    private mutating func hasSeenTranscriptEvent(
+        eventID: String?,
+        key: String,
+        isReplay: Bool
+    ) -> Bool {
+        if let eventID {
+            return !seenEventIDs.insert(eventID).inserted
+        }
+        return rememberNilEventKey(key, isReplay: isReplay)
+    }
+
+    /// live ではキーを覚えるだけ。replay では live 適用済みだけ落とし、未適用の反復は残す。
+    private mutating func rememberNilEventKey(_ key: String, isReplay: Bool) -> Bool {
+        if isReplay {
+            return seenNilEventKeys.contains(key)
+        }
+        seenNilEventKeys.insert(key)
+        return false
     }
 
     private func shouldStartNewSegmentForSourceUpdate() -> Bool {

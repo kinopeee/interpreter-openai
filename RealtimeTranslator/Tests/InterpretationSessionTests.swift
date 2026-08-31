@@ -474,6 +474,57 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(session.state, .idle)
     }
 
+    func testStopDrainDoesNotDuplicateNilEventIDAlreadyAppliedLive() async throws {
+        // Given: event_id の無い完全ペアを live ingest 済み
+        let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: apiKeyStore,
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let epoch = await dual.connectionEpoch
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 20)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText == "こんにちは"
+                && delegate.latestSnapshot?.current.translatedText == "Hello"
+        }
+        dual.closeGracefullyEvents = [
+            RealtimeTranslationStreamEvent(
+                target: .english,
+                event: .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 10),
+                epoch: epoch
+            ),
+            RealtimeTranslationStreamEvent(
+                target: .english,
+                event: .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 20),
+                epoch: epoch
+            ),
+        ]
+
+        // When: 同じ delta が close drain で再送される
+        await session.stop()
+
+        // Then: 原文も訳文も二重にならない
+        XCTAssertEqual(session.state, .idle)
+        let snapshot = try XCTUnwrap(delegate.latestSnapshot)
+        XCTAssertEqual(snapshot.current.sourceText, "こんにちは")
+        XCTAssertEqual(snapshot.current.translatedText, "Hello")
+    }
+
     func testStopIngestsCompletePairPublishedDuringGracefulClose() async throws {
         // Given: 停止時点では字幕がまだ無く、commit/session.close の drain で完全ペアが届く
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
@@ -1538,6 +1589,8 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     func beginStopDrainCapture() async {
         beginStopDrainCaptureCallCount += 1
     }
+
+    func acknowledgeConsumedStreamEvent() async {}
 
     @discardableResult
     func closeGracefully() async -> [RealtimeTranslationStreamEvent] {
