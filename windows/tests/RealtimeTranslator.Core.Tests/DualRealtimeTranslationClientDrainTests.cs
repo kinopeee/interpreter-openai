@@ -474,6 +474,48 @@ public sealed class DualRealtimeTranslationClientDrainTests
         await dual.ForceCloseAsync();
     }
 
+    // Given: スペイン語接続を渡していない dual が JaEs Start に失敗した直後
+    // When: Append し、CloseGracefully したあと JaEn で Start し直す
+    // Then: 失敗後は送信できず Events は完了し、次の JaEn Start は接続できる
+    [Fact]
+    public async Task FailedSpanishPairStartLeavesNotConnectedAndNextJaEnStartWorks()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(source, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs));
+
+        Assert.Equal(0, source.ConnectCount);
+        Assert.Equal(0, english.ConnectCount);
+        Assert.Equal(0, japanese.ConnectCount);
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => dual.AppendAudioFrameAsync(Frame(0x11)));
+        Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+
+        await dual.CloseGracefullyAsync();
+        while (dual.Events.TryRead(out _))
+        {
+        }
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        Assert.False(await dual.Events.WaitToReadAsync(timeout.Token));
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn);
+        await dual.AppendAudioFrameAsync(Frame(0x22));
+
+        Assert.Equal(1, source.ConnectCount);
+        Assert.Equal(1, english.ConnectCount);
+        Assert.Equal(1, japanese.ConnectCount);
+        Assert.Single(source.AppendedFrameTexts());
+        await dual.ForceCloseAsync();
+    }
+
     // Given: ja-es で Spanish target に pending frame がある dual（未使用 English lane は未接続）
     // When: CloseGracefullyAsync する
     // Then: session.close より前に Spanish lane へ全 frame が届き、未使用 lane で止まらず Events が完了する

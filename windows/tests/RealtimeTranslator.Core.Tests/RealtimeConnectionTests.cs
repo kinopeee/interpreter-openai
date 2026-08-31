@@ -414,6 +414,38 @@ public sealed class RealtimeConnectionTests
         await connection.ForceCloseAsync();
     }
 
+    // Given: ready な翻訳接続
+    // When: 未知 type のあとに訳文 delta が届く
+    // Then: 未知イベントで Events を閉じず、訳文は届く
+    [Fact]
+    public async Task TranslationConnectionUnknownEventsDoNotCompleteTheEventStream()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety");
+        await connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+
+        transport.EnqueueJson("""{"type":"session.unknown.noise"}""");
+        transport.EnqueueJson(
+            """{"type":"session.output_transcript.delta","delta":"Hello","event_id":"t1","elapsed_ms":10}""");
+
+        RealtimeTranslationServerEvent.OutputTranscriptDelta? delta = null;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (delta is null)
+        {
+            var streamEvent = await connection.Events.ReadAsync(timeout.Token);
+            delta = streamEvent.Event as RealtimeTranslationServerEvent.OutputTranscriptDelta;
+        }
+
+        Assert.Equal("Hello", delta.Delta);
+        Assert.False(connection.Events.Completion.IsCompleted);
+        await connection.ForceCloseAsync();
+    }
+
     // Given: session.closed を返さない fake サーバー
     // When: graceful close を試みる
     // Then: session.close を送った上で CloseTimeout になる
@@ -514,8 +546,8 @@ public sealed class RealtimeConnectionTests
     }
 
     // Given: 原文 transcription 接続
-    // When: delta と completed が届く
-    // Then: delta だけを英語 lane 相当のイベントとして流し、commit 応答で graceful close できる
+    // When: 実 delta のあいだに空 delta と未知 type が挟まり、最後に completed が届く
+    // Then: Ignored は Events に出ず、実 delta だけが流れ、commit 応答で graceful close できる
     [Fact]
     public async Task SourceConnectionPublishesDeltasAndClosesOnCompleted()
     {
@@ -532,6 +564,15 @@ public sealed class RealtimeConnectionTests
         var delta = Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptDelta>(streamEvent.Event);
         Assert.Equal("hello", delta.Delta);
         Assert.Null(delta.ElapsedMs);
+
+        transport.EnqueueJson(
+            """{"type":"conversation.item.input_audio_transcription.delta","delta":"","event_id":"empty"}""");
+        transport.EnqueueJson("""{"type":"session.unknown.noise"}""");
+        transport.EnqueueJson(
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":" world","event_id":"e2"}""");
+        var second = await ReadOneAsync(connection.Events);
+        var secondDelta = Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptDelta>(second.Event);
+        Assert.Equal(" world", secondDelta.Delta);
 
         transport.EnqueueJson("""{"type":"conversation.item.input_audio_transcription.completed"}""");
         await connection.CloseGracefullyAsync();
