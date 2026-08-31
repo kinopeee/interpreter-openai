@@ -25,9 +25,14 @@ enum URLSessionWebSocketTransportError: Error, LocalizedError, Sendable {
 }
 
 /// WebSocket送信などの無期限待ちを防ぐためのtimeoutヘルパー。
+///
+/// `withThrowingTaskGroup` は throw 後も残りの子タスク完了を待つ。
+/// `URLSessionWebSocketTask.send` のように Swift キャンセルを無視する I/O では、
+/// timeout 側で socket を abort しないと待ちが解けない。
 enum AsyncTimeout {
     static func run<T: Sendable>(
         nanoseconds: UInt64,
+        onTimeout: (@Sendable () -> Void)? = nil,
         operation: @Sendable @escaping () async throws -> T
     ) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
@@ -36,11 +41,18 @@ enum AsyncTimeout {
             }
             group.addTask {
                 try await Task.sleep(nanoseconds: nanoseconds)
+                onTimeout?()
                 throw RealtimeTranslationError.recoverableTransportFailure("send timeout")
             }
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
+            do {
+                let result = try await group.next()!
+                group.cancelAll()
+                return result
+            } catch {
+                group.cancelAll()
+                onTimeout?()
+                throw error
+            }
         }
     }
 }
@@ -79,8 +91,26 @@ actor URLSessionWebSocketTransport: RealtimeWebSocketTransport {
         guard let text = String(data: data, encoding: .utf8) else {
             throw RealtimeTranslationError.invalidMessage
         }
-        try await AsyncTimeout.run(nanoseconds: sendTimeoutNanoseconds) {
-            try await task.send(.string(text))
+        nonisolated(unsafe) let socket = task
+        let timeoutNanoseconds = sendTimeoutNanoseconds
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                try await socket.send(.string(text))
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: timeoutNanoseconds)
+                throw RealtimeTranslationError.recoverableTransportFailure("send timeout")
+            }
+            do {
+                try await group.next()!
+                group.cancelAll()
+            } catch {
+                group.cancelAll()
+                // TaskGroup は残りの send 完了を待つ。Swift キャンセルでは解けないので
+                // socket を abort してから throw する。
+                await close()
+                throw error
+            }
         }
     }
 
@@ -88,7 +118,12 @@ actor URLSessionWebSocketTransport: RealtimeWebSocketTransport {
         guard let task else {
             throw URLSessionWebSocketTransportError.notConnected
         }
-        let message = try await task.receive()
+        nonisolated(unsafe) let socket = task
+        let message = try await withTaskCancellationHandler {
+            try await socket.receive()
+        } onCancel: {
+            socket.cancel(with: .goingAway, reason: nil)
+        }
         switch message {
         case .string(let text):
             guard let data = text.data(using: .utf8) else {
