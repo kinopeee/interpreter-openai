@@ -1607,6 +1607,56 @@ public sealed class InterpretationSessionTests
         Assert.Equal("Unread translation after error", finalized.TranslatedText);
     }
 
+    // Given: transport error 時点では Dual channel に訳文が無く、ForceClose 中に merge 相当で届く
+    // When: TearDown が ForceClose したあと再接続 Start が channel を張り替える
+    // Then: ForceClose 後の最終 drain が訳文を取り込み、BeginNewEpoch 前に ShouldFinalize する
+    [Fact]
+    public async Task ReconnectForceCloseLateMergedTranslationIsFinalizedBeforeNewEpoch()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("再接続前の原文");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+
+        client.OnForceCloseBeforeComplete = () =>
+        {
+            client.OnForceCloseBeforeComplete = null;
+            client.PublishTranslationDelta(
+                RealtimeTranslationOutputLanguage.English,
+                "Late merged translation during ForceClose");
+        };
+        client.PublishTransportError();
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.ShouldFinalize);
+            }
+        });
+
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("再接続前の原文", finalized.SourceText);
+        Assert.Equal("Late merged translation during ForceClose", finalized.TranslatedText);
+        await session.StopAsync();
+    }
+
     // Given: transport error 後の再接続待ち
     // When: その間に StartAsync を再度呼ぶ
     // Then: Idle/Error 以外は受理せず Dual Start は増えない
@@ -2611,6 +2661,9 @@ public sealed class InterpretationSessionTests
         /// <summary>CloseGracefully 時に close drain イベントを流すテスト用フック。</summary>
         public Func<Task>? OnCloseGracefully { get; set; }
 
+        /// <summary>ForceClose が Complete する直前に、遅延 merge 相当のイベントを積む。</summary>
+        public Action? OnForceCloseBeforeComplete { get; set; }
+
         /// <summary>StartAsync 入口で待つゲート（capture 順序・Stop 排水・Connecting 再入用）。</summary>
         public TaskCompletionSource? StartGate { get; set; }
 
@@ -2761,6 +2814,7 @@ public sealed class InterpretationSessionTests
         public Task ForceCloseAsync()
         {
             ForceCloseCallCount += 1;
+            OnForceCloseBeforeComplete?.Invoke();
             Complete();
             return Task.CompletedTask;
         }
