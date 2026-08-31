@@ -164,6 +164,24 @@ public sealed class LanguageFixtureTests
             SpokenLanguageDetector.Evidence("Is This With It", LanguagePair.EnEs));
     }
 
+    // Given: ラテン語が 0 語の en-es 原文（句読点 / 空白 / 空文字）
+    // When: Evidence を求める
+    // Then: 現行実装は AmbiguousLatin（protocol の None とは差がある。selector 初期値はどちらも candidate null）
+    [Theory]
+    [InlineData("!!!")]
+    [InlineData("…")]
+    [InlineData("   ")]
+    [InlineData("")]
+    public void EnEsZeroLatinWordsIsAmbiguousLatin(string text)
+    {
+        Assert.Equal(
+            SpokenLanguageEvidence.AmbiguousLatin,
+            SpokenLanguageDetector.Evidence(text, LanguagePair.EnEs));
+        Assert.Equal(
+            SpokenLanguageEvidence.None,
+            SpokenLanguageDetector.Evidence(text, LanguagePair.JaEn));
+    }
+
     // Given: アクセント付きスペイン語の複数語
     // When: ja-es で証拠を求める
     // Then: ASCII のみの語分割に落ちず spanish になる
