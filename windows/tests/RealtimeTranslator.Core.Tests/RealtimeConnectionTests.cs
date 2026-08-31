@@ -437,6 +437,34 @@ public sealed class RealtimeConnectionTests
         Assert.Equal("session.close", TypeOf(transport.Sent[^1]));
     }
 
+    // Given: ready な翻訳接続で、相手は既に落ちて session.close 送信だけ失敗する
+    // When: CloseGracefullyAsync する
+    // Then: 送信失敗を外へ出さず session.closed 待ちへ進み、transport を解放する
+    [Fact]
+    public async Task TranslationConnectionCloseGracefullySurvivesSessionCloseSendFailure()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety",
+            closeTimeout: TimeSpan.FromSeconds(2));
+        await connection.StartAsync(
+            "sk-test",
+            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+
+        transport.FailNextSend();
+        transport.EnqueueJson("""{"type":"session.closed"}""");
+
+        var started = Stopwatch.StartNew();
+        await connection.CloseGracefullyAsync();
+        started.Stop();
+
+        Assert.True(started.Elapsed < TimeSpan.FromMilliseconds(500));
+        Assert.True(transport.CloseCount >= 1);
+        Assert.DoesNotContain(transport.Sent, payload => TypeOf(payload) == "session.close");
+    }
+
     // Given: handshake 前（未 ready）の翻訳接続。closeTimeout は長く、誤って待つとテストが固まる
     // When: ready 前に graceful close する
     // Then: session.closed 待ちへ入らず即完了し、session.close も送らない
@@ -607,6 +635,31 @@ public sealed class RealtimeConnectionTests
 
         Assert.Equal(RealtimeTranslationErrorKind.CloseTimeout, error.Kind);
         Assert.Equal("input_audio_buffer.commit", TypeOf(transport.Sent[^1]));
+    }
+
+    // Given: ready な原文接続で、相手は既に落ちて commit 送信だけ失敗する
+    // When: CloseGracefullyAsync する
+    // Then: 送信失敗を外へ出さず completed 待ちへ進み、transport を解放する
+    [Fact]
+    public async Task SourceConnectionCloseGracefullySurvivesCommitSendFailure()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            closeTimeout: TimeSpan.FromSeconds(2));
+        await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        transport.FailNextSend();
+        transport.EnqueueJson("""{"type":"conversation.item.input_audio_transcription.completed"}""");
+
+        var started = Stopwatch.StartNew();
+        await connection.CloseGracefullyAsync();
+        started.Stop();
+
+        Assert.True(started.Elapsed < TimeSpan.FromMilliseconds(500));
+        Assert.True(transport.CloseCount >= 1);
+        Assert.DoesNotContain(transport.Sent, payload => TypeOf(payload) == "input_audio_buffer.commit");
     }
 
     // Given: handshake 中に認証エラーを返す原文接続

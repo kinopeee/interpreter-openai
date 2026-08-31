@@ -1856,6 +1856,61 @@ public sealed class InterpretationSessionTests
         Assert.Equal("Complete pair before max reconnect", finalized.TranslatedText);
     }
 
+    // Given: Listening 中に transport error が起きても毎回再接続に成功する
+    // When: 上限回数を超えても成功回復を繰り返す
+    // Then: 成功接続で試行カウンタがリセットされ、Error に落ちない
+    [Fact]
+    public async Task SuccessfulReconnectResetsAttemptCounterBeforeLimit()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var expectedStarts = 1;
+        for (var index = 0; index < InterpretationSession.MaxReconnectAttempts + 1; index += 1)
+        {
+            client.PublishTransportError();
+            expectedStarts += 1;
+            await WaitUntilAsync(() =>
+                client.StartCount >= expectedStarts && session.State == TranslationState.Listening);
+            Assert.NotEqual(TranslationState.Error, session.State);
+        }
+
+        Assert.Equal(expectedStarts, client.StartCount);
+        Assert.Equal(TranslationState.Listening, session.State);
+        Assert.Null(message);
+        await session.StopAsync();
+        Assert.Equal(TranslationState.Idle, session.State);
+    }
+
+    // Given: 初回 target 選択が recoverable 例外になる dual
+    // When: 日本語原文で routing を開始する
+    // Then: Error にせず再接続し、Dual Start が再実行される
+    [Fact]
+    public async Task SelectTranslationTargetFailureTriggersReconnectWithoutEnteringError()
+    {
+        var client = new FakeDualClient { ThrowOnSelectTranslationTarget = true };
+        using var session = NewSession(client);
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("こんにちは");
+        await WaitUntilAsync(() => client.StartCount >= 2 && session.State == TranslationState.Listening);
+
+        Assert.True(client.StartCount >= 2);
+        Assert.NotEqual(TranslationState.Error, session.State);
+        Assert.Null(message);
+        await session.StopAsync();
+        Assert.Equal(TranslationState.Idle, session.State);
+    }
+
     // Given: 訳文がまだ無い原文だけのセグメント
     // When: transport error で再接続する
     // Then: 不完全ペアを ShouldFinalize しない（字幕記録へゴミを書かない）
@@ -2718,6 +2773,9 @@ public sealed class InterpretationSessionTests
         /// <summary>UpdateTranscriptionTuningAsync で RealtimeTranslationException を投げる。</summary>
         public bool ThrowRealtimeOnUpdateTuning { get; set; }
 
+        /// <summary>SelectTranslationTargetAsync を 1 回だけ失敗させる（routing 例外の再接続テスト用）。</summary>
+        public bool ThrowOnSelectTranslationTarget { get; set; }
+
         /// <summary>StartAsync を指定回数だけ失敗させる（再接続上限テスト用）。</summary>
         public int RemainingStartFailures { get; set; }
 
@@ -2817,6 +2875,12 @@ public sealed class InterpretationSessionTests
         {
             lock (_sync)
             {
+                if (ThrowOnSelectTranslationTarget)
+                {
+                    ThrowOnSelectTranslationTarget = false;
+                    throw new InvalidOperationException("injected select target failure");
+                }
+
                 if (target is { } selected)
                 {
                     _selectedTargets.Add(selected);

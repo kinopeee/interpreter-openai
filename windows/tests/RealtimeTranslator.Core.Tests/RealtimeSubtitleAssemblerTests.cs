@@ -207,6 +207,82 @@ public sealed class RealtimeSubtitleAssemblerTests
         Assert.True(update.Value.IsTranslationCurrent);
     }
 
+    // Given: ExpectLane(Japanese) で英語入力、期待 lane はまだ未出力
+    // When: 英語 echo が先に届き、そのあと日本語訳が届く
+    // Then: echo の時点では訳文を出さず、日本語到着後にだけ現行訳にする
+    [Fact]
+    public void ExpectedLaneSuppressesEchoTranslationUntilExpectedLaneOutputs()
+    {
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.Japanese);
+        assembler.Ingest(Source("Hello there", "s1", 100), Origin);
+
+        var echo = assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, "Hello there", "t-echo", 150),
+            Origin.AddMilliseconds(150));
+        var expected = assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.Japanese, "こんにちは", "t1", 200),
+            Origin.AddMilliseconds(200));
+
+        Assert.NotNull(echo);
+        Assert.Equal("Hello there", echo.Value.SourceText);
+        Assert.Equal(string.Empty, echo.Value.TranslatedText);
+        Assert.False(echo.Value.IsTranslationCurrent);
+        Assert.NotNull(expected);
+        Assert.Equal("こんにちは", expected.Value.TranslatedText);
+        Assert.True(expected.Value.IsTranslationCurrent);
+        Assert.False(expected.Value.ShouldFinalize);
+    }
+
+    // Given: 完全な進行中ペア（訳文 event_id t1）
+    // When: 同じ event_id の訳文 delta が再送される
+    // Then: 二重追記せず、表示中の訳文は元のまま
+    [Fact]
+    public void DuplicateTranslationEventIdIsIgnored()
+    {
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+        assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
+        assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200), Origin);
+
+        var duplicate = assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, " again", "t1", 250),
+            Origin.AddMilliseconds(250));
+        var idle = assembler.Tick(Origin.AddSeconds(9));
+
+        Assert.Null(duplicate);
+        Assert.NotNull(idle);
+        Assert.Equal("こんにちは", idle.Value.SourceText);
+        Assert.Equal("Hello", idle.Value.TranslatedText);
+        Assert.True(idle.Value.ShouldFinalize);
+    }
+
+    // Given: idle 確定したセグメント（訳文 elapsed_ms が cutoff になる）
+    // When: cutoff 以下の elapsed を持つ遅延原文が届く
+    // Then: 新セグメントへ連結せず、確定済みペアを上書きしない
+    [Fact]
+    public void LateSourceDeltaAfterFinalizeIsIgnoredByElapsedCutoff()
+    {
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+        assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
+        assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200), Origin);
+        var finalized = assembler.Tick(Origin.AddSeconds(9));
+
+        var late = assembler.Ingest(Source("遅延原文", "s-late", 150), Origin.AddSeconds(9.2));
+        var fresh = assembler.Ingest(Source("ありがとう", "s-new", 400), Origin.AddSeconds(9.4));
+
+        Assert.True(finalized?.ShouldFinalize);
+        Assert.Equal("こんにちは", finalized?.SourceText);
+        Assert.Equal("Hello", finalized?.TranslatedText);
+        Assert.Null(late);
+        Assert.NotNull(fresh);
+        Assert.Equal("ありがとう", fresh.Value.SourceText);
+        Assert.Equal(string.Empty, fresh.Value.TranslatedText);
+        Assert.False(fresh.Value.IsTranslationCurrent);
+        Assert.Equal(1, fresh.Value.SegmentGeneration);
+    }
+
     private static RealtimeSubtitleAssembler NewAssembler()
     {
         var assembler = new RealtimeSubtitleAssembler();

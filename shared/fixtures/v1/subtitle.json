@@ -364,6 +364,39 @@
           "isTranslationCurrent": true,
           "shouldFinalize": false
         }
+      },
+      {
+        "name": "duplicate translation event ids are ignored",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 0.3, "kind": "translationDelta", "lane": "en", "text": " again", "eventId": "t1", "elapsedMs": 250 }
+        ],
+        "expectedFinal": {
+          "sourceText": "こんにちは",
+          "translatedText": "Hello",
+          "isTranslationCurrent": true,
+          "shouldFinalize": false
+        }
+      },
+      {
+        "name": "late source delta after finalize is ignored by elapsed cutoff",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 9, "kind": "tick" },
+          { "at": 9.2, "kind": "sourceDelta", "lane": "source", "text": "遅延原文", "eventId": "s-late", "elapsedMs": 150 }
+        ],
+        "expectedFinal": {
+          "sourceText": "こんにちは",
+          "translatedText": "Hello",
+          "isTranslationCurrent": true,
+          "shouldFinalize": true
+        }
       }
     ]
   }
