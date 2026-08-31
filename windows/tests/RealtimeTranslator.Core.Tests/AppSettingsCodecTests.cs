@@ -80,6 +80,25 @@ public sealed class AppSettingsCodecTests
         Assert.DoesNotContain("sk-", json, System.StringComparison.Ordinal);
     }
 
+    // Given: 手編集で apiKey を書き込んだ settings.json
+    // When: 読み込んでから再書き出しする
+    // Then: 平文キーは復元も再保存もされず、他の正当な欄は残る
+    [Fact]
+    public void DecodePoisonedApiKeyFieldIsDroppedOnReEncode()
+    {
+        var restored = AppSettingsCodec.Decode(
+            """{"fontSize":40,"apiKey":"sk-hand-edited-secret","openaiApiKey":"sk-also-secret","languagePair":"en-es"}""");
+        var json = AppSettingsCodec.Encode(restored);
+
+        Assert.Equal(40, restored.FontSize);
+        Assert.Equal(LanguagePair.EnEs, restored.LanguagePair);
+        Assert.DoesNotContain("apiKey", json, System.StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("openaiApiKey", json, System.StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("sk-", json, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("hand-edited-secret", json, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("also-secret", json, System.StringComparison.Ordinal);
+    }
+
     // Given: 壊れた JSON や未知の値
     // When: 読み込む
     // Then: 既定値へ倒れて起動を妨げない

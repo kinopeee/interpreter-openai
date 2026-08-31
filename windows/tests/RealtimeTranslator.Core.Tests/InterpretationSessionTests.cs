@@ -2507,6 +2507,59 @@ public sealed class InterpretationSessionTests
         }
     }
 
+    // Given: 訳文のあと同一言語の原文が伸びて stale になったセグメント
+    // When: 利用者が録音を停止する
+    // Then: 旧訳文を ShouldFinalize せず Idle へ戻る（字幕記録へ食い違ったペアを残さない）
+    [Fact]
+    public async Task StopDoesNotFinalizeStalePairAfterSourceContinues()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("停止前の完全ペア");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Complete pair before stop");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+            }
+        });
+
+        client.PublishSourceDelta("、続きです");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText.Contains("続きです", StringComparison.Ordinal)
+                    && !update.IsTranslationCurrent
+                    && !update.ShouldFinalize);
+            }
+        });
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
+    }
+
     // Given: idle finalize 前の完全な原文+訳文ペア
     // When: transport error で再接続し BeginNewEpoch する
     // Then: 捨てる前に ShouldFinalize が発行され、オプトイン字幕記録へ届く

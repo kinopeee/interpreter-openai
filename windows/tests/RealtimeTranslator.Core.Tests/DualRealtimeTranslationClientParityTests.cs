@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Realtime;
 using Xunit;
@@ -1449,6 +1450,51 @@ public sealed class DualRealtimeTranslationClientParityTests
             """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"alive"}""");
         var deltas = await CollectSourceDeltasAsync(dual, count: 1);
         Assert.Equal(["alive"], deltas);
+        await dual.ForceCloseAsync();
+    }
+
+    // Given: ready な Dual
+    // When: 原文接続へ復号できないメッセージが届いたあと、翻訳 lane に訳文 delta が続く
+    // Then: merge 後の Events は Source lane の transport error になり、Dual の流は閉じず訳文は届く
+    [Fact]
+    public async Task SourceLaneBrokenMessageIsMergedAsTransportErrorWithoutCompletingDual()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        source.EnqueueRaw(Encoding.UTF8.GetBytes("{not json"));
+
+        RealtimeTranslationStreamEvent? errorEvent = null;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (errorEvent is null)
+        {
+            var streamEvent = await dual.Events.ReadAsync(timeout.Token);
+            if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError)
+            {
+                errorEvent = streamEvent;
+            }
+        }
+
+        var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(errorEvent.Event);
+        Assert.True(errorEvent.Lane.IsSource);
+        Assert.Equal("transport", error.Code);
+        Assert.Equal(UserCopy.Current.Text("error.sourceDisconnected"), error.Message);
+
+        english.EnqueueJson(
+            """{"type":"session.output_transcript.delta","delta":"kept after source break","event_id":"keep-1"}""");
+
+        RealtimeTranslationServerEvent.OutputTranscriptDelta? kept = null;
+        while (kept is null)
+        {
+            var streamEvent = await dual.Events.ReadAsync(timeout.Token);
+            kept = streamEvent.Event as RealtimeTranslationServerEvent.OutputTranscriptDelta;
+        }
+
+        Assert.Equal("kept after source break", kept.Delta);
         await dual.ForceCloseAsync();
     }
 

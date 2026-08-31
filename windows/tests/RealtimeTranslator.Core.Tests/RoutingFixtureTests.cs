@@ -111,6 +111,24 @@ public sealed class RoutingFixtureTests
         Assert.Equal("frame-original", flushed[0]);
     }
 
+    // Given: 翻訳 target 選択済みで、呼び出し側が同じバッファを再利用する
+    // When: Append 後にバッファを上書きしてから drain する
+    // Then: 選択済み lane へ届く payload は上書き前の内容のまま
+    [Fact]
+    public async Task SelectedTargetRetainsOwnedCopyWhenCallerReusesBuffer()
+    {
+        await using var harness = await RoutingHarness.StartAsync();
+        await harness.SetSpokenLanguageAsync("japanese");
+        var buffer = Encoding.UTF8.GetBytes("frame-original");
+        await harness.Dual.AppendAudioFrameAsync(buffer);
+        Encoding.UTF8.GetBytes("frame-mutated!").CopyTo(buffer.AsSpan());
+        await harness.Dual.WaitForTranslationDrainAsync();
+
+        var flushed = harness.English.AppendedFrameTexts();
+        Assert.Contains("frame-original", flushed);
+        Assert.DoesNotContain("frame-mutated!", flushed);
+    }
+
     // Given: fixture の preroll / 連続失敗上限
     // When: 実装定数と突き合わせる
     // Then: 契約値と一致する

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -141,6 +142,39 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, selectError.Kind);
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, tuningError.Kind);
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
+    }
+
+    // Given: 英語 target と preroll を残したまま正常停止した Dual
+    // When: CloseGracefully のあと Start し直し、判定前に frame を送ってから English を選ぶ
+    // Then: 前回の target/preroll は引き継がず、新録音の rolling preroll だけが flush される
+    [Fact]
+    public async Task StartAfterSuccessfulCloseGracefullyDoesNotReusePreviousTargetOrPreroll()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("old-preroll"));
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+        await dual.WaitForTranslationDrainAsync();
+        Assert.Equal(["old-preroll"], english.AppendedFrameTexts());
+
+        await dual.CloseGracefullyAsync();
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("new-preroll"));
+        await dual.WaitForTranslationDrainAsync();
+        var afterRestart = english.AppendedFrameTexts();
+        Assert.DoesNotContain("new-preroll", afterRestart);
+
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+        await dual.WaitForTranslationDrainAsync();
+        var afterSelect = english.AppendedFrameTexts();
+        Assert.Equal("new-preroll", afterSelect[^1]);
+        Assert.Equal(1, afterSelect.Count(frame => frame == "old-preroll"));
+        await dual.ForceCloseAsync();
     }
 
     // Given: 翻訳送信が停滞して drain 待ち中の Dual
