@@ -243,6 +243,71 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         await dual.ForceCloseAsync();
     }
 
+    // Given: 英語 target 選択済みで preroll を flush した Dual
+    // When: 判定前相当で Select(null) したあと frame を送り、再度 English を選ぶ
+    // Then: 未選択中は翻訳 lane へ送らず、rolling preroll は維持されて再選択で flush される
+    [Fact]
+    public async Task SelectNullClearsPendingKeepsPrerollUntilReselect()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("before-null"));
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+        await dual.WaitForTranslationDrainAsync();
+        Assert.Equal(["before-null"], english.AppendedFrameTexts());
+
+        await dual.SelectTranslationTargetAsync(null);
+        await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("while-undetermined"));
+        await dual.WaitForTranslationDrainAsync();
+        Assert.Equal(["before-null"], english.AppendedFrameTexts());
+        Assert.Contains("while-undetermined", source.AppendedFrameTexts());
+        Assert.Empty(japanese.AppendedFrameTexts());
+
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+        await dual.WaitForTranslationDrainAsync();
+
+        // rolling preroll は Select(null) 前の frame も含むため、再 flush で before-null が重複し得る。
+        Assert.Contains("while-undetermined", english.AppendedFrameTexts());
+        Assert.Empty(japanese.AppendedFrameTexts());
+        await dual.ForceCloseAsync();
+    }
+
+    // Given: 英語 target 選択済みで preroll を flush した Dual
+    // When: セグメント境界相当の ResetAudioRouting のあと frame を送り、同じ target を選び直す
+    // Then: Reset 後は翻訳 lane へ送らず、rolling preroll は次の Select で flush される
+    [Fact]
+    public async Task ResetAudioRoutingKeepsPrerollForNextSelect()
+    {
+        var source = new FakeRealtimeServerTransport();
+        var english = new FakeRealtimeServerTransport();
+        var japanese = new FakeRealtimeServerTransport();
+        using var dual = CreateDual(source, english, japanese);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("before-reset"));
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+        await dual.WaitForTranslationDrainAsync();
+        Assert.Equal(["before-reset"], english.AppendedFrameTexts());
+
+        await dual.ResetAudioRoutingAsync();
+        await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("after-reset"));
+        await dual.WaitForTranslationDrainAsync();
+        Assert.Equal(["before-reset"], english.AppendedFrameTexts());
+        Assert.Contains("after-reset", source.AppendedFrameTexts());
+
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+        await dual.WaitForTranslationDrainAsync();
+
+        // rolling preroll は Reset 前の frame も含むため、再 flush で before-reset が重複し得る。
+        Assert.Contains("after-reset", english.AppendedFrameTexts());
+        Assert.Empty(japanese.AppendedFrameTexts());
+        await dual.ForceCloseAsync();
+    }
+
     private static DualRealtimeTranslationClient CreateDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -294,6 +295,42 @@ public sealed class DualRealtimeTranslationClientDrainTests
         }
 
         Assert.False(await dual.Events.WaitToReadAsync());
+    }
+
+    // Given: 原文 CloseAsync 失敗で CloseGracefully が例外になった Dual
+    // When: 一時的な CloseError を外して次の Start をする
+    // Then: pair 全 lane が再接続し、Append が原文と選択 target へ届く
+    [Fact]
+    public async Task StartAfterCloseGracefullySourceFailureResumesCleanly()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = CreateDual(source, english, japanese, ShortCloseTimeout);
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+        source.CloseError = new InvalidOperationException("source close boom");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => dual.CloseGracefullyAsync());
+        Assert.Equal("source close boom", error.Message);
+
+        source.CloseError = null;
+        var sourceConnectAfterFailure = source.ConnectCount;
+        var englishConnectAfterFailure = english.ConnectCount;
+
+        await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
+        await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
+        await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("after-failed-close"));
+        await dual.WaitForTranslationDrainAsync();
+
+        Assert.True(source.ConnectCount > sourceConnectAfterFailure);
+        Assert.True(english.ConnectCount > englishConnectAfterFailure);
+        Assert.Contains("after-failed-close", source.AppendedFrameTexts());
+        Assert.Contains("after-failed-close", english.AppendedFrameTexts());
+        Assert.DoesNotContain("after-failed-close", japanese.AppendedFrameTexts());
+        await dual.ForceCloseAsync();
     }
 
     // Given: base drain timeout だけでは送り切れない程度の pending と緩い送信遅延
