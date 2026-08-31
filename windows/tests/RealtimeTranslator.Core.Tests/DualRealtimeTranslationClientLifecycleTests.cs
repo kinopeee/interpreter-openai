@@ -44,7 +44,7 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
 
     // Given: 一度も Start していない Dual
     // When: CloseGracefullyAsync する
-    // Then: 接続せず例外も出さず、Events は未完了のまま（購読側を誤って閉じない）
+    // Then: 接続せず例外も出さず、Events は完了する（stop drain の WaitToReadAsync が固まらない）
     [Fact]
     public async Task CloseGracefullyWhenNeverStartedIsNoOp()
     {
@@ -59,6 +59,8 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         Assert.Equal(0, source.CloseCount);
         Assert.Equal(0, english.CloseCount);
         Assert.Equal(0, japanese.CloseCount);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        Assert.False(await dual.Events.WaitToReadAsync(timeout.Token));
     }
 
     // Given: ForceClose 済みの Dual

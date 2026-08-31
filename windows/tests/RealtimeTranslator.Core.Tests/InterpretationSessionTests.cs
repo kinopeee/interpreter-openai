@@ -158,6 +158,51 @@ public sealed class InterpretationSessionTests
         Assert.NotEqual(TranslationState.Listening, session.State);
     }
 
+    // Given: Dual.Start に入る前（API キー読み出し待ち）の Connecting
+    // When: 利用者がすぐ Stop し、その後キー欠落で session loop が戻る
+    // Then: stop drain が Events 完了を待って固まらず、Idle に戻って次の Start が通る
+    [Fact]
+    public async Task StopBeforeDualStartCompletesIdleWithoutHanging()
+    {
+        var source = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var english = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
+        using var dual = new DualRealtimeTranslationClient(
+            new RealtimeSourceTranscriptionConnection(source, "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.English,
+                english,
+                "test-safety"),
+            new RealtimeTranslationConnection(
+                RealtimeTranslationOutputLanguage.Japanese,
+                japanese,
+                "test-safety"));
+        var keyStore = new GatedApiKeyStore();
+        using var session = new InterpretationSession(
+            keyStore,
+            new FakeAudioCapture(),
+            dual,
+            initialReconnectDelay: TimeSpan.FromMilliseconds(1),
+            tickInterval: TimeSpan.FromMilliseconds(20));
+
+        var startTask = session.StartAsync();
+        await keyStore.LoadStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(TranslationState.Connecting, session.State);
+
+        var stopTask = session.StopAsync();
+        await WaitUntilAsync(() =>
+            session.State is TranslationState.Closing or TranslationState.Idle);
+        keyStore.Release(null);
+
+        await stopTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await startTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(TranslationState.Idle, session.State);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+    }
+
     // Given: 録音中のセッション
     // When: Stop を二重に呼ぶ
     // Then: 2 回目は no-op で Idle のまま壊れない
@@ -2532,6 +2577,24 @@ public sealed class InterpretationSessionTests
     private sealed class FakeApiKeyStore(string? apiKey) : IApiKeyStore
     {
         public string? Load() => apiKey;
+    }
+
+    /// <summary>Load をゲートし、Stop が generation を進めたあと欠落キーを返す。</summary>
+    private sealed class GatedApiKeyStore : IApiKeyStore
+    {
+        private readonly TaskCompletionSource<string?> _load =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource LoadStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Release(string? apiKey) => _load.TrySetResult(apiKey);
+
+        public string? Load()
+        {
+            LoadStarted.TrySetResult();
+            return _load.Task.GetAwaiter().GetResult();
+        }
     }
 
     private sealed class FakeAudioCapture : IRealtimeAudioCapture
