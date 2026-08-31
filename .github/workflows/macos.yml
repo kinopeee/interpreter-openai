@@ -1,3 +1,5 @@
+# macOS 26 + xcodebuild。Depot CI に macOS サンドボックスは無いため Origin へは移植しない。
+# Origin 上ではローカルの xcodebuild と、タグ時の .github/workflows/release.yml が担う。
 name: macos
 
 on:

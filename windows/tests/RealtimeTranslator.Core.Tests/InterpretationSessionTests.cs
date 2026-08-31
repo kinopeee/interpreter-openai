@@ -1581,10 +1581,15 @@ public sealed class InterpretationSessionTests
         client.PublishSourceDelta("再接続前の原文");
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
         // consumer が先に error を見て落ちるよう、訳文は error の後ろへ積む。
-        client.PublishTransportError();
-        client.PublishTranslationDelta(
-            RealtimeTranslationOutputLanguage.English,
-            "Unread translation after error");
+        // ForceClose の TryComplete が二つの Publish の間に割り込むと、後続の
+        // TryWrite は捨てられ、Stop drain の SourceText が null になる。
+        client.PublishAtomically(() =>
+        {
+            client.PublishTransportError();
+            client.PublishTranslationDelta(
+                RealtimeTranslationOutputLanguage.English,
+                "Unread translation after error");
+        });
         await WaitUntilAsync(() => session.State == TranslationState.Reconnecting);
         Assert.Equal(1, client.StartCount);
 
@@ -1600,6 +1605,56 @@ public sealed class InterpretationSessionTests
 
         Assert.Equal("再接続前の原文", finalized.SourceText);
         Assert.Equal("Unread translation after error", finalized.TranslatedText);
+    }
+
+    // Given: transport error 時点では Dual channel に訳文が無く、ForceClose 中に merge 相当で届く
+    // When: TearDown が ForceClose したあと再接続 Start が channel を張り替える
+    // Then: ForceClose 後の最終 drain が訳文を取り込み、BeginNewEpoch 前に ShouldFinalize する
+    [Fact]
+    public async Task ReconnectForceCloseLateMergedTranslationIsFinalizedBeforeNewEpoch()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("再接続前の原文");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+
+        client.OnForceCloseBeforeComplete = () =>
+        {
+            client.OnForceCloseBeforeComplete = null;
+            client.PublishTranslationDelta(
+                RealtimeTranslationOutputLanguage.English,
+                "Late merged translation during ForceClose");
+        };
+        client.PublishTransportError();
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.ShouldFinalize);
+            }
+        });
+
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("再接続前の原文", finalized.SourceText);
+        Assert.Equal("Late merged translation during ForceClose", finalized.TranslatedText);
+        await session.StopAsync();
     }
 
     // Given: transport error 後の再接続待ち
@@ -2606,6 +2661,9 @@ public sealed class InterpretationSessionTests
         /// <summary>CloseGracefully 時に close drain イベントを流すテスト用フック。</summary>
         public Func<Task>? OnCloseGracefully { get; set; }
 
+        /// <summary>ForceClose が Complete する直前に、遅延 merge 相当のイベントを積む。</summary>
+        public Action? OnForceCloseBeforeComplete { get; set; }
+
         /// <summary>StartAsync 入口で待つゲート（capture 順序・Stop 排水・Connecting 再入用）。</summary>
         public TaskCompletionSource? StartGate { get; set; }
 
@@ -2756,6 +2814,7 @@ public sealed class InterpretationSessionTests
         public Task ForceCloseAsync()
         {
             ForceCloseCallCount += 1;
+            OnForceCloseBeforeComplete?.Invoke();
             Complete();
             return Task.CompletedTask;
         }
@@ -2772,6 +2831,19 @@ public sealed class InterpretationSessionTests
             target,
             new RealtimeTranslationServerEvent.OutputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
             epoch);
+
+        /// <summary>
+        /// 複数イベントを Complete と排他の同一 lock で積む。
+        /// ForceClose の TryComplete が逐次 Publish の間に割り込むのを防ぐ。
+        /// </summary>
+        public void PublishAtomically(Action publish)
+        {
+            ArgumentNullException.ThrowIfNull(publish);
+            lock (_sync)
+            {
+                publish();
+            }
+        }
 
         public void PublishTransportError() => Publish(
             RealtimeTranslationOutputLanguage.English,
