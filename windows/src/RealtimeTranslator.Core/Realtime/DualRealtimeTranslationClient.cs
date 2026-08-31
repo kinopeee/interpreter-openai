@@ -80,6 +80,12 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
     private RealtimeTranslationOutputLanguage? _selectedTranslationTarget;
 
+    /// <summary>この世代で handshake した翻訳 lane。未使用 leftover 接続は merge しない。</summary>
+    private RealtimeTranslationOutputLanguage[] _startedTranslationTargets = [];
+
+    /// <summary>テスト用。StartEventMerge 直前に差し込む。</summary>
+    internal Action? BeforeStartEventMergeForTests { get; set; }
+
     public DualRealtimeTranslationClient(
         RealtimeSourceTranscriptionConnection sourceConnection,
         RealtimeTranslationConnection englishConnection,
@@ -255,9 +261,31 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             {
                 throw new RealtimeTranslationException(RealtimeTranslationErrorKind.Cancelled);
             }
+
+            _startedTranslationTargets = pair.Languages()
+                .Select(language => language.ToOutputLanguage())
+                .ToArray();
         }
 
+        BeforeStartEventMergeForTests?.Invoke();
         StartEventMerge(epoch);
+    }
+
+    /// <summary>
+    /// テスト用。未使用 lane の Events に完了済み leftover を埋め、pair 切替後の merge 混線を再現する。
+    /// </summary>
+    internal void SeedCompletedTranslationEventForTests(
+        RealtimeTranslationOutputLanguage target,
+        RealtimeTranslationServerEvent serverEvent)
+    {
+        ArgumentNullException.ThrowIfNull(serverEvent);
+
+        if (!_connections.TryGetValue(target, out var connection))
+        {
+            throw new ArgumentOutOfRangeException(nameof(target), target, "unknown translation target");
+        }
+
+        connection.SeedCompletedEventForTests(serverEvent);
     }
 
     public async Task AppendAudioFrameAsync(
@@ -457,6 +485,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         {
             _isRunning = false;
             _selectedTranslationTarget = null;
+            _startedTranslationTargets = [];
             _translationPrerollFrames.Clear();
             _pendingTranslationFrames.Clear();
             _consecutiveTranslationFailures = 0;
@@ -762,10 +791,12 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         // Dispose 済み CTS へ触れないよう、Task 開始前に token を確定させる。
         var token = cts.Token;
         ChannelWriter<RealtimeTranslationStreamEvent> writer;
+        RealtimeTranslationOutputLanguage[] startedTargets;
         lock (_sync)
         {
             _mergeCts = cts;
             writer = _events.Writer;
+            startedTargets = _startedTranslationTargets;
         }
 
         _mergeTask = Task.Run(
@@ -781,8 +812,11 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                         acceptInputTranscript: true,
                         token),
                 };
-                pumps.AddRange(_connections.Values.Distinct().Select(connection => MergeOneAsync(
-                        connection.Events,
+                // コンストラクタで用意した未使用 leftover lane は merge しない。
+                // ForceClose が epoch を先に進めると merge が残りを読まず、
+                // 完了済み Channel に残った訳文 / transport error が次世代へ混線する。
+                pumps.AddRange(startedTargets.Select(target => MergeOneAsync(
+                        _connections[target].Events,
                         writer,
                         epoch,
                         acceptInputTranscript: false,
