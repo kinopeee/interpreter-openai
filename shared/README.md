@@ -26,22 +26,12 @@ shared/
 - fixture-backed な挙動を変える変更は、まず `protocol/` と `fixtures/v1/` を更新し、その後に各実装を合わせる。`shared/fixtures/v1` は両実装の契約正本のまま。
 - UI 文言のみの変更（`shared/locales/`、例: `banner.connecting` の標準化）は `fixtures/v1` 更新の対象外。正本は `protocol/ui-locale.md` と `locales/ui.json`。
 - fixture の破壊的変更はディレクトリを `v2/` として増やす。`v1/` の既存ケースは意味を変えない。
-- fixture を足したら対応する schema も更新する。CI (`shared-contracts`) が 1:1 対応を検査する。
+- fixture を足したら対応する schema も更新する。CI (`shared-contracts`、正本は `scripts/ci-shared-contracts.sh`) が 1:1 対応を検査する。GitHub は `.github/workflows/shared-contracts.yml`、Origin は `.depot/workflows/shared-contracts.yml`。
 
 ## ローカル検証
 
 ```bash
-# fixtures（v1 の 1:1 対応）
-cd shared/fixtures/v1
-for s in schema/*.schema.json; do
-  n="$(basename "$s" .schema.json)"
-  npx --yes ajv-cli@5.0.0 validate --spec=draft2020 -s "$s" -d "$n.json"
-done
-cd ../../..
-
-# UI 文言カタログ（fixtures の 1:1 ループとは別。リポジトリルートで実行）
-npx --yes ajv-cli@5.0.0 validate --spec=draft2020 \
-  -s shared/locales/ui.schema.json -d shared/locales/ui.json
+./scripts/ci-shared-contracts.sh
 ```
 
-プレースホルダ名の ja/en 一致とキー一意は `shared-contracts` のカスタム検証、および両実装の `UserCopyTests` でも見る。
+プレースホルダ名の ja/en 一致とキー一意は `scripts/ci-validate-locales.mjs`、および両実装の `UserCopyTests` でも見る。

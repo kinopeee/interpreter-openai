@@ -95,8 +95,11 @@ xcodebuild test -scheme RealtimeTranslator \
 - 実行状態はDEBUGビルドのみ`/tmp/realtimetranslator.status`へ書き出す（Releaseでは作らない）。
 - クラッシュ時は最新のDiagnosticReportsと該当スレッドを確認し、推測だけで修正しない。
 - ログへ認識した発話内容、APIキー、Authorizationを出力しない。
-- `shared/fixtures/v1` は両実装の契約正本。Swiftテストからも読み、Windows版と同値性を保つ。
-- PR CI は Windows / shared-contracts を実行する。macOS の `xcodebuild test` はローカルおよび `.github/workflows/release.yml` の package (macOS) ジョブで検証する。
+- `shared/fixtures/v1` は両実装の契約正本。Swiftテストからも読み、Windows版と同値性を保つ。契約検査の正本は `scripts/ci-shared-contracts.sh`。
+- Origin の PR CI は Depot CI（`.depot/workflows/`）が `shared-contracts` と Windows Core テストを実行する。Depot に Windows / macOS サンドボックスは無い。
+- GitHub Actions（`.github/workflows/`）は GitHub 側の Windows 全体・macOS `xcodebuild`・タグ Release 用に残す。Platform / App / publish / 署名・公証はこちら。
+- Depot を有効にするには Origin リポジトリの Apps から Depot を接続し、`.depot/workflows/` を default branch へマージする。
+- macOS の `xcodebuild test` はローカルおよび `.github/workflows/release.yml` の package (macOS) ジョブでも検証する。
 
 ## テスト方針
 
@@ -146,6 +149,13 @@ dotnet list  windows/RealtimeTranslator.slnx package --vulnerable --include-tran
 
 # 配布物（自己完結）。framework-dependentにするとランタイム要求ダイアログが出る。
 pwsh -File scripts/publish-windows.ps1
+```
+
+Origin の Depot CI は Linux 上で Core のみ検証する。正本は `scripts/ci-windows-core.sh`。
+
+```bash
+./scripts/ci-shared-contracts.sh
+./scripts/ci-windows-core.sh
 ```
 
 - 警告は`TreatWarningsAsErrors`で失敗する。抑制ではなく修正する。

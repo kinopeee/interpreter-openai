@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Origin へ push する前に、コミット済み差分を CodeRabbit CLI でレビューする。
 # マージゲートにはしない。妥当な指摘の修正と cursor への push はスキル側が行う。
+# Origin の PR CI は Depot CI（.depot/workflows）が担う。
 #
 # 使い方:
 #   ./scripts/origin-prepush-review.sh
@@ -28,7 +29,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      sed -n '2,10p' "$0"
+      sed -n '2,9p' "$0"
       exit 0
       ;;
     *)
@@ -82,4 +83,4 @@ fi
 
 echo >&2
 echo "次: 妥当な指摘を直してコミットし、git push cursor <branch>" >&2
-echo "CI を頼まれたときだけ、xcodebuild test と scripts/origin-report-check.mjs で Origin の check を更新する。" >&2
+echo "Origin の PR CI は Depot CI（.depot/workflows）が担う。macOS xcodebuild の手動報告だけ scripts/origin-report-check.mjs を使う。" >&2

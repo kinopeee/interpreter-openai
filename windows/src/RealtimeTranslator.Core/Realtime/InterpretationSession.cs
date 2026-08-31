@@ -761,6 +761,11 @@ public sealed class InterpretationSession : IDisposable
 
     private async Task TearDownStreamingAsync()
     {
+        // consumer が ServerError で抜けたあとの未読 delta を先に取り込む。
+        // Complete 後の Stop drain だけに頼ると、再接続 Start が channel を
+        // 張り替えたときに訳文が消える。
+        IngestAlreadyQueuedEvents();
+
         lock (_sync)
         {
             _activeLanguagePair = null;
@@ -772,7 +777,16 @@ public sealed class InterpretationSession : IDisposable
         }
         finally
         {
-            await _dualClient.ForceCloseAsync().ConfigureAwait(false);
+            try
+            {
+                await _dualClient.ForceCloseAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                // merge pump 停止後に connection から遅れて乗った delta も回収する。
+                // StartAsync が channel を差し替える前に読まないと消える。
+                IngestAlreadyQueuedEvents();
+            }
         }
     }
 
@@ -804,23 +818,33 @@ public sealed class InterpretationSession : IDisposable
         var events = _dualClient.Events;
         while (await events.WaitToReadAsync().ConfigureAwait(false))
         {
-            while (events.TryRead(out var streamEvent))
+            IngestAlreadyQueuedEvents();
+        }
+    }
+
+    /// <summary>
+    /// すでに channel にあるイベントだけを取り込む。WaitToRead しないので、
+    /// ForceClose 前の再接続 teardown から呼んでも開いたままの channel で止まらない。
+    /// </summary>
+    private void IngestAlreadyQueuedEvents()
+    {
+        var events = _dualClient.Events;
+        while (events.TryRead(out var streamEvent))
+        {
+            if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError)
             {
-                if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError)
-                {
-                    continue;
-                }
+                continue;
+            }
 
-                RealtimeSubtitleUpdate? update;
-                lock (_sync)
-                {
-                    update = _assembler.Ingest(streamEvent, _timeProvider.GetUtcNow());
-                }
+            RealtimeSubtitleUpdate? update;
+            lock (_sync)
+            {
+                update = _assembler.Ingest(streamEvent, _timeProvider.GetUtcNow());
+            }
 
-                if (update is { } value)
-                {
-                    SubtitleUpdated?.Invoke(this, value);
-                }
+            if (update is { } value)
+            {
+                SubtitleUpdated?.Invoke(this, value);
             }
         }
     }
