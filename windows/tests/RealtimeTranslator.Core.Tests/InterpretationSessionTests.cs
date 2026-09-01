@@ -3162,9 +3162,9 @@ public sealed class InterpretationSessionTests
             if (OnCloseGracefully is { } hook)
             {
                 await hook().ConfigureAwait(false);
-                return;
             }
 
+            // 本番 Dual と同じく、close 後は常に Events を完了させる。
             Complete();
         }
 
