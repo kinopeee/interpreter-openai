@@ -49,6 +49,12 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
 
     public TimeSpan SendDelay { get; set; }
 
+    /// <summary>
+    /// inbound を読んだ直後・呼び出し側へ返す前に走る。
+    /// receive loop の epoch 判定と Dispose を競わせるために使う。
+    /// </summary>
+    public Action? AfterInboundRead { get; set; }
+
     public int ConnectCount { get; private set; }
 
     public Uri? ConnectedUrl { get; private set; }
@@ -162,8 +168,12 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
         }
     }
 
-    public async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken) =>
-        await _inbound.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+    public async Task<byte[]> ReceiveAsync(CancellationToken cancellationToken)
+    {
+        var payload = await _inbound.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+        AfterInboundRead?.Invoke();
+        return payload;
+    }
 
     public Task CloseAsync()
     {
