@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using RealtimeTranslator.Core.Audio;
@@ -231,6 +232,60 @@ public sealed class AudioFixtureTests
         Assert.True(float.IsFinite(recovered));
         Assert.InRange(recovered, AdaptiveMicrophoneGain.MinimumGain, AdaptiveMicrophoneGain.MaximumGain);
         Assert.Equal(0.5f / 0.3f, recovered, 0.01f);
+    }
+
+    // Given: 空バッファ、非有限だけ、負のサンプルが混ざったバッファ
+    // When: 本番 capture が使う Observe(float[]) で観測する
+    // Then: 空/非有限ではゲインを動かさず、波形の絶対値ピークを ObservePeak 相当に使う
+    [Fact]
+    public void ObserveIgnoresEmptyAndNonFiniteSamplesAndTracksAbsolutePeak()
+    {
+        var viaObserve = new AdaptiveMicrophoneGain(4.0f);
+        var viaPeak = new AdaptiveMicrophoneGain(4.0f);
+        var viaNegativeSample = new AdaptiveMicrophoneGain(4.0f);
+        var viaAbsolutePeak = new AdaptiveMicrophoneGain(4.0f);
+        var viaNegativePeakApi = new AdaptiveMicrophoneGain(4.0f);
+
+        Assert.Equal(4.0f, viaObserve.Observe([]));
+        Assert.Equal(4.0f, viaObserve.Observe([float.NaN, float.PositiveInfinity]));
+        var observed = viaObserve.Observe([float.NaN, -0.3f, 0.1f, float.NegativeInfinity]);
+        var peaked = viaPeak.ObservePeak(0.3f);
+        var fromNegativeSample = viaNegativeSample.Observe([-1.0f]);
+        var fromAbsolutePeak = viaAbsolutePeak.ObservePeak(1.0f);
+        var fromNegativePeakApi = viaNegativePeakApi.ObservePeak(-1.0f);
+
+        Assert.Equal(peaked, observed);
+        Assert.Equal(observed, viaObserve.Gain);
+        Assert.Equal(fromAbsolutePeak, fromNegativeSample);
+        Assert.Equal(4.0f, fromNegativePeakApi);
+        Assert.InRange(observed, AdaptiveMicrophoneGain.MinimumGain, AdaptiveMicrophoneGain.MaximumGain);
+    }
+
+    // Given: 複数 float サンプルとゲイン
+    // When: 本番の Encode(buffer) 経路で PCM16 LE に変換する
+    // Then: 各サンプルは EncodeSample と同じ値で little-endian に並び、不足バッファは拒否する
+    [Fact]
+    public void EncodeBufferMatchesEncodeSampleAndRejectsShortDestination()
+    {
+        float[] samples = [0.5f, -1f, float.NaN, 0f, float.PositiveInfinity];
+        const float gain = 2f;
+
+        var encoded = Pcm16LittleEndianEncoder.Encode(samples, gain);
+        var destination = new byte[samples.Length * 2];
+        Pcm16LittleEndianEncoder.Encode(samples, destination, gain);
+
+        Assert.Equal(samples.Length * 2, encoded.Length);
+        Assert.Equal(encoded, destination);
+        for (var index = 0; index < samples.Length; index += 1)
+        {
+            Assert.Equal(
+                Pcm16LittleEndianEncoder.EncodeSample(samples[index], gain),
+                BinaryPrimitives.ReadInt16LittleEndian(encoded.AsSpan(index * 2, 2)));
+        }
+
+        var tooSmall = Assert.Throws<ArgumentException>(
+            () => Pcm16LittleEndianEncoder.Encode(samples, new byte[samples.Length], gain));
+        Assert.Equal("destination", tooSmall.ParamName);
     }
 
     private static TheoryData<string> GainCaseNames()
