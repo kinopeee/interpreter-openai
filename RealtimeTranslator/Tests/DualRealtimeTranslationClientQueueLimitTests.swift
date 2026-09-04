@@ -107,7 +107,7 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
             let pair: LanguagePair = target == .spanish ? .jaEs : .jaEn
             let harness = try await QueueHarness.start(pair: pair)
             let expectedPayloads = (0..<count).map {
-                frame(seed: UInt8($0 & 0xff)).base64EncodedString()
+                Self.frame(seed: UInt8($0 & 0xff)).base64EncodedString()
             }
             for index in 0..<count {
                 try await harness.append(seed: UInt8(index & 0xff))
@@ -667,10 +667,10 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
             }
             let sent = await transport.sent
             return try sent.compactMap { data in
+                let object = try XCTUnwrap(
+                    JSONSerialization.jsonObject(with: data) as? [String: Any]
+                )
                 guard
-                    let object = try XCTUnwrap(
-                        JSONSerialization.jsonObject(with: data) as? [String: Any]
-                    ),
                     let type = object["type"] as? String,
                     type == "session.input_audio_buffer.append"
                         || type == "input_audio_buffer.append"
