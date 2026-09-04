@@ -98,6 +98,47 @@ final class InterpretationSessionTests: XCTestCase {
         await session.stop()
     }
 
+    func testQ13BacklogErrorReconnectsOnlyForCurrentEpoch() async {
+        // Given: 起動済み session と現在の connection epoch
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual
+        )
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let initialEpoch = await dual.connectionEpoch
+        let startsBeforeCurrentError = dual.startCallCount
+
+        // When: 現在 epoch の backlog error を通知する
+        dual.emit(
+            target: .english,
+            event: .error(
+                message: UiCopy.text("error.translationBacklog"),
+                code: "transport"
+            ),
+            epoch: initialEpoch
+        )
+        await waitUntil(timeout: 3) {
+            session.state == .listening && dual.startCallCount > startsBeforeCurrentError
+        }
+        let startsAfterCurrentError = dual.startCallCount
+
+        // Then: stale epoch の同じ error は再接続を発生させない
+        dual.emit(
+            target: .english,
+            event: .error(
+                message: UiCopy.text("error.translationBacklog"),
+                code: "transport"
+            ),
+            epoch: initialEpoch
+        )
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(dual.startCallCount, startsAfterCurrentError)
+        await session.stop()
+    }
+
     func testStopDuringStartDoesNotLeaveListening() async {
         // Given: 接続中に止められるセッション
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")

@@ -93,7 +93,7 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
                     }
                 }
             } onCancel: {
-                Task { await self.failOneHeldAudioAppend() }
+                Task { await self.cancelHeldAudioAppends() }
             }
         }
         if isAudioAppend, audioAppendHangNanoseconds > 0 {
@@ -117,6 +117,14 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
                     "type": "conversation.item.input_audio_transcription.completed",
                 ])
             }
+        }
+    }
+
+    private func cancelHeldAudioAppends() {
+        let pending = heldAudioAppends
+        heldAudioAppends.removeAll()
+        for continuation in pending {
+            continuation.resume(throwing: CancellationError())
         }
     }
 

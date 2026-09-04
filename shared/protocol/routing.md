@@ -57,12 +57,9 @@
 - 判定前は source lane のみへ送る。判定後はペア内の相手言語を target とする 1 本だけへ送る。
 - 言語切替時は旧 target の pending を破棄し、**新 target へ preroll を flush** する。
 - 翻訳送信が 3 連続失敗したら、transport error を 1 回だけ emit し翻訳ポンプを停止する。
-- pending translation queue max 80 frames (8 s; in-flight frame and 40-frame preroll excluded).
-  Enqueueing the 81st frame drops that frame, clears pending, halts the pump, and emits exactly one
-  `code="transport"` error with message `error.translationBacklog` for the target/epoch; the source lane
-  keeps flowing and the session reconnects via the existing transport path. Target changes and routing
-  resets do not restart the halted pump; only a new start does. Overflow and the three-failure halt share
-  one halt/error path, so an epoch never receives two transport errors. See `translation-queue.json`.
+- 翻訳送信待ち（pending）は最大 **80 フレーム（8 秒）**。in-flight の 1 フレームと 40 フレームの rolling preroll は数えない。
+- 81 フレーム目を enqueue しようとしたら、そのフレームは捨て、pending を全消去し翻訳ポンプを停止し、`error.translationBacklog` を message とする `code = "transport"` の error を該当 target / epoch へ **1 回だけ** emit する。原文 lane は送り続け、セッションは既存の transport 経路で再接続する。
+- 停止後は target 変更や routing reset でポンプを再開しない。再開は新しい start のみ。超過停止と 3 連続失敗停止は同じ停止/エラー経路を共有し、1 epoch に transport error が 2 回出ることはない。契約値は `translation-queue.json`。
   セッション側が再接続して epoch を進める（Dual 自体は失敗時点の epoch を維持したまま停止する）。
   成功した翻訳送信は連続失敗カウンタを 0 に戻す。
 

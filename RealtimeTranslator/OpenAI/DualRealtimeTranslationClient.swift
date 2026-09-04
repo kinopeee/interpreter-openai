@@ -460,10 +460,11 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         messageKey: String
     ) {
         let pendingCount = pendingTranslationFrames.count
+        let reason = messageKey == "error.translationBacklog" ? "backlog" : "sendFailure"
         translationPumpHaltedForTransportFailure = true
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         AppLogger.realtime.error(
-            "Translation pump halted count=\(pendingCount, privacy: .public) limit=\(Self.translationPendingFrameLimit, privacy: .public) target=\(target.rawValue, privacy: .public) epoch=\(self.connectionEpoch, privacy: .public)"
+            "Translation pump halted reason=\(reason, privacy: .public) count=\(pendingCount, privacy: .public) limit=\(Self.translationPendingFrameLimit, privacy: .public) target=\(target.rawValue, privacy: .public) epoch=\(self.connectionEpoch, privacy: .public)"
         )
         eventContinuation?.yield(
             RealtimeTranslationStreamEvent(
