@@ -146,6 +146,9 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
     }
 
     func receive() async throws -> Data {
+        if Task.isCancelled {
+            throw CancellationError()
+        }
         if !inbound.isEmpty {
             return inbound.removeFirst()
         }
