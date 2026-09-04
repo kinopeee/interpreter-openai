@@ -36,6 +36,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     private let translationDrainTimeoutNanoseconds: UInt64
     private var mergeTask: Task<Void, Never>?
     private var translationPumpTask: Task<Void, Never>?
+    private var translationPumpGeneration = 0
     private var eventContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation?
     private var eventStream: AsyncStream<RealtimeTranslationStreamEvent>
     private(set) var connectionEpoch = 0
@@ -410,12 +411,14 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         }
         pendingTranslationFrames.append((pcm16LE, target))
         guard translationPumpTask == nil else { return }
+        translationPumpGeneration += 1
+        let pumpID = translationPumpGeneration
         translationPumpTask = Task {
-            await self.pumpTranslationFrames()
+            await self.pumpTranslationFrames(pumpID: pumpID)
         }
     }
 
-    private func pumpTranslationFrames() async {
+    private func pumpTranslationFrames(pumpID: Int) async {
         let pumpEpoch = connectionEpoch
         while isRunning, !Task.isCancelled, !translationPumpHaltedForTransportFailure {
             guard !pendingTranslationFrames.isEmpty else { break }
@@ -445,12 +448,19 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                 }
             }
         }
+        guard pumpID == translationPumpGeneration else { return }
         translationPumpTask = nil
         // ポンプ停止中に積まれたframeがあれば再開する。
         // transport failure後はInterpretationSession側の再接続に任せ、ここでは再開しない。
-        if !translationPumpHaltedForTransportFailure, isRunning, !pendingTranslationFrames.isEmpty {
+        if !translationPumpHaltedForTransportFailure,
+            isRunning,
+            connectionEpoch == pumpEpoch,
+            !pendingTranslationFrames.isEmpty
+        {
+            translationPumpGeneration += 1
+            let nextPumpID = translationPumpGeneration
             translationPumpTask = Task {
-                await self.pumpTranslationFrames()
+                await self.pumpTranslationFrames(pumpID: nextPumpID)
             }
         }
     }

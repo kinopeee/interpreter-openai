@@ -280,6 +280,44 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
         await harness.forceClose()
     }
 
+    // Given: English の in-flight 送信を hold した状態
+    // When: forceClose 後に start し、古い continuation を解放する
+    // Then: 新しい pump が追跡され、送信と drain が一度ずつ成功する
+    func testForceCloseDoesNotClearNewPumpAfterRestart() async throws {
+        let harness = try await QueueHarness.start()
+        try await harness.select(.english)
+        await harness.english.setHoldAudioAppends(true)
+        try await harness.append(seed: 0xad)
+        try await waitUntil {
+            await harness.english.heldAudioAppendCount == 1
+        }
+
+        await harness.dual.forceClose()
+        await harness.english.setHoldAudioAppends(false)
+        try await QueueHarness.startDual(
+            harness.dual,
+            sourceTransport: harness.source,
+            englishTransport: harness.english,
+            japaneseTransport: harness.japanese,
+            spanishTransport: harness.spanish,
+            pair: .jaEn
+        )
+        try await harness.select(.english)
+        try await harness.append(seed: 0xae)
+        let sentAfterRestart = await harness.englishAppendCount()
+        XCTAssertEqual(sentAfterRestart, 1)
+
+        await harness.english.releaseAllAudioAppends()
+        let sentBeforeFollowUp = await harness.englishAppendCount()
+        try await harness.append(seed: 0xaf)
+        let sentAfterFollowUp = await harness.englishAppendCount()
+        XCTAssertEqual(sentAfterFollowUp, sentBeforeFollowUp + 1)
+        try await harness.dual.waitForTranslationDrain()
+        let errors = await harness.transportErrorCount()
+        XCTAssertEqual(errors, 0)
+        await harness.forceClose()
+    }
+
     // Given: hold 中の transport と共有 fixture の post-overflow append 数
     // When: 2 frame ごとに 1 append を解放して最大 400 frame 追加する
     // Then: queue は上限で停止し、新しい start で再び送信できる
