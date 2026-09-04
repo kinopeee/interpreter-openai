@@ -90,6 +90,34 @@ public sealed class InterpretationSessionStaleEpochErrorTests
         await session.StopAsync();
     }
 
+    // Given: Listening 中の現在 epoch と直前 epoch
+    // When: backlog transport error を現在 epoch、続けて stale epoch へ発行する
+    // Then: 現在 epoch だけが reconnect を開始する
+    [Fact]
+    public async Task CurrentBacklogErrorReconnectsButStaleBacklogErrorDoesNot()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        var staleEpoch = client.ConnectionEpoch - 1;
+
+        client.PublishServerError(
+            DualRealtimeTranslationClient.TranslationBacklogErrorMessage,
+            DualRealtimeTranslationClient.TransportErrorCode);
+        await WaitUntilAsync(() => client.StartCount >= 2);
+        var reconnectCount = client.StartCount;
+
+        client.PublishServerError(
+            DualRealtimeTranslationClient.TranslationBacklogErrorMessage,
+            DualRealtimeTranslationClient.TransportErrorCode,
+            staleEpoch);
+        await Task.Delay(80);
+
+        Assert.Equal(reconnectCount, client.StartCount);
+        await session.StopAsync();
+    }
+
     private static InterpretationSession NewSession(FakeDualClient client) =>
         new(
             new FakeApiKeyStore("sk-test"),

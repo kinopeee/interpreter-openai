@@ -23,6 +23,7 @@ protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
 actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     /// 100 ms frame × 40 = 直近4秒。言語判定遅延でも発話冒頭を翻訳へ届ける。
     static let translationPrerollFrameLimit = 40
+    static let translationPendingFrameLimit = 80
     static let consecutiveTranslationFailureLimit = 3
     /// 停止時 drain で未送信 frame 1 枚あたりに足す予算。preroll flush 後の短い停滞で訳文を落とさない。
     static let translationDrainTimeoutNanosecondsPerPendingFrame: UInt64 = 250_000_000
@@ -35,6 +36,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     private let translationDrainTimeoutNanoseconds: UInt64
     private var mergeTask: Task<Void, Never>?
     private var translationPumpTask: Task<Void, Never>?
+    /// 現在登録中のポンプ世代。古いポンプの終了処理が新ポンプの参照を消さない。
+    private var translationPumpGeneration = 0
     private var eventContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation?
     private var eventStream: AsyncStream<RealtimeTranslationStreamEvent>
     private(set) var connectionEpoch = 0
@@ -63,6 +66,18 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
 
     var events: AsyncStream<RealtimeTranslationStreamEvent> {
         eventStream
+    }
+
+    var pendingTranslationFrameCount: Int {
+        pendingTranslationFrames.count
+    }
+
+    var isTranslationPumpHalted: Bool {
+        translationPumpHaltedForTransportFailure
+    }
+
+    var isTranslationPumpTracked: Bool {
+        translationPumpTask != nil
     }
 
     init(
@@ -321,8 +336,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         try? await waitForTranslationDrain(timeoutNanoseconds: resolveCloseDrainTimeoutNanoseconds())
 
         isRunning = false
-        translationPumpTask?.cancel()
-        translationPumpTask = nil
+        invalidateTranslationPump()
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         // 原文 close が先に失敗しても翻訳 close を捨てない。Windows の WhenAll と同じく
         // 全 lane を待ち、未 await の close が次セッションのソケットを閉じるのを防ぐ。
@@ -377,8 +391,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         yieldedEventCount = 0
         consumedEventCount = 0
         connectionEpoch += 1
-        translationPumpTask?.cancel()
-        translationPumpTask = nil
+        invalidateTranslationPump()
         mergeTask?.cancel()
         mergeTask = nil
         await sourceConnection.forceClose()
@@ -395,14 +408,45 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     ) {
         // transport failure後はenqueue自体を止め、ポンプ再起動の隙を残さない。
         guard !translationPumpHaltedForTransportFailure else { return }
+        if pendingTranslationFrames.count >= Self.translationPendingFrameLimit {
+            haltTranslationPump(target: target, messageKey: "error.translationBacklog")
+            return
+        }
         pendingTranslationFrames.append((pcm16LE, target))
+        startTranslationPumpIfNeeded()
+    }
+
+    private func startTranslationPumpIfNeeded() {
         guard translationPumpTask == nil else { return }
+        translationPumpGeneration += 1
+        let generation = translationPumpGeneration
         translationPumpTask = Task {
-            await self.pumpTranslationFrames()
+            await self.pumpTranslationFrames(generation: generation)
         }
     }
 
-    private func pumpTranslationFrames() async {
+    private func invalidateTranslationPump() {
+        translationPumpGeneration += 1
+        translationPumpTask?.cancel()
+        translationPumpTask = nil
+    }
+
+    private func finishTranslationPumpIfCurrent(generation: Int, pumpEpoch: Int) {
+        guard translationPumpGeneration == generation else { return }
+        translationPumpTask = nil
+        // ポンプ停止中に積まれたframeがあれば再開する。
+        // transport failure後はInterpretationSession側の再接続に任せ、ここでは再開しない。
+        if !translationPumpHaltedForTransportFailure,
+            isRunning,
+            connectionEpoch == pumpEpoch,
+            !pendingTranslationFrames.isEmpty
+        {
+            startTranslationPumpIfNeeded()
+        }
+    }
+
+    private func pumpTranslationFrames(generation: Int) async {
+        let pumpEpoch = connectionEpoch
         while isRunning, !Task.isCancelled, !translationPumpHaltedForTransportFailure {
             guard !pendingTranslationFrames.isEmpty else { break }
             let (frame, target) = pendingTranslationFrames.removeFirst()
@@ -411,41 +455,50 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                     throw RealtimeTranslationError.notConnected
                 }
                 try await connection.appendAudioFrame(frame)
-                consecutiveTranslationFailures = 0
+                if !translationPumpHaltedForTransportFailure, connectionEpoch == pumpEpoch {
+                    consecutiveTranslationFailures = 0
+                }
             } catch is CancellationError {
                 break
             } catch {
+                if translationPumpHaltedForTransportFailure || connectionEpoch != pumpEpoch {
+                    break
+                }
                 consecutiveTranslationFailures += 1
                 AppLogger.realtime.error(
                     "Translation append failed count=\(self.consecutiveTranslationFailures, privacy: .public) target=\(target.rawValue, privacy: .public)"
                 )
                 if consecutiveTranslationFailures >= Self.consecutiveTranslationFailureLimit {
-                    let epoch = connectionEpoch
-                    eventContinuation?.yield(
-                        RealtimeTranslationStreamEvent(
-                            lane: .translation(target),
-                            event: .error(
-                                message: UiCopy.text("error.audioSendFailed"),
-                                code: "transport"
-                            ),
-                            epoch: epoch
-                        )
-                    )
+                    haltTranslationPump(target: target, messageKey: "error.audioSendFailed")
                     // 再接続待ち中にdying socketへ送り続けない。
-                    translationPumpHaltedForTransportFailure = true
-                    pendingTranslationFrames.removeAll(keepingCapacity: true)
                     break
                 }
             }
         }
-        translationPumpTask = nil
-        // ポンプ停止中に積まれたframeがあれば再開する。
-        // transport failure後はInterpretationSession側の再接続に任せ、ここでは再開しない。
-        if !translationPumpHaltedForTransportFailure, isRunning, !pendingTranslationFrames.isEmpty {
-            translationPumpTask = Task {
-                await self.pumpTranslationFrames()
-            }
-        }
+        finishTranslationPumpIfCurrent(generation: generation, pumpEpoch: pumpEpoch)
+    }
+
+    private func haltTranslationPump(
+        target: RealtimeTranslationOutputLanguage,
+        messageKey: String
+    ) {
+        let pendingCount = pendingTranslationFrames.count
+        let reason = messageKey == "error.translationBacklog" ? "backlog" : "sendFailure"
+        translationPumpHaltedForTransportFailure = true
+        pendingTranslationFrames.removeAll(keepingCapacity: true)
+        AppLogger.realtime.error(
+            "Translation pump halted reason=\(reason, privacy: .public) count=\(pendingCount, privacy: .public) limit=\(Self.translationPendingFrameLimit, privacy: .public) target=\(target.rawValue, privacy: .public) epoch=\(self.connectionEpoch, privacy: .public)"
+        )
+        eventContinuation?.yield(
+            RealtimeTranslationStreamEvent(
+                lane: .translation(target),
+                event: .error(
+                    message: UiCopy.text(messageKey),
+                    code: "transport"
+                ),
+                epoch: connectionEpoch
+            )
+        )
     }
 
     private func startEventMerge(epoch: Int) {
