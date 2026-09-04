@@ -261,6 +261,7 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
         try await harness.overflow()
         await harness.english.setHoldAudioAppends(false)
         await harness.english.releaseAllAudioAppends()
+        try await harness.dual.waitForTranslationDrain()
         try await QueueHarness.startDual(
             harness.dual,
             sourceTransport: harness.source,
@@ -343,6 +344,7 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
         XCTAssertLessThan(sent, appended)
         await harness.english.setHoldAudioAppends(false)
         await harness.english.releaseAllAudioAppends()
+        try await harness.dual.waitForTranslationDrain()
         try await QueueHarness.startDual(
             harness.dual,
             sourceTransport: harness.source,
@@ -404,7 +406,7 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
             let released = await harness.english.releaseOneAudioAppend()
             XCTAssertTrue(released)
         }
-        try await Task.sleep(nanoseconds: 50_000_000)
+        try await waitUntil { await harness.english.heldAudioAppendCount == 1 }
         let trackedAfterStaleCompletion = await harness.dual.isTranslationPumpTracked
         let heldAfterStaleCompletion = await harness.english.heldAudioAppendCount
         XCTAssertTrue(trackedAfterStaleCompletion)
@@ -579,6 +581,8 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
             let englishSentBefore = await englishTransport.sent.count
             let japaneseSentBefore = await japaneseTransport.sent.count
             let spanishSentBefore = await spanishTransport.sent.count
+            // 旧 receive loop が次の session.created を先に消費しないよう、先に tear down する。
+            await dual.forceClose()
             try await sourceTransport.enqueueJSON(["type": "session.created"])
             try await englishTransport.enqueueJSON(["type": "session.created"])
             try await japaneseTransport.enqueueJSON(["type": "session.created"])
