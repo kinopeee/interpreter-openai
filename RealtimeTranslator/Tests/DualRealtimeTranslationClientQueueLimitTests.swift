@@ -398,9 +398,11 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
         XCTAssertEqual(pendingBeforeStaleCompletion, 2)
 
         if failStaleSend {
-            XCTAssertTrue(await harness.english.failOneHeldAudioAppend())
+            let failed = await harness.english.failOneHeldAudioAppend()
+            XCTAssertTrue(failed)
         } else {
-            XCTAssertTrue(await harness.english.releaseOneAudioAppend())
+            let released = await harness.english.releaseOneAudioAppend()
+            XCTAssertTrue(released)
         }
         try await Task.sleep(nanoseconds: 50_000_000)
         let trackedAfterStaleCompletion = await harness.dual.isTranslationPumpTracked
