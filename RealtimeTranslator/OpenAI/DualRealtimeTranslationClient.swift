@@ -23,6 +23,7 @@ protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
 actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     /// 100 ms frame × 40 = 直近4秒。言語判定遅延でも発話冒頭を翻訳へ届ける。
     static let translationPrerollFrameLimit = 40
+    static let translationPendingFrameLimit = 80
     static let consecutiveTranslationFailureLimit = 3
     /// 停止時 drain で未送信 frame 1 枚あたりに足す予算。preroll flush 後の短い停滞で訳文を落とさない。
     static let translationDrainTimeoutNanosecondsPerPendingFrame: UInt64 = 250_000_000
@@ -63,6 +64,14 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
 
     var events: AsyncStream<RealtimeTranslationStreamEvent> {
         eventStream
+    }
+
+    var pendingTranslationFrameCount: Int {
+        pendingTranslationFrames.count
+    }
+
+    var isTranslationPumpHalted: Bool {
+        translationPumpHaltedForTransportFailure
     }
 
     init(
@@ -395,6 +404,10 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     ) {
         // transport failure後はenqueue自体を止め、ポンプ再起動の隙を残さない。
         guard !translationPumpHaltedForTransportFailure else { return }
+        if pendingTranslationFrames.count >= Self.translationPendingFrameLimit {
+            haltTranslationPump(target: target, messageKey: "error.translationBacklog")
+            return
+        }
         pendingTranslationFrames.append((pcm16LE, target))
         guard translationPumpTask == nil else { return }
         translationPumpTask = Task {
@@ -403,6 +416,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     }
 
     private func pumpTranslationFrames() async {
+        let pumpEpoch = connectionEpoch
         while isRunning, !Task.isCancelled, !translationPumpHaltedForTransportFailure {
             guard !pendingTranslationFrames.isEmpty else { break }
             let (frame, target) = pendingTranslationFrames.removeFirst()
@@ -411,29 +425,22 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                     throw RealtimeTranslationError.notConnected
                 }
                 try await connection.appendAudioFrame(frame)
-                consecutiveTranslationFailures = 0
+                if !translationPumpHaltedForTransportFailure, connectionEpoch == pumpEpoch {
+                    consecutiveTranslationFailures = 0
+                }
             } catch is CancellationError {
                 break
             } catch {
+                if translationPumpHaltedForTransportFailure || connectionEpoch != pumpEpoch {
+                    break
+                }
                 consecutiveTranslationFailures += 1
                 AppLogger.realtime.error(
                     "Translation append failed count=\(self.consecutiveTranslationFailures, privacy: .public) target=\(target.rawValue, privacy: .public)"
                 )
                 if consecutiveTranslationFailures >= Self.consecutiveTranslationFailureLimit {
-                    let epoch = connectionEpoch
-                    eventContinuation?.yield(
-                        RealtimeTranslationStreamEvent(
-                            lane: .translation(target),
-                            event: .error(
-                                message: UiCopy.text("error.audioSendFailed"),
-                                code: "transport"
-                            ),
-                            epoch: epoch
-                        )
-                    )
+                    haltTranslationPump(target: target, messageKey: "error.audioSendFailed")
                     // 再接続待ち中にdying socketへ送り続けない。
-                    translationPumpHaltedForTransportFailure = true
-                    pendingTranslationFrames.removeAll(keepingCapacity: true)
                     break
                 }
             }
@@ -446,6 +453,28 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                 await self.pumpTranslationFrames()
             }
         }
+    }
+
+    private func haltTranslationPump(
+        target: RealtimeTranslationOutputLanguage,
+        messageKey: String
+    ) {
+        let pendingCount = pendingTranslationFrames.count
+        translationPumpHaltedForTransportFailure = true
+        pendingTranslationFrames.removeAll(keepingCapacity: true)
+        AppLogger.realtime.error(
+            "Translation pump halted count=\(pendingCount, privacy: .public) limit=\(Self.translationPendingFrameLimit, privacy: .public) target=\(target.rawValue, privacy: .public) epoch=\(self.connectionEpoch, privacy: .public)"
+        )
+        eventContinuation?.yield(
+            RealtimeTranslationStreamEvent(
+                lane: .translation(target),
+                event: .error(
+                    message: UiCopy.text(messageKey),
+                    code: "transport"
+                ),
+                epoch: connectionEpoch
+            )
+        )
     }
 
     private func startEventMerge(epoch: Int) {

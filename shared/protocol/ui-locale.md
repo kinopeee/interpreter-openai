@@ -290,6 +290,7 @@ Windows `SubtitleSnapshotBuilder` は idle / connecting / reconnecting だけ。
 | `error.transportDisconnected` | 翻訳サーバーとの接続が切れました |
 | `error.sourceDisconnected` | 原文字幕サーバーとの接続が切れました |
 | `error.audioSendFailed` | 翻訳サーバーへの音声送信が失敗しました |
+| `error.translationBacklog` | 翻訳音声の送信待ちが上限に達しました。 |
 | `error.sourceSessionGeneric` | 原文字幕セッションでエラーが発生しました |
 | `error.sessionUpdateTimeout` | 翻訳セッションの準備がタイムアウトしました |
 | `error.closeTimeout` | 翻訳セッションの終了待ちがタイムアウトしました |

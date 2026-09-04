@@ -1,0 +1,23 @@
+{
+  "$schema": "./schema/translation-queue.schema.json",
+  "version": 1,
+  "description": "翻訳送信待ちキューの上限と超過時の挙動。in-flight 1 フレームと rolling preroll は pending に含めない。",
+  "pendingFrameLimit": 80,
+  "prerollFrameLimit": 40,
+  "frameDurationMs": 100,
+  "overflow": {
+    "errorCode": "transport",
+    "errorMessageKey": "error.translationBacklog",
+    "expectedTransportErrorCount": 1,
+    "clearsPendingFrames": true,
+    "haltsTranslationPump": true,
+    "sourceContinues": true
+  },
+  "boundaries": [
+    { "name": "one below limit", "pendingBefore": 78, "expectedPending": 79, "expectedTransportErrorCount": 0, "expectedHalted": false },
+    { "name": "exactly at limit", "pendingBefore": 79, "expectedPending": 80, "expectedTransportErrorCount": 0, "expectedHalted": false },
+    { "name": "one over limit", "pendingBefore": 80, "expectedPending": 0, "expectedTransportErrorCount": 1, "expectedHalted": true }
+  ],
+  "prerollFlush": { "frameCount": 40, "targets": ["en", "ja", "es"], "expectedTransportErrorCount": 0 },
+  "afterOverflow": { "appendCount": 5, "expectedAdditionalTranslationSends": 0, "expectedTransportErrorCount": 1 }
+}

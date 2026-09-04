@@ -46,9 +46,13 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     /// <summary>100 ms frame × 40 = 直近 4 秒。言語判定の遅れがあっても発話冒頭を翻訳へ届ける。</summary>
     public const int TranslationPrerollFrameLimit = 40;
 
+    public const int TranslationPendingFrameLimit = 80;
+
     public const int ConsecutiveTranslationFailureLimit = 3;
 
     public static string TransportErrorMessage => UserCopy.Current.Text("error.audioSendFailed");
+
+    public static string TranslationBacklogErrorMessage => UserCopy.Current.Text("error.translationBacklog");
 
     public const string TransportErrorCode = "transport";
 
@@ -129,6 +133,28 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             lock (_sync)
             {
                 return _connectionEpoch;
+            }
+        }
+    }
+
+    internal int PendingTranslationFrameCountForTests
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _pendingTranslationFrames.Count;
+            }
+        }
+    }
+
+    internal bool IsTranslationPumpHaltedForTests
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _translationPumpHaltedForTransportFailure;
             }
         }
     }
@@ -305,6 +331,9 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         // 原文送信は単独で完了させ、翻訳側の停滞に巻き込まない。
         await _sourceConnection.AppendAudioFrameAsync(pcm16LittleEndian, cancellationToken).ConfigureAwait(false);
 
+        ChannelWriter<RealtimeTranslationStreamEvent>? overflowWriter = null;
+        RealtimeTranslationOutputLanguage overflowTarget = default;
+        int overflowEpoch = 0;
         lock (_sync)
         {
             // stop/force-close が await 中に走った場合、停止済みへは enqueue しない。
@@ -325,8 +354,22 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
             if (_selectedTranslationTarget is { } target)
             {
-                EnqueueTranslationFrameLocked(retained, target);
+                if (!TryEnqueueTranslationFrameLocked(retained, target))
+                {
+                    overflowWriter = _events.Writer;
+                    overflowTarget = target;
+                    overflowEpoch = _connectionEpoch;
+                }
             }
+        }
+
+        if (overflowWriter is not null)
+        {
+            PublishTransportError(
+                overflowWriter,
+                overflowTarget,
+                overflowEpoch,
+                TranslationBacklogErrorMessage);
         }
     }
 
@@ -336,6 +379,9 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     {
         _ = cancellationToken;
 
+        ChannelWriter<RealtimeTranslationStreamEvent>? overflowWriter = null;
+        RealtimeTranslationOutputLanguage overflowTarget = default;
+        int overflowEpoch = 0;
         lock (_sync)
         {
             if (!_isRunning)
@@ -366,8 +412,23 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             _selectedTranslationTarget = selected;
             foreach (var frame in _translationPrerollFrames)
             {
-                EnqueueTranslationFrameLocked(frame, selected);
+                if (!TryEnqueueTranslationFrameLocked(frame, selected))
+                {
+                    overflowWriter = _events.Writer;
+                    overflowTarget = selected;
+                    overflowEpoch = _connectionEpoch;
+                    break;
+                }
             }
+        }
+
+        if (overflowWriter is not null)
+        {
+            PublishTransportError(
+                overflowWriter,
+                overflowTarget,
+                overflowEpoch,
+                TranslationBacklogErrorMessage);
         }
 
         return Task.CompletedTask;
@@ -681,26 +742,36 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
     }
 
-    private void EnqueueTranslationFrameLocked(
+    private bool TryEnqueueTranslationFrameLocked(
         ReadOnlyMemory<byte> frame,
         RealtimeTranslationOutputLanguage target)
     {
         // transport failure 後は enqueue 自体を止め、ポンプ再起動の隙を残さない。
         if (_translationPumpHaltedForTransportFailure)
         {
-            return;
+            return true;
+        }
+
+        if (_pendingTranslationFrames.Count >= TranslationPendingFrameLimit)
+        {
+            _translationPumpHaltedForTransportFailure = true;
+            _pendingTranslationFrames.Clear();
+            return false;
         }
 
         _pendingTranslationFrames.Enqueue(new PendingTranslationFrame(frame, target));
         _translationPumpTask ??= Task.Run(PumpTranslationFramesAsync, CancellationToken.None);
+        return true;
     }
 
     private async Task PumpTranslationFramesAsync()
     {
         CancellationToken pumpToken;
+        int pumpEpoch;
         lock (_sync)
         {
             pumpToken = _translationPumpCts.Token;
+            pumpEpoch = _connectionEpoch;
         }
 
         while (true)
@@ -726,7 +797,11 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
                 lock (_sync)
                 {
-                    _consecutiveTranslationFailures = 0;
+                    if (!_translationPumpHaltedForTransportFailure
+                        && _connectionEpoch == pumpEpoch)
+                    {
+                        _consecutiveTranslationFailures = 0;
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -746,6 +821,12 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                 int epoch;
                 lock (_sync)
                 {
+                    if (_translationPumpHaltedForTransportFailure || _connectionEpoch != pumpEpoch)
+                    {
+                        _translationPumpTask = null;
+                        return;
+                    }
+
                     _consecutiveTranslationFailures += 1;
                     halted = _consecutiveTranslationFailures >= ConsecutiveTranslationFailureLimit;
                     epoch = _connectionEpoch;
@@ -760,7 +841,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                 if (halted)
                 {
                     // drain 待ちが復帰する前に transport error を確実に発行する。
-                    PublishTransportError(pending.Target, epoch);
+                    PublishTransportError(pending.Target, epoch, TransportErrorMessage);
                     lock (_sync)
                     {
                         _translationPumpTask = null;
@@ -772,7 +853,10 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
     }
 
-    private void PublishTransportError(RealtimeTranslationOutputLanguage target, int epoch)
+    private void PublishTransportError(
+        RealtimeTranslationOutputLanguage target,
+        int epoch,
+        string message)
     {
         ChannelWriter<RealtimeTranslationStreamEvent> writer;
         lock (_sync)
@@ -780,9 +864,18 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             writer = _events.Writer;
         }
 
+        PublishTransportError(writer, target, epoch, message);
+    }
+
+    private static void PublishTransportError(
+        ChannelWriter<RealtimeTranslationStreamEvent> writer,
+        RealtimeTranslationOutputLanguage target,
+        int epoch,
+        string message)
+    {
         writer.TryWrite(new RealtimeTranslationStreamEvent(
             target,
-            new RealtimeTranslationServerEvent.ServerError(TransportErrorMessage, TransportErrorCode),
+            new RealtimeTranslationServerEvent.ServerError(message, TransportErrorCode),
             epoch));
     }
 

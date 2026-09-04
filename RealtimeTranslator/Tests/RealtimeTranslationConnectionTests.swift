@@ -12,12 +12,44 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
     var connectError: Error?
     var sendError: Error?
     private var failNextSend = false
+    private var heldAudioAppends: [CheckedContinuation<Void, Error>] = []
     /// セットするとsendがこの時間だけ待機してから通常処理へ進む。
     var sendHangNanoseconds: UInt64 = 0
     /// audio append だけ遅延させ、session.close / commit の停止経路を巻き込まない。
     var audioAppendHangNanoseconds: UInt64 = 0
+    var holdAudioAppends = false
+
+    func setHoldAudioAppends(_ value: Bool) {
+        holdAudioAppends = value
+    }
     /// graceful close 用の完了イベントを自動応答する。
     var autoCloseResponses = false
+
+    var heldAudioAppendCount: Int {
+        heldAudioAppends.count
+    }
+
+    @discardableResult
+    func releaseOneAudioAppend() -> Bool {
+        guard !heldAudioAppends.isEmpty else { return false }
+        heldAudioAppends.removeFirst().resume()
+        return true
+    }
+
+    @discardableResult
+    func failOneHeldAudioAppend() -> Bool {
+        guard !heldAudioAppends.isEmpty else { return false }
+        heldAudioAppends.removeFirst().resume(
+            throwing: RealtimeTranslationError.recoverableTransportFailure(
+                "injected send failure"
+            )
+        )
+        return true
+    }
+
+    func releaseAllAudioAppends() {
+        while releaseOneAudioAppend() {}
+    }
 
     func enqueueInbound(_ data: Data) {
         if let waiter = waiters.first {
@@ -51,6 +83,19 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
         let type = Self.messageType(of: data)
         let isAudioAppend = type == "session.input_audio_buffer.append"
             || type == "input_audio_buffer.append"
+        if isAudioAppend, holdAudioAppends {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    if Task.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                    } else {
+                        heldAudioAppends.append(continuation)
+                    }
+                }
+            } onCancel: {
+                Task { await self.failOneHeldAudioAppend() }
+            }
+        }
         if isAudioAppend, audioAppendHangNanoseconds > 0 {
             try await Task.sleep(nanoseconds: audioAppendHangNanoseconds)
         } else if sendHangNanoseconds > 0 {

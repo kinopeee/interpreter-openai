@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Translation send queue contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "version",
+    "description",
+    "pendingFrameLimit",
+    "prerollFrameLimit",
+    "frameDurationMs",
+    "overflow",
+    "boundaries",
+    "prerollFlush",
+    "afterOverflow"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "pendingFrameLimit": { "type": "integer", "minimum": 0 },
+    "prerollFrameLimit": { "type": "integer", "minimum": 0 },
+    "frameDurationMs": { "type": "integer", "minimum": 1 },
+    "overflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["errorCode", "errorMessageKey", "expectedTransportErrorCount", "clearsPendingFrames", "haltsTranslationPump", "sourceContinues"],
+      "properties": {
+        "errorCode": { "type": "string" },
+        "errorMessageKey": { "type": "string" },
+        "expectedTransportErrorCount": { "type": "integer", "minimum": 0 },
+        "clearsPendingFrames": { "type": "boolean" },
+        "haltsTranslationPump": { "type": "boolean" },
+        "sourceContinues": { "type": "boolean" }
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "pendingBefore", "expectedPending", "expectedTransportErrorCount", "expectedHalted"],
+        "properties": {
+          "name": { "type": "string" },
+          "pendingBefore": { "type": "integer", "minimum": 0 },
+          "expectedPending": { "type": "integer", "minimum": 0 },
+          "expectedTransportErrorCount": { "type": "integer", "minimum": 0 },
+          "expectedHalted": { "type": "boolean" }
+        }
+      }
+    },
+    "prerollFlush": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frameCount", "targets", "expectedTransportErrorCount"],
+      "properties": {
+        "frameCount": { "type": "integer", "minimum": 0 },
+        "targets": { "type": "array", "items": { "type": "string" } },
+        "expectedTransportErrorCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "afterOverflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appendCount", "expectedAdditionalTranslationSends", "expectedTransportErrorCount"],
+      "properties": {
+        "appendCount": { "type": "integer", "minimum": 0 },
+        "expectedAdditionalTranslationSends": { "type": "integer", "minimum": 0 },
+        "expectedTransportErrorCount": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

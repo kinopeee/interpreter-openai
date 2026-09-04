@@ -609,6 +609,11 @@
       "en": "Failed to send audio to the translation server"
     },
     {
+      "key": "error.translationBacklog",
+      "ja": "翻訳音声の送信待ちが上限に達しました。",
+      "en": "The translation audio queue reached its limit."
+    },
+    {
       "key": "error.sourceSessionGeneric",
       "ja": "原文字幕セッションでエラーが発生しました",
       "en": "The source-subtitle session encountered an error"

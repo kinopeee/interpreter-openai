@@ -20,6 +20,7 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
     private readonly object _sync = new();
 
     private bool _failNextSend;
+    private readonly Queue<TaskCompletionSource<bool>> _heldAudioAppends = new();
 
     public bool AutoHandshake { get; set; } = true;
 
@@ -48,6 +49,45 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
     public Exception? CloseErrorAfterConnect { get; set; }
 
     public TimeSpan SendDelay { get; set; }
+
+    public bool HoldAudioAppends { get; set; }
+
+    public int HeldAudioAppendCount
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _heldAudioAppends.Count;
+            }
+        }
+    }
+
+    public bool ReleaseOneAudioAppend()
+    {
+        lock (_sync)
+        {
+            return _heldAudioAppends.Count > 0
+                && _heldAudioAppends.Dequeue().TrySetResult(true);
+        }
+    }
+
+    public bool FailOneHeldAudioAppend()
+    {
+        lock (_sync)
+        {
+            return _heldAudioAppends.Count > 0
+                && _heldAudioAppends.Dequeue().TrySetException(
+                    new InvalidOperationException("injected send failure"));
+        }
+    }
+
+    public void ReleaseAllAudioAppends()
+    {
+        while (ReleaseOneAudioAppend())
+        {
+        }
+    }
 
     /// <summary>
     /// inbound を読んだ直後・呼び出し側へ返す前に走る。
@@ -119,6 +159,17 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
     {
         var payload = utf8Json.ToArray();
         var type = TypeOf(payload);
+        if (HoldAudioAppends && IsAudioAppendType(type))
+        {
+            var held = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_sync)
+            {
+                _heldAudioAppends.Enqueue(held);
+            }
+
+            await held.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
         // append だけ遅延させ、session.close / commit の停止経路を巻き込まない。
         if (SendDelay > TimeSpan.Zero && IsAudioAppendType(type))
         {
