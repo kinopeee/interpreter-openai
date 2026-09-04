@@ -174,12 +174,14 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
     func testQ08RoutingResetDoesNotResumeAfterOverflow() async throws {
         let harness = try await QueueHarness.start()
         try await harness.overflow()
+        let englishCountBefore = await harness.englishAppendCount()
         await harness.dual.resetAudioRouting()
         try await harness.select(.english)
         let englishCount = await harness.englishAppendCount()
         let halted = await harness.dual.isTranslationPumpHalted
         let errors = await harness.transportErrorCount()
-        XCTAssertEqual(englishCount, 1)
+        XCTAssertEqual(englishCount, englishCountBefore)
+        XCTAssertLessThanOrEqual(englishCount, 1)
         XCTAssertTrue(halted)
         XCTAssertEqual(errors, 1)
         await harness.forceClose()
