@@ -73,6 +73,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     private Channel<RealtimeTranslationStreamEvent> _events = RealtimeEventChannel.Create();
     private Task? _mergeTask;
     private Task? _translationPumpTask;
+    private int _translationPumpGeneration;
     private CancellationTokenSource? _mergeCts;
     private CancellationTokenSource _translationPumpCts = new();
     private int _connectionEpoch;
@@ -511,6 +512,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             _isRunning = false;
             _pendingTranslationFrames.Clear();
             pump = _translationPumpTask;
+            _translationPumpGeneration += 1;
+            _translationPumpTask = null;
             pumpCts = _translationPumpCts;
         }
 
@@ -555,6 +558,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             _translationPumpHaltedForTransportFailure = false;
             _connectionEpoch += 1;
             pump = _translationPumpTask;
+            _translationPumpGeneration += 1;
+            _translationPumpTask = null;
             pumpCts = _translationPumpCts;
         }
 
@@ -760,7 +765,12 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
 
         _pendingTranslationFrames.Enqueue(new PendingTranslationFrame(frame, target));
-        _translationPumpTask ??= Task.Run(PumpTranslationFramesAsync, CancellationToken.None);
+        if (_translationPumpTask is null)
+        {
+            _translationPumpGeneration += 1;
+            _translationPumpTask = Task.Run(PumpTranslationFramesAsync, CancellationToken.None);
+        }
+
         return true;
     }
 
@@ -768,10 +778,12 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     {
         CancellationToken pumpToken;
         int pumpEpoch;
+        int generation;
         lock (_sync)
         {
             pumpToken = _translationPumpCts.Token;
             pumpEpoch = _connectionEpoch;
+            generation = _translationPumpGeneration;
         }
 
         while (true)
@@ -783,7 +795,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                     || _translationPumpHaltedForTransportFailure
                     || _pendingTranslationFrames.Count == 0)
                 {
-                    _translationPumpTask = null;
+                    ClearTranslationPumpIfCurrentLocked(generation);
                     return;
                 }
 
@@ -808,7 +820,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             {
                 lock (_sync)
                 {
-                    _translationPumpTask = null;
+                    ClearTranslationPumpIfCurrentLocked(generation);
                 }
 
                 return;
@@ -823,7 +835,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                 {
                     if (_translationPumpHaltedForTransportFailure || _connectionEpoch != pumpEpoch)
                     {
-                        _translationPumpTask = null;
+                        ClearTranslationPumpIfCurrentLocked(generation);
                         return;
                     }
 
@@ -844,12 +856,20 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                     PublishTransportError(pending.Target, epoch, TransportErrorMessage);
                     lock (_sync)
                     {
-                        _translationPumpTask = null;
+                        ClearTranslationPumpIfCurrentLocked(generation);
                     }
 
                     return;
                 }
             }
+        }
+    }
+
+    private void ClearTranslationPumpIfCurrentLocked(int generation)
+    {
+        if (_translationPumpGeneration == generation)
+        {
+            _translationPumpTask = null;
         }
     }
 

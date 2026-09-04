@@ -36,6 +36,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     private let translationDrainTimeoutNanoseconds: UInt64
     private var mergeTask: Task<Void, Never>?
     private var translationPumpTask: Task<Void, Never>?
+    /// 現在登録中のポンプ世代。古いポンプの終了処理が新ポンプの参照を消さない。
     private var translationPumpGeneration = 0
     private var eventContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation?
     private var eventStream: AsyncStream<RealtimeTranslationStreamEvent>
@@ -73,6 +74,10 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
 
     var isTranslationPumpHalted: Bool {
         translationPumpHaltedForTransportFailure
+    }
+
+    var isTranslationPumpTracked: Bool {
+        translationPumpTask != nil
     }
 
     init(
@@ -331,8 +336,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         try? await waitForTranslationDrain(timeoutNanoseconds: resolveCloseDrainTimeoutNanoseconds())
 
         isRunning = false
-        translationPumpTask?.cancel()
-        translationPumpTask = nil
+        invalidateTranslationPump()
         pendingTranslationFrames.removeAll(keepingCapacity: true)
         // 原文 close が先に失敗しても翻訳 close を捨てない。Windows の WhenAll と同じく
         // 全 lane を待ち、未 await の close が次セッションのソケットを閉じるのを防ぐ。
@@ -387,8 +391,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         yieldedEventCount = 0
         consumedEventCount = 0
         connectionEpoch += 1
-        translationPumpTask?.cancel()
-        translationPumpTask = nil
+        invalidateTranslationPump()
         mergeTask?.cancel()
         mergeTask = nil
         await sourceConnection.forceClose()
@@ -410,15 +413,39 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
             return
         }
         pendingTranslationFrames.append((pcm16LE, target))
+        startTranslationPumpIfNeeded()
+    }
+
+    private func startTranslationPumpIfNeeded() {
         guard translationPumpTask == nil else { return }
         translationPumpGeneration += 1
-        let pumpID = translationPumpGeneration
+        let generation = translationPumpGeneration
         translationPumpTask = Task {
-            await self.pumpTranslationFrames(pumpID: pumpID)
+            await self.pumpTranslationFrames(generation: generation)
         }
     }
 
-    private func pumpTranslationFrames(pumpID: Int) async {
+    private func invalidateTranslationPump() {
+        translationPumpGeneration += 1
+        translationPumpTask?.cancel()
+        translationPumpTask = nil
+    }
+
+    private func finishTranslationPumpIfCurrent(generation: Int, pumpEpoch: Int) {
+        guard translationPumpGeneration == generation else { return }
+        translationPumpTask = nil
+        // ポンプ停止中に積まれたframeがあれば再開する。
+        // transport failure後はInterpretationSession側の再接続に任せ、ここでは再開しない。
+        if !translationPumpHaltedForTransportFailure,
+            isRunning,
+            connectionEpoch == pumpEpoch,
+            !pendingTranslationFrames.isEmpty
+        {
+            startTranslationPumpIfNeeded()
+        }
+    }
+
+    private func pumpTranslationFrames(generation: Int) async {
         let pumpEpoch = connectionEpoch
         while isRunning, !Task.isCancelled, !translationPumpHaltedForTransportFailure {
             guard !pendingTranslationFrames.isEmpty else { break }
@@ -448,21 +475,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                 }
             }
         }
-        guard pumpID == translationPumpGeneration else { return }
-        translationPumpTask = nil
-        // ポンプ停止中に積まれたframeがあれば再開する。
-        // transport failure後はInterpretationSession側の再接続に任せ、ここでは再開しない。
-        if !translationPumpHaltedForTransportFailure,
-            isRunning,
-            connectionEpoch == pumpEpoch,
-            !pendingTranslationFrames.isEmpty
-        {
-            translationPumpGeneration += 1
-            let nextPumpID = translationPumpGeneration
-            translationPumpTask = Task {
-                await self.pumpTranslationFrames(pumpID: nextPumpID)
-            }
-        }
+        finishTranslationPumpIfCurrent(generation: generation, pumpEpoch: pumpEpoch)
     }
 
     private func haltTranslationPump(

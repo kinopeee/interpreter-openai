@@ -358,6 +358,78 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
         await harness.forceClose()
     }
 
+    // Given: overflow 後も旧 epoch の in-flight send が残ったまま再 start する
+    // When: 新ポンプを動かしたあと、旧 send を成功または失敗で完了させる
+    // Then: 新ポンプの追跡は残り、drain は旧エピローグで空にならない
+    func testQ15StalePumpEpilogueDoesNotDropNewPump() async throws {
+        try await assertStalePumpEpilogueKeepsNewPump(failStaleSend: false)
+        try await assertStalePumpEpilogueKeepsNewPump(failStaleSend: true)
+    }
+
+    private func assertStalePumpEpilogueKeepsNewPump(failStaleSend: Bool) async throws {
+        let harness = try await QueueHarness.start()
+        await harness.english.setPersistHeldAudioAppendsAcrossCancel(true)
+        try await harness.select(.english)
+        await harness.english.setHoldAudioAppends(true)
+        try await harness.append(seed: 0x01)
+        try await waitUntil { await harness.english.heldAudioAppendCount == 1 }
+        for index in 0..<81 {
+            try await harness.append(seed: UInt8(index & 0xff))
+        }
+        try await waitUntil { await harness.dual.isTranslationPumpHalted }
+        try await waitUntil { await harness.transportErrorCount() == 1 }
+
+        try await QueueHarness.startDual(
+            harness.dual,
+            sourceTransport: harness.source,
+            englishTransport: harness.english,
+            japaneseTransport: harness.japanese,
+            spanishTransport: harness.spanish,
+            pair: .jaEn
+        )
+        try await harness.select(.english)
+        try await harness.append(seed: 0xb0)
+        try await waitUntil { await harness.english.heldAudioAppendCount == 2 }
+        try await harness.append(seed: 0xb1)
+        try await harness.append(seed: 0xb2)
+        let trackedBeforeStaleCompletion = await harness.dual.isTranslationPumpTracked
+        let pendingBeforeStaleCompletion = await harness.dual.pendingTranslationFrameCount
+        XCTAssertTrue(trackedBeforeStaleCompletion)
+        XCTAssertEqual(pendingBeforeStaleCompletion, 2)
+
+        if failStaleSend {
+            XCTAssertTrue(await harness.english.failOneHeldAudioAppend())
+        } else {
+            XCTAssertTrue(await harness.english.releaseOneAudioAppend())
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let trackedAfterStaleCompletion = await harness.dual.isTranslationPumpTracked
+        let heldAfterStaleCompletion = await harness.english.heldAudioAppendCount
+        XCTAssertTrue(trackedAfterStaleCompletion)
+        XCTAssertEqual(heldAfterStaleCompletion, 1)
+        do {
+            try await harness.dual.waitForTranslationDrain(timeoutNanoseconds: 80_000_000)
+            XCTFail("live pump is still in-flight")
+        } catch {
+            // 新ポンプが追跡されていれば、短い drain は timeout する。
+        }
+
+        await harness.english.setHoldAudioAppends(false)
+        await harness.english.releaseAllAudioAppends()
+        try await harness.dual.waitForTranslationDrain()
+        try await harness.append(seed: 0xb3)
+        try await harness.dual.waitForTranslationDrain()
+        let payloads = try await harness.appendPayloads(for: .english)
+        let recovered = DualRealtimeTranslationClientQueueLimitTests.frame(seed: 0xb3)
+            .base64EncodedString()
+        XCTAssertEqual(payloads.filter { $0 == recovered }.count, 1)
+        let pending = await harness.dual.pendingTranslationFrameCount
+        let halted = await harness.dual.isTranslationPumpHalted
+        XCTAssertEqual(pending, 0)
+        XCTAssertFalse(halted)
+        await harness.forceClose()
+    }
+
     private static func frame(seed: UInt8) -> Data {
         Data(repeating: seed, count: PCM16FramePacketizer.bytesPerFrame)
     }
@@ -620,6 +692,10 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
 
         func forceClose() async {
             collectorTask?.cancel()
+            await source.releaseAllAudioAppends()
+            await english.releaseAllAudioAppends()
+            await japanese.releaseAllAudioAppends()
+            await spanish.releaseAllAudioAppends()
             await dual.forceClose()
         }
 

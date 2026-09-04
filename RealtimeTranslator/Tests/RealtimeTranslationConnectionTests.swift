@@ -18,9 +18,16 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
     /// audio append だけ遅延させ、session.close / commit の停止経路を巻き込まない。
     var audioAppendHangNanoseconds: UInt64 = 0
     var holdAudioAppends = false
+    /// true のとき、Task キャンセルや close では in-flight append を解かない。
+    /// 再接続後に旧 epoch の送信が遅れて完了する競合を再現する。
+    var persistHeldAudioAppendsAcrossCancel = false
 
     func setHoldAudioAppends(_ value: Bool) {
         holdAudioAppends = value
+    }
+
+    func setPersistHeldAudioAppendsAcrossCancel(_ value: Bool) {
+        persistHeldAudioAppendsAcrossCancel = value
     }
     /// graceful close 用の完了イベントを自動応答する。
     var autoCloseResponses = false
@@ -94,7 +101,7 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
                     }
                 }
             } onCancel: {
-                Task { await self.cancelHeldAudioAppends() }
+                Task { await self.cancelHeldAudioAppendsIfAllowed() }
             }
         }
         if isAudioAppend, audioAppendHangNanoseconds > 0 {
@@ -154,6 +161,12 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
     func close() async {
         closeCount += 1
         await cancelWaiters()
+        cancelHeldAudioAppendsIfAllowed()
+    }
+
+    private func cancelHeldAudioAppendsIfAllowed() {
+        guard !persistHeldAudioAppendsAcrossCancel else { return }
+        cancelHeldAudioAppends()
     }
 
     private func cancelWaiters() {
