@@ -85,7 +85,8 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
             || type == "input_audio_buffer.append"
         if isAudioAppend, holdAudioAppends {
             try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation { continuation in
+                try await withCheckedThrowingContinuation {
+                    (continuation: CheckedContinuation<Void, Error>) in
                     if Task.isCancelled {
                         continuation.resume(throwing: CancellationError())
                     } else {
