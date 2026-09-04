@@ -87,7 +87,7 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
             }
             await harness.english.setHoldAudioAppends(false)
             await harness.english.releaseAllAudioAppends()
-            await harness.dual.waitForTranslationDrain()
+            try await harness.dual.waitForTranslationDrain()
             let sendCount = await harness.englishAppendCount()
             XCTAssertEqual(sendCount, expectedHalted ? 1 : pendingBefore + 2)
             await harness.forceClose()
@@ -221,7 +221,7 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
         try await harness.overflow()
         let released = await harness.english.releaseOneAudioAppend()
         XCTAssertTrue(released)
-        await harness.dual.waitForTranslationDrain()
+        try await harness.dual.waitForTranslationDrain()
         let sent = await harness.englishAppendCount()
         try await harness.append(seed: 0xaa)
         let after = await harness.englishAppendCount()
@@ -241,7 +241,7 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
         try await harness.overflow()
         await harness.english.setHoldAudioAppends(false)
         await harness.english.releaseAllAudioAppends()
-        await harness.dual.waitForTranslationDrain()
+        try await harness.dual.waitForTranslationDrain()
         let before = await harness.englishAppendCount()
         let started = Date()
         _ = await harness.dual.closeGracefully()
@@ -498,8 +498,8 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
 
         func select(_ target: RealtimeTranslationOutputLanguage) async throws {
             try await dual.selectTranslationTarget(target)
-            if !(await hasHeldAudioAppends()) {
-                await dual.waitForTranslationDrain()
+            if !(await isHolding()) {
+                try await dual.waitForTranslationDrain()
             }
         }
 
@@ -507,8 +507,8 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
             try await dual.appendAudioFrame(
                 DualRealtimeTranslationClientQueueLimitTests.frame(seed: seed)
             )
-            if !(await hasHeldAudioAppends()) {
-                await dual.waitForTranslationDrain()
+            if !(await isHolding()) {
+                try await dual.waitForTranslationDrain()
             }
         }
 
@@ -583,11 +583,11 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
             await dual.forceClose()
         }
 
-        private func hasHeldAudioAppends() async -> Bool {
-            let englishCount = await english.heldAudioAppendCount
-            let japaneseCount = await japanese.heldAudioAppendCount
-            let spanishCount = await spanish.heldAudioAppendCount
-            return englishCount > 0 || japaneseCount > 0 || spanishCount > 0
+        private func isHolding() async -> Bool {
+            let englishHolding = await english.holdAudioAppends
+            let japaneseHolding = await japanese.holdAudioAppends
+            let spanishHolding = await spanish.holdAudioAppends
+            return englishHolding || japaneseHolding || spanishHolding
         }
 
         private static func waitUntil(
