@@ -614,6 +614,11 @@
       "en": "The translation audio queue reached its limit."
     },
     {
+      "key": "error.receiveOverflow",
+      "ja": "受信イベントが処理能力を超えたため、字幕を一度リセットして再接続します。",
+      "en": "Incoming events exceeded capacity; subtitles were reset and the session is reconnecting."
+    },
+    {
       "key": "error.sourceSessionGeneric",
       "ja": "原文字幕セッションでエラーが発生しました",
       "en": "The source-subtitle session encountered an error"

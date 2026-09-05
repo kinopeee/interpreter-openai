@@ -2963,6 +2963,8 @@ public sealed class InterpretationSessionTests
             Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
 
         private int _epoch;
+        public EventDeliveryState DeliveryState { get; private set; } = new(0);
+        public RealtimeEventFeed Feed => new(Events, ConnectionEpoch, DeliveryState);
 
         public ChannelReader<RealtimeTranslationStreamEvent> Events
         {
@@ -3085,6 +3087,7 @@ public sealed class InterpretationSessionTests
             lock (_sync)
             {
                 _epoch += 1;
+                DeliveryState = new EventDeliveryState(_epoch);
                 _spokenLanguages.Clear();
                 _selectedTargets.Clear();
                 ResetAudioRoutingCount = 0;

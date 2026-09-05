@@ -36,6 +36,7 @@ public sealed class SubtitleSnapshotBuilder
     private readonly string _idleBanner;
     private LiveSubtitle _current = LiveSubtitle.Empty;
     private int _segmentGeneration;
+    private long _lastSequence;
 
     public SubtitleSnapshotBuilder(string? idleBanner = null)
     {
@@ -50,6 +51,27 @@ public sealed class SubtitleSnapshotBuilder
 
     public SubtitleSnapshot Apply(RealtimeSubtitleUpdate update, TranslationState state)
     {
+        if (update.Sequence != 0 && update.Sequence <= _lastSequence)
+        {
+            return Current;
+        }
+
+        if (update.Sequence != 0)
+        {
+            _lastSequence = update.Sequence;
+        }
+
+        if (update.IsInvalidation)
+        {
+            _segmentGeneration = update.SegmentGeneration;
+            if (!_current.IsFinalized)
+            {
+                _current = LiveSubtitle.Empty;
+            }
+
+            return Publish(state);
+        }
+
         if (update.SegmentGeneration != _segmentGeneration)
         {
             _segmentGeneration = update.SegmentGeneration;
@@ -70,6 +92,7 @@ public sealed class SubtitleSnapshotBuilder
     public SubtitleSnapshot Reset(TranslationState state)
     {
         _current = LiveSubtitle.Empty;
+        _lastSequence = 0;
         return Publish(state);
     }
 

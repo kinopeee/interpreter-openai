@@ -1,0 +1,51 @@
+{
+  "$schema": "./schema/receive-queue.schema.json",
+  "version": 1,
+  "description": "受信イベントキューの契約。容量超過は黙って捨てず、接続世代ごとの欠落状態として検知し、未確定字幕を無効化してから既存の再接続へ倒す。終了理由は認証 > 致命 > 受信超過 > transport の優先度で保護し、欠落有無は終了理由と独立に保持する。",
+  "capacities": {
+    "macos": {
+      "connection": 256,
+      "merge": 512,
+      "unacknowledgedRetention": 513,
+      "stopDrainRetention": 1024
+    },
+    "windows": {
+      "connection": 512,
+      "merge": 512
+    }
+  },
+  "terminationPrecedence": [
+    "authenticationFailed",
+    "fatalServerError",
+    "receiveOverflow",
+    "transportFailure"
+  ],
+  "overflow": {
+    "errorKind": "receiveOverflow",
+    "errorMessageKey": "error.receiveOverflow",
+    "isRecoverable": true,
+    "lossIsIndependentOfTermination": true,
+    "completedQueueWriteIsNotOverflow": true,
+    "diagnosticsExcludeEventBody": true
+  },
+  "afterLoss": {
+    "rejectsSubtitlesFromLostGeneration": true,
+    "discardsUnconfirmedSubtitle": true,
+    "preservesFinalizedSubtitle": true,
+    "recordsPostLossPairs": false,
+    "reconnectsWhileRecording": true,
+    "returnsToIdleWhenStopping": true
+  },
+  "boundaries": [
+    { "name": "connection exactly at capacity", "platform": "windows", "stage": "connection", "eventCount": 512, "expectedLoss": false },
+    { "name": "connection one over capacity", "platform": "windows", "stage": "connection", "eventCount": 513, "expectedLoss": true },
+    { "name": "merge exactly at capacity", "platform": "windows", "stage": "merge", "eventCount": 512, "expectedLoss": false },
+    { "name": "merge one over capacity", "platform": "windows", "stage": "merge", "eventCount": 513, "expectedLoss": true },
+    { "name": "connection exactly at capacity", "platform": "macos", "stage": "connection", "eventCount": 256, "expectedLoss": false },
+    { "name": "connection one over capacity", "platform": "macos", "stage": "connection", "eventCount": 257, "expectedLoss": true },
+    { "name": "merge exactly at capacity", "platform": "macos", "stage": "merge", "eventCount": 512, "expectedLoss": false },
+    { "name": "merge one over capacity", "platform": "macos", "stage": "merge", "eventCount": 513, "expectedLoss": true },
+    { "name": "one unacknowledged plus merge capacity recovers on stop", "platform": "macos", "stage": "stopDrain", "eventCount": 513, "expectedLoss": false },
+    { "name": "stop drain one over retention", "platform": "macos", "stage": "stopDrain", "eventCount": 1025, "expectedLoss": true }
+  ]
+}

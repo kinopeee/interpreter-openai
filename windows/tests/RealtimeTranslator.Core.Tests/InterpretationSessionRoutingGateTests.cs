@@ -231,6 +231,8 @@ public sealed class InterpretationSessionRoutingGateTests
         private Channel<RealtimeTranslationStreamEvent> _events =
             Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
         private int _epoch;
+        public EventDeliveryState DeliveryState { get; private set; } = new(0);
+        public RealtimeEventFeed Feed => new(Events, ConnectionEpoch, DeliveryState);
 
         public ChannelReader<RealtimeTranslationStreamEvent> Events
         {
@@ -307,6 +309,7 @@ public sealed class InterpretationSessionRoutingGateTests
             lock (_sync)
             {
                 _epoch += 1;
+                DeliveryState = new EventDeliveryState(_epoch);
                 _spokenLanguages.Clear();
                 _events = Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
             }

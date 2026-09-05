@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Receive event queue contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "version",
+    "description",
+    "capacities",
+    "terminationPrecedence",
+    "overflow",
+    "afterLoss",
+    "boundaries"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "capacities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["macos", "windows"],
+      "properties": {
+        "macos": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["connection", "merge", "unacknowledgedRetention", "stopDrainRetention"],
+          "properties": {
+            "connection": { "type": "integer", "minimum": 1 },
+            "merge": { "type": "integer", "minimum": 1 },
+            "unacknowledgedRetention": { "type": "integer", "minimum": 1 },
+            "stopDrainRetention": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "windows": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["connection", "merge"],
+          "properties": {
+            "connection": { "type": "integer", "minimum": 1 },
+            "merge": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "terminationPrecedence": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["authenticationFailed", "fatalServerError", "receiveOverflow", "transportFailure"]
+      }
+    },
+    "overflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "errorKind",
+        "errorMessageKey",
+        "isRecoverable",
+        "lossIsIndependentOfTermination",
+        "completedQueueWriteIsNotOverflow",
+        "diagnosticsExcludeEventBody"
+      ],
+      "properties": {
+        "errorKind": { "const": "receiveOverflow" },
+        "errorMessageKey": { "type": "string" },
+        "isRecoverable": { "type": "boolean" },
+        "lossIsIndependentOfTermination": { "type": "boolean" },
+        "completedQueueWriteIsNotOverflow": { "type": "boolean" },
+        "diagnosticsExcludeEventBody": { "type": "boolean" }
+      }
+    },
+    "afterLoss": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rejectsSubtitlesFromLostGeneration",
+        "discardsUnconfirmedSubtitle",
+        "preservesFinalizedSubtitle",
+        "recordsPostLossPairs",
+        "reconnectsWhileRecording",
+        "returnsToIdleWhenStopping"
+      ],
+      "properties": {
+        "rejectsSubtitlesFromLostGeneration": { "type": "boolean" },
+        "discardsUnconfirmedSubtitle": { "type": "boolean" },
+        "preservesFinalizedSubtitle": { "type": "boolean" },
+        "recordsPostLossPairs": { "type": "boolean" },
+        "reconnectsWhileRecording": { "type": "boolean" },
+        "returnsToIdleWhenStopping": { "type": "boolean" }
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "platform", "stage", "eventCount", "expectedLoss"],
+        "properties": {
+          "name": { "type": "string" },
+          "platform": { "type": "string", "enum": ["macos", "windows"] },
+          "stage": { "type": "string", "enum": ["connection", "merge", "stopDrain"] },
+          "eventCount": { "type": "integer", "minimum": 0 },
+          "expectedLoss": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

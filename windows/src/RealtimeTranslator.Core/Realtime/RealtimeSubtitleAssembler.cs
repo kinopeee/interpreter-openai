@@ -11,7 +11,9 @@ public readonly record struct RealtimeSubtitleUpdate(
     string TranslatedText,
     bool IsTranslationCurrent,
     bool ShouldFinalize,
-    int SegmentGeneration);
+    int SegmentGeneration,
+    bool IsInvalidation = false,
+    long Sequence = 0);
 
 /// <summary>原文 authority と複数出力言語を時間整列し、自動 lane 選択する。</summary>
 public sealed class RealtimeSubtitleAssembler
@@ -57,6 +59,15 @@ public sealed class RealtimeSubtitleAssembler
     }
 
     public void BeginNewEpoch(int epoch) => Reset(epoch);
+
+    public int SegmentGeneration => _segmentGeneration;
+
+    public void DiscardUnconfirmed()
+    {
+        ClearSegmentBuffers(advancingGeneration: true);
+        _expectedLane = null;
+        _awaitingSourceAfterFinalize = false;
+    }
 
     /// <summary>セッションが判定した期待翻訳 lane。同言語 echo より優先する。</summary>
     public void ExpectLane(RealtimeTranslationOutputLanguage? lane)
