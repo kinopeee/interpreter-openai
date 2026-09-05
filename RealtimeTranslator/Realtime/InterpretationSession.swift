@@ -323,10 +323,8 @@ final class InterpretationSession {
                 self.handleEventLoss(feed)
                 throw feed.deliveryState.makeError()
             }
-            if feed.deliveryState.termination != .none {
-                throw feed.deliveryState.makeError()
-            }
-            // 正常完了は consumeEvents に任せる。success で戻ると session loop が終わる。
+            // 欠落なしの終了理由は stream 上の error event が消費側へ届くので、そちらに任せる。
+            // 正常完了も consumeEvents に任せる。success で戻ると session loop が終わる。
             while !Task.isCancelled {
                 try await Task.sleep(nanoseconds: 100_000_000)
             }
