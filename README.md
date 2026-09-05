@@ -147,6 +147,8 @@ Depot の Windows Core 検査:
 ./scripts/ci-windows-core.sh   # Linux で回せる Windows Core のみ
 ```
 
+Origin で Depot を初めて有効にする場合は、リポジトリの Apps から Depot を接続し、`.depot/workflows/` を default branch へマージします。
+
 ## 注意
 
 - OpenAI APIへ送信されるのはマイク音声です。原文と訳文はAPIから受信します。
