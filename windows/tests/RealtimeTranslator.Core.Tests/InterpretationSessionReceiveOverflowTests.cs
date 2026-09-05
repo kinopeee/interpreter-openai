@@ -103,6 +103,38 @@ public sealed class InterpretationSessionReceiveOverflowTests
     }
 
     [Fact]
+    public async Task AuthenticationTerminationWinsWhenTransportServerErrorIsReadFirst()
+    {
+        // Given: authentication failure is already recorded on the active feed.
+        var client = new FakeOverflowDualClient();
+        using var session = CreateSession(client);
+        var error = NewGate();
+        string? message = null;
+        session.MessageEncountered += (_, value) =>
+        {
+            message = value;
+            error.TrySetResult();
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        client.RecordTermination(EventDeliveryTermination.AuthenticationFailed);
+
+        // When: a lower-precedence transport error is the first queued event.
+        client.PublishServerError(
+            "transport disconnected",
+            DualRealtimeTranslationClient.TransportErrorCode);
+
+        // Then: the recorded authentication failure wins without reconnecting.
+        await error.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Error);
+        Assert.Equal(UserCopy.Current.Text("error.authenticationFailed"), message);
+        Assert.Equal(1, client.StartCount);
+        await session.StopAsync();
+    }
+
+    [Fact]
     public async Task FatalTerminationMessageWinsOverOverflowWithoutReconnect()
     {
         // Given: Listening 中のイベント配送状態が致命的サーバーエラーで終了している
@@ -558,6 +590,12 @@ public sealed class InterpretationSessionReceiveOverflowTests
                     delta,
                     Guid.NewGuid().ToString(),
                     null),
+                epoch);
+
+        public void PublishServerError(string message, string code, int? epoch = null) =>
+            Publish(
+                RealtimeTranslationLane.Source,
+                new RealtimeTranslationServerEvent.ServerError(message, code),
                 epoch);
 
         private void Publish(

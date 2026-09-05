@@ -478,8 +478,12 @@ final class InterpretationSession {
         }
 
         let drainedEvents = await dualClient.closeGracefully()
-        if let feed = activeFeed, !feed.deliveryState.didLoseEvents {
-            ingestStopDrainEvents(drainedEvents, feed: feed)
+        if let feed = activeFeed {
+            if feed.deliveryState.didLoseEvents {
+                handleEventLoss(feed)
+            } else {
+                ingestStopDrainEvents(drainedEvents, feed: feed)
+            }
         }
         if let tickUpdate = assembler.tick(now: Date()) {
             apply(tickUpdate)

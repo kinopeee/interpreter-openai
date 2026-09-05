@@ -603,7 +603,9 @@ public sealed class InterpretationSession : IDisposable
 
             if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError error)
             {
-                throw ClassifyError(error);
+                var (termination, message) = EventDeliveryState.Classify(error);
+                feed.DeliveryState.TryRecordTermination(termination, message);
+                throw feed.DeliveryState.ToException();
             }
 
             if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta source
@@ -657,20 +659,6 @@ public sealed class InterpretationSession : IDisposable
         throw new RealtimeTranslationException(
             RealtimeTranslationErrorKind.RecoverableTransportFailure,
             UserCopy.Current.Text("error.eventStreamStopped"));
-    }
-
-    private static RealtimeTranslationException ClassifyError(RealtimeTranslationServerEvent.ServerError error)
-    {
-        if (error.Code == DualRealtimeTranslationClient.TransportErrorCode)
-        {
-            return new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableTransportFailure);
-        }
-
-        return RealtimeTranslationException.IsAuthenticationFailure(error.Code, error.Message)
-            ? new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed)
-            : new RealtimeTranslationException(
-                RealtimeTranslationErrorKind.FatalServerError,
-                RealtimeTranslationException.SanitizeServerMessage(error.Message));
     }
 
     private async Task RunTickerAsync(CancellationToken cancellationToken)

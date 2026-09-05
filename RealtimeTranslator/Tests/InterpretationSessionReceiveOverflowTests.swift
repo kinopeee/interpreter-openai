@@ -129,6 +129,15 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         await session.start()
         await waitForCondition { session.state == .listening }
         let epoch = await dual.connectionEpoch
+        dual.publishSourceDelta("source")
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "translation", eventID: nil, elapsedMs: nil)
+        )
+        await waitForCondition {
+            delegate.latestSnapshot?.current.sourceText == "source"
+                && delegate.latestSnapshot?.current.translatedText == "translation"
+        }
 
         dual.onCloseGracefully = {
             dual.recordLoss(stage: .stopDrain, capacity: 1024)
@@ -148,6 +157,7 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         await session.stop()
 
         XCTAssertEqual(session.state, .idle)
+        XCTAssertFalse(delegate.finalizedSnapshots.contains { $0.sourceText == "source" })
         XCTAssertFalse(delegate.finalizedSnapshots.contains { $0.translatedText == "late" })
     }
 
