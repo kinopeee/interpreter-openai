@@ -173,7 +173,6 @@ actor RealtimeSourceTranscriptionConnection {
                                 ),
                                 epoch: currentEpoch
                             )
-                            )
                         ) == true else { return }
                     case "conversation.item.input_audio_transcription.completed":
                         didReceiveCompleted = true
@@ -197,7 +196,6 @@ actor RealtimeSourceTranscriptionConnection {
                                 ),
                                 epoch: currentEpoch
                             )
-                            )
                         ) == true else { return }
                     default:
                         break
@@ -216,8 +214,7 @@ actor RealtimeSourceTranscriptionConnection {
                             ),
                             epoch: currentEpoch
                         )
-                        )
-                    ) == true else { return }
+                        ) == true else { return }
                     return
                 }
             }
