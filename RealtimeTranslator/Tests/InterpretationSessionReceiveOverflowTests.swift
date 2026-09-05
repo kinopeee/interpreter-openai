@@ -12,20 +12,24 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         let session = InterpretationSession(
             apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
             audioCapture: FakeRealtimeAudioCaptureService(),
-            dualClient: dual
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
         )
         session.delegate = delegate
 
         await session.start()
         await waitForCondition { session.state == .listening }
-        dual.publishSourceDelta("source")
         dual.emit(
             target: .english,
-            event: .outputTranscriptDelta(delta: "translation", eventID: nil, elapsedMs: nil)
+            event: .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 20)
         )
         await waitForCondition {
-            delegate.latestSnapshot?.current.sourceText == "source"
-                && delegate.latestSnapshot?.current.translatedText == "translation"
+            delegate.latestSnapshot?.current.sourceText == "こんにちは"
+                && delegate.latestSnapshot?.current.translatedText == "Hello"
         }
 
         let invalidationsBefore = delegate.snapshots.filter(\.isInvalidation).count
@@ -38,7 +42,7 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         XCTAssertEqual(invalidations.count - invalidationsBefore, 1)
         XCTAssertEqual(invalidations.last?.current.sourceText, "")
         XCTAssertEqual(invalidations.last?.current.translatedText, "")
-        XCTAssertFalse(delegate.finalizedSnapshots.contains { $0.sourceText == "source" })
+        XCTAssertFalse(delegate.finalizedSnapshots.contains { $0.sourceText == "こんにちは" })
         await session.stop()
     }
 
@@ -126,20 +130,24 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         let session = InterpretationSession(
             apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
             audioCapture: FakeRealtimeAudioCaptureService(),
-            dualClient: dual
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
         )
         session.delegate = delegate
         await session.start()
         await waitForCondition { session.state == .listening }
         let epoch = await dual.connectionEpoch
-        dual.publishSourceDelta("source")
         dual.emit(
             target: .english,
-            event: .outputTranscriptDelta(delta: "translation", eventID: nil, elapsedMs: nil)
+            event: .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 20)
         )
         await waitForCondition {
-            delegate.latestSnapshot?.current.sourceText == "source"
-                && delegate.latestSnapshot?.current.translatedText == "translation"
+            delegate.latestSnapshot?.current.sourceText == "こんにちは"
+                && delegate.latestSnapshot?.current.translatedText == "Hello"
         }
 
         dual.onCloseGracefully = {
@@ -160,7 +168,7 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         await session.stop()
 
         XCTAssertEqual(session.state, .idle)
-        XCTAssertFalse(delegate.finalizedSnapshots.contains { $0.sourceText == "source" })
+        XCTAssertFalse(delegate.finalizedSnapshots.contains { $0.sourceText == "こんにちは" })
         XCTAssertFalse(delegate.finalizedSnapshots.contains { $0.translatedText == "late" })
     }
 
