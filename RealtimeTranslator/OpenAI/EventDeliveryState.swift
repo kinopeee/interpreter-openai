@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum EventDeliveryStage: Sendable, Equatable {
     case source
