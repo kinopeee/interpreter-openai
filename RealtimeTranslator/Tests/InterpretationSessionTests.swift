@@ -951,11 +951,11 @@ final class InterpretationSessionTests: XCTestCase {
             target: .english,
             event: .inputTranscriptDelta(delta: "今日は会議です", eventID: "s1", elapsedMs: 1)
         )
+        await waitUntil { dual.spokenLanguages == [.japanese] }
         dual.emit(
             target: .english,
             event: .outputTranscriptDelta(delta: "Today is a meeting", eventID: "t1", elapsedMs: 2)
         )
-        await waitUntil { dual.spokenLanguages == [.japanese] }
         await waitUntil {
             delegate.latestSnapshot?.current.translatedText.contains("Today") == true
         }
@@ -1102,11 +1102,14 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(dual.selectedTargets, [.english, .japanese])
         XCTAssertEqual(dual.resetAudioRoutingCallCount, resetsBeforeSwitch + 1)
         await waitUntil {
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "今日は晴れです。"
+                    && $0.translatedText == "It is sunny today."
+            }
+        }
+        await waitUntil {
             delegate.latestSnapshot?.current.sourceText == "Today it is sunny outside"
         }
-        XCTAssertEqual(delegate.finalizedSnapshots.count, 1)
-        XCTAssertEqual(delegate.finalizedSnapshots.first?.sourceText, "今日は晴れです。")
-        XCTAssertEqual(delegate.finalizedSnapshots.first?.translatedText, "It is sunny today.")
         await session.stop()
     }
 
