@@ -186,7 +186,8 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         _ = assembler.ingest(event(.english, .outputTranscriptDelta(delta: "Hello", eventID: "t1", elapsedMs: 2)))
 
         // When: 言語切替で確定する
-        let finalized = assembler.finalizeForLanguageSwitch()
+        let split = assembler.splitForLanguageSwitch(at: assembler.currentSourceLength)
+        let finalized = split.finalized
 
         // Then: 完全ペアが確定する
         XCTAssertEqual(finalized?.shouldFinalize, true)
@@ -201,7 +202,8 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         _ = assembler.ingest(event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: "s1", elapsedMs: 1)))
 
         // When: 言語切替する
-        let finalized = assembler.finalizeForLanguageSwitch()
+        let split = assembler.splitForLanguageSwitch(at: assembler.currentSourceLength)
+        let finalized = split.finalized
         let next = assembler.ingest(
             event(.english, .inputTranscriptDelta(delta: "Hello there", eventID: "s2", elapsedMs: 2))
         )
@@ -210,6 +212,121 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         XCTAssertNil(finalized)
         XCTAssertEqual(next?.sourceText, "Hello there")
         XCTAssertEqual(next?.segmentGeneration, 1)
+    }
+
+    func testSplitForLanguageSwitchDoesNotFinalizeStalePair() {
+        // Given: source ????? translation ????????????? assembler
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "?????", eventID: "s1", elapsedMs: 1))
+        )
+        _ = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: "Hello", eventID: "t1", elapsedMs: 2))
+        )
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "????", eventID: "s2", elapsedMs: 3))
+        )
+
+        // When: ???????????????????????????
+        let split = assembler.splitForLanguageSwitch(at: 9)
+
+        // Then: stale pair ???????? suffix ??????
+        XCTAssertNil(split.finalized)
+        XCTAssertEqual(split.current.sourceText, "")
+        XCTAssertEqual(split.current.translatedText, "")
+        XCTAssertFalse(split.current.shouldFinalize)
+    }
+
+    func testBoundaryCandidatePendingDoesNotBlockIdleFinalizeOfCurrentPair() {
+        // Given: 完全ペアのあと境界候補が pending の assembler
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        assembler.expectLane(.english)
+        let start = Date()
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "今日は OpenAI", eventID: "s1", elapsedMs: 1)),
+            now: start
+        )
+        _ = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: "Today it is OpenAI", eventID: "t1", elapsedMs: 2)),
+            now: start
+        )
+        assembler.setBoundaryCandidatePending(true)
+
+        // When: idle finalize 間隔を超えて tick する
+        let update = assembler.tick(now: start.addingTimeInterval(9))
+
+        // Then: 誤検知候補でも現行の完全ペアは確定する
+        XCTAssertEqual(update?.shouldFinalize, true)
+        XCTAssertEqual(update?.sourceText, "今日は OpenAI")
+        XCTAssertEqual(update?.translatedText, "Today it is OpenAI")
+    }
+
+    func testSplitForLanguageSwitchFinalizesWhenLateTranslationPassedBoundary() {
+        // Given: 新言語側の原文が先に伸びてからプレフィックスの訳文が届く
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        assembler.expectLane(.english)
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: "s1", elapsedMs: 1))
+        )
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: " Hello", eventID: "s2", elapsedMs: 2))
+        )
+        _ = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: "Hello", eventID: "t1", elapsedMs: 3))
+        )
+
+        // When: 確認済み境界で split する
+        let split = assembler.splitForLanguageSwitch(at: 5)
+
+        // Then: 境界を越えて届いた訳文でもプレフィックスを確定する
+        XCTAssertEqual(split.finalized?.shouldFinalize, true)
+        XCTAssertEqual(split.finalized?.sourceText, "こんにちは")
+        XCTAssertEqual(split.finalized?.translatedText, "Hello")
+        XCTAssertEqual(split.current.sourceText, " Hello")
+    }
+
+    func testSplitForLanguageSwitchMovesLeadingWhitespaceToTheNewSide() {
+        // Given: 訳文が付いた日本語のあとに、空白始まりの英語が続く
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        assembler.expectLane(.english)
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "今日は会議です", eventID: "s1", elapsedMs: 1))
+        )
+        _ = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: "Today is a meeting", eventID: "t1", elapsedMs: 2))
+        )
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: " Hello", eventID: "s2", elapsedMs: 3))
+        )
+
+        // When: tracker が次語先頭（空白の後ろ）を指したまま split する
+        let split = assembler.splitForLanguageSwitch(at: 8)
+
+        // Then: 空白は新側へ付き、プレフィックスだけが確定する
+        XCTAssertEqual(split.finalized?.sourceText, "今日は会議です")
+        XCTAssertEqual(split.finalized?.translatedText, "Today is a meeting")
+        XCTAssertEqual(split.current.sourceText, " Hello")
+    }
+
+    func testSplitForLanguageSwitchClampsAndAlignsSurrogateBoundary() {
+        // Given: surrogate pair を含む source
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "A😀B", eventID: "s1", elapsedMs: 1))
+        )
+
+        // When: surrogate pair の途中と範囲外で split する
+        let inside = assembler.splitForLanguageSwitch(at: 2)
+        let after = assembler.splitForLanguageSwitch(at: 99)
+
+        // Then: scalar 境界に下げ、上限を source length に clamp する
+        XCTAssertEqual(inside.current.sourceText, "😀B")
+        XCTAssertEqual(after.current.sourceText, "")
     }
 
     func testExpectedLaneIgnoresEchoFromOtherLane() {

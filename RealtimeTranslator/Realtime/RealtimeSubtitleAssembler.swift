@@ -9,6 +9,11 @@ struct RealtimeSubtitleUpdate: Equatable, Sendable {
     var isInvalidation = false
 }
 
+struct LanguageSwitchSplit: Equatable, Sendable {
+    var finalized: RealtimeSubtitleUpdate?
+    var current: RealtimeSubtitleUpdate
+}
+
 /// 原文authorityとペア内の2出力を時間整列し、自動lane選択する。
 struct RealtimeSubtitleAssembler: Sendable {
     // Realtime Translation can pause output deltas for 5 seconds or more while
@@ -20,6 +25,7 @@ struct RealtimeSubtitleAssembler: Sendable {
     private var segmentGeneration = 0
     private var sourceText = ""
     private var translationText: [RealtimeTranslationOutputLanguage: String] = [:]
+    private var translationSourceEnd: [RealtimeTranslationOutputLanguage: Int] = [:]
     private var selectedLane: RealtimeTranslationOutputLanguage?
     private var expectedLane: RealtimeTranslationOutputLanguage?
     private var languagePair: LanguagePair
@@ -31,6 +37,7 @@ struct RealtimeSubtitleAssembler: Sendable {
     private var finalizedCutoffElapsedMs: Int?
     private var maxTranslationElapsedMs: Int?
     private var awaitingSourceAfterFinalize = false
+    private var boundaryCandidatePending = false
     private var translationIsCurrent = false
 
     init(languagePair: LanguagePair = .jaEn) {
@@ -39,6 +46,14 @@ struct RealtimeSubtitleAssembler: Sendable {
 
     var currentSegmentGeneration: Int {
         segmentGeneration
+    }
+
+    var currentSourceText: String {
+        sourceText
+    }
+
+    var currentSourceLength: Int {
+        sourceText.utf16.count
     }
 
     mutating func setLanguagePair(_ pair: LanguagePair) {
@@ -55,6 +70,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         finalizedCutoffElapsedMs = nil
         maxTranslationElapsedMs = nil
         awaitingSourceAfterFinalize = false
+        boundaryCandidatePending = false
         translationIsCurrent = false
     }
 
@@ -65,7 +81,12 @@ struct RealtimeSubtitleAssembler: Sendable {
     mutating func discardUnconfirmed() {
         clearSegmentBuffers(advancingGeneration: true)
         awaitingSourceAfterFinalize = false
+        boundaryCandidatePending = false
         lastActivityAt = Date()
+    }
+
+    mutating func setBoundaryCandidatePending(_ pending: Bool) {
+        boundaryCandidatePending = pending
     }
 
     /// セッションが判定した期待翻訳lane。同言語echoより優先する。
@@ -92,19 +113,44 @@ struct RealtimeSubtitleAssembler: Sendable {
     }
 
     /// 言語切替時に現行ペアを確定する。完全ペアがなければbufferだけクリアする。
-    /// hysteresis で原文が伸びて訳が stale でも、切替境界としては既存ペアを確定する。
-    mutating func finalizeForLanguageSwitch(now: Date = Date()) -> RealtimeSubtitleUpdate? {
+    /// 訳文の受理位置が境界に到達済み（>= offset）の場合のみ prefix ペアを確定し、未到達の stale 訳文は破棄する。
+    mutating func splitForLanguageSwitch(
+        at offset: Int,
+        now: Date = Date()
+    ) -> LanguageSwitchSplit {
+        let clampedOffset = boundaryOffsetMovingWhitespaceToNewSide(offset)
+        let splitIndex = String.Index(
+            utf16Offset: clampedOffset,
+            in: sourceText
+        )
+        let prefix = String(sourceText[..<splitIndex])
+        let suffix = String(sourceText[splitIndex...])
+        let translationReachedBoundary = selectedLane.flatMap { translationSourceEnd[$0] }
+            .map { $0 >= clampedOffset } == true
         let hasCompletePair =
-            !sourceText.isEmpty
+            !prefix.isEmpty
             && selectedLane != nil
             && !currentTranslation.isEmpty
+            && translationReachedBoundary
+
+        var finalized: RealtimeSubtitleUpdate?
         if hasCompletePair {
-            return finalizeCurrent(elapsedHint: nil, now: now)
+            finalizedCutoffElapsedMs = maxTranslationElapsedMs
+            finalized = RealtimeSubtitleUpdate(
+                sourceText: prefix,
+                translatedText: currentTranslation,
+                isTranslationCurrent: true,
+                shouldFinalize: true,
+                segmentGeneration: segmentGeneration
+            )
         }
+
         clearSegmentBuffers(advancingGeneration: true)
-        awaitingSourceAfterFinalize = true
+        sourceText = suffix
+        awaitingSourceAfterFinalize = suffix.isEmpty
+        boundaryCandidatePending = false
         lastActivityAt = now
-        return nil
+        return LanguageSwitchSplit(finalized: finalized, current: snapshot())
     }
 
     mutating func ingest(
@@ -208,6 +254,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         }
 
         translationText[target, default: ""] += delta
+        translationSourceEnd[target] = sourceText.utf16.count
         rememberTranslationElapsed(elapsedMs)
 
         lastActivityAt = now
@@ -292,7 +339,11 @@ struct RealtimeSubtitleAssembler: Sendable {
 
         let translation = currentTranslation
         if !translation.isEmpty, translationIsCurrent {
+            // 未確定の境界候補（文末の製品名など）は、切替未確定のまま idle した完全ペアを止めない。
             return finalizeCurrent(elapsedHint: nil, now: now)
+        }
+        if boundaryCandidatePending {
+            return nil
         }
         if !translation.isEmpty {
             // 旧訳文は確定しないが、次発話の原文が同一セグメントへ連結しないよう境界だけ進める。
@@ -350,12 +401,50 @@ struct RealtimeSubtitleAssembler: Sendable {
     private mutating func clearSegmentBuffers(advancingGeneration: Bool) {
         sourceText = ""
         translationText.removeAll(keepingCapacity: true)
+        translationSourceEnd.removeAll(keepingCapacity: true)
         selectedLane = nil
         translationIsCurrent = false
+        boundaryCandidatePending = false
         seenNilEventKeys.removeAll(keepingCapacity: true)
         if advancingGeneration {
             segmentGeneration += 1
         }
+    }
+
+    private func alignedSourceOffset(_ offset: Int) -> Int {
+        let bounded = min(max(offset, 0), currentSourceLength)
+        var current = 0
+        for scalar in sourceText.unicodeScalars {
+            let next = current + scalar.utf16.count
+            if next > bounded {
+                return current
+            }
+            current = next
+        }
+        return current
+    }
+
+    /// 空白と `¿` / `¡` は新側へ付ける。tracker の candidate が次語先頭でもプレフィックスを合わせる。
+    private func boundaryOffsetMovingWhitespaceToNewSide(_ offset: Int) -> Int {
+        let bounded = alignedSourceOffset(offset)
+        var entries: [(offset: Int, scalar: Unicode.Scalar)] = []
+        var cursor = 0
+        for scalar in sourceText.unicodeScalars {
+            entries.append((offset: cursor, scalar: scalar))
+            cursor += scalar.utf16.count
+        }
+        var result = bounded
+        var index = entries.firstIndex { $0.offset >= bounded } ?? entries.count
+        while index > 0 {
+            let previous = entries[index - 1]
+            let isNewSidePrefix = CharacterSet.whitespacesAndNewlines.contains(previous.scalar)
+                || previous.scalar.value == 0x00BF
+                || previous.scalar.value == 0x00A1
+            guard isNewSidePrefix else { break }
+            result = previous.offset
+            index -= 1
+        }
+        return result
     }
 
     private mutating func hasSeenTranscriptEvent(

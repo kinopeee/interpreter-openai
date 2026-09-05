@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v2/schema/subtitle.schema.json",
+  "title": "Subtitle clipping, source boundaries, and assembly fixtures",
+  "type": "object",
+  "required": ["version", "limits", "clip", "assembler", "boundary"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 2 },
+    "description": { "type": "string" },
+    "limits": {
+      "type": "object",
+      "required": ["japaneseCharacterLimit", "englishCharacterLimit", "ellipsis"],
+      "additionalProperties": false,
+      "properties": {
+        "japaneseCharacterLimit": { "const": 60 },
+        "englishCharacterLimit": { "const": 120 },
+        "ellipsis": { "const": "…" }
+      }
+    },
+    "clip": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "input", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "input": { "$ref": "#/$defs/textExpression" },
+          "expected": { "$ref": "#/$defs/textExpression" }
+        }
+      }
+    },
+    "assembler": {
+      "type": "object",
+      "required": ["idleFinalizeSeconds", "cases"],
+      "additionalProperties": false,
+      "properties": {
+        "idleFinalizeSeconds": { "const": 8 },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "epoch", "steps", "expectedFinalizedPairs", "expectedFinal"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "epoch": { "type": "integer" },
+              "expectLane": { "enum": ["en", "ja", "es", null] },
+              "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } },
+              "expectedFinalizedPairs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["sourceText", "translatedText"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "sourceText": { "type": "string" },
+                    "translatedText": { "type": "string" }
+                  }
+                }
+              },
+              "expectedFinal": { "$ref": "#/$defs/update" }
+            }
+          }
+        }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "required": ["cases"],
+      "additionalProperties": false,
+      "properties": {
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "pair", "currentLanguage", "deltas", "expectedCandidateOffsets", "expectedSwitchAtDelta", "expectedOldSource", "expectedNewSource"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "pair": { "enum": ["ja-en", "ja-es", "en-es"] },
+              "currentLanguage": { "enum": ["ja", "en", "es"] },
+              "deltas": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+              "expectedCandidateOffsets": { "type": "array", "items": { "type": ["integer", "null"] } },
+              "expectedSwitchAtDelta": { "type": ["integer", "null"] },
+              "expectedOldSource": { "type": ["string", "null"] },
+              "expectedNewSource": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "textExpression": {
+      "oneOf": [
+        { "type": "object", "required": ["literal"], "additionalProperties": false, "properties": { "literal": { "type": "string" } } },
+        { "type": "object", "required": ["repeat", "count"], "additionalProperties": false, "properties": { "repeat": { "type": "string", "minLength": 1 }, "count": { "type": "integer", "minimum": 0 } } },
+        { "type": "object", "required": ["concat"], "additionalProperties": false, "properties": { "concat": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/textExpression" } } } }
+      ]
+    },
+    "update": {
+      "type": "object",
+      "required": ["sourceText", "translatedText", "isTranslationCurrent", "shouldFinalize"],
+      "additionalProperties": false,
+      "properties": {
+        "sourceText": { "type": "string" },
+        "translatedText": { "type": "string" },
+        "isTranslationCurrent": { "type": "boolean" },
+        "shouldFinalize": { "type": "boolean" }
+      }
+    },
+    "step": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["at", "kind", "lane", "text", "eventId", "elapsedMs"],
+          "additionalProperties": false,
+          "properties": {
+            "at": { "type": "number", "minimum": 0 },
+            "kind": { "const": "sourceDelta" },
+            "lane": { "const": "source" },
+            "text": { "type": "string" },
+            "eventId": { "type": ["string", "null"] },
+            "elapsedMs": { "type": ["integer", "null"] },
+            "epoch": { "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["at", "kind", "lane", "text", "eventId", "elapsedMs"],
+          "additionalProperties": false,
+          "properties": {
+            "at": { "type": "number", "minimum": 0 },
+            "kind": { "const": "translationDelta" },
+            "lane": { "enum": ["en", "ja", "es"] },
+            "text": { "type": "string" },
+            "eventId": { "type": ["string", "null"] },
+            "elapsedMs": { "type": ["integer", "null"] },
+            "epoch": { "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["at", "kind", "boundaryOffset"],
+          "additionalProperties": false,
+          "properties": {
+            "at": { "type": "number", "minimum": 0 },
+            "kind": { "const": "languageSwitch" },
+            "boundaryOffset": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["at", "kind"],
+          "additionalProperties": false,
+          "properties": {
+            "at": { "type": "number", "minimum": 0 },
+            "kind": { "const": "tick" }
+          }
+        }
+      ]
+    }
+  }
+}

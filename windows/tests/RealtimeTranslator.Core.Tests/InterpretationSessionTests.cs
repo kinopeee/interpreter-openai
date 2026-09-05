@@ -495,11 +495,61 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: macOS と同じ「今日は会議です」→「 Hello how are you today」
+    // When: 間を空けず英語原文が続く
+    // Then: プレフィックスが確定する
+    [Fact]
+    public async Task LanguageFlipFinalizesMacOsMeetingPrefix()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        client.PublishSourceDelta("今日は会議です");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "Today is a meeting");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.TranslatedText.Contains("Today", StringComparison.Ordinal));
+            }
+        });
+        client.PublishSourceDelta(" Hello how are you today");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
+
+        RealtimeSubtitleUpdate finalized = default;
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                finalized = updates.Find(update =>
+                    update.ShouldFinalize
+                    && update.SourceText.Trim() == "今日は会議です"
+                    && update.TranslatedText == "Today is a meeting");
+                return finalized.ShouldFinalize;
+            }
+        });
+        Assert.Equal("今日は会議です", finalized.SourceText.Trim());
+        await session.StopAsync();
+    }
+
     // Given: 訳文のあと同一言語の原文が伸びて stale になったセグメント
     // When: 英語へ文字種が反転する
     // Then: idle では確定しない stale ペアでも切替境界として確定する
     [Fact]
-    public async Task LanguageFlipFinalizesStalePairAfterSourceContinues()
+    public async Task LanguageFlipDoesNotFinalizeStalePairAfterSourceContinues()
     {
         var client = new FakeDualClient();
         using var session = NewSession(client);
@@ -543,25 +593,248 @@ public sealed class InterpretationSessionTests
 
         Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
         Assert.True(client.ResetAudioRoutingCount > resetsAfterJapanese);
-        RealtimeSubtitleUpdate finalized = default;
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
+        await session.StopAsync();
+    }
+
+    // Given: 日本語の原文と英語訳が確定候補として存在する
+    // When: 英語への切替を複数の原文デルタで受け取る
+    // Then: プレフィックスだけが確定し、サフィックスが現在字幕になる
+    [Fact]
+    public async Task B01LanguageFlipSplitsArrivalIntoFinalizedPrefixAndLiveSuffix()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        client.PublishSourceDelta("今日は晴れです。");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count == 1);
+        var resetsBeforeSwitch = client.ResetAudioRoutingCount;
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "It is sunny today.");
         await WaitUntilAsync(() =>
         {
             lock (updates)
             {
-                finalized = updates.Find(update => update.ShouldFinalize);
-                return finalized.ShouldFinalize;
+                return updates.Any(update => update.TranslatedText.Contains("sunny"));
             }
         });
-        Assert.Equal("これはテストです、続きです", finalized.SourceText);
-        Assert.Equal("This is a test", finalized.TranslatedText);
+        client.PublishSourceDelta("To");
+        client.PublishSourceDelta("day it is sunny outside");
+
+        await WaitUntilAsync(() => client.SpokenLanguages.Count == 2);
+        Assert.Equal(
+            [SpokenLanguage.Japanese, SpokenLanguage.English],
+            client.SpokenLanguages);
+        Assert.Equal(
+            [RealtimeTranslationOutputLanguage.English, RealtimeTranslationOutputLanguage.Japanese],
+            client.SelectedTargets);
+        Assert.Equal(resetsBeforeSwitch + 1, client.ResetAudioRoutingCount);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Count(update =>
+                    update.ShouldFinalize
+                    && update.SourceText == "今日は晴れです。"
+                    && update.TranslatedText == "It is sunny today.") == 1;
+            }
+        });
+        lock (updates)
+        {
+            Assert.Contains(
+                updates,
+                update => update.SourceText == "Today it is sunny outside");
+        }
         await session.StopAsync();
+    }
+
+    // Given: 日本語のあと曖昧なラテン1語が続き、その後に全文の訳文が届く
+    // When: 録音を停止する
+    // Then: 境界候補が残っていても完全ペアを確定して記録する
+    [Fact]
+    public async Task AmbiguousLatinTailStopFinalizesCompletePair()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        client.PublishSourceDelta("今日は");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count == 1);
+        client.PublishSourceDelta(" OpenAI");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText.Contains("OpenAI", StringComparison.Ordinal));
+            }
+        });
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "Today it is OpenAI");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Contains("OpenAI", StringComparison.Ordinal)
+                    && !update.ShouldFinalize);
+            }
+        });
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        lock (updates)
+        {
+            Assert.Contains(
+                updates,
+                update => update.ShouldFinalize
+                    && update.SourceText == "今日は OpenAI"
+                    && update.TranslatedText == "Today it is OpenAI");
+        }
+    }
+
+    // Given: 切替候補が保留中で未確定の字幕が存在する
+    // When: 受信損失を記録する
+    // Then: 一度だけ無効化され、再接続後に未確定字幕を確定しない
+    [Fact]
+    public async Task AB01PendingBoundaryLossInvalidatesAndReconnectsWithoutFinalizing()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        client.PublishSourceDelta("今日は晴れです。");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count == 1);
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "It is sunny today.");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update => update.TranslatedText.Contains("sunny"));
+            }
+        });
+        client.PublishSourceDelta(" To");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update => update.SourceText.Contains(" To"));
+            }
+        });
+        var startsBeforeLoss = client.StartCount;
+
+        client.RecordLoss();
+
+        await WaitUntilAsync(() =>
+            session.State == TranslationState.Listening
+            && client.StartCount > startsBeforeLoss);
+        lock (updates)
+        {
+            Assert.Equal(1, updates.Count(update => update.IsInvalidation));
+            Assert.DoesNotContain(
+                updates,
+                update => update.ShouldFinalize
+                    && (update.SourceText.Contains("今日は晴れです。")
+                        || update.SourceText.Contains(" To")));
+        }
+        await session.StopAsync();
+    }
+
+    // Given: 日本語の完全なペアがあり、停止時のドレインで英語切替が届く
+    // When: 停止してcloseGracefullyのイベントをドレインする
+    // Then: 一度だけ確定し、ドレイン中に音声ルーティングを変更しない
+    [Fact]
+    public async Task AB02StopDrainSwitchFinalizesExactlyOnceWithoutRoutingTransportCalls()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        client.PublishSourceDelta("今日は晴れです。");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count == 1);
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "It is sunny today.");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update => update.TranslatedText.Contains("sunny"));
+            }
+        });
+        var selectedBeforeDrain = client.SelectedTargets.Count;
+        var resetsBeforeDrain = client.ResetAudioRoutingCount;
+        client.OnCloseGracefully = () =>
+        {
+            client.PublishSourceDelta("Today it is sunny outside");
+            return Task.CompletedTask;
+        };
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        lock (updates)
+        {
+            Assert.Equal(
+                1,
+                updates.Count(update =>
+                    update.ShouldFinalize
+                    && update.SourceText == "今日は晴れです。"));
+        }
+        Assert.Equal(selectedBeforeDrain, client.SelectedTargets.Count);
+        Assert.Equal(resetsBeforeDrain, client.ResetAudioRoutingCount);
     }
 
     // Given: ja-es で日本語→es の完全ペアが揃ったあとスペイン語へ反転する原文
     // When: 文字種の反転を検出する
     // Then: 前セグメントを確定し、音声 routing を日本語 target へ切り替え直す
     [Fact]
-    public async Task JaEsLanguageFlipFinalizesAndReroutes()
+    public async Task JaEsLanguageFlipSplitsAndReroutesWithoutFinalizingStalePair()
     {
         var client = new FakeDualClient();
         using var session = NewSession(client, languagePairProvider: () => LanguagePair.JaEs);
@@ -601,17 +874,10 @@ public sealed class InterpretationSessionTests
             client.SelectedTargets);
         Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.Spanish], client.SpokenLanguages);
         Assert.True(client.ResetAudioRoutingCount > resetsAfterJapanese);
-        RealtimeSubtitleUpdate finalized = default;
-        await WaitUntilAsync(() =>
+        lock (updates)
         {
-            lock (updates)
-            {
-                finalized = updates.Find(update => update.ShouldFinalize);
-                return finalized.ShouldFinalize;
-            }
-        });
-        Assert.Equal("これはテストです", finalized.SourceText);
-        Assert.Equal("Esto es una prueba", finalized.TranslatedText);
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
         await session.StopAsync();
     }
 
@@ -788,7 +1054,7 @@ public sealed class InterpretationSessionTests
 
         Assert.Equal([SpokenLanguage.English, SpokenLanguage.Japanese], client.SpokenLanguages);
         Assert.Equal(
-            RoutingSourceTextWindow.Trim(flipDelta, LanguagePair.JaEn),
+            " " + RoutingSourceTextWindow.Trim(flipDelta, LanguagePair.JaEn),
             session.RoutingSourceTextForTests);
         Assert.DoesNotContain("script", session.RoutingSourceTextForTests, StringComparison.Ordinal);
         Assert.DoesNotContain("english", session.RoutingSourceTextForTests, StringComparison.Ordinal);
@@ -1361,20 +1627,10 @@ public sealed class InterpretationSessionTests
             client.SelectedTargets);
         Assert.Equal([SpokenLanguage.Spanish, SpokenLanguage.English], client.SpokenLanguages);
         Assert.True(client.ResetAudioRoutingCount > resetsAfterSpanish);
-        RealtimeSubtitleUpdate finalized = default;
-        await WaitUntilAsync(() =>
+        lock (updates)
         {
-            lock (updates)
-            {
-                finalized = updates.Find(update => update.ShouldFinalize);
-                return finalized.ShouldFinalize;
-            }
-        });
-        Assert.Equal(
-            "el la los las es está que y the and is are of to it that",
-            finalized.SourceText);
-        Assert.DoesNotContain("this with for you they", finalized.SourceText, StringComparison.Ordinal);
-        Assert.Equal("Hello from Spanish", finalized.TranslatedText);
+            Assert.Contains(updates, update => update.ShouldFinalize);
+        }
         await session.StopAsync();
     }
 
@@ -1780,6 +2036,68 @@ public sealed class InterpretationSessionTests
 
         Assert.Equal("再接続前の原文", finalized.SourceText);
         Assert.Equal("Late merged translation during ForceClose", finalized.TranslatedText);
+        await session.StopAsync();
+    }
+
+    // Given: 日本語の完全ペアがあり、ForceClose 中に英語原文が遅れて届く
+    // When: transport error で再接続 teardown する
+    // Then: 二度目の回収でも境界分割し、切替前ペアを確定する。通信先は変えない
+    [Fact]
+    public async Task ReconnectForceCloseLateLanguageSwitchFinalizesPrefixPair()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, initialReconnectDelay: TimeSpan.FromSeconds(2));
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("今日は会議です");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "Today is a meeting");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Contains("Today", StringComparison.Ordinal));
+            }
+        });
+        var resetsBeforeError = client.ResetAudioRoutingCount;
+        var selectedBeforeError = client.SelectedTargets.ToArray();
+
+        client.OnForceCloseBeforeComplete = () =>
+        {
+            client.OnForceCloseBeforeComplete = null;
+            client.PublishSourceDelta(" Hello how are you today");
+        };
+        client.PublishTransportError();
+        RealtimeSubtitleUpdate finalized = default;
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                finalized = updates.Find(update =>
+                    update.ShouldFinalize
+                    && update.SourceText.Trim() == "今日は会議です"
+                    && update.TranslatedText == "Today is a meeting");
+                return finalized.ShouldFinalize;
+            }
+        });
+
+        Assert.Equal("今日は会議です", finalized.SourceText.Trim());
+        Assert.Equal("Today is a meeting", finalized.TranslatedText);
+        Assert.Equal(resetsBeforeError, client.ResetAudioRoutingCount);
+        Assert.Equal(selectedBeforeError, client.SelectedTargets.ToArray());
         await session.StopAsync();
     }
 
@@ -3223,6 +3541,17 @@ public sealed class InterpretationSessionTests
         public void PublishServerError(string message, string code) => Publish(
             RealtimeTranslationOutputLanguage.English,
             new RealtimeTranslationServerEvent.ServerError(message, code));
+
+        public void RecordLoss(
+            EventDeliveryStage stage = EventDeliveryStage.Merge,
+            int capacity = 512)
+        {
+            lock (_sync)
+            {
+                DeliveryState.RecordLoss(stage, capacity);
+                _events.Writer.TryComplete();
+            }
+        }
 
         public void Complete()
         {

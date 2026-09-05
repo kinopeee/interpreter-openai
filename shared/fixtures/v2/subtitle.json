@@ -1,0 +1,442 @@
+{
+  "$schema": "./schema/subtitle.schema.json",
+  "version": 2,
+  "description": "Source-boundary and subtitle assembler contract.",
+  "limits": {
+    "japaneseCharacterLimit": 60,
+    "englishCharacterLimit": 120,
+    "ellipsis": "…"
+  },
+  "clip": [
+    {
+      "name": "short japanese is unchanged",
+      "input": { "literal": "こんにちは、世界。" },
+      "expected": { "literal": "こんにちは、世界。" }
+    },
+    {
+      "name": "short english is unchanged",
+      "input": { "literal": "Hello world" },
+      "expected": { "literal": "Hello world" }
+    }
+  ],
+  "assembler": {
+    "idleFinalizeSeconds": 8,
+    "cases": [
+      {
+        "name": "complete pair finalizes at an empty split",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 0.3, "kind": "languageSwitch", "boundaryOffset": 5 }
+        ],
+        "expectedFinalizedPairs": [
+          { "sourceText": "こんにちは", "translatedText": "Hello" }
+        ],
+        "expectedFinal": {
+          "sourceText": "",
+          "translatedText": "",
+          "isTranslationCurrent": false,
+          "shouldFinalize": false
+        }
+      },
+      {
+        "name": "split english arrival moves the whole english sentence",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "あいうえおかきく", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "It is sunny today.", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 0.3, "kind": "sourceDelta", "lane": "source", "text": "To", "eventId": "s2", "elapsedMs": 300 },
+          { "at": 0.4, "kind": "sourceDelta", "lane": "source", "text": "day it is sunny outside", "eventId": "s3", "elapsedMs": 400 },
+          { "at": 0.5, "kind": "languageSwitch", "boundaryOffset": 8 }
+        ],
+        "expectedFinalizedPairs": [
+          { "sourceText": "あいうえおかきく", "translatedText": "It is sunny today." }
+        ],
+        "expectedFinal": {
+          "sourceText": "Today it is sunny outside",
+          "translatedText": "",
+          "isTranslationCurrent": false,
+          "shouldFinalize": false
+        }
+      },
+      {
+        "name": "boundary inside one delta keeps every character",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "あいうえおかきく", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "It is sunny.", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 0.3, "kind": "sourceDelta", "lane": "source", "text": "Today is sunny outside", "eventId": "s2", "elapsedMs": 300 },
+          { "at": 0.4, "kind": "languageSwitch", "boundaryOffset": 8 }
+        ],
+        "expectedFinalizedPairs": [
+          { "sourceText": "あいうえおかきく", "translatedText": "It is sunny." }
+        ],
+        "expectedFinal": {
+          "sourceText": "Today is sunny outside",
+          "translatedText": "",
+          "isTranslationCurrent": false,
+          "shouldFinalize": false
+        }
+      },
+      {
+        "name": "old translation that did not catch up is not recorded",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "あいうえお", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 0.3, "kind": "sourceDelta", "lane": "source", "text": "かきくけ", "eventId": "s2", "elapsedMs": 300 },
+          { "at": 0.4, "kind": "languageSwitch", "boundaryOffset": 9 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": {
+          "sourceText": "",
+          "translatedText": "",
+          "isTranslationCurrent": false,
+          "shouldFinalize": false
+        }
+      },
+      {
+        "name": "source only does not finalize without a translation",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 9, "kind": "tick" }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "こんにちは", "translatedText": "", "isTranslationCurrent": false, "shouldFinalize": false }
+      },
+      {
+        "name": "complete pair finalizes after the idle interval",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 9, "kind": "tick" }
+        ],
+        "expectedFinalizedPairs": [{ "sourceText": "こんにちは", "translatedText": "Hello" }],
+        "expectedFinal": { "sourceText": "こんにちは", "translatedText": "Hello", "isTranslationCurrent": true, "shouldFinalize": true }
+      },
+      {
+        "name": "expected lane wins over the echo lane",
+        "epoch": 1,
+        "expectLane": "ja",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "Hello there", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "Hello there", "eventId": "t-echo", "elapsedMs": 150 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "ja", "text": "こんにちは", "eventId": "t1", "elapsedMs": 200 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "Hello there", "translatedText": "こんにちは", "isTranslationCurrent": true, "shouldFinalize": false }
+      },
+      {
+        "name": "events from another epoch are ignored",
+        "epoch": 2,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "stale", "eventId": "s0", "elapsedMs": 10, "epoch": 1 },
+          { "at": 0.1, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "こんにちは", "translatedText": "", "isTranslationCurrent": false, "shouldFinalize": false }
+      },
+      {
+        "name": "duplicate event ids are ignored",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "あい", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "sourceDelta", "lane": "source", "text": "あい", "eventId": "s1", "elapsedMs": 100 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "あい", "translatedText": "", "isTranslationCurrent": false, "shouldFinalize": false }
+      },
+      {
+        "name": "language switch finalizes a complete pair",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 0.3, "kind": "languageSwitch", "boundaryOffset": 5 }
+        ],
+        "expectedFinalizedPairs": [{ "sourceText": "こんにちは", "translatedText": "Hello" }],
+        "expectedFinal": { "sourceText": "", "translatedText": "", "isTranslationCurrent": false, "shouldFinalize": false }
+      },
+      {
+        "name": "language switch does not finalize stale pair",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 0.4, "kind": "sourceDelta", "lane": "source", "text": "、皆さん", "eventId": "s2", "elapsedMs": 300 },
+          { "at": 0.5, "kind": "languageSwitch", "boundaryOffset": 9 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "", "translatedText": "", "isTranslationCurrent": false, "shouldFinalize": false }
+      },
+      {
+        "name": "late translation after new-language source still finalizes the prefix",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "sourceDelta", "lane": "source", "text": " Hello", "eventId": "s2", "elapsedMs": 200 },
+          { "at": 0.3, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 300 },
+          { "at": 0.4, "kind": "languageSwitch", "boundaryOffset": 5 }
+        ],
+        "expectedFinalizedPairs": [{ "sourceText": "こんにちは", "translatedText": "Hello" }],
+        "expectedFinal": { "sourceText": " Hello", "translatedText": "", "isTranslationCurrent": false, "shouldFinalize": false }
+      },
+      {
+        "name": "language switch without pair clears buffers for the next source",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "languageSwitch", "boundaryOffset": 5 },
+          { "at": 0.2, "kind": "sourceDelta", "lane": "source", "text": "Hello there", "eventId": "s2", "elapsedMs": 200 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "Hello there", "translatedText": "", "isTranslationCurrent": false, "shouldFinalize": false }
+      },
+      {
+        "name": "stale idle does not concatenate the next source",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 0.4, "kind": "sourceDelta", "lane": "source", "text": "、皆さん", "eventId": "s2", "elapsedMs": 300 },
+          { "at": 9, "kind": "tick" },
+          { "at": 9.2, "kind": "sourceDelta", "lane": "source", "text": "ありがとう", "eventId": "s3", "elapsedMs": 400 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "ありがとう", "translatedText": "", "isTranslationCurrent": false, "shouldFinalize": false }
+      },
+      {
+        "name": "late translation after idle finalize is ignored until next source",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは。", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello.", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 9, "kind": "tick" },
+          { "at": 9.1, "kind": "translationDelta", "lane": "en", "text": " Late", "eventId": "t2", "elapsedMs": 300 }
+        ],
+        "expectedFinalizedPairs": [{ "sourceText": "こんにちは。", "translatedText": "Hello." }],
+        "expectedFinal": { "sourceText": "こんにちは。", "translatedText": "Hello.", "isTranslationCurrent": true, "shouldFinalize": true }
+      },
+      {
+        "name": "mid idle pause does not finalize a complete pair",
+        "epoch": 1,
+        "expectLane": "ja",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "hello world", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "ja", "text": "こんにちは世界", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 5.5, "kind": "tick" }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "hello world", "translatedText": "こんにちは世界", "isTranslationCurrent": true, "shouldFinalize": false }
+      },
+      {
+        "name": "first output lane wins when both eventually emit",
+        "epoch": 1,
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "Tokyo", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "Tokyo", "eventId": "e1", "elapsedMs": 150 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "ja", "text": "東京", "eventId": "j1", "elapsedMs": 200 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "Tokyo", "translatedText": "Tokyo", "isTranslationCurrent": true, "shouldFinalize": false }
+      },
+      {
+        "name": "selected lane silence in mixed speech still displays source",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "今日は", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "Today", "eventId": "t1", "elapsedMs": 150 },
+          { "at": 0.2, "kind": "sourceDelta", "lane": "source", "text": " meeting", "eventId": "s2", "elapsedMs": 200 },
+          { "at": 0.3, "kind": "translationDelta", "lane": "ja", "text": "会議", "eventId": "j1", "elapsedMs": 250 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "今日は meeting", "translatedText": "Today", "isTranslationCurrent": false, "shouldFinalize": false }
+      },
+      {
+        "name": "shared elapsed ms allows multiple source deltas",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "Hi", "eventId": "s1", "elapsedMs": 5 },
+          { "at": 0.1, "kind": "sourceDelta", "lane": "source", "text": " there", "eventId": "s2", "elapsedMs": 5 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "Hi there", "translatedText": "", "isTranslationCurrent": false, "shouldFinalize": false }
+      },
+      {
+        "name": "punctuation does not finalize a streaming complete pair",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは。", "eventId": "s1", "elapsedMs": 1 },
+          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "Hello.", "eventId": "t1", "elapsedMs": 2 },
+          { "at": 0.5, "kind": "tick" }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "こんにちは。", "translatedText": "Hello.", "isTranslationCurrent": true, "shouldFinalize": false }
+      },
+      {
+        "name": "spanish translation lane is selected explicitly",
+        "epoch": 1,
+        "expectLane": "es",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s-es", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "es", "text": "Hola", "eventId": "t-es", "elapsedMs": 200 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "こんにちは", "translatedText": "Hola", "isTranslationCurrent": true, "shouldFinalize": false }
+      },
+      {
+        "name": "expected spanish lane wins over japanese echo",
+        "epoch": 1,
+        "expectLane": "es",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "これは会議です", "eventId": "s-es-echo", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "translationDelta", "lane": "ja", "text": "これは会議です", "eventId": "t-ja-echo", "elapsedMs": 150 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "es", "text": "Esta es una reunión", "eventId": "t-es-real", "elapsedMs": 200 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "これは会議です", "translatedText": "Esta es una reunión", "isTranslationCurrent": true, "shouldFinalize": false }
+      },
+      {
+        "name": "expected spanish lane wins over english echo",
+        "epoch": 1,
+        "expectLane": "es",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "the meeting starts now", "eventId": "s-en-echo", "elapsedMs": 100 },
+          { "at": 0.1, "kind": "translationDelta", "lane": "en", "text": "the meeting starts now", "eventId": "t-en-echo", "elapsedMs": 150 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "es", "text": "la reunión empieza ahora", "eventId": "t-es-real", "elapsedMs": 200 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "the meeting starts now", "translatedText": "la reunión empieza ahora", "isTranslationCurrent": true, "shouldFinalize": false }
+      },
+      {
+        "name": "duplicate translation event ids are ignored",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 0.3, "kind": "translationDelta", "lane": "en", "text": " again", "eventId": "t1", "elapsedMs": 250 }
+        ],
+        "expectedFinalizedPairs": [],
+        "expectedFinal": { "sourceText": "こんにちは", "translatedText": "Hello", "isTranslationCurrent": true, "shouldFinalize": false }
+      },
+      {
+        "name": "late source delta after finalize is ignored by elapsed cutoff",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
+          { "at": 9, "kind": "tick" },
+          { "at": 9.2, "kind": "sourceDelta", "lane": "source", "text": "遅延原文", "eventId": "s-late", "elapsedMs": 150 }
+        ],
+        "expectedFinalizedPairs": [{ "sourceText": "こんにちは", "translatedText": "Hello" }],
+        "expectedFinal": { "sourceText": "こんにちは", "translatedText": "Hello", "isTranslationCurrent": true, "shouldFinalize": true }
+      }
+    ]
+  },
+  "boundary": {
+    "cases": [
+      {
+        "name": "ja-en split arrival",
+        "pair": "ja-en",
+        "currentLanguage": "ja",
+        "deltas": ["あいうえおかきく", "To", "day it is sunny outside"],
+        "expectedCandidateOffsets": [null, 8, 8],
+        "expectedSwitchAtDelta": 2,
+        "expectedOldSource": "あいうえおかきく",
+        "expectedNewSource": "Today it is sunny outside"
+      },
+      {
+        "name": "ja-en boundary inside delta",
+        "pair": "ja-en",
+        "currentLanguage": "ja",
+        "deltas": ["あいうえおかきく", "Today is sunny outside"],
+        "expectedCandidateOffsets": [null, 8],
+        "expectedSwitchAtDelta": 1,
+        "expectedOldSource": "あいうえおかきく",
+        "expectedNewSource": "Today is sunny outside"
+      },
+      {
+        "name": "ja-es inverted mark belongs to the new side",
+        "pair": "ja-es",
+        "currentLanguage": "ja",
+        "deltas": ["あいうえおかきく", " ¿Qué tal estás hoy amigo?"],
+        "expectedCandidateOffsets": [null, 8],
+        "expectedSwitchAtDelta": 1,
+        "expectedOldSource": "あいうえおかきく",
+        "expectedNewSource": " ¿Qué tal estás hoy amigo?"
+      },
+      {
+        "name": "en-es sentence start is used when no english cue precedes the cue",
+        "pair": "en-es",
+        "currentLanguage": "en",
+        "deltas": ["It is over.", " Pero la reunión es", " mañana"],
+        "expectedCandidateOffsets": [null, 11, 11],
+        "expectedSwitchAtDelta": 2,
+        "expectedOldSource": "It is over.",
+        "expectedNewSource": " Pero la reunión es mañana"
+      },
+      {
+        "name": "en-es cue start is used when an english cue precedes it in the sentence",
+        "pair": "en-es",
+        "currentLanguage": "en",
+        "deltas": ["It is over and", " la reunión está", " mañana"],
+        "expectedCandidateOffsets": [null, 14, 14],
+        "expectedSwitchAtDelta": 2,
+        "expectedOldSource": "It is over and",
+        "expectedNewSource": " la reunión está mañana"
+      },
+      {
+        "name": "ja-en candidate is cancelled when japanese returns",
+        "pair": "ja-en",
+        "currentLanguage": "ja",
+        "deltas": ["あいう", " To", "kyo日本語"],
+        "expectedCandidateOffsets": [null, 3, null],
+        "expectedSwitchAtDelta": null,
+        "expectedOldSource": null,
+        "expectedNewSource": null
+      },
+      {
+        "name": "en-es candidate is cancelled when evidence returns to english",
+        "pair": "en-es",
+        "currentLanguage": "en",
+        "deltas": ["the plan is", " Pero el que la", " and the meeting is for you"],
+        "expectedCandidateOffsets": [null, 11, null],
+        "expectedSwitchAtDelta": null,
+        "expectedOldSource": null,
+        "expectedNewSource": null
+      },
+      {
+        "name": "latin to japanese",
+        "pair": "ja-en",
+        "currentLanguage": "en",
+        "deltas": ["Let's start the meeting.", " あいうえお"],
+        "expectedCandidateOffsets": [null, 24],
+        "expectedSwitchAtDelta": 1,
+        "expectedOldSource": "Let's start the meeting.",
+        "expectedNewSource": " あいうえお"
+      }
+    ]
+  }
+}

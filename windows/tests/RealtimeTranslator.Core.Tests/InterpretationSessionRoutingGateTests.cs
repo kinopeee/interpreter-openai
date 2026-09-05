@@ -19,7 +19,7 @@ public sealed class InterpretationSessionRoutingGateTests
 {
     // Given: 完全ペア表示後、言語切替の SelectTranslationTarget が routing gate 内で止まっている
     // When: Stop を経ずに Dispose する（OnExit 相当）
-    // Then: 切替前ペアは ShouldFinalize され、切替原文は assembler に入らず、破棄例外にならない
+    // Then: 切替前ペアは ShouldFinalize され、切替後の原文は現行字幕として emit され、破棄例外にならない
     [Fact]
     public async Task DisposeWhileSelectTargetBlockedStillFinalizesCompletePair()
     {
@@ -65,7 +65,7 @@ public sealed class InterpretationSessionRoutingGateTests
         lock (updates)
         {
             finalized = updates.Find(update => update.ShouldFinalize);
-            Assert.DoesNotContain(
+            Assert.Contains(
                 updates,
                 update => update.SourceText.Contains("continue in english", StringComparison.Ordinal));
         }

@@ -951,11 +951,11 @@ final class InterpretationSessionTests: XCTestCase {
             target: .english,
             event: .inputTranscriptDelta(delta: "今日は会議です", eventID: "s1", elapsedMs: 1)
         )
+        await waitUntil { dual.spokenLanguages == [.japanese] }
         dual.emit(
             target: .english,
             event: .outputTranscriptDelta(delta: "Today is a meeting", eventID: "t1", elapsedMs: 2)
         )
-        await waitUntil { dual.spokenLanguages == [.japanese] }
         await waitUntil {
             delegate.latestSnapshot?.current.translatedText.contains("Today") == true
         }
@@ -974,14 +974,19 @@ final class InterpretationSessionTests: XCTestCase {
         // Then: 言語切替で再ルーティングし、前セグメントが確定する
         await waitUntil { dual.spokenLanguages == [.japanese, .english] }
         XCTAssertGreaterThan(dual.resetAudioRoutingCallCount, resetsAfterJapanese)
+        await waitUntil(timeout: 3) {
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText.trimmingCharacters(in: .whitespacesAndNewlines) == "今日は会議です"
+                    && $0.translatedText == "Today is a meeting"
+            }
+        }
         await waitUntil {
-            delegate.latestSnapshot?.current.state == .finalized
-                || delegate.latestSnapshot?.current.sourceText.contains("Hello") == true
+            delegate.latestSnapshot?.current.sourceText.contains("Hello how are you today") == true
         }
         await session.stop()
     }
 
-    func testLanguageFlipFinalizesStalePairAfterSourceContinues() async throws {
+    func testLanguageFlipDoesNotFinalizeStalePairAfterSourceContinues() async throws {
         // Given: 訳文のあと同一言語の原文が伸びて stale になった listening セッション
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
         let audio = FakeRealtimeAudioCaptureService()
@@ -1030,24 +1035,250 @@ final class InterpretationSessionTests: XCTestCase {
             )
         )
 
-        // Then: idle では確定しない stale ペアでも切替境界として確定する
+        // Then: stale ペアは確定せず、切替後のサフィックスだけが現在字幕になる
         await waitUntil { dual.spokenLanguages == [.japanese, .english] }
         XCTAssertGreaterThan(dual.resetAudioRoutingCallCount, resetsAfterJapanese)
-        var finalizedSource: String?
-        var finalizedTranslation: String?
+        XCTAssertTrue(delegate.finalizedSnapshots.isEmpty)
         await waitUntil {
-            guard let current = delegate.latestSnapshot?.current,
-                  current.state == .finalized,
-                  current.sourceText.contains("続きです") else {
-                return false
-            }
-            finalizedSource = current.sourceText
-            finalizedTranslation = current.translatedText
-            return true
+            delegate.latestSnapshot?.current.sourceText.contains("Hello how are you today") == true
         }
-        XCTAssertEqual(finalizedSource, "今日は会議です、続きです")
-        XCTAssertEqual(finalizedTranslation, "Today is a meeting")
         await session.stop()
+    }
+
+    func testB01LanguageFlipSplitsArrivalIntoFinalizedPrefixAndLiveSuffix() async throws {
+        // Given: 日本語の原文と英語訳が確定候補として存在する
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        // When: 英語への切替を複数の原文デルタで受け取る
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: "今日は晴れです。",
+                eventID: "b01-source",
+                elapsedMs: 1
+            )
+        )
+        await waitUntil { dual.spokenLanguages == [.japanese] }
+        let resetsBeforeSwitch = dual.resetAudioRoutingCallCount
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(
+                delta: "It is sunny today.",
+                eventID: "b01-translation",
+                elapsedMs: 2
+            )
+        )
+        await waitUntil { delegate.latestSnapshot?.current.translatedText.contains("sunny") == true }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: "To",
+                eventID: "b01-to",
+                elapsedMs: 3
+            )
+        )
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: "day it is sunny outside",
+                eventID: "b01-suffix",
+                elapsedMs: 4
+            )
+        )
+
+        // Then: プレフィックスだけが確定し、サフィックスが現在字幕になる
+        await waitUntil { dual.spokenLanguages == [.japanese, .english] }
+        XCTAssertEqual(dual.spokenLanguages, [.japanese, .english])
+        XCTAssertEqual(dual.selectedTargets, [.english, .japanese])
+        XCTAssertEqual(dual.resetAudioRoutingCallCount, resetsBeforeSwitch + 1)
+        await waitUntil {
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "今日は晴れです。"
+                    && $0.translatedText == "It is sunny today."
+            }
+        }
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText == "Today it is sunny outside"
+        }
+        await session.stop()
+    }
+
+    func testAmbiguousLatinTailStopFinalizesCompletePair() async throws {
+        // Given: 日本語のあと曖昧なラテン1語が続き、その後に全文の訳文が届く
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "今日は", eventID: "tail-ja", elapsedMs: 1)
+        )
+        await waitUntil { dual.spokenLanguages == [.japanese] }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: " OpenAI", eventID: "tail-latin", elapsedMs: 2)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText.contains("OpenAI") == true
+        }
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(
+                delta: "Today it is OpenAI",
+                eventID: "tail-en",
+                elapsedMs: 3
+            )
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.translatedText.contains("OpenAI") == true
+        }
+
+        // When: 録音を停止する
+        await session.stop()
+
+        // Then: 境界候補が残っていても完全ペアを確定して記録する
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertTrue(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "今日は OpenAI"
+                    && $0.translatedText == "Today it is OpenAI"
+            }
+        )
+    }
+
+    func testAB01PendingBoundaryLossInvalidatesAndReconnectsWithoutFinalizing() async throws {
+        // Given: 切替候補が保留中で未確定の字幕が存在する
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: "今日は晴れです。",
+                eventID: "ab01-source",
+                elapsedMs: 1
+            )
+        )
+        await waitUntil { dual.spokenLanguages == [.japanese] }
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(
+                delta: "It is sunny today.",
+                eventID: "ab01-translation",
+                elapsedMs: 2
+            )
+        )
+        await waitUntil { delegate.latestSnapshot?.current.translatedText.contains("sunny") == true }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: " To",
+                eventID: "ab01-pending",
+                elapsedMs: 3
+            )
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText.contains(" To") == true
+        }
+        let startsBeforeLoss = dual.startCallCount
+
+        // When: 受信損失を記録する
+        dual.recordLoss(stage: .merge)
+
+        // Then: 一度だけ無効化され、再接続後に未確定字幕を確定しない
+        await waitUntil {
+            session.state == .listening && dual.startCallCount > startsBeforeLoss
+        }
+        XCTAssertEqual(delegate.snapshots.filter(\.isInvalidation).count, 1)
+        XCTAssertTrue(
+            delegate.finalizedSnapshots.allSatisfy {
+                !$0.sourceText.contains("今日は晴れです。")
+                    && !$0.sourceText.contains(" To")
+            }
+        )
+        await session.stop()
+    }
+
+    func testAB02StopDrainSwitchFinalizesExactlyOnceWithoutRoutingTransportCalls() async throws {
+        // Given: 日本語の完全なペアがあり、停止時のドレインで英語切替が届く
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: "今日は晴れです。",
+                eventID: "ab02-source",
+                elapsedMs: 1
+            )
+        )
+        await waitUntil { dual.spokenLanguages == [.japanese] }
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(
+                delta: "It is sunny today.",
+                eventID: "ab02-translation",
+                elapsedMs: 2
+            )
+        )
+        await waitUntil { delegate.latestSnapshot?.current.translatedText.contains("sunny") == true }
+        let selectedBeforeDrain = dual.selectedTargets.count
+        let resetBeforeDrain = dual.resetAudioRoutingCallCount
+        let epoch = await dual.connectionEpoch
+        dual.closeGracefullyEvents = [
+            RealtimeTranslationStreamEvent(
+                lane: .source,
+                event: .inputTranscriptDelta(
+                    delta: "Today it is sunny outside",
+                    eventID: "ab02-switch",
+                    elapsedMs: 3
+                ),
+                epoch: epoch
+            )
+        ]
+
+        // When: 停止してcloseGracefullyのイベントをドレインする
+        await session.stop()
+
+        // Then: 一度だけ確定し、ドレイン中に音声ルーティングを変更しない
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertEqual(delegate.finalizedSnapshots.count, 1)
+        XCTAssertEqual(delegate.finalizedSnapshots[0].sourceText, "今日は晴れです。")
+        XCTAssertEqual(dual.selectedTargets.count, selectedBeforeDrain)
+        XCTAssertEqual(dual.resetAudioRoutingCallCount, resetBeforeDrain)
     }
 
     func testApplyTuningChangeForwardsWhileListening() async throws {

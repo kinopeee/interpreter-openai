@@ -15,25 +15,30 @@ cd "$ROOT"
 AJV=(npx --yes ajv-cli@5.0.0 validate --spec=draft2020)
 
 validate_fixtures() {
-  local fixtures_dir="$ROOT/shared/fixtures/v1"
-  cd "$fixtures_dir"
   local status=0
-  local schema name fixture
-  for schema in schema/*.schema.json; do
-    name="$(basename "$schema" .schema.json)"
-    if [[ ! -f "$name.json" ]]; then
-      echo "::error::missing fixture $name.json for $schema"
-      status=1
-      continue
-    fi
-    "${AJV[@]}" -s "$schema" -d "$name.json" || status=1
-  done
-  for fixture in *.json; do
-    name="$(basename "$fixture" .json)"
-    if [[ ! -f "schema/$name.schema.json" ]]; then
-      echo "::error::missing schema for $fixture"
-      status=1
-    fi
+  local fixtures_dir schema_dir schema name fixture
+  for fixtures_dir in "$ROOT"/shared/fixtures/v*/; do
+    [[ -d "$fixtures_dir" ]] || continue
+    cd "$fixtures_dir"
+    schema_dir="$fixtures_dir/schema"
+    for schema in "$schema_dir"/*.schema.json; do
+      [[ -f "$schema" ]] || continue
+      name="$(basename "$schema" .schema.json)"
+      if [[ ! -f "$name.json" ]]; then
+        echo "::error::missing fixture $name.json for $schema"
+        status=1
+        continue
+      fi
+      "${AJV[@]}" -s "$schema" -d "$name.json" || status=1
+    done
+    for fixture in *.json; do
+      [[ -f "$fixture" ]] || continue
+      name="$(basename "$fixture" .json)"
+      if [[ ! -f "schema/$name.schema.json" ]]; then
+        echo "::error::missing schema for $fixture"
+        status=1
+      fi
+    done
   done
   cd "$ROOT"
   return "$status"

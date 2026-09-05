@@ -48,7 +48,7 @@ public static class SpokenLanguageDetector
 
         if (pair == LanguagePair.EnEs)
         {
-            var words = TokenizeWordSpans(text);
+            var words = WordSpans(text);
             return words.Count <= effectiveWindow
                 ? Evidence(text, pair)
                 : Evidence(
@@ -100,7 +100,7 @@ public static class SpokenLanguageDetector
                     break;
 
                 default:
-                    if (IsLatinWordRune(rune))
+                    if (IsLatinWordScalar(rune))
                     {
                         if (!isInsideLatinWord)
                         {
@@ -177,7 +177,7 @@ public static class SpokenLanguageDetector
         var builder = new StringBuilder();
         foreach (var rune in text.EnumerateRunes())
         {
-            if (IsLatinWordRune(rune))
+            if (IsLatinWordScalar(rune))
             {
                 builder.Append(rune.ToString());
             }
@@ -196,14 +196,14 @@ public static class SpokenLanguageDetector
         return words;
     }
 
-    private static List<(int Start, int End)> TokenizeWordSpans(string text)
+    internal static List<(int Start, int End)> WordSpans(string text)
     {
         var words = new List<(int Start, int End)>();
         var start = -1;
         var index = 0;
         foreach (var rune in text.EnumerateRunes())
         {
-            if (IsLatinWordRune(rune))
+            if (IsLatinWordScalar(rune))
             {
                 start = start < 0 ? index : start;
             }
@@ -233,7 +233,7 @@ public static class SpokenLanguageDetector
             return 0;
         }
 
-        var words = TokenizeWordSpans(text);
+        var words = WordSpans(text);
         if (words.Count <= window)
         {
             return 0;
@@ -280,7 +280,7 @@ public static class SpokenLanguageDetector
         return start;
     }
 
-    private static bool IsLatinWordRune(Rune rune) =>
+    internal static bool IsLatinWordScalar(Rune rune) =>
         rune.Value is >= 0x0041 and <= 0x005A
             or >= 0x0061 and <= 0x007A
             or >= 0x00C0 and <= 0x00D6

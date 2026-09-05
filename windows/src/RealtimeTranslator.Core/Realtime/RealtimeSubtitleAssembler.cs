@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
 
@@ -15,6 +16,10 @@ public readonly record struct RealtimeSubtitleUpdate(
     bool IsInvalidation = false,
     long Sequence = 0);
 
+public readonly record struct LanguageSwitchSplit(
+    RealtimeSubtitleUpdate? Finalized,
+    RealtimeSubtitleUpdate Current);
+
 /// <summary>原文 authority と複数出力言語を時間整列し、自動 lane 選択する。</summary>
 public sealed class RealtimeSubtitleAssembler
 {
@@ -28,6 +33,7 @@ public sealed class RealtimeSubtitleAssembler
     private int _segmentGeneration;
     private string _sourceText = string.Empty;
     private readonly Dictionary<RealtimeTranslationOutputLanguage, string> _translationText = new();
+    private readonly Dictionary<RealtimeTranslationOutputLanguage, int> _translationSourceEnd = new();
     private RealtimeTranslationOutputLanguage? _selectedLane;
     private RealtimeTranslationOutputLanguage? _expectedLane;
     private readonly HashSet<string> _seenEventIds = new(StringComparer.Ordinal);
@@ -36,6 +42,7 @@ public sealed class RealtimeSubtitleAssembler
     private int? _finalizedCutoffElapsedMs;
     private int? _maxTranslationElapsedMs;
     private bool _awaitingSourceAfterFinalize;
+    private bool _boundaryCandidatePending;
     private bool _translationIsCurrent;
 
     public RealtimeSubtitleAssembler(LanguagePair languagePair = LanguagePair.JaEn)
@@ -55,6 +62,7 @@ public sealed class RealtimeSubtitleAssembler
         _finalizedCutoffElapsedMs = null;
         _maxTranslationElapsedMs = null;
         _awaitingSourceAfterFinalize = false;
+        _boundaryCandidatePending = false;
         _translationIsCurrent = false;
     }
 
@@ -62,12 +70,20 @@ public sealed class RealtimeSubtitleAssembler
 
     public int SegmentGeneration => _segmentGeneration;
 
+    public string CurrentSourceText => _sourceText;
+
+    public int CurrentSourceLength => _sourceText.Length;
+
     public void DiscardUnconfirmed()
     {
         ClearSegmentBuffers(advancingGeneration: true);
         _expectedLane = null;
         _awaitingSourceAfterFinalize = false;
+        _boundaryCandidatePending = false;
     }
+
+    public void SetBoundaryCandidatePending(bool pending) =>
+        _boundaryCandidatePending = pending;
 
     /// <summary>セッションが判定した期待翻訳 lane。同言語 echo より優先する。</summary>
     public void ExpectLane(RealtimeTranslationOutputLanguage? lane)
@@ -102,22 +118,35 @@ public sealed class RealtimeSubtitleAssembler
 
     /// <summary>
     /// 言語切替時に現行ペアを確定する。完全ペアがなければ buffer だけクリアする。
-    /// hysteresis で原文が伸びて訳が stale でも、切替境界としては既存ペアを確定する。
+    /// 訳文の受理位置が境界に到達済み（>= offset）の場合のみ prefix ペアを確定し、未到達の stale 訳文は破棄する。
     /// </summary>
-    public RealtimeSubtitleUpdate? FinalizeForLanguageSwitch(DateTimeOffset now)
+    public LanguageSwitchSplit SplitForLanguageSwitch(int offset, DateTimeOffset now)
     {
-        var hasCompletePair = _sourceText.Length > 0
+        var splitOffset = BoundaryOffsetMovingWhitespaceToNewSide(offset);
+        var prefix = _sourceText[..splitOffset];
+        var suffix = _sourceText[splitOffset..];
+        var hasCompletePair = prefix.Length > 0
             && _selectedLane is not null
-            && CurrentTranslation.Length > 0;
+            && CurrentTranslation.Length > 0
+            && _translationSourceEnd.GetValueOrDefault(_selectedLane.Value) >= splitOffset;
+        RealtimeSubtitleUpdate? finalized = null;
         if (hasCompletePair)
         {
-            return FinalizeCurrent(elapsedHint: null, now);
+            _finalizedCutoffElapsedMs = _maxTranslationElapsedMs;
+            finalized = new RealtimeSubtitleUpdate(
+                prefix,
+                CurrentTranslation,
+                IsTranslationCurrent: true,
+                ShouldFinalize: true,
+                SegmentGeneration: _segmentGeneration);
         }
 
         ClearSegmentBuffers(advancingGeneration: true);
-        _awaitingSourceAfterFinalize = true;
+        _sourceText = suffix;
+        _awaitingSourceAfterFinalize = suffix.Length == 0;
+        _boundaryCandidatePending = false;
         _lastActivityAt = now;
-        return null;
+        return new LanguageSwitchSplit(finalized, Snapshot());
     }
 
     public RealtimeSubtitleUpdate? Ingest(RealtimeTranslationStreamEvent streamEvent, DateTimeOffset now)
@@ -197,6 +226,7 @@ public sealed class RealtimeSubtitleAssembler
         }
 
         _translationText[target] = _translationText.GetValueOrDefault(target, string.Empty) + delta;
+        _translationSourceEnd[target] = _sourceText.Length;
         RememberTranslationElapsed(elapsedMs);
 
         _lastActivityAt = now;
@@ -289,7 +319,13 @@ public sealed class RealtimeSubtitleAssembler
 
         if (CurrentTranslation.Length > 0 && _translationIsCurrent)
         {
+            // 未確定の境界候補（文末の製品名など）は、切替未確定のまま idle した完全ペアを止めない。
             return FinalizeCurrent(elapsedHint: null, now);
+        }
+
+        if (_boundaryCandidatePending)
+        {
+            return null;
         }
 
         if (CurrentTranslation.Length > 0)
@@ -360,12 +396,68 @@ public sealed class RealtimeSubtitleAssembler
     {
         _sourceText = string.Empty;
         _translationText.Clear();
+        _translationSourceEnd.Clear();
         _selectedLane = null;
         _translationIsCurrent = false;
+        _boundaryCandidatePending = false;
         if (advancingGeneration)
         {
             _segmentGeneration += 1;
         }
+    }
+
+    private int AlignedSourceOffset(int offset)
+    {
+        var bounded = Math.Clamp(offset, 0, CurrentSourceLength);
+        var current = 0;
+        foreach (var rune in _sourceText.EnumerateRunes())
+        {
+            var next = current + rune.Utf16SequenceLength;
+            if (next > bounded)
+            {
+                return current;
+            }
+
+            current = next;
+        }
+
+        return current;
+    }
+
+    /// <summary>空白と ¿ / ¡ は新側へ付ける。tracker の candidate が次語先頭でもプレフィックスを合わせる。</summary>
+    private int BoundaryOffsetMovingWhitespaceToNewSide(int offset)
+    {
+        var bounded = AlignedSourceOffset(offset);
+        var entries = new List<(int Offset, Rune Rune)>();
+        var cursor = 0;
+        foreach (var rune in _sourceText.EnumerateRunes())
+        {
+            entries.Add((cursor, rune));
+            cursor += rune.Utf16SequenceLength;
+        }
+
+        var result = bounded;
+        var index = 0;
+        while (index < entries.Count && entries[index].Offset < bounded)
+        {
+            index++;
+        }
+
+        while (index > 0)
+        {
+            var previous = entries[index - 1];
+            if (!Rune.IsWhiteSpace(previous.Rune)
+                && previous.Rune.Value != 0x00BF
+                && previous.Rune.Value != 0x00A1)
+            {
+                break;
+            }
+
+            result = previous.Offset;
+            index--;
+        }
+
+        return result;
     }
 
     /// <summary>直前 segment 確定後、空のまま次の原文が来たら新 segment として扱う。</summary>

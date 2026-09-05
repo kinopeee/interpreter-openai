@@ -22,7 +22,9 @@ public sealed class RealtimeSubtitleAssemblerSwitchTests
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
         assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
 
-        var switched = assembler.FinalizeForLanguageSwitch(Origin.AddMilliseconds(150));
+        var switched = assembler
+            .SplitForLanguageSwitch(assembler.CurrentSourceLength, Origin.AddMilliseconds(150))
+            .Finalized;
         var late = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t-late", 200),
             Origin.AddMilliseconds(200));
@@ -47,7 +49,9 @@ public sealed class RealtimeSubtitleAssemblerSwitchTests
         var assembler = NewAssembler();
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
         assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
-        assembler.FinalizeForLanguageSwitch(Origin.AddMilliseconds(150));
+        _ = assembler.SplitForLanguageSwitch(
+            assembler.CurrentSourceLength,
+            Origin.AddMilliseconds(150));
         Assert.Null(assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t-late", 200),
             Origin.AddMilliseconds(200)));

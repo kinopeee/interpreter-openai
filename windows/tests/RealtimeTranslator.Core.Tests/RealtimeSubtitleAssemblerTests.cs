@@ -388,6 +388,109 @@ public sealed class RealtimeSubtitleAssemblerTests
         Assert.False(reusedTranslation.Value.ShouldFinalize);
     }
 
+    [Fact]
+    public void SplitForLanguageSwitchDoesNotFinalizeStalePair()
+    {
+        // Given: source ????? translation ????????????? assembler
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+        assembler.Ingest(Source("?????", "s1", 100), Origin);
+        assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200), Origin);
+        assembler.Ingest(Source("????", "s2", 300), Origin.AddMilliseconds(100));
+
+        // When: ???????????????????????????
+        var split = assembler.SplitForLanguageSwitch(9, Origin.AddMilliseconds(200));
+
+        // Then: stale pair ???????? suffix ??????
+        Assert.Null(split.Finalized);
+        Assert.Equal(string.Empty, split.Current.SourceText);
+        Assert.Equal(string.Empty, split.Current.TranslatedText);
+        Assert.False(split.Current.ShouldFinalize);
+    }
+
+    [Fact]
+    public void BoundaryCandidatePendingDoesNotBlockIdleFinalizeOfCurrentPair()
+    {
+        // Given: 完全ペアのあと境界候補が pending の assembler
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+        assembler.Ingest(Source("今日は OpenAI", "s1", 100), Origin);
+        assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, "Today it is OpenAI", "t1", 200),
+            Origin);
+        assembler.SetBoundaryCandidatePending(true);
+
+        // When: idle finalize 間隔を超えて Tick する
+        var update = assembler.Tick(Origin.AddSeconds(9));
+
+        // Then: 誤検知候補でも現行の完全ペアは確定する
+        Assert.NotNull(update);
+        Assert.True(update.Value.ShouldFinalize);
+        Assert.Equal("今日は OpenAI", update.Value.SourceText);
+        Assert.Equal("Today it is OpenAI", update.Value.TranslatedText);
+    }
+
+    [Fact]
+    public void SplitForLanguageSwitchFinalizesWhenLateTranslationPassedBoundary()
+    {
+        // Given: 新言語側の原文が先に伸びてからプレフィックスの訳文が届く
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+        assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
+        assembler.Ingest(Source(" Hello", "s2", 200), Origin.AddMilliseconds(100));
+        assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 300),
+            Origin.AddMilliseconds(200));
+
+        // When: 確認済み境界で split する
+        var split = assembler.SplitForLanguageSwitch(5, Origin.AddMilliseconds(300));
+
+        // Then: 境界を越えて届いた訳文でもプレフィックスを確定する
+        Assert.NotNull(split.Finalized);
+        Assert.True(split.Finalized.Value.ShouldFinalize);
+        Assert.Equal("こんにちは", split.Finalized.Value.SourceText);
+        Assert.Equal("Hello", split.Finalized.Value.TranslatedText);
+        Assert.Equal(" Hello", split.Current.SourceText);
+    }
+
+    [Fact]
+    public void SplitForLanguageSwitchMovesLeadingWhitespaceToTheNewSide()
+    {
+        // Given: 訳文が付いた日本語のあとに、空白始まりの英語が続く
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+        assembler.Ingest(Source("今日は会議です", "s1", 100), Origin);
+        assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, "Today is a meeting", "t1", 200),
+            Origin);
+        assembler.Ingest(Source(" Hello", "s2", 300), Origin.AddMilliseconds(100));
+
+        // When: tracker が次語先頭（空白の後ろ）を指したまま split する
+        var split = assembler.SplitForLanguageSwitch(8, Origin.AddMilliseconds(200));
+
+        // Then: 空白は新側へ付き、プレフィックスだけが確定する
+        Assert.NotNull(split.Finalized);
+        Assert.Equal("今日は会議です", split.Finalized.Value.SourceText);
+        Assert.Equal("Today is a meeting", split.Finalized.Value.TranslatedText);
+        Assert.Equal(" Hello", split.Current.SourceText);
+    }
+
+    [Fact]
+    public void SplitForLanguageSwitchClampsAndAlignsSurrogateBoundary()
+    {
+        // Given: surrogate pair を含む source
+        var assembler = NewAssembler();
+        assembler.Ingest(Source("A😀B", "s1", 100), Origin);
+
+        // When: surrogate pair の途中と範囲外で split する
+        var inside = assembler.SplitForLanguageSwitch(2, Origin);
+        var after = assembler.SplitForLanguageSwitch(99, Origin);
+
+        // Then: scalar 境界に下げ、上限を source length に clamp する
+        Assert.Equal("😀B", inside.Current.SourceText);
+        Assert.Equal(string.Empty, after.Current.SourceText);
+    }
+
     private static RealtimeSubtitleAssembler NewAssembler()
     {
         var assembler = new RealtimeSubtitleAssembler();

@@ -55,7 +55,7 @@ enum SpokenLanguageDetector {
         }
 
         if pair == .enEs {
-            let spans = wordSpans(in: text)
+            let spans = scalarWordSpans(in: text)
             guard spans.count > effectiveWindow else {
                 return evidence(in: text, pair: pair)
             }
@@ -166,7 +166,7 @@ enum SpokenLanguageDetector {
     ) -> String.UnicodeScalarView.Index {
         let scalars = text.unicodeScalars
         guard window > 0, !text.isEmpty else { return scalars.startIndex }
-        let spans = wordSpans(in: text)
+        let spans = scalarWordSpans(in: text)
         guard spans.count > window else { return scalars.startIndex }
 
         var start = spans[spans.count - window].start
@@ -185,14 +185,22 @@ enum SpokenLanguageDetector {
         return start
     }
 
-    private struct WordSpan {
+    private struct ScalarWordSpan {
         let start: String.UnicodeScalarView.Index
         let end: String.UnicodeScalarView.Index
     }
 
-    private static func wordSpans(in text: String) -> [WordSpan] {
+    static func wordSpans(in text: String) -> [Range<Int>] {
+        return scalarWordSpans(in: text).map {
+            let start = $0.start.utf16Offset(in: text)
+            let end = $0.end.utf16Offset(in: text)
+            return start..<end
+        }
+    }
+
+    private static func scalarWordSpans(in text: String) -> [ScalarWordSpan] {
         let scalars = text.unicodeScalars
-        var spans: [WordSpan] = []
+        var spans: [ScalarWordSpan] = []
         var start: String.UnicodeScalarView.Index?
         var index = scalars.startIndex
         while index < scalars.endIndex {
@@ -200,22 +208,22 @@ enum SpokenLanguageDetector {
             if isLatinWordScalar(scalar) {
                 start = start ?? index
             } else if let wordStart = start {
-                spans.append(WordSpan(start: wordStart, end: index))
+                spans.append(ScalarWordSpan(start: wordStart, end: index))
                 start = nil
             }
             index = scalars.index(after: index)
         }
         if let wordStart = start {
-            spans.append(WordSpan(start: wordStart, end: scalars.endIndex))
+            spans.append(ScalarWordSpan(start: wordStart, end: scalars.endIndex))
         }
         return spans
     }
 
     private static func wordStrings(in text: String) -> [String] {
-        wordSpans(in: text).map { String(text.unicodeScalars[$0.start..<$0.end]) }
+        scalarWordSpans(in: text).map { String(text.unicodeScalars[$0.start..<$0.end]) }
     }
 
-    private static func isLatinWordScalar(_ scalar: Unicode.Scalar) -> Bool {
+    static func isLatinWordScalar(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.value {
         case 0x0041...0x005A, 0x0061...0x007A,
              0x00C0...0x00D6, 0x00D8...0x00F6, 0x00F8...0x00FF:

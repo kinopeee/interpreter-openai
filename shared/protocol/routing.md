@@ -1,3 +1,13 @@
+## 原文境界
+
+`SourceBoundaryTracker` stores only a UTF-16 offset in the current assembler
+segment. It uses the detector's unchanged vocabulary, Unicode classes, recent
+windows, and en-es two-observation gate. Whitespace and `¿` / `¡` immediately
+before a candidate belong to the new side. A pending candidate does not block
+idle finalization of a complete current pair (false-positive Latin such as a
+product name). A split records a prefix pair when translation has reached or
+passed the boundary; a stale translation that has not reached the boundary is
+discarded, and the suffix becomes the new current source.
 # 言語判定・ルーティング・字幕整列の契約（言語中立）
 
 ## 言語判定
