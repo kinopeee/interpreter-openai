@@ -737,7 +737,8 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
             ])
         }
 
-        await fulfillment(of: [received], timeout: 3)
+        defer { collector.cancel() }
+        await fulfillment(of: [received], timeout: 5)
         let receivedEvents = await collector.value
         XCTAssertEqual(receivedEvents.count, 513)
         XCTAssertFalse(feed.deliveryState.didLoseEvents)

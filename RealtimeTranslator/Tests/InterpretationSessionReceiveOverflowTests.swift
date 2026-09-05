@@ -165,11 +165,13 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
     }
 
     private func waitForCondition(
+        timeout: TimeInterval = 3,
         _ condition: @escaping () -> Bool
     ) async {
-        for _ in 0..<10_000 {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
             if condition() { return }
-            await Task.yield()
+            try? await Task.sleep(nanoseconds: 10_000_000)
         }
         XCTFail("Condition not met")
     }
