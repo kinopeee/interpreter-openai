@@ -1646,12 +1646,17 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     ) {
         state.withLock { state in
             state.deliveryState.recordLoss(stage: stage, capacity: capacity)
+            // 本番 yielder は overflow で continuation を finish し、consumeEvents を起こす。
+            state.eventContinuation?.finish()
+            state.eventContinuation = nil
         }
     }
 
     func recordTermination(_ termination: EventDeliveryTermination) {
         state.withLock { state in
             state.deliveryState.tryRecordTermination(termination)
+            state.eventContinuation?.finish()
+            state.eventContinuation = nil
         }
     }
 

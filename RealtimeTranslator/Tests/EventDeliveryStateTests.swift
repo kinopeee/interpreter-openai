@@ -1,4 +1,5 @@
 import Foundation
+import os
 import XCTest
 @testable import RealtimeTranslator
 
@@ -104,7 +105,7 @@ final class EventDeliveryStateTests: XCTestCase {
         }
 
         var connectionContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation!
-        _ = AsyncStream<RealtimeTranslationStreamEvent>(
+        let connectionStream = AsyncStream<RealtimeTranslationStreamEvent>(
             bufferingPolicy: .bufferingOldest(connectionCapacity)
         ) {
             connectionContinuation = $0
@@ -116,17 +117,20 @@ final class EventDeliveryStateTests: XCTestCase {
             stage: .translation(.english),
             capacity: connectionCapacity
         )
-        for _ in 0..<connectionCapacity {
-            XCTAssertTrue(connectionYielder.deliver(event(epoch: 1)))
+        // stream を捨てると continuation が .terminated になり、容量前に deliver が false になる。
+        withExtendedLifetime(connectionStream) {
+            for _ in 0..<connectionCapacity {
+                XCTAssertTrue(connectionYielder.deliver(event(epoch: 1)))
+            }
+            XCTAssertFalse(connectionYielder.deliver(event(epoch: 1)))
+            XCTAssertTrue(connectionState.didLoseEvents)
+            XCTAssertEqual(connectionState.lossStage, .some(.translation(.english)))
+            XCTAssertEqual(connectionState.lossCapacity, .some(connectionCapacity))
+            XCTAssertEqual(connectionState.termination, .receiveOverflow)
         }
-        XCTAssertFalse(connectionYielder.deliver(event(epoch: 1)))
-        XCTAssertTrue(connectionState.didLoseEvents)
-        XCTAssertEqual(connectionState.lossStage, .some(.translation(.english)))
-        XCTAssertEqual(connectionState.lossCapacity, .some(connectionCapacity))
-        XCTAssertEqual(connectionState.termination, .receiveOverflow)
 
         var mergeContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation!
-        _ = AsyncStream<RealtimeTranslationStreamEvent>(
+        let mergeStream = AsyncStream<RealtimeTranslationStreamEvent>(
             bufferingPolicy: .bufferingOldest(mergeCapacity)
         ) {
             mergeContinuation = $0
@@ -138,14 +142,45 @@ final class EventDeliveryStateTests: XCTestCase {
             stage: .merge,
             capacity: mergeCapacity
         )
-        for _ in 0..<mergeCapacity {
-            XCTAssertTrue(mergeYielder.deliver(event(epoch: 2)))
+        withExtendedLifetime(mergeStream) {
+            for _ in 0..<mergeCapacity {
+                XCTAssertTrue(mergeYielder.deliver(event(epoch: 2)))
+            }
+            XCTAssertFalse(mergeYielder.deliver(event(epoch: 2)))
+            XCTAssertTrue(mergeState.didLoseEvents)
+            XCTAssertEqual(mergeState.lossStage, .some(.merge))
+            XCTAssertEqual(mergeState.lossCapacity, .some(mergeCapacity))
+            XCTAssertEqual(mergeState.termination, .receiveOverflow)
         }
-        XCTAssertFalse(mergeYielder.deliver(event(epoch: 2)))
-        XCTAssertTrue(mergeState.didLoseEvents)
-        XCTAssertEqual(mergeState.lossStage, .some(.merge))
-        XCTAssertEqual(mergeState.lossCapacity, .some(mergeCapacity))
-        XCTAssertEqual(mergeState.termination, .receiveOverflow)
+    }
+
+    // Given: waitForCompletion 中の Task を cancel する
+    // When: その後に recordLoss する
+    // Then: cancel だけでは completed にならず、loss で waiter が起きる
+    func testWaitForCompletionCancelDoesNotCompleteDelivery() async {
+        let state = EventDeliveryState(epoch: 1)
+        let cancelledWait = Task {
+            await state.waitForCompletion()
+        }
+        cancelledWait.cancel()
+        await cancelledWait.value
+
+        XCTAssertFalse(state.didLoseEvents)
+        XCTAssertEqual(state.termination, .none)
+
+        let sawCompletion = OSAllocatedUnfairLock(initialState: false)
+        let pendingWait = Task {
+            await state.waitForCompletion()
+            sawCompletion.withLock { $0 = true }
+        }
+        await Task.yield()
+        XCTAssertFalse(sawCompletion.withLock { $0 })
+
+        state.recordLoss(stage: .merge, capacity: 512)
+        await pendingWait.value
+        XCTAssertTrue(sawCompletion.withLock { $0 })
+        XCTAssertTrue(state.didLoseEvents)
+        XCTAssertEqual(state.termination, .receiveOverflow)
     }
 
     // Given: 共通の優先順位を持つ termination 原因

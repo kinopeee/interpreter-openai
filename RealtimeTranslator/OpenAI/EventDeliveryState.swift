@@ -105,7 +105,9 @@ final class EventDeliveryState: @unchecked Sendable {
         await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 let resumeImmediately = state.withLock { state -> Bool in
-                    if state.completed {
+                    // cancel は waiter を起こすだけ。completed にすると overflow を
+                    // 後から recordLoss しても completionTask が起きず再接続できない。
+                    if state.completed || Task.isCancelled {
                         return true
                     }
                     state.waiters.append(continuation)
@@ -113,19 +115,13 @@ final class EventDeliveryState: @unchecked Sendable {
                 }
                 if resumeImmediately {
                     continuation.resume()
-                    return
-                }
-                // 登録前に cancel されていた場合、onCancel は空の waiters しか見ない。
-                if Task.isCancelled {
-                    let waiters = state.withLock { state in
-                        completeLocked(&state)
-                    }
-                    waiters.forEach { $0.resume() }
                 }
             }
         } onCancel: {
-            let waiters = state.withLock { state in
-                completeLocked(&state)
+            let waiters = state.withLock { state -> [CheckedContinuation<Void, Never>] in
+                let waiters = state.waiters
+                state.waiters.removeAll(keepingCapacity: false)
+                return waiters
             }
             waiters.forEach { $0.resume() }
         }
