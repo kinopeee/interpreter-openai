@@ -316,17 +316,28 @@ final class InterpretationSession {
         }
         let completionTask = Task<Void, Error> { @MainActor in
             await feed.deliveryState.waitForCompletion()
-            // 欠落なしの終了理由は stream 上の error event が消費側へ届くので、そちらに任せる。
+            if Task.isCancelled {
+                throw CancellationError()
+            }
             if feed.deliveryState.didLoseEvents {
                 self.handleEventLoss(feed)
                 throw feed.deliveryState.makeError()
             }
-            try await Task.sleep(nanoseconds: UInt64.max)
+            if feed.deliveryState.termination != .none {
+                throw feed.deliveryState.makeError()
+            }
+            // 正常完了は consumeEvents に任せる。success で戻ると session loop が終わる。
+            while !Task.isCancelled {
+                try await Task.sleep(nanoseconds: 100_000_000)
+            }
+            throw CancellationError()
         }
         let firstResult = await raceFirstResult(feedTask, eventTask, completionTask)
         feedTask.cancel()
         eventTask.cancel()
         completionTask.cancel()
+        // feedAudio の for-await は cancel だけでは解けないことがある。
+        await audioCapture.stop()
         _ = await feedTask.result
         _ = await eventTask.result
         if feed.deliveryState.didLoseEvents {
@@ -367,6 +378,7 @@ final class InterpretationSession {
             let value = await group.next() ?? .failure(CancellationError())
             first.cancel()
             second.cancel()
+            third.cancel()
             group.cancelAll()
             while await group.next() != nil {}
             return value

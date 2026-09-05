@@ -1646,9 +1646,22 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     ) {
         state.withLock { state in
             state.deliveryState.recordLoss(stage: stage, capacity: capacity)
-            // 本番 yielder は overflow で continuation を finish し、consumeEvents を起こす。
-            state.eventContinuation?.finish()
-            state.eventContinuation = nil
+            // consumeEvents の for-await を起こし、ループ先頭の loss 判定へ進める。
+            if let continuation = state.eventContinuation {
+                _ = continuation.yield(
+                    RealtimeTranslationStreamEvent(
+                        lane: .source,
+                        event: .inputTranscriptDelta(
+                            delta: "",
+                            eventID: nil,
+                            elapsedMs: nil
+                        ),
+                        epoch: state.connectionEpoch
+                    )
+                )
+                continuation.finish()
+                state.eventContinuation = nil
+            }
         }
     }
 

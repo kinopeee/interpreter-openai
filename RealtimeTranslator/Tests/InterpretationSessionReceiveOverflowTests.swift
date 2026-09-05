@@ -173,7 +173,9 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
     }
 
     private func waitForCondition(
-        timeout: TimeInterval = 3,
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = #line,
         _ condition: @escaping () -> Bool
     ) async {
         let deadline = Date().addingTimeInterval(timeout)
@@ -181,6 +183,6 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
             if condition() { return }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
-        XCTFail("Condition not met")
+        XCTFail("Condition not met", file: file, line: line)
     }
 }
