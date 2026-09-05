@@ -976,7 +976,7 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertGreaterThan(dual.resetAudioRoutingCallCount, resetsAfterJapanese)
         await waitUntil {
             delegate.finalizedSnapshots.contains {
-                $0.sourceText == "今日は晴れです。"
+                $0.sourceText == "今日は会議です"
                     && $0.translatedText == "Today is a meeting"
             }
         }
