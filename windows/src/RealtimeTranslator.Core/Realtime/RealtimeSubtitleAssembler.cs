@@ -15,6 +15,10 @@ public readonly record struct RealtimeSubtitleUpdate(
     bool IsInvalidation = false,
     long Sequence = 0);
 
+public readonly record struct LanguageSwitchSplit(
+    RealtimeSubtitleUpdate? Finalized,
+    RealtimeSubtitleUpdate Current);
+
 /// <summary>原文 authority と複数出力言語を時間整列し、自動 lane 選択する。</summary>
 public sealed class RealtimeSubtitleAssembler
 {
@@ -28,6 +32,7 @@ public sealed class RealtimeSubtitleAssembler
     private int _segmentGeneration;
     private string _sourceText = string.Empty;
     private readonly Dictionary<RealtimeTranslationOutputLanguage, string> _translationText = new();
+    private readonly Dictionary<RealtimeTranslationOutputLanguage, int> _translationSourceEnd = new();
     private RealtimeTranslationOutputLanguage? _selectedLane;
     private RealtimeTranslationOutputLanguage? _expectedLane;
     private readonly HashSet<string> _seenEventIds = new(StringComparer.Ordinal);
@@ -36,6 +41,7 @@ public sealed class RealtimeSubtitleAssembler
     private int? _finalizedCutoffElapsedMs;
     private int? _maxTranslationElapsedMs;
     private bool _awaitingSourceAfterFinalize;
+    private bool _boundaryCandidatePending;
     private bool _translationIsCurrent;
 
     public RealtimeSubtitleAssembler(LanguagePair languagePair = LanguagePair.JaEn)
@@ -55,6 +61,7 @@ public sealed class RealtimeSubtitleAssembler
         _finalizedCutoffElapsedMs = null;
         _maxTranslationElapsedMs = null;
         _awaitingSourceAfterFinalize = false;
+        _boundaryCandidatePending = false;
         _translationIsCurrent = false;
     }
 
@@ -62,12 +69,20 @@ public sealed class RealtimeSubtitleAssembler
 
     public int SegmentGeneration => _segmentGeneration;
 
+    public string CurrentSourceText => _sourceText;
+
+    public int CurrentSourceLength => _sourceText.Length;
+
     public void DiscardUnconfirmed()
     {
         ClearSegmentBuffers(advancingGeneration: true);
         _expectedLane = null;
         _awaitingSourceAfterFinalize = false;
+        _boundaryCandidatePending = false;
     }
+
+    public void SetBoundaryCandidatePending(bool pending) =>
+        _boundaryCandidatePending = pending;
 
     /// <summary>セッションが判定した期待翻訳 lane。同言語 echo より優先する。</summary>
     public void ExpectLane(RealtimeTranslationOutputLanguage? lane)
@@ -104,21 +119,37 @@ public sealed class RealtimeSubtitleAssembler
     /// 言語切替時に現行ペアを確定する。完全ペアがなければ buffer だけクリアする。
     /// hysteresis で原文が伸びて訳が stale でも、切替境界としては既存ペアを確定する。
     /// </summary>
-    public RealtimeSubtitleUpdate? FinalizeForLanguageSwitch(DateTimeOffset now)
+    public LanguageSwitchSplit SplitForLanguageSwitch(int offset, DateTimeOffset now)
     {
-        var hasCompletePair = _sourceText.Length > 0
+        var splitOffset = AlignedSourceOffset(offset);
+        var prefix = _sourceText[..splitOffset];
+        var suffix = _sourceText[splitOffset..];
+        var hasCompletePair = prefix.Length > 0
             && _selectedLane is not null
-            && CurrentTranslation.Length > 0;
+            && CurrentTranslation.Length > 0
+            && _translationSourceEnd.GetValueOrDefault(_selectedLane.Value) == splitOffset;
+        RealtimeSubtitleUpdate? finalized = null;
         if (hasCompletePair)
         {
-            return FinalizeCurrent(elapsedHint: null, now);
+            _finalizedCutoffElapsedMs = _maxTranslationElapsedMs;
+            finalized = new RealtimeSubtitleUpdate(
+                prefix,
+                CurrentTranslation,
+                IsTranslationCurrent: true,
+                ShouldFinalize: true,
+                SegmentGeneration: _segmentGeneration);
         }
 
         ClearSegmentBuffers(advancingGeneration: true);
-        _awaitingSourceAfterFinalize = true;
+        _sourceText = suffix;
+        _awaitingSourceAfterFinalize = suffix.Length == 0;
+        _boundaryCandidatePending = false;
         _lastActivityAt = now;
-        return null;
+        return new LanguageSwitchSplit(finalized, Snapshot());
     }
+
+    public RealtimeSubtitleUpdate? FinalizeForLanguageSwitch(DateTimeOffset now) =>
+        SplitForLanguageSwitch(CurrentSourceLength, now).Finalized;
 
     public RealtimeSubtitleUpdate? Ingest(RealtimeTranslationStreamEvent streamEvent, DateTimeOffset now)
     {
@@ -197,6 +228,7 @@ public sealed class RealtimeSubtitleAssembler
         }
 
         _translationText[target] = _translationText.GetValueOrDefault(target, string.Empty) + delta;
+        _translationSourceEnd[target] = _sourceText.Length;
         RememberTranslationElapsed(elapsedMs);
 
         _lastActivityAt = now;
@@ -277,6 +309,10 @@ public sealed class RealtimeSubtitleAssembler
 
     private RealtimeSubtitleUpdate? EvaluateFinalize(DateTimeOffset now)
     {
+        if (_boundaryCandidatePending)
+        {
+            return null;
+        }
         if (_sourceText.Length == 0 || _selectedLane is null)
         {
             return null;
@@ -360,12 +396,32 @@ public sealed class RealtimeSubtitleAssembler
     {
         _sourceText = string.Empty;
         _translationText.Clear();
+        _translationSourceEnd.Clear();
         _selectedLane = null;
         _translationIsCurrent = false;
+        _boundaryCandidatePending = false;
         if (advancingGeneration)
         {
             _segmentGeneration += 1;
         }
+    }
+
+    private int AlignedSourceOffset(int offset)
+    {
+        var bounded = Math.Clamp(offset, 0, CurrentSourceLength);
+        var current = 0;
+        foreach (var rune in _sourceText.EnumerateRunes())
+        {
+            var next = current + rune.Utf16SequenceLength;
+            if (next > bounded)
+            {
+                return current;
+            }
+
+            current = next;
+        }
+
+        return current;
     }
 
     /// <summary>直前 segment 確定後、空のまま次の原文が来たら新 segment として扱う。</summary>
