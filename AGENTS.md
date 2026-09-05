@@ -1,31 +1,28 @@
 # RealtimeTranslator 開発ガイド
 
-Shared fixtures live under `shared/fixtures/v<N>` and are the canonical contract
-for both Swift and Windows implementations. The subtitle source-boundary
-contract is version 2; `scripts/ci-shared-contracts.sh` validates every version.
-
 macOS版（Swift / `RealtimeTranslator/`）とWindows版（.NET / `windows/`）の2実装がある。以下はmacOS版の規約で、共通の不変条件はWindows版にも適用する。Windows固有の規約は「Windows版」を参照する。
 
 ## 目的と不変条件
 
-- macOS 26以降向けの、OpenAI Realtime Translationによるリアルタイム日英字幕アプリである。
+- OpenAI Realtime TranslationによるmacOS 26以降 / Windows向けのリアルタイム字幕アプリである。対応する翻訳ペアは `ja-en`、`ja-es`、`en-es`。
 - 外部通信先は `api.openai.com/v1/realtime` と `api.openai.com/v1/realtime/translations` に限定する。それ以外の外部翻訳APIは追加しない。
 - 利用者自身のOpenAI APIキー（BYOK）をmacOS Keychainへ保存する。事業者キーは同梱しない。
-- 原文音声は専用 `gpt-live-transcribe` へ常時送信する。直近4秒のrolling prerollを常時保持し、判定前は原文のみ送信、判定後は日本語なら `target=en`、英語なら `target=ja` へ送る。言語切替時は新targetへprerollをflushする。
-- 原文文字種の反転（末尾ウィンドウ判定）をセグメント境界として扱い、確定・ルーティング・prerollを切り替える。
+- 原文音声は専用 `gpt-live-transcribe` へ常時送信する。直近4秒のrolling prerollを常時保持し、判定前は原文のみ送信、判定後は選択された `languagePair` の相手言語をtargetとして送る。言語切替時は新targetへprerollをflushする。
+- 言語切替を確定する時点と、原文を分割する位置を分離する。原文上の境界候補を追跡し、切替確定時に候補位置で分割する。候補がない場合の扱い、句読点・Unicode・英西の境界規則は `shared/fixtures/v2/subtitle.json` と両実装の `SourceBoundaryTracker` を参照する。切替判定時点を一律に原文境界にしない。
 - Translationセッション付属のtranscriptionを原文authorityにしない。専用transcriptionの低遅延deltaを使い、原文と訳文を常にペア表示する。
 - APIキー、Authorization、音声、原文、訳文をログ・status file・アラートへ出さない。
 - オプトイン時のみ、確定した原文・訳文ペアをローカル字幕記録ファイルへ保存する（ログ・status・アラートへは出さない）。字幕記録の形式（`原文:` / `訳文:` / `=== 録音開始`）は表示言語に依存せず固定する。
 - アプリ枠の表示言語は設定の `uiLanguage`（`system` / `ja` / `en`）。翻訳ペア `languagePair` とは独立で、反映はプロセス再起動後。文言正本は `shared/locales/ui.json`。スレッドカルチャは変更しない。
-- 初回MVPでは翻訳音声を再生しない。`session.output_audio.delta` は受信するがデコードしない。
+- 現在の仕様では翻訳音声を再生しない。`session.output_audio.delta` は受信するがデコードしない。
 
 ## 構成
 
 - `App/`: AppKitライフサイクルと全体調停。SwiftUI `App`へ戻さない。
 - `Security/`: Keychain APIキーストアと環境変数からの初回取り込み。
 - `Audio/RealtimeAudioCaptureService.swift`: AVAudioEngine、24 kHz PCM16変換、100 ms packet化。
-- `Audio/SpokenLanguage.swift` / `SpokenLanguageDetector.swift`: 原文deltaの文字種判定と末尾ウィンドウによる言語切替検出。
-- `OpenAI/`: Realtime Transcription / Translation WebSocket、イベントcodec、日英dual client。
+- `Audio/SpokenLanguage.swift` / `SpokenLanguageDetector.swift`: 翻訳ペアと、原文deltaの文字種・語の証拠による言語判定。
+- `Realtime/SourceBoundaryTracker.swift`: 切替判定とは独立した原文境界候補の追跡。
+- `OpenAI/`: Realtime Transcription / Translation WebSocket、イベントcodec、選択ペアのdual client。
 - `Realtime/InterpretationSession.swift`: 接続、音声送信、字幕整列、状態遷移を統合。
 - `Subtitles/`: 単一current字幕集約、透明オーバーレイ、録音コントロール、オプトイン時のローカル字幕記録。
 - `Localization/`: `UserCopy`（`shared/locales/ui.json` をバンドルから読む）。
@@ -55,7 +52,8 @@ macOS版（Swift / `RealtimeTranslator/`）とWindows版（.NET / `windows/`）�
 - いずれかの接続が壊れたら全体を再接続する。再接続時は言語判定をリセットする。
 - 正常停止はtranscriptionをcommitし、Translation両セッションへ `session.close` を送り、完了イベントを待ってからsocketを閉じる。
 - lane選択の一次信号は「セッションが設定した期待laneヒント」とし、補助に原文文字種とfirst-outputを使う。同言語echo（英語入力が `target=en` から英語で戻る等）が発生し得るため、echoだけでlaneを確定しない。
-- 原文deltaの末尾ウィンドウ文字種判定を言語切替とルーティングの信号として使う。
+- 原文deltaの末尾ウィンドウの証拠を言語切替とルーティングの信号として使う。日英・日西は文字種、英西は語などの証拠を使い、全ペアを文字種反転として扱わない。判定・ルーティングの契約は `shared/fixtures/v1/language.json` と `routing.json` を参照する。
+- 受信イベントの上限超過を検知し、欠落した接続世代の未確定字幕を無効化する。欠落後のペアを確定・記録せず、既に確定した字幕は保持する。終了理由・エラー通知を通常イベントの混雑や正常終了通知で失わない。優先順位と容量の正本は `shared/fixtures/v1/receive-queue.json`。送信キューの上限とは区別する。
 - 古い接続epochのdeltaは画面へ反映しない。
 
 ## 字幕UIの不変条件
@@ -99,7 +97,7 @@ xcodebuild test -scheme RealtimeTranslator \
 - 実行状態はDEBUGビルドのみ`/tmp/realtimetranslator.status`へ書き出す（Releaseでは作らない）。
 - クラッシュ時は最新のDiagnosticReportsと該当スレッドを確認し、推測だけで修正しない。
 - ログへ認識した発話内容、APIキー、Authorizationを出力しない。
-- `shared/fixtures/v<N>/` は両実装のバージョン付き契約正本。subtitle は v2、その他の契約は v1 とし、Swift テストと Windows 版の同値性を保つ。契約検査の正本は `scripts/ci-shared-contracts.sh`。
+- `shared/fixtures/v<N>/` は両実装のバージョン付き契約正本。現行の subtitle 契約は v2、その他は v1 とし、Swift テストと Windows 版の同値性を保つ。既存の subtitle v1 も保持し、`scripts/ci-shared-contracts.sh` で全バージョンを検査する。
 - Origin の PR CI は Depot CI（`.depot/workflows/`）が `shared-contracts` と Windows Core テストを実行する。Depot に Windows / macOS サンドボックスは無い。
 - GitHub Actions（`.github/workflows/`）は GitHub 側の Windows 全体・macOS `xcodebuild`・タグ Release 用に残す。Platform / App / publish / 署名・公証はこちら。
 - Depot を有効にするには Origin リポジトリの Apps から Depot を接続し、`.depot/workflows/` を default branch へマージする。
@@ -108,9 +106,9 @@ xcodebuild test -scheme RealtimeTranslator \
 ## テスト方針
 
 - 純粋ロジックはXCTestで検証し、各テストに日本語のGiven/When/Thenコメントを付ける。
-- 最低限、イベントcodec、100 ms packet化、専用原文transcription、原文送信分離とrolling preroll、言語切替セグメント分割、送信timeout、字幕lane選択、旧epoch破棄、停止時close drainを維持する。
+- 最低限、イベントcodec、100 ms packet化、専用原文transcription、原文送信分離とrolling preroll、言語切替セグメント分割、送信timeout、受信欠落とエラー優先順位、字幕lane選択、旧epoch破棄、停止時close drainの回帰検証を維持する。
 - 非同期境界、空文字、句読点、停止時finalize、多重起動、秘密情報非漏洩の回帰を優先する。
-- UIや音声経路を変更したら、ビルドと全テストに加えて実際に日英を1文ずつ話して確認する。
+- UIや音声経路を変更したら、対象プラットフォームのビルドと全テストに加えて、影響する言語ペアの両方向で実際に1文ずつ話して確認する。
 
 ## Windows版
 
