@@ -907,13 +907,6 @@ public sealed class InterpretationSession : IDisposable
 
         IngestAlreadyQueuedEvents();
 
-        lock (_sync)
-        {
-            _activeLanguagePair = null;
-            _sourceBoundaryTracker.Reset();
-            _assembler.SetBoundaryCandidatePending(false);
-        }
-
         try
         {
             await _audioCapture.StopAsync().ConfigureAwait(false);
@@ -928,7 +921,15 @@ public sealed class InterpretationSession : IDisposable
             {
                 // merge pump 停止後に connection から遅れて乗った delta も回収する。
                 // StartAsync が channel を差し替える前に読まないと消える。
+                // ForceClose 中の遅延 source でも言語境界を分割できるよう、
+                // ペアと tracker は二度目の回収が終わるまで残す。通信先は変えない。
                 IngestAlreadyQueuedEvents();
+                lock (_sync)
+                {
+                    _activeLanguagePair = null;
+                    _sourceBoundaryTracker.Reset();
+                    _assembler.SetBoundaryCandidatePending(false);
+                }
             }
         }
     }

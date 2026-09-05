@@ -2087,6 +2087,68 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 日本語の完全ペアがあり、ForceClose 中に英語原文が遅れて届く
+    // When: transport error で再接続 teardown する
+    // Then: 二度目の回収でも境界分割し、切替前ペアを確定する。通信先は変えない
+    [Fact]
+    public async Task ReconnectForceCloseLateLanguageSwitchFinalizesPrefixPair()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, initialReconnectDelay: TimeSpan.FromSeconds(2));
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("今日は会議です");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "Today is a meeting");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Contains("Today", StringComparison.Ordinal));
+            }
+        });
+        var resetsBeforeError = client.ResetAudioRoutingCount;
+        var selectedBeforeError = client.SelectedTargets.ToArray();
+
+        client.OnForceCloseBeforeComplete = () =>
+        {
+            client.OnForceCloseBeforeComplete = null;
+            client.PublishSourceDelta(" Hello how are you today");
+        };
+        client.PublishTransportError();
+        RealtimeSubtitleUpdate finalized = default;
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                finalized = updates.Find(update =>
+                    update.ShouldFinalize
+                    && update.SourceText.Trim() == "今日は会議です"
+                    && update.TranslatedText == "Today is a meeting");
+                return finalized.ShouldFinalize;
+            }
+        });
+
+        Assert.Equal("今日は会議です", finalized.SourceText.Trim());
+        Assert.Equal("Today is a meeting", finalized.TranslatedText);
+        Assert.Equal(resetsBeforeError, client.ResetAudioRoutingCount);
+        Assert.Equal(selectedBeforeError, client.SelectedTargets.ToArray());
+        await session.StopAsync();
+    }
+
     // Given: transport error 後の再接続待ち
     // When: その間に StartAsync を再度呼ぶ
     // Then: Idle/Error 以外は受理せず Dual Start は増えない
