@@ -135,9 +135,15 @@ public sealed class EventDeliveryState
                 _lossStage = stage;
                 _lossCapacity = capacity;
             }
+
+            if (EventDeliveryTermination.ReceiveOverflow > _termination)
+            {
+                _termination = EventDeliveryTermination.ReceiveOverflow;
+                _terminationMessage = null;
+            }
         }
 
-        TryRecordTermination(EventDeliveryTermination.ReceiveOverflow);
+        _completion.TrySetResult();
     }
 
     public void CompleteNormally() => _completion.TrySetResult();

@@ -73,6 +73,37 @@ public sealed class InterpretationSessionReceiveOverflowTests
     }
 
     [Fact]
+    public async Task LossDuringAssemblerIngestInvalidatesAndReconnects()
+    {
+        // Given: Listening 中の session が assembler ingest 直前で止められる
+        var client = new FakeOverflowDualClient();
+        using var session = CreateSession(client);
+        var invalidated = NewGate();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            if (update.IsInvalidation)
+            {
+                invalidated.TrySetResult();
+            }
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+
+        // When: routing 後・ingest 前に現 epoch の受信ロスを記録する
+        session.BeforeAssemblerIngestForTests = () => client.RecordLoss(EventDeliveryStage.Merge);
+        client.PublishSourceDelta("こんにちは");
+
+        // Then: 無効化して再接続し、ConsumeEvents が黙って return しない
+        await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await client.SecondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        Assert.Equal(2, client.StartCount);
+        await session.StopAsync();
+    }
+
+    [Fact]
     public async Task AuthenticationTerminationWinsOverOverflowWithoutReconnect()
     {
         // Given: Listening 中のイベント配送状態が認証失敗で終了している

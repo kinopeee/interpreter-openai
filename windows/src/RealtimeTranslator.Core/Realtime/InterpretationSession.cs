@@ -616,17 +616,36 @@ public sealed class InterpretationSession : IDisposable
 
             BeforeAssemblerIngestForTests?.Invoke();
 
-            RealtimeSubtitleUpdate? update;
+            RealtimeSubtitleUpdate? update = null;
+            var lostAfterRouting = false;
             lock (_sync)
             {
                 // Dispose/Stop が generation を進めたあとに、取り出し済みイベントで
                 // assembler を更新しない（flush 後の完全ペア欠落を防ぐ）。
-                if (_lifecycleGeneration != generation || feed.DeliveryState.DidLoseEvents)
+                if (_lifecycleGeneration != generation)
                 {
                     return;
                 }
 
-                update = _assembler.Ingest(streamEvent, _timeProvider.GetUtcNow());
+                if (feed.DeliveryState.DidLoseEvents)
+                {
+                    lostAfterRouting = true;
+                }
+                else
+                {
+                    update = _assembler.Ingest(streamEvent, _timeProvider.GetUtcNow());
+                }
+            }
+
+            if (lostAfterRouting)
+            {
+                HandleEventLoss(feed);
+                if (IsCurrentGeneration(generation))
+                {
+                    throw feed.DeliveryState.ToException();
+                }
+
+                return;
             }
 
             if (update is { } value)
@@ -676,15 +695,22 @@ public sealed class InterpretationSession : IDisposable
 
             RealtimeSubtitleUpdate? update;
             var feed = GetActiveFeed();
+            lock (_sync)
+            {
+                if (feed is { DeliveryState.DidLoseEvents: true })
+                {
+                    update = null;
+                }
+                else
+                {
+                    update = _assembler.Tick(_timeProvider.GetUtcNow());
+                }
+            }
+
             if (feed is { DeliveryState.DidLoseEvents: true })
             {
                 HandleEventLoss(feed);
                 continue;
-            }
-
-            lock (_sync)
-            {
-                update = _assembler.Tick(_timeProvider.GetUtcNow());
             }
 
             if (update is { } value)
