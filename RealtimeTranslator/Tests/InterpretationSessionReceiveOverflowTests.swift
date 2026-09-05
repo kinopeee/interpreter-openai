@@ -56,7 +56,10 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         await session.start()
         await waitForCondition { session.state == .listening }
         let oldFeed = await dual.feed
-        dual.recordLoss(stage: .merge, capacity: 512)
+        dual.emit(
+            target: .english,
+            event: .error(message: "socket closed", code: "transport")
+        )
         await waitForCondition {
             session.state == .listening && dual.startCallCount >= 2
         }

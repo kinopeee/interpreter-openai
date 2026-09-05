@@ -598,6 +598,9 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         if case .outputAudioDelta = event.event {
             return
         }
+        if deliveryState.didLoseEvents {
+            return
+        }
         if stopDrainBuffer != nil {
             guard stopDrainBuffer!.count < Self.stopDrainRetentionLimit else {
                 deliveryState.recordLoss(stage: .stopDrain, capacity: Self.stopDrainRetentionLimit)
