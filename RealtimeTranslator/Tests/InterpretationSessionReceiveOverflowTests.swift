@@ -76,6 +76,30 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         await session.stop()
     }
 
+    // Given: Listening 中に termination だけ先に記録された session
+    // When: 完了待ちが起きたあと、error イベントなしで overflow を記録する
+    // Then: park 中でも欠落を見て再接続する
+    func testLossAfterTerminationWakeStillReconnects() async {
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+
+        await session.start()
+        await waitForCondition { session.state == .listening }
+        let feed = await dual.feed
+        feed.deliveryState.tryRecordTermination(.transportFailure)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        feed.deliveryState.recordLoss(stage: .merge, capacity: 512)
+        await waitForCondition {
+            session.state == .listening && dual.startCallCount >= 2
+        }
+        await session.stop()
+    }
+
     // Given: Listening 中の session
     // When: authentication termination と overflow を同じ epoch に記録する
     // Then: 認証エラーで終了し再接続しない

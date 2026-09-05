@@ -324,8 +324,14 @@ final class InterpretationSession {
                 throw feed.deliveryState.makeError()
             }
             // 欠落なしの終了理由は stream 上の error event が消費側へ届くので、そちらに任せる。
+            // ただし tryRecordTermination の直後に error 投入が満杯で recordLoss すると
+            // completed 済みのため waitForCompletion は再起床しない。欠落を再確認する。
             // 正常完了も consumeEvents に任せる。success で戻ると session loop が終わる。
             while !Task.isCancelled {
+                if feed.deliveryState.didLoseEvents {
+                    self.handleEventLoss(feed)
+                    throw feed.deliveryState.makeError()
+                }
                 try await Task.sleep(nanoseconds: 100_000_000)
             }
             throw CancellationError()
