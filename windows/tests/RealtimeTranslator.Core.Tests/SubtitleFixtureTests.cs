@@ -18,6 +18,8 @@ public sealed class SubtitleFixtureTests
 
     public static TheoryData<string> AssemblerCases => AssemblerCaseNames();
 
+    public static TheoryData<string> BoundaryCases => BoundaryCaseNames();
+
     // Given: shared fixture の字幕文字数上限
     // When: clipper の定数と照合する
     // Then: 日本語 60 / 英語 120 / 省略記号が一致する
@@ -64,15 +66,12 @@ public sealed class SubtitleFixtureTests
             RealtimeSubtitleAssembler.IdleFinalizeInterval);
     }
 
-    [Fact]
-    public void BoundaryMatchesFixture()
+    [Theory]
+    [MemberData(nameof(BoundaryCases))]
+    public void BoundaryMatchesFixture(string name)
     {
         // Given: v2 boundary fixture
-        var boundary = SharedFixtures.Load("subtitle", 2)["boundary"]!.AsObject();
-
-        foreach (var item in boundary["cases"]!.AsArray())
-        {
-            var fixture = item!.AsObject();
+        var fixture = FindBoundaryCase(name);
             var pair = LanguagePairExtensions.ParseLanguagePair(
                 SharedFixtures.Text(fixture["pair"]));
             var currentLanguage = ParseLanguage(SharedFixtures.Text(fixture["currentLanguage"]));
@@ -130,27 +129,26 @@ public sealed class SubtitleFixtureTests
                 }
             }
 
-            var expectedCandidates = new List<int?>();
-            foreach (var value in fixture["expectedCandidateOffsets"]!.AsArray())
-            {
-                expectedCandidates.Add(value is null ? null : SharedFixtures.Number(value));
-            }
+        var expectedCandidates = new List<int?>();
+        foreach (var value in fixture["expectedCandidateOffsets"]!.AsArray())
+        {
+            expectedCandidates.Add(value is null ? null : SharedFixtures.Number(value));
+        }
 
-            Assert.Equal(expectedCandidates, candidates);
+        Assert.Equal(expectedCandidates, candidates);
+        Assert.Equal(
+            SharedFixtures.OptionalNumber(fixture["expectedSwitchAtDelta"]),
+            switchDelta);
+
+        if (switchDelta is { } switchIndex)
+        {
+            var splitOffset = candidates[switchIndex] ?? source.Length;
             Assert.Equal(
-                SharedFixtures.OptionalNumber(fixture["expectedSwitchAtDelta"]),
-                switchDelta);
-
-            if (switchDelta is { } switchIndex)
-            {
-                var splitOffset = candidates[switchIndex] ?? source.Length;
-                Assert.Equal(
-                    SharedFixtures.OptionalText(fixture["expectedOldSource"]),
-                    source[..splitOffset]);
-                Assert.Equal(
-                    SharedFixtures.OptionalText(fixture["expectedNewSource"]),
-                    source[splitOffset..]);
-            }
+                SharedFixtures.OptionalText(fixture["expectedOldSource"]),
+                source[..splitOffset]);
+            Assert.Equal(
+                SharedFixtures.OptionalText(fixture["expectedNewSource"]),
+                source[splitOffset..]);
         }
     }
 
@@ -305,7 +303,7 @@ public sealed class SubtitleFixtureTests
             "ja" => SpokenLanguage.Japanese,
             "en" => SpokenLanguage.English,
             "es" => SpokenLanguage.Spanish,
-            _ => SpokenLanguage.Unknown,
+            _ => throw new ArgumentOutOfRangeException(nameof(value), value, "unknown language code"),
         };
 
     private static RealtimeSubtitleUpdate Split(
@@ -373,6 +371,30 @@ public sealed class SubtitleFixtureTests
         }
 
         return data;
+    }
+
+    private static TheoryData<string> BoundaryCaseNames()
+    {
+        var data = new TheoryData<string>();
+        foreach (var item in SharedFixtures.Load("subtitle", 2)["boundary"]!["cases"]!.AsArray())
+        {
+            data.Add(SharedFixtures.Text(item?["name"]));
+        }
+
+        return data;
+    }
+
+    private static JsonObject FindBoundaryCase(string name)
+    {
+        foreach (var item in SharedFixtures.Load("subtitle", 2)["boundary"]!["cases"]!.AsArray())
+        {
+            if (item is JsonObject candidate && SharedFixtures.Text(candidate["name"]) == name)
+            {
+                return candidate;
+            }
+        }
+
+        throw new Xunit.Sdk.XunitException("no boundary case named " + name);
     }
 
     private static JsonObject FindAssemblerCase(string name)

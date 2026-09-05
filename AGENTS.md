@@ -1,7 +1,9 @@
+# RealtimeTranslator development guide
+
 Shared fixtures live under `shared/fixtures/v<N>` and are the canonical contract
 for both Swift and Windows implementations. The subtitle source-boundary
 contract is version 2; `scripts/ci-shared-contracts.sh` validates every version.
-# RealtimeTranslator 開発ガイド
+## RealtimeTranslator 開発ガイド
 
 macOS版（Swift / `RealtimeTranslator/`）とWindows版（.NET / `windows/`）の2実装がある。以下はmacOS版の規約で、共通の不変条件はWindows版にも適用する。Windows固有の規約は「Windows版」を参照する。
 
@@ -98,7 +100,7 @@ xcodebuild test -scheme RealtimeTranslator \
 - 実行状態はDEBUGビルドのみ`/tmp/realtimetranslator.status`へ書き出す（Releaseでは作らない）。
 - クラッシュ時は最新のDiagnosticReportsと該当スレッドを確認し、推測だけで修正しない。
 - ログへ認識した発話内容、APIキー、Authorizationを出力しない。
-- `shared/fixtures/v1` は両実装の契約正本。Swiftテストからも読み、Windows版と同値性を保つ。契約検査の正本は `scripts/ci-shared-contracts.sh`。
+- `shared/fixtures/v<N>/` は両実装のバージョン付き契約正本。subtitle は v2、その他の契約は v1 とし、Swift テストと Windows 版の同値性を保つ。契約検査の正本は `scripts/ci-shared-contracts.sh`。
 - Origin の PR CI は Depot CI（`.depot/workflows/`）が `shared-contracts` と Windows Core テストを実行する。Depot に Windows / macOS サンドボックスは無い。
 - GitHub Actions（`.github/workflows/`）は GitHub 側の Windows 全体・macOS `xcodebuild`・タグ Release 用に残す。Platform / App / publish / 署名・公証はこちら。
 - Depot を有効にするには Origin リポジトリの Apps から Depot を接続し、`.depot/workflows/` を default branch へマージする。

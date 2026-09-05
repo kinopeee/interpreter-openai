@@ -243,7 +243,7 @@ final class SubtitleFixtureTests: XCTestCase {
         case "ja": return .japanese
         case "en": return .english
         case "es": return .spanish
-        default: return .unknown
+        default: fatalError("unhandled language code \(value)")
         }
     }
 }

@@ -79,8 +79,13 @@ struct SourceBoundaryTracker: Sendable {
         guard reverseEvidenceCount == 1 else { return }
 
         let reverseLanguage = currentLanguage == .english ? SpokenLanguage.spanish : .english
+        let entries = scalarEntries(in: segmentSource)
         if let candidateOffset,
-           firstCueStarting(atOrAfter: candidateOffset, in: segmentSource) == reverseLanguage
+           firstCueStarting(
+               atOrAfter: candidateOffset,
+               in: segmentSource,
+               entries: entries
+           ) == reverseLanguage
         {
             return
         }
@@ -98,7 +103,8 @@ struct SourceBoundaryTracker: Sendable {
         let firstReverseMark = firstStandaloneSpanishMark(
             in: segmentSource,
             from: recentStartOffset,
-            to: recentEnd
+            to: recentEnd,
+            entries: entries
         )
         let cueStart = [firstReverseWord, firstReverseMark]
             .compactMap { $0 }
@@ -112,7 +118,8 @@ struct SourceBoundaryTracker: Sendable {
         let sentenceStart = sentenceStart(
             in: segmentSource,
             windowStart: recentStartOffset,
-            before: cueStart
+            before: cueStart,
+            entries: entries
         )
         let hasCurrentCue = recentSpans.contains {
             $0.lowerBound >= sentenceStart
@@ -123,13 +130,14 @@ struct SourceBoundaryTracker: Sendable {
         let rawCandidate = hasCurrentCue ? cueStart : sentenceStart
         candidateOffset = moveBackwardOverNewSidePrefix(
             candidateOffset: rawCandidate,
-            entries: scalarEntries(in: segmentSource)
+            entries: entries
         )
     }
 
     private func firstCueStarting(
         atOrAfter offset: Int,
-        in source: String
+        in source: String,
+        entries: [(offset: Int, scalar: Unicode.Scalar)]
     ) -> SpokenLanguage? {
         let firstWord = SpokenLanguageDetector.wordSpans(in: source)
             .filter { $0.lowerBound >= offset }
@@ -143,7 +151,8 @@ struct SourceBoundaryTracker: Sendable {
         let firstMark = firstStandaloneSpanishMark(
             in: source,
             from: offset,
-            to: source.utf16.count
+            to: source.utf16.count,
+            entries: entries
         ).map { ($0, SpokenLanguage.spanish) }
         switch [firstWord, firstMark].compactMap({ $0 }).min(by: { $0.0 < $1.0 })?.1 {
         case .some(let language):
@@ -166,9 +175,14 @@ struct SourceBoundaryTracker: Sendable {
         return nil
     }
 
-    private func sentenceStart(in source: String, windowStart: Int, before offset: Int) -> Int {
+    private func sentenceStart(
+        in source: String,
+        windowStart: Int,
+        before offset: Int,
+        entries: [(offset: Int, scalar: Unicode.Scalar)]
+    ) -> Int {
         var result = windowStart
-        for entry in scalarEntries(in: source)
+        for entry in entries
             where entry.offset >= windowStart && entry.offset < offset
         {
             if Self.isSentenceTerminator(entry.scalar) {
@@ -181,9 +195,10 @@ struct SourceBoundaryTracker: Sendable {
     private func firstStandaloneSpanishMark(
         in source: String,
         from start: Int,
-        to end: Int
+        to end: Int,
+        entries: [(offset: Int, scalar: Unicode.Scalar)]
     ) -> Int? {
-        scalarEntries(in: source).first {
+        entries.first {
             $0.offset >= start
                 && $0.offset < end
                 && ($0.scalar.value == 0x00BF || $0.scalar.value == 0x00A1)

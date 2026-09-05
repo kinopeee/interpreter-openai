@@ -598,21 +598,6 @@ public sealed class InterpretationSessionTests
             Assert.DoesNotContain(updates, update => update.ShouldFinalize);
         }
         await session.StopAsync();
-        return;
-#if false
-        RealtimeSubtitleUpdate finalized = default;
-        await WaitUntilAsync(() =>
-        {
-            lock (updates)
-            {
-                finalized = updates.Find(update => update.ShouldFinalize);
-                return finalized.ShouldFinalize;
-            }
-        });
-        Assert.Equal("これはテストです、続きです", finalized.SourceText);
-        Assert.Equal("This is a test", finalized.TranslatedText);
-        await session.StopAsync();
-#endif
     }
 
     // Given: 日本語の原文と英語訳が確定候補として存在する
@@ -894,21 +879,6 @@ public sealed class InterpretationSessionTests
             Assert.DoesNotContain(updates, update => update.ShouldFinalize);
         }
         await session.StopAsync();
-        return;
-#if false
-        RealtimeSubtitleUpdate finalized = default;
-        await WaitUntilAsync(() =>
-        {
-            lock (updates)
-            {
-                finalized = updates.Find(update => update.ShouldFinalize);
-                return finalized.ShouldFinalize;
-            }
-        });
-        Assert.Equal("これはテストです", finalized.SourceText);
-        Assert.Equal("Esto es una prueba", finalized.TranslatedText);
-        await session.StopAsync();
-#endif
     }
 
     // Given: ja-es ペアと ja-en 既定の tuningProvider
@@ -1657,29 +1627,11 @@ public sealed class InterpretationSessionTests
             client.SelectedTargets);
         Assert.Equal([SpokenLanguage.Spanish, SpokenLanguage.English], client.SpokenLanguages);
         Assert.True(client.ResetAudioRoutingCount > resetsAfterSpanish);
-#if false
-        RealtimeSubtitleUpdate finalized = default;
-        await WaitUntilAsync(() =>
-        {
-            lock (updates)
-            {
-                finalized = updates.Find(update => update.ShouldFinalize);
-                return finalized.ShouldFinalize;
-            }
-        });
-        Assert.Equal(
-            "el la los las es está que y the and is are of to it that",
-            finalized.SourceText);
-        Assert.DoesNotContain("this with for you they", finalized.SourceText, StringComparison.Ordinal);
-        Assert.Equal("Hello from Spanish", finalized.TranslatedText);
-        await session.StopAsync();
-#else
         lock (updates)
         {
             Assert.Contains(updates, update => update.ShouldFinalize);
         }
         await session.StopAsync();
-#endif
     }
 
     // Given: 日本語 routing が確定したあとのセグメント

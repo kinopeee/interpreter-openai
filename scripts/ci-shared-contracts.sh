@@ -32,6 +32,7 @@ validate_fixtures() {
       "${AJV[@]}" -s "$schema" -d "$name.json" || status=1
     done
     for fixture in *.json; do
+      [[ -f "$fixture" ]] || continue
       name="$(basename "$fixture" .json)"
       if [[ ! -f "schema/$name.schema.json" ]]; then
         echo "::error::missing schema for $fixture"

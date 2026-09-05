@@ -113,7 +113,7 @@ struct RealtimeSubtitleAssembler: Sendable {
     }
 
     /// 言語切替時に現行ペアを確定する。完全ペアがなければbufferだけクリアする。
-    /// hysteresis で原文が伸びて訳が stale でも、切替境界としては既存ペアを確定する。
+    /// 訳文の受理位置が境界に到達済み（>= offset）の場合のみ prefix ペアを確定し、未到達の stale 訳文は破棄する。
     mutating func splitForLanguageSwitch(
         at offset: Int,
         now: Date = Date()

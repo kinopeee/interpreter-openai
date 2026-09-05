@@ -92,8 +92,9 @@ public sealed class SourceBoundaryTracker
         var reverseLanguage = currentLanguage == SpokenLanguage.English
             ? SpokenLanguage.Spanish
             : SpokenLanguage.English;
+        var entries = ScalarEntries(source);
         if (CandidateOffset is { } candidate
-            && FirstCueStartingAtOrAfter(source, candidate) == reverseLanguage)
+            && FirstCueStartingAtOrAfter(source, candidate, entries) == reverseLanguage)
         {
             return;
         }
@@ -108,7 +109,11 @@ public sealed class SourceBoundaryTracker
             .Where(value => value.Language == reverseLanguage)
             .Select(value => (int?)value.Span.Start)
             .FirstOrDefault();
-        var firstReverseMark = FirstStandaloneSpanishMark(source, windowStart, source.Length);
+        var firstReverseMark = FirstStandaloneSpanishMark(
+            source,
+            windowStart,
+            source.Length,
+            entries);
         var cueStart = new[] { firstReverseWord, firstReverseMark }
             .Where(value => value is not null)
             .Select(value => value!.Value)
@@ -122,16 +127,19 @@ public sealed class SourceBoundaryTracker
             return;
         }
 
-        var sentenceStart = SentenceStart(source, windowStart, cueStart);
+        var sentenceStart = SentenceStart(source, windowStart, cueStart, entries);
         var hasCurrentCue = recentSpans.Any(span =>
             span.Start >= sentenceStart
             && span.Start < cueStart
             && CueLanguage(source[span.Start..span.End]) == currentLanguage);
         var rawCandidate = hasCurrentCue ? cueStart : sentenceStart;
-        CandidateOffset = MoveBackwardOverNewSidePrefix(rawCandidate, ScalarEntries(source));
+        CandidateOffset = MoveBackwardOverNewSidePrefix(rawCandidate, entries);
     }
 
-    private static SpokenLanguage? FirstCueStartingAtOrAfter(string source, int offset)
+    private static SpokenLanguage? FirstCueStartingAtOrAfter(
+        string source,
+        int offset,
+        List<(int Offset, Rune Rune)> entries)
     {
         int? firstWordOffset = null;
         SpokenLanguage? firstWordLanguage = null;
@@ -146,7 +154,7 @@ public sealed class SourceBoundaryTracker
                 break;
             }
         }
-        var firstMark = FirstStandaloneSpanishMark(source, offset, source.Length);
+        var firstMark = FirstStandaloneSpanishMark(source, offset, source.Length, entries);
         if (firstWordLanguage is null && firstMark is null)
         {
             return null;
@@ -177,10 +185,14 @@ public sealed class SourceBoundaryTracker
         return null;
     }
 
-    private static int SentenceStart(string source, int windowStart, int before)
+    private static int SentenceStart(
+        string source,
+        int windowStart,
+        int before,
+        List<(int Offset, Rune Rune)> entries)
     {
         var result = windowStart;
-        foreach (var entry in ScalarEntries(source)
+        foreach (var entry in entries
             .Where(entry => entry.Offset >= windowStart && entry.Offset < before))
         {
             if (IsSentenceTerminator(entry.Rune))
@@ -192,9 +204,13 @@ public sealed class SourceBoundaryTracker
         return result;
     }
 
-    private static int? FirstStandaloneSpanishMark(string source, int start, int end)
+    private static int? FirstStandaloneSpanishMark(
+        string source,
+        int start,
+        int end,
+        List<(int Offset, Rune Rune)> entries)
     {
-        foreach (var entry in ScalarEntries(source))
+        foreach (var entry in entries)
         {
             if (entry.Offset >= start
                 && entry.Offset < end

@@ -19,7 +19,7 @@ public sealed class InterpretationSessionRoutingGateTests
 {
     // Given: 完全ペア表示後、言語切替の SelectTranslationTarget が routing gate 内で止まっている
     // When: Stop を経ずに Dispose する（OnExit 相当）
-    // Then: 切替前ペアは ShouldFinalize され、切替原文は assembler に入らず、破棄例外にならない
+    // Then: session emits the suffix as the current update
     [Fact]
     public async Task DisposeWhileSelectTargetBlockedStillFinalizesCompletePair()
     {

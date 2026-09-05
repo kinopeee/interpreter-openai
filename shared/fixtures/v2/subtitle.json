@@ -170,7 +170,7 @@
         "expectedFinal": { "sourceText": "", "translatedText": "", "isTranslationCurrent": false, "shouldFinalize": false }
       },
       {
-        "name": "language switch finalizes a stale pair after source continues",
+        "name": "language switch does not finalize stale pair",
         "epoch": 1,
         "expectLane": "en",
         "steps": [
