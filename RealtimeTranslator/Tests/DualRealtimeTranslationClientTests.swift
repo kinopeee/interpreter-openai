@@ -737,14 +737,13 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
             ])
         }
 
-        defer { collector.cancel() }
         await fulfillment(of: [received], timeout: 5)
+        await dual.beginStopDrainCapture()
+        let drained = await dual.closeGracefully()
+        collector.cancel()
         let receivedEvents = await collector.value
         XCTAssertEqual(receivedEvents.count, 513)
         XCTAssertFalse(feed.deliveryState.didLoseEvents)
-
-        await dual.beginStopDrainCapture()
-        let drained = await dual.closeGracefully()
 
         let drainedValues = drained.compactMap { event -> Int? in
             guard case .inputTranscriptDelta(let delta, _, _) = event.event else {
