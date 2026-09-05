@@ -696,6 +696,66 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         XCTAssertTrue(sourceTexts.contains("未読原文"), "unread delta must remain, got \(sourceTexts)")
     }
 
+    // Given: 1 件の未確認イベントと 512 件の後続 merge イベント
+    // When: すべてを読み取り、stop drain を開始する
+    // Then: 513 件が順序と件数を保って 1 回だけ返る
+    func testA05StopDrainPreservesOneUnacknowledgedEventAnd512MergedEvents() async throws {
+        let sourceTransport = FakeRealtimeWebSocketTransport()
+        let englishTransport = FakeRealtimeWebSocketTransport()
+        let japaneseTransport = FakeRealtimeWebSocketTransport()
+        let dual = makeDual(
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+        try await startDual(
+            dual,
+            sourceTransport: sourceTransport,
+            englishTransport: englishTransport,
+            japaneseTransport: japaneseTransport
+        )
+
+        let feed = await dual.feed
+        let received = expectation(description: "513 merged events received")
+        let collector = Task {
+            var events: [RealtimeTranslationStreamEvent] = []
+            for await event in feed.events {
+                events.append(event)
+                if events.count == 513 {
+                    received.fulfill()
+                    return events
+                }
+            }
+            return events
+        }
+
+        for index in 0..<513 {
+            try await sourceTransport.enqueueJSON([
+                "type": "conversation.item.input_audio_transcription.delta",
+                "item_id": "a05-\(index)",
+                "delta": "\(index)",
+            ])
+        }
+
+        await fulfillment(of: [received], timeout: 3)
+        let receivedEvents = await collector.value
+        XCTAssertEqual(receivedEvents.count, 513)
+        XCTAssertFalse(feed.deliveryState.didLoseEvents)
+
+        await dual.beginStopDrainCapture()
+        let drained = await dual.closeGracefully()
+
+        let drainedValues = drained.compactMap { event -> Int? in
+            guard case .inputTranscriptDelta(let delta, _, _) = event.event else {
+                return nil
+            }
+            return Int(delta)
+        }
+        XCTAssertEqual(drainedValues, Array(0..<513))
+        XCTAssertEqual(Set(drainedValues).count, 513)
+        XCTAssertFalse(feed.deliveryState.didLoseEvents)
+    }
+
     func testForceCloseAfterDrainCaptureStillReturnsUnreadEvents() async throws {
         // Given: session consumer がおらず、原文 delta を drain 武装した dual
         let sourceTransport = FakeRealtimeWebSocketTransport()

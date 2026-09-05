@@ -154,6 +154,18 @@ final class SubtitleAggregator: @unchecked Sendable {
         return snapshotLocked()
     }
 
+    @discardableResult
+    func invalidateCurrent(now: Date = Date()) -> SubtitleSnapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        if current.state != .finalized {
+            clearCurrentLocked(now: now)
+        }
+        var snapshot = snapshotLocked()
+        snapshot.isInvalidation = true
+        return snapshot
+    }
+
     private func finalizeIfNeededLocked(now: Date) {
         guard !current.isEmpty else { return }
         guard current.state != .finalized else { return }

@@ -62,6 +62,8 @@ final class InterpretationSession {
     private var activeLanguagePair: LanguagePair?
     private var selectedTranslationTarget: RealtimeTranslationOutputLanguage?
     private var reverseEvidenceCount = 0
+    private var activeFeed: EventFeed?
+    private var handledLossRunToken: Int?
 
     /// テスト用。generation 確認後・assembler 更新前に差し込む。
     var beforeAssemblerIngestForTests: (() -> Void)?
@@ -279,7 +281,9 @@ final class InterpretationSession {
             return
         }
 
-        let epoch = await dualClient.connectionEpoch
+        let feed = await dualClient.feed
+        activeFeed = feed
+        let epoch = feed.runToken
         // 再接続時 beginNewEpoch は buffer を捨てる。idle finalize 前の完全ペアを
         // 先に確定しないと、オプトイン字幕記録へ .finalized が届かない。
         flushPendingFinalizeIfNeeded()
@@ -308,19 +312,33 @@ final class InterpretationSession {
             try await self.feedAudio(generation: generation)
         }
         let eventTask = Task { @MainActor in
-            try await self.consumeEvents(generation: generation, epoch: epoch)
+            try await self.consumeEvents(generation: generation, feed: feed)
         }
-        let firstResult = await raceFirstResult(feedTask, eventTask)
+        let completionTask = Task<Void, Error> { @MainActor in
+            await feed.deliveryState.waitForCompletion()
+            // 欠落なしの終了理由は stream 上の error event が消費側へ届くので、そちらに任せる。
+            if feed.deliveryState.didLoseEvents {
+                self.handleEventLoss(feed)
+                throw feed.deliveryState.makeError()
+            }
+            try await Task.sleep(nanoseconds: UInt64.max)
+        }
+        let firstResult = await raceFirstResult(feedTask, eventTask, completionTask)
         feedTask.cancel()
         eventTask.cancel()
+        completionTask.cancel()
         _ = await feedTask.result
         _ = await eventTask.result
+        if feed.deliveryState.didLoseEvents {
+            handleEventLoss(feed)
+        }
         try firstResult.get()
     }
 
     private func raceFirstResult(
         _ first: Task<Void, Error>,
-        _ second: Task<Void, Error>
+        _ second: Task<Void, Error>,
+        _ third: Task<Void, Error>
     ) async -> Result<Void, Error> {
         // 先に完了した側の結果で戻る。負け側の非構造化Taskも必ずcancelしないと、
         // withTaskGroupが `.result` 待ちの子タスクで戻りを阻み、再接続不能になる。
@@ -337,6 +355,13 @@ final class InterpretationSession {
                     await second.result
                 } onCancel: {
                     second.cancel()
+                }
+            }
+            group.addTask {
+                await withTaskCancellationHandler {
+                    await third.result
+                } onCancel: {
+                    third.cancel()
                 }
             }
             let value = await group.next() ?? .failure(CancellationError())
@@ -361,27 +386,29 @@ final class InterpretationSession {
         throw RealtimeTranslationError.recoverableTransportFailure("audio stream ended")
     }
 
-    private func consumeEvents(generation: Int, epoch: Int) async throws {
-        let stream = await dualClient.events
+    private func consumeEvents(generation: Int, feed: EventFeed) async throws {
+        let stream = feed.events
         for await streamEvent in stream {
             // stop 後の未読 delta は Dual recentYields → close drain が assembler へ同期適用する。
             // ここで ingest/enqueueRender すると、performStop が消した renderTask が再生成され、
             // forceFinalize 後に replaceCurrent で確定ペアを live へ戻す。
             guard generation == lifecycleGeneration else { return }
-            guard streamEvent.epoch == epoch else {
-                await dualClient.acknowledgeConsumedStreamEvent()
+            if checkEventLoss(feed, generation: generation) {
+                if generation == lifecycleGeneration {
+                    throw feed.deliveryState.makeError()
+                }
+                return
+            }
+            guard streamEvent.epoch == feed.runToken else {
+                await dualClient.acknowledgeConsumedStreamEvent(runToken: feed.runToken)
                 continue
             }
 
             if case .error(let message, let code) = streamEvent.event {
-                if code == "transport" {
-                    throw RealtimeTranslationError.recoverableTransportFailure(message)
-                }
-                if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
-                    throw RealtimeTranslationError.authenticationFailed
-                }
-                // サーバー文言にキー断片が含まれる場合があるため、保持前に正規化する。
-                throw RealtimeTranslationError.fatalServerError(message)
+                feed.deliveryState.tryRecordTermination(
+                    EventDeliveryState.classify(code: code, message: message)
+                )
+                throw feed.deliveryState.makeError()
             }
 
             // 原文 routing は専用 transcription の source lane だけを使う。
@@ -405,9 +432,18 @@ final class InterpretationSession {
                     await resetAudioRoutingForNextSegment()
                 }
             }
-            await dualClient.acknowledgeConsumedStreamEvent()
+            await dualClient.acknowledgeConsumedStreamEvent(runToken: feed.runToken)
         }
         guard generation == lifecycleGeneration else { return }
+        if checkEventLoss(feed, generation: generation) {
+            if generation == lifecycleGeneration {
+                throw feed.deliveryState.makeError()
+            }
+            return
+        }
+        if feed.deliveryState.termination != .none {
+            throw feed.deliveryState.makeError()
+        }
         throw RealtimeTranslationError.recoverableTransportFailure("event stream ended")
     }
 
@@ -442,7 +478,9 @@ final class InterpretationSession {
         }
 
         let drainedEvents = await dualClient.closeGracefully()
-        ingestStopDrainEvents(drainedEvents)
+        if let feed = activeFeed, !feed.deliveryState.didLoseEvents {
+            ingestStopDrainEvents(drainedEvents, feed: feed)
+        }
         if let tickUpdate = assembler.tick(now: Date()) {
             apply(tickUpdate)
         }
@@ -459,7 +497,8 @@ final class InterpretationSession {
     }
 
     /// 正常停止の close drain で届いた字幕イベントを assembler へ取り込む。
-    private func ingestStopDrainEvents(_ events: [RealtimeTranslationStreamEvent]) {
+    private func ingestStopDrainEvents(_ events: [RealtimeTranslationStreamEvent], feed: EventFeed) {
+        guard !feed.deliveryState.didLoseEvents else { return }
         for streamEvent in events {
             if case .error = streamEvent.event {
                 continue
@@ -494,6 +533,8 @@ final class InterpretationSession {
     private func tearDownStreaming(keepSubtitles: Bool = false) async {
         await audioCapture.stop()
         await dualClient.forceClose()
+        activeFeed = nil
+        handledLossRunToken = nil
         activeLanguagePair = nil
         stopTicker()
         if !keepSubtitles {
@@ -506,6 +547,9 @@ final class InterpretationSession {
     /// 完全な原文+訳文ペアが assembler / aggregator に残っていれば idle 待ちを飛ばして確定する。
     /// 停止・再接続・致命エラーで epoch/buffer を捨てる直前に呼び、字幕記録の欠落を防ぐ。
     private func flushPendingFinalizeIfNeeded() {
+        if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
+            return
+        }
         renderTask?.cancel()
         renderTask = nil
         // スロットル中の live snapshot より assembler を正とする。
@@ -534,6 +578,9 @@ final class InterpretationSession {
     }
 
     private func enqueueRender(_ update: RealtimeSubtitleUpdate) {
+        if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
+            return
+        }
         if update.shouldFinalize {
             renderTask?.cancel()
             renderTask = nil
@@ -560,6 +607,9 @@ final class InterpretationSession {
     }
 
     private func updateAudioRouting(withSourceDelta delta: String) async throws {
+        if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
+            return
+        }
         guard let pair = activeLanguagePair else { return }
         routingSourceText = RoutingSourceTextWindow.trim(routingSourceText + delta, pair: pair)
         let evidence = SpokenLanguageDetector.recentEvidence(
@@ -596,6 +646,12 @@ final class InterpretationSession {
     }
 
     private func apply(_ update: RealtimeSubtitleUpdate) {
+        if update.isInvalidation {
+            let snapshot = aggregator.invalidateCurrent()
+            delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
+            return
+        }
+
         lastRenderedAt = Date()
         if state == .listening || state == .reconnecting {
             aggregator.setStatusBanner(nil)
@@ -627,6 +683,11 @@ final class InterpretationSession {
                 guard let self else { return }
                 try? await Task.sleep(nanoseconds: intervalNanoseconds)
                 guard !Task.isCancelled else { return }
+                if let feed = self.activeFeed,
+                   self.checkEventLoss(feed, generation: self.lifecycleGeneration)
+                {
+                    continue
+                }
                 if let update = self.assembler.tick() {
                     self.enqueueRender(update)
                     if update.shouldFinalize {
@@ -650,6 +711,34 @@ final class InterpretationSession {
 
     private func publishSubtitles() {
         delegate?.interpretationSession(self, didUpdateSubtitles: aggregator.snapshot())
+    }
+
+    private func checkEventLoss(_ feed: EventFeed, generation _: Int) -> Bool {
+        guard feed.deliveryState.didLoseEvents else { return false }
+        if handledLossRunToken != feed.runToken {
+            handledLossRunToken = feed.runToken
+            assembler.discardUnconfirmed()
+            routingSourceText = ""
+            selectedTranslationTarget = nil
+            reverseEvidenceCount = 0
+            renderTask?.cancel()
+            renderTask = nil
+            pendingUpdate = nil
+            let invalidation = RealtimeSubtitleUpdate(
+                sourceText: "",
+                translatedText: "",
+                isTranslationCurrent: false,
+                shouldFinalize: false,
+                segmentGeneration: assembler.currentSegmentGeneration,
+                isInvalidation: true
+            )
+            apply(invalidation)
+        }
+        return true
+    }
+
+    private func handleEventLoss(_ feed: EventFeed) {
+        _ = checkEventLoss(feed, generation: lifecycleGeneration)
     }
 
     private func reconnectingBanner(detail: String?) -> String {

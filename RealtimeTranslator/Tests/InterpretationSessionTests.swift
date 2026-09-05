@@ -1507,6 +1507,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         var eventStream: AsyncStream<RealtimeTranslationStreamEvent>
         var eventContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation?
         var connectionEpoch = 0
+        var deliveryState = EventDeliveryState(epoch: 0)
         var appendedFrames: [Data] = []
 
         init() {
@@ -1532,6 +1533,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     var closeGracefullyEvents: [RealtimeTranslationStreamEvent] = []
     /// CloseGracefully 中に失敗したことにして forceClose へ回す（drain 自体は返す）。
     var closeGracefullyShouldFail = false
+    var onCloseGracefully: (() -> Void)?
     private(set) var beginStopDrainCaptureCallCount = 0
 
     var connectionEpoch: Int {
@@ -1543,6 +1545,18 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     var events: AsyncStream<RealtimeTranslationStreamEvent> {
         get async {
             state.withLock(\.eventStream)
+        }
+    }
+
+    var feed: EventFeed {
+        get async {
+            state.withLock { state in
+                EventFeed(
+                    events: state.eventStream,
+                    runToken: state.connectionEpoch,
+                    deliveryState: state.deliveryState
+                )
+            }
         }
     }
 
@@ -1581,6 +1595,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
 
         state.withLock { state in
             state.connectionEpoch += 1
+            state.deliveryState = EventDeliveryState(epoch: state.connectionEpoch)
             state.eventContinuation?.finish()
             var continuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation!
             state.eventStream = AsyncStream { continuation = $0 }
@@ -1604,7 +1619,14 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
 
     func publishSourceDelta(_ delta: String) {
         state.withLock { state in
-            state.eventContinuation?.yield(
+            guard let continuation = state.eventContinuation else { return }
+            let yielder = EventDeliveryYielder(
+                continuation: continuation,
+                deliveryState: state.deliveryState,
+                stage: .source,
+                capacity: RealtimeSourceTranscriptionConnection.eventBufferLimit
+            )
+            _ = yielder.deliver(
                 RealtimeTranslationStreamEvent(
                     lane: .source,
                     event: .inputTranscriptDelta(
@@ -1615,6 +1637,21 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
                     epoch: state.connectionEpoch
                 )
             )
+        }
+    }
+
+    func recordLoss(
+        stage: EventDeliveryStage = .merge,
+        capacity: Int = DualRealtimeTranslationClient.unacknowledgedRetentionLimit
+    ) {
+        state.withLock { state in
+            state.deliveryState.recordLoss(stage: stage, capacity: capacity)
+        }
+    }
+
+    func recordTermination(_ termination: EventDeliveryTermination) {
+        state.withLock { state in
+            state.deliveryState.tryRecordTermination(termination)
         }
     }
 
@@ -1631,11 +1668,12 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         beginStopDrainCaptureCallCount += 1
     }
 
-    func acknowledgeConsumedStreamEvent() async {}
+    func acknowledgeConsumedStreamEvent(runToken: Int?) async {}
 
     @discardableResult
     func closeGracefully() async -> [RealtimeTranslationStreamEvent] {
         closeGracefullyCallCount += 1
+        onCloseGracefully?()
         let drained = closeGracefullyEvents
         closeGracefullyEvents = []
         finishEvents()
@@ -1659,16 +1697,22 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         event: RealtimeTranslationServerEvent,
         epoch: Int? = nil
     ) {
-        let payload = state.withLock { state -> (AsyncStream<RealtimeTranslationStreamEvent>.Continuation?, Int) in
-            (state.eventContinuation, epoch ?? state.connectionEpoch)
-        }
-        payload.0?.yield(
-            RealtimeTranslationStreamEvent(
-                target: target,
-                event: event,
-                epoch: payload.1
+        state.withLock { state in
+            guard let continuation = state.eventContinuation else { return }
+            let yielder = EventDeliveryYielder(
+                continuation: continuation,
+                deliveryState: state.deliveryState,
+                stage: .merge,
+                capacity: DualRealtimeTranslationClient.mergedEventBufferLimit
             )
-        )
+            _ = yielder.deliver(
+                RealtimeTranslationStreamEvent(
+                    target: target,
+                    event: event,
+                    epoch: epoch ?? state.connectionEpoch
+                )
+            )
+        }
     }
 
     private func finishEvents() {
@@ -1708,6 +1752,7 @@ final class CheckedContinuationBox: @unchecked Sendable {
 final class InterpretationSessionDelegateSpy: InterpretationSessionDelegate {
     private(set) var states: [TranslationState] = []
     private(set) var messages: [String] = []
+    private(set) var snapshots: [SubtitleSnapshot] = []
     private(set) var latestSnapshot: SubtitleSnapshot?
     private(set) var finalizedSnapshots: [LiveSubtitle] = []
 
@@ -1722,6 +1767,7 @@ final class InterpretationSessionDelegateSpy: InterpretationSessionDelegate {
         _ session: InterpretationSession,
         didUpdateSubtitles snapshot: SubtitleSnapshot
     ) {
+        snapshots.append(snapshot)
         latestSnapshot = snapshot
         if snapshot.current.state == .finalized {
             finalizedSnapshots.append(snapshot.current)

@@ -177,6 +177,7 @@ final class PrivacyFixtureTests: XCTestCase {
             (.notConnected, "error.notConnected"),
             (.invalidMessage, "error.invalidMessage"),
             (.authenticationFailed, "error.authenticationFailed"),
+            (.receiveOverflow, "error.receiveOverflow"),
             (.recoverableTransportFailure("test"), "error.transportDisconnected"),
             (.sessionUpdateTimeout, "error.sessionUpdateTimeout"),
             (.closeTimeout, "error.closeTimeout"),
@@ -231,6 +232,8 @@ final class PrivacyFixtureTests: XCTestCase {
             return .invalidMessage
         case "authenticationFailed":
             return .authenticationFailed
+        case "receiveOverflow":
+            return .receiveOverflow
         case "fatalServerError":
             return .fatalServerError("test")
         case "recoverableTransportFailure":
