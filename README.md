@@ -147,6 +147,13 @@ Depot の Windows Core 検査:
 ./scripts/ci-windows-core.sh   # Linux で回せる Windows Core のみ
 ```
 
+Depot の初回接続は、リポジトリの管理元に応じて設定します。
+
+- Origin が管理元の場合は、Origin の Depot app をインストールして Depot 組織を選びます。Depot 側の Organization Settings → Origin → Connect to Origin からも接続できます。
+- GitHub ミラーの場合は、Depot の Organization Settings → GitHub Code Access → Connect to GitHub から Depot Code Access app を認可します。CI のイベントと結果は GitHub 側で扱われます。
+
+このリポジトリには `.depot/workflows/` を用意しています。初回導入や移行時は、必要な `.depot/` 配下のファイルを default branch へマージします。接続・移行の詳細は [Depot の Origin 連携手順](https://depot.dev/docs/ci/integrations/origin) を参照してください。
+
 ## 注意
 
 - OpenAI APIへ送信されるのはマイク音声です。原文と訳文はAPIから受信します。
