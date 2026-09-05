@@ -102,17 +102,32 @@ final class EventDeliveryState: @unchecked Sendable {
     }
 
     func waitForCompletion() async {
-        await withCheckedContinuation { continuation in
-            let resumeImmediately = state.withLock { state -> Bool in
-                if state.completed {
-                    return true
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                let resumeImmediately = state.withLock { state -> Bool in
+                    if state.completed {
+                        return true
+                    }
+                    state.waiters.append(continuation)
+                    return false
                 }
-                state.waiters.append(continuation)
-                return false
+                if resumeImmediately {
+                    continuation.resume()
+                    return
+                }
+                // 登録前に cancel されていた場合、onCancel は空の waiters しか見ない。
+                if Task.isCancelled {
+                    let waiters = state.withLock { state in
+                        completeLocked(&state)
+                    }
+                    waiters.forEach { $0.resume() }
+                }
             }
-            if resumeImmediately {
-                continuation.resume()
+        } onCancel: {
+            let waiters = state.withLock { state in
+                completeLocked(&state)
             }
+            waiters.forEach { $0.resume() }
         }
     }
 
