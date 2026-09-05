@@ -1,3 +1,6 @@
+Fixture versions are stored in `shared/fixtures/v<N>`. The existing v1 UI and
+privacy contracts remain authoritative for those fixtures; the subtitle
+source-boundary contract is carried by v2.
 # UI 表示言語の契約と実装プラン
 
 翻訳ペア（`languagePair`）とは独立に、アプリ枠の表示言語を切り替える。

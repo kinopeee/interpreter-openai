@@ -1,3 +1,6 @@
+Shared fixtures live under `shared/fixtures/v<N>` and are the canonical contract
+for both Swift and Windows implementations. The subtitle source-boundary
+contract is version 2; `scripts/ci-shared-contracts.sh` validates every version.
 # RealtimeTranslator 開発ガイド
 
 macOS版（Swift / `RealtimeTranslator/`）とWindows版（.NET / `windows/`）の2実装がある。以下はmacOS版の規約で、共通の不変条件はWindows版にも適用する。Windows固有の規約は「Windows版」を参照する。

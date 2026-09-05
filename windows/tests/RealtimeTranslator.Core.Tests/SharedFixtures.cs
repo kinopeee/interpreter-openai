@@ -10,23 +10,23 @@ namespace RealtimeTranslator.Core.Tests;
 /// <summary>`shared/fixtures/v1` を読み込むヘルパ。fixture が唯一の正本。</summary>
 public static class SharedFixtures
 {
-    public static JsonObject Load(string name)
+    public static JsonObject Load(string name, int version = 1)
     {
-        var path = Path.Combine(DirectoryPath.Value, name + ".json");
+        var path = Path.Combine(DirectoryPath(version), name + ".json");
         var node = JsonNode.Parse(File.ReadAllText(path))
             ?? throw new InvalidOperationException($"{path} is empty");
         return node.AsObject();
     }
 
-    public static JsonArray Section(string fixture, string section) =>
-        Load(fixture)[section]?.AsArray()
+    public static JsonArray Section(string fixture, string section, int version = 1) =>
+        Load(fixture, version)[section]?.AsArray()
         ?? throw new InvalidOperationException($"{fixture}.{section} is missing");
 
     /// <summary>xUnit の theory 名として fixture のケース名をそのまま使う。</summary>
-    public static TheoryData<string> CaseNames(string fixture, string section)
+    public static TheoryData<string> CaseNames(string fixture, string section, int version = 1)
     {
         var data = new TheoryData<string>();
-        foreach (var item in Section(fixture, section))
+        foreach (var item in Section(fixture, section, version))
         {
             data.Add(Text(item?["name"]));
         }
@@ -34,9 +34,13 @@ public static class SharedFixtures
         return data;
     }
 
-    public static JsonObject Case(string fixture, string section, string name)
+    public static JsonObject Case(
+        string fixture,
+        string section,
+        string name,
+        int version = 1)
     {
-        foreach (var item in Section(fixture, section))
+        foreach (var item in Section(fixture, section, version))
         {
             if (item is JsonObject candidate && Text(candidate["name"]) == name)
             {
@@ -76,8 +80,8 @@ public static class SharedFixtures
     private static readonly JsonSerializerOptions CanonicalOptions = new() { WriteIndented = false };
 
     /// <summary>ビルド出力から repo root を遡って探す。fixture をテスト出力へコピーしない。</summary>
-    private static readonly Lazy<string> DirectoryPath = new(() =>
-        FindDirectory("shared", "fixtures", "v1"));
+    private static string DirectoryPath(int version) =>
+        FindDirectory("shared", "fixtures", $"v{version}");
 
     /// <summary><c>shared/locales/ui.json</c>。fixtures とは別ディレクトリ。</summary>
     public static string UiCatalogJson => File.ReadAllText(UiCatalogPath);

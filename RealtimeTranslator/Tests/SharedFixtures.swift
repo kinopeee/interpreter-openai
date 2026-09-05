@@ -3,8 +3,8 @@ import XCTest
 
 /// `shared/fixtures/v1` を読み込むヘルパ。fixture が唯一の正本。
 enum SharedFixtures {
-    static func load(_ name: String) throws -> [String: Any] {
-        let url = directoryURL.appendingPathComponent("\(name).json")
+    static func load(_ name: String, version: Int = 1) throws -> [String: Any] {
+        let url = directoryURL(version: version).appendingPathComponent("\(name).json")
         let data = try Data(contentsOf: url)
         let object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
         guard let dictionary = object as? [String: Any] else {
@@ -13,8 +13,12 @@ enum SharedFixtures {
         return dictionary
     }
 
-    static func section(_ fixture: String, _ section: String) throws -> [[String: Any]] {
-        let root = try load(fixture)
+    static func section(
+        _ fixture: String,
+        _ section: String,
+        version: Int = 1
+    ) throws -> [[String: Any]] {
+        let root = try load(fixture, version: version)
         guard let array = root[section] as? [Any] else {
             throw FixtureError.missingSection(fixture: fixture, section: section)
         }
@@ -26,8 +30,12 @@ enum SharedFixtures {
         }
     }
 
-    static func caseNames(_ fixture: String, _ section: String) throws -> [String] {
-        try self.section(fixture, section).map { item in
+    static func caseNames(
+        _ fixture: String,
+        _ section: String,
+        version: Int = 1
+    ) throws -> [String] {
+        try self.section(fixture, section, version: version).map { item in
             guard let name = item["name"] as? String else {
                 throw FixtureError.invalidCase(
                     fixture: fixture,
@@ -39,8 +47,13 @@ enum SharedFixtures {
         }
     }
 
-    static func `case`(_ fixture: String, _ section: String, _ name: String) throws -> [String: Any] {
-        for item in try self.section(fixture, section) {
+    static func `case`(
+        _ fixture: String,
+        _ section: String,
+        _ name: String,
+        version: Int = 1
+    ) throws -> [String: Any] {
+        for item in try self.section(fixture, section, version: version) {
             guard let caseName = item["name"] as? String else {
                 throw FixtureError.invalidCase(
                     fixture: fixture,
@@ -184,9 +197,9 @@ enum SharedFixtures {
         try Data(contentsOf: uiCatalogURL)
     }
 
-    private static let directoryURL: URL = {
-        findDirectory("shared/fixtures/v1")
-    }()
+    private static func directoryURL(version: Int) -> URL {
+        findDirectory("shared/fixtures/v\(version)")
+    }
 
     private static let localesDirectoryURL: URL = {
         findDirectory("shared/locales")

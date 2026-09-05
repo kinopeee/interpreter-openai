@@ -1,3 +1,6 @@
+`shared/fixtures/v<N>/` contains versioned canonical fixtures. The v2 directory
+currently contains the subtitle source-boundary contract; existing v1 fixtures
+remain unchanged. CI validates every version directory.
 # shared/ — 実装非依存の契約とフィクスチャ
 
 macOS(Swift) 版と Windows(C#) 版が同じ挙動を保つための言語中立な正本を置く。
