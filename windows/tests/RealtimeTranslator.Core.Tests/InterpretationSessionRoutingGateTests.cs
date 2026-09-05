@@ -65,7 +65,7 @@ public sealed class InterpretationSessionRoutingGateTests
         lock (updates)
         {
             finalized = updates.Find(update => update.ShouldFinalize);
-            Assert.DoesNotContain(
+            Assert.Contains(
                 updates,
                 update => update.SourceText.Contains("continue in english", StringComparison.Ordinal));
         }

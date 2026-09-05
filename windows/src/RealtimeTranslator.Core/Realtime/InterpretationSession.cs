@@ -67,9 +67,22 @@ public sealed class InterpretationSession : IDisposable
     private LanguagePair? _activeLanguagePair;
     private RealtimeTranslationOutputLanguage? _selectedTranslationTarget;
     private int _reverseEvidenceCount;
+    private readonly SourceBoundaryTracker _sourceBoundaryTracker = new();
     private RealtimeEventFeed? _activeFeed;
     private int? _handledLossEpoch;
     private long _subtitleSequence;
+
+    private abstract record SourceRoutingAction
+    {
+        public sealed record None : SourceRoutingAction;
+
+        public sealed record Select(RealtimeTranslationOutputLanguage? Target)
+            : SourceRoutingAction;
+
+        public sealed record Switch(
+            RealtimeTranslationOutputLanguage? Target,
+            LanguageSwitchSplit Split) : SourceRoutingAction;
+    }
 
     /// <summary>テスト用。generation 確認後・assembler 更新前に差し込む。</summary>
     internal Action? BeforeAssemblerIngestForTests { get; set; }
@@ -486,6 +499,8 @@ public sealed class InterpretationSession : IDisposable
             _activeLanguagePair = languagePair;
             _assembler.SetLanguagePair(languagePair);
             _assembler.BeginNewEpoch(epoch);
+            _sourceBoundaryTracker.Reset();
+            _assembler.SetBoundaryCandidatePending(false);
             _routingSourceText = string.Empty;
             _selectedTranslationTarget = null;
             _reverseEvidenceCount = 0;
@@ -608,15 +623,11 @@ public sealed class InterpretationSession : IDisposable
                 throw feed.DeliveryState.ToException();
             }
 
-            if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta source
-                && streamEvent.Lane.IsSource)
-            {
-                await UpdateAudioRoutingAsync(source.Delta, cancellationToken).ConfigureAwait(false);
-            }
-
             BeforeAssemblerIngestForTests?.Invoke();
 
             RealtimeSubtitleUpdate? update = null;
+            SourceRoutingAction routingAction = new SourceRoutingAction.None();
+            string? sourceDelta = null;
             var lostAfterRouting = false;
             lock (_sync)
             {
@@ -633,7 +644,17 @@ public sealed class InterpretationSession : IDisposable
                 }
                 else
                 {
+                    var deltaStart = _assembler.CurrentSourceLength;
+                    if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta source
+                        && streamEvent.Lane.IsSource)
+                    {
+                        sourceDelta = source.Delta;
+                    }
                     update = _assembler.Ingest(streamEvent, _timeProvider.GetUtcNow());
+                    if (update is not null && sourceDelta is not null)
+                    {
+                        routingAction = EvaluateSourceRoutingLocked(sourceDelta, deltaStart);
+                    }
                 }
             }
 
@@ -650,10 +671,33 @@ public sealed class InterpretationSession : IDisposable
 
             if (update is { } value)
             {
-                EmitSubtitleUpdate(value);
-                if (value.ShouldFinalize)
+                switch (routingAction)
                 {
-                    await ResetAudioRoutingForNextSegmentAsync().ConfigureAwait(false);
+                    case SourceRoutingAction.None:
+                        EmitSubtitleUpdate(value);
+                        if (value.ShouldFinalize)
+                        {
+                            await ResetAudioRoutingForNextSegmentAsync().ConfigureAwait(false);
+                        }
+
+                        break;
+                    case SourceRoutingAction.Select select:
+                        EmitSubtitleUpdate(value);
+                        await ApplySourceRoutingTransportAsync(
+                            select,
+                            cancellationToken).ConfigureAwait(false);
+                        break;
+                    case SourceRoutingAction.Switch @switch:
+                        if (@switch.Split.Finalized is { } finalized)
+                        {
+                            EmitSubtitleUpdate(finalized);
+                        }
+
+                        EmitSubtitleUpdate(@switch.Split.Current);
+                        await ApplySourceRoutingTransportAsync(
+                            @switch,
+                            cancellationToken).ConfigureAwait(false);
+                        break;
                 }
             }
             }
@@ -722,109 +766,76 @@ public sealed class InterpretationSession : IDisposable
     }
 
     /// <summary>原文 delta の文字種から発話言語を決め、逆側 target へ音声を切り替える。</summary>
-    private async Task UpdateAudioRoutingAsync(string delta, CancellationToken cancellationToken)
+    private SourceRoutingAction EvaluateSourceRoutingLocked(string delta, int deltaStart)
     {
-        await _routingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        if (_activeLanguagePair is not { } pair)
         {
-            SpokenLanguageEvidence evidence;
-            LanguagePair activePair;
-            RealtimeTranslationOutputLanguage? currentTarget;
-            int reverseEvidenceCount;
-            var feed = GetActiveFeed();
-            lock (_sync)
-            {
-                if (feed is { DeliveryState.DidLoseEvents: true })
-                {
-                    return;
-                }
-
-                if (_activeLanguagePair is not { } cachedPair)
-                {
-                    return;
-                }
-
-                activePair = cachedPair;
-                _routingSourceText = RoutingSourceTextWindow.Trim(_routingSourceText + delta, activePair);
-                evidence = SpokenLanguageDetector.RecentEvidence(_routingSourceText, activePair);
-                currentTarget = _selectedTranslationTarget;
-                reverseEvidenceCount = _reverseEvidenceCount;
-            }
-
-            var selection = TranslationTargetSelector.Select(
-                activePair,
-                currentTarget,
-                reverseEvidenceCount,
-                evidence);
-            if (currentTarget is null)
-            {
-                if (selection.Target is null)
-                {
-                    lock (_sync)
-                    {
-                        _reverseEvidenceCount = selection.ReverseEvidenceCount;
-                    }
-
-                    return;
-                }
-
-                await _dualClient.SelectTranslationTargetAsync(selection.Target, cancellationToken)
-                    .ConfigureAwait(false);
-                lock (_sync)
-                {
-                    _selectedTranslationTarget = selection.Target;
-                    _reverseEvidenceCount = selection.ReverseEvidenceCount;
-                    _assembler.ExpectLane(selection.Target);
-                }
-
-                return;
-            }
-
-            if (selection.Target == currentTarget)
-            {
-                lock (_sync)
-                {
-                    _reverseEvidenceCount = selection.ReverseEvidenceCount;
-                }
-
-                return;
-            }
-
-            RealtimeSubtitleUpdate? finalized;
-            lock (_sync)
-            {
-                if (feed is { DeliveryState.DidLoseEvents: true })
-                {
-                    finalized = null;
-                }
-                else
-                {
-                finalized = _assembler.FinalizeForLanguageSwitch(_timeProvider.GetUtcNow());
-                }
-            }
-
-            if (finalized is { } value)
-            {
-                EmitSubtitleUpdate(value);
-            }
-
-            await ResetAudioRoutingForNextSegmentCoreAsync().ConfigureAwait(false);
-
-            lock (_sync)
-            {
-                // 切替を起こした delta は新しい segment の先頭として持ち越す。
-                _routingSourceText = RoutingSourceTextWindow.Trim(delta, activePair);
-                _selectedTranslationTarget = selection.Target;
-                _reverseEvidenceCount = selection.ReverseEvidenceCount;
-                _assembler.ExpectLane(selection.Target);
-            }
-
-            await _dualClient.SelectTranslationTargetAsync(selection.Target, cancellationToken).ConfigureAwait(false);
+            return new SourceRoutingAction.None();
         }
-        finally
+
+        _routingSourceText = RoutingSourceTextWindow.Trim(_routingSourceText + delta, pair);
+        var evidence = SpokenLanguageDetector.RecentEvidence(_routingSourceText, pair);
+        var selection = TranslationTargetSelector.Select(
+            pair,
+            _selectedTranslationTarget,
+            _reverseEvidenceCount,
+            evidence);
+        _reverseEvidenceCount = selection.ReverseEvidenceCount;
+
+        if (_selectedTranslationTarget is not { } currentTarget)
         {
-            _routingGate.Release();
+            if (selection.Target is not { } target)
+            {
+                return new SourceRoutingAction.None();
+            }
+
+            _selectedTranslationTarget = target;
+            _sourceBoundaryTracker.Reset();
+            _assembler.SetBoundaryCandidatePending(false);
+            _assembler.ExpectLane(target);
+            return new SourceRoutingAction.Select(target);
         }
+
+        if (selection.Target == currentTarget)
+        {
+            if (pair.Counterpart(currentTarget) is { } currentLanguage)
+            {
+                _sourceBoundaryTracker.Observe(
+                    _assembler.CurrentSourceText,
+                    deltaStart,
+                    _assembler.SegmentGeneration,
+                    pair,
+                    currentLanguage,
+                    selection.ReverseEvidenceCount);
+                _assembler.SetBoundaryCandidatePending(
+                    _sourceBoundaryTracker.CandidateOffset is not null);
+            }
+
+            return new SourceRoutingAction.None();
+        }
+
+        if (pair != LanguagePair.EnEs
+            && pair.Counterpart(currentTarget) is { } currentLanguageForSwitch)
+        {
+            _sourceBoundaryTracker.Observe(
+                _assembler.CurrentSourceText,
+                deltaStart,
+                _assembler.SegmentGeneration,
+                pair,
+                currentLanguageForSwitch,
+                0);
+        }
+
+        var offset = _sourceBoundaryTracker.CandidateOffset ?? deltaStart;
+        var split = _assembler.SplitForLanguageSwitch(offset, _timeProvider.GetUtcNow());
+        _sourceBoundaryTracker.Reset();
+        _routingSourceText = RoutingSourceTextWindow.Trim(
+            _assembler.CurrentSourceText,
+            pair);
+        _selectedTranslationTarget = selection.Target;
+        _reverseEvidenceCount = 0;
+        _assembler.ExpectLane(selection.Target);
+        return new SourceRoutingAction.Switch(selection.Target, split);
     }
 
     private async Task ResetAudioRoutingForNextSegmentAsync()
@@ -840,6 +851,34 @@ public sealed class InterpretationSession : IDisposable
         }
     }
 
+    private async Task ApplySourceRoutingTransportAsync(
+        SourceRoutingAction action,
+        CancellationToken cancellationToken)
+    {
+        await _routingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            switch (action)
+            {
+                case SourceRoutingAction.Select select:
+                    await _dualClient.SelectTranslationTargetAsync(
+                        select.Target,
+                        cancellationToken).ConfigureAwait(false);
+                    break;
+                case SourceRoutingAction.Switch @switch:
+                    await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
+                    await _dualClient.SelectTranslationTargetAsync(
+                        @switch.Target,
+                        cancellationToken).ConfigureAwait(false);
+                    break;
+            }
+        }
+        finally
+        {
+            _routingGate.Release();
+        }
+    }
+
     private async Task ResetAudioRoutingForNextSegmentCoreAsync()
     {
         lock (_sync)
@@ -847,6 +886,8 @@ public sealed class InterpretationSession : IDisposable
             _routingSourceText = string.Empty;
             _selectedTranslationTarget = null;
             _reverseEvidenceCount = 0;
+            _sourceBoundaryTracker.Reset();
+            _assembler.SetBoundaryCandidatePending(false);
             _assembler.ExpectLane(null);
         }
 
@@ -869,6 +910,8 @@ public sealed class InterpretationSession : IDisposable
         lock (_sync)
         {
             _activeLanguagePair = null;
+            _sourceBoundaryTracker.Reset();
+            _assembler.SetBoundaryCandidatePending(false);
         }
 
         try
@@ -958,16 +1001,45 @@ public sealed class InterpretationSession : IDisposable
             }
 
             RealtimeSubtitleUpdate? update;
+            SourceRoutingAction routingAction = new SourceRoutingAction.None();
             lock (_sync)
             {
-                update = feed is { DeliveryState.DidLoseEvents: true }
-                    ? null
-                    : _assembler.Ingest(streamEvent, _timeProvider.GetUtcNow());
+                if (feed is { DeliveryState.DidLoseEvents: true })
+                {
+                    update = null;
+                }
+                else
+                {
+                    var deltaStart = _assembler.CurrentSourceLength;
+                    var sourceDelta = streamEvent.Event
+                        is RealtimeTranslationServerEvent.InputTranscriptDelta source
+                        && streamEvent.Lane.IsSource
+                        ? source.Delta
+                        : null;
+                    update = _assembler.Ingest(streamEvent, _timeProvider.GetUtcNow());
+                    if (update is not null && sourceDelta is not null)
+                    {
+                        routingAction = EvaluateSourceRoutingLocked(sourceDelta, deltaStart);
+                    }
+                }
             }
 
             if (update is { } value)
             {
-                EmitSubtitleUpdate(value);
+                switch (routingAction)
+                {
+                    case SourceRoutingAction.Switch @switch:
+                        if (@switch.Split.Finalized is { } finalized)
+                        {
+                            EmitSubtitleUpdate(finalized);
+                        }
+
+                        EmitSubtitleUpdate(@switch.Split.Current);
+                        break;
+                    default:
+                        EmitSubtitleUpdate(value);
+                        break;
+                }
             }
         }
     }
@@ -995,6 +1067,8 @@ public sealed class InterpretationSession : IDisposable
 
             _handledLossEpoch = feed.Epoch;
             _assembler.DiscardUnconfirmed();
+            _sourceBoundaryTracker.Reset();
+            _assembler.SetBoundaryCandidatePending(false);
             _routingSourceText = string.Empty;
             _selectedTranslationTarget = null;
             _reverseEvidenceCount = 0;
