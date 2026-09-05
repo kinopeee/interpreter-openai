@@ -1101,12 +1101,12 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(dual.spokenLanguages, [.japanese, .english])
         XCTAssertEqual(dual.selectedTargets, [.english, .japanese])
         XCTAssertEqual(dual.resetAudioRoutingCallCount, resetsBeforeSwitch + 1)
-        XCTAssertEqual(delegate.finalizedSnapshots.count, 1)
-        XCTAssertEqual(delegate.finalizedSnapshots[0].sourceText, "今日は晴れです。")
-        XCTAssertEqual(delegate.finalizedSnapshots[0].translatedText, "It is sunny today.")
         await waitUntil {
             delegate.latestSnapshot?.current.sourceText == "Today it is sunny outside"
         }
+        XCTAssertEqual(delegate.finalizedSnapshots.count, 1)
+        XCTAssertEqual(delegate.finalizedSnapshots.first?.sourceText, "今日は晴れです。")
+        XCTAssertEqual(delegate.finalizedSnapshots.first?.translatedText, "It is sunny today.")
         await session.stop()
     }
 
