@@ -70,6 +70,7 @@ public sealed class InterpretationSessionIdleTickTests
         Assert.Equal("これはテストです", finalized.SourceText);
         Assert.Equal("This is a test", finalized.TranslatedText);
         Assert.True(client.ResetAudioRoutingCount > resetsAfterPair);
+        Assert.Null(client.CurrentTarget);
         await session.StopAsync();
     }
 
@@ -168,6 +169,91 @@ public sealed class InterpretationSessionIdleTickTests
         await session.StopAsync();
     }
 
+    // Given: idle finalize 前に新しい原文 delta が到着する
+    // When: ticker が finalize 後の routing reset を実行する
+    // Then: 新しい segment の routing を reset せず、後続訳文を current として表示する
+    [Fact]
+    public async Task IdleTickDoesNotResetRoutingAfterNextSourceStarts()
+    {
+        var client = new FakeDualClient();
+        var clock = new ControllableTimeProvider(DateTimeOffset.Parse("2026-08-16T00:00:00Z"));
+        using var session = NewSession(client, clock);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+        using var hookEntered = new ManualResetEventSlim(false);
+        using var releaseHook = new ManualResetEventSlim(false);
+        var resetsAtHook = -1;
+        session.BeforeRoutingResetForTests = () =>
+        {
+            resetsAtHook = client.ResetAudioRoutingCount;
+            client.PublishSourceDelta("続きです。");
+            hookEntered.Set();
+            if (!releaseHook.Wait(TimeSpan.FromSeconds(5)))
+            {
+                throw new TimeoutException("routing reset test hook was not released");
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("今日は晴れです。");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "It is sunny today.");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Contains("sunny", StringComparison.Ordinal)
+                    && !update.ShouldFinalize);
+            }
+        });
+
+        var resetsBeforeIdle = client.ResetAudioRoutingCount;
+        clock.Advance(RealtimeSubtitleAssembler.IdleFinalizeInterval + TimeSpan.FromMilliseconds(50));
+        await WaitUntilAsync(() => hookEntered.IsSet);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText.Contains("続きです。", StringComparison.Ordinal)
+                    && !update.ShouldFinalize);
+            }
+        });
+
+        Assert.Equal(resetsBeforeIdle, resetsAtHook);
+        Assert.Equal(RealtimeTranslationOutputLanguage.English, client.SelectedTargets[^1]);
+        releaseHook.Set();
+        await Task.Delay(20);
+        Assert.Equal(resetsAtHook, client.ResetAudioRoutingCount);
+
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "It continues.");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Contains("continues", StringComparison.Ordinal)
+                    && update.IsTranslationCurrent
+                    && !update.ShouldFinalize);
+            }
+        });
+        session.BeforeRoutingResetForTests = null;
+        await session.StopAsync();
+    }
+
     private static InterpretationSession NewSession(FakeDualClient client, TimeProvider clock) =>
         new(
             new FakeApiKeyStore("sk-test"),
@@ -243,6 +329,7 @@ public sealed class InterpretationSessionIdleTickTests
     {
         private readonly object _sync = new();
         private readonly List<SpokenLanguage> _spokenLanguages = [];
+        private readonly List<RealtimeTranslationOutputLanguage> _selectedTargets = [];
         private Channel<RealtimeTranslationStreamEvent> _events =
             Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
         private int _epoch;
@@ -272,6 +359,19 @@ public sealed class InterpretationSessionIdleTickTests
         }
 
         public int ResetAudioRoutingCount { get; private set; }
+
+        public RealtimeTranslationOutputLanguage? CurrentTarget { get; private set; }
+
+        public IReadOnlyList<RealtimeTranslationOutputLanguage> SelectedTargets
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return [.. _selectedTargets];
+                }
+            }
+        }
 
         public IReadOnlyList<SpokenLanguage> SpokenLanguages
         {
@@ -304,6 +404,8 @@ public sealed class InterpretationSessionIdleTickTests
                 _epoch += 1;
                 DeliveryState = new EventDeliveryState(_epoch);
                 _spokenLanguages.Clear();
+                _selectedTargets.Clear();
+                CurrentTarget = null;
                 ResetAudioRoutingCount = 0;
                 _events = Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
             }
@@ -325,6 +427,8 @@ public sealed class InterpretationSessionIdleTickTests
                     && LastStartedPair is { } pair
                     && pair.Counterpart(selected) is { } spoken)
                 {
+                    _selectedTargets.Add(selected);
+                    CurrentTarget = selected;
                     _spokenLanguages.Add(spoken);
                 }
             }
@@ -341,6 +445,7 @@ public sealed class InterpretationSessionIdleTickTests
             lock (_sync)
             {
                 ResetAudioRoutingCount += 1;
+                CurrentTarget = null;
             }
 
             return Task.CompletedTask;

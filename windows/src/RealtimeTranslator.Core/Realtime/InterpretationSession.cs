@@ -87,6 +87,8 @@ public sealed class InterpretationSession : IDisposable
     /// <summary>テスト用。generation 確認後・assembler 更新前に差し込む。</summary>
     internal Action? BeforeAssemblerIngestForTests { get; set; }
 
+    internal Action? BeforeRoutingResetForTests { get; set; }
+
     /// <summary>テスト用。ルーティング判定バッファの保持長。</summary>
     internal int RoutingSourceTextLengthForTests
     {
@@ -760,6 +762,7 @@ public sealed class InterpretationSession : IDisposable
             if (update is { } value)
             {
                 EmitSubtitleUpdate(value);
+                BeforeRoutingResetForTests?.Invoke();
                 await ResetAudioRoutingForNextSegmentAsync().ConfigureAwait(false);
             }
         }
@@ -881,14 +884,24 @@ public sealed class InterpretationSession : IDisposable
 
     private async Task ResetAudioRoutingForNextSegmentCoreAsync()
     {
+        bool skip;
         lock (_sync)
         {
-            _routingSourceText = string.Empty;
-            _selectedTranslationTarget = null;
-            _reverseEvidenceCount = 0;
-            _sourceBoundaryTracker.Reset();
-            _assembler.SetBoundaryCandidatePending(false);
-            _assembler.ExpectLane(null);
+            skip = _assembler.CurrentSourceLength > 0;
+            if (!skip)
+            {
+                _routingSourceText = string.Empty;
+                _selectedTranslationTarget = null;
+                _reverseEvidenceCount = 0;
+                _sourceBoundaryTracker.Reset();
+                _assembler.SetBoundaryCandidatePending(false);
+                _assembler.ExpectLane(null);
+            }
+        }
+
+        if (skip)
+        {
+            return;
         }
 
         await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
