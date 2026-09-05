@@ -86,26 +86,23 @@ struct SourceBoundaryTracker: Sendable {
         }
 
         let spans = SpokenLanguageDetector.wordSpans(in: segmentSource)
-        let windowStart = String.Index(
-            utf16Offset: segmentSource.utf16.count > 0
-                ? segmentSource.utf16.count
-                : 0,
-            in: segmentSource
-        )
         let recentStart = SpokenLanguageDetector.recentWordWindowStart(in: segmentSource)
-        let recentStartOffset = String.Index(recentStart, within: segmentSource)?
-            .utf16Offset(in: segmentSource) ?? 0
-        let recentEnd = windowStart.utf16Offset(in: segmentSource)
+        let recentStartOffset = recentStart.utf16Offset(in: segmentSource)
+        let recentEnd = segmentSource.utf16.count
         let recentSpans = spans.filter {
             $0.lowerBound >= recentStartOffset && $0.upperBound <= recentEnd
         }
-        let cueStart = recentSpans.first {
-            cueLanguage(String(segmentSource.utf16Slice($0)), in: segmentSource) == reverseLanguage
-        }?.lowerBound ?? firstStandaloneSpanishMark(
+        let firstReverseWord = recentSpans.first {
+            cueLanguage(String(segmentSource.utf16Slice($0))) == reverseLanguage
+        }?.lowerBound
+        let firstReverseMark = firstStandaloneSpanishMark(
             in: segmentSource,
             from: recentStartOffset,
             to: recentEnd
         )
+        let cueStart = [firstReverseWord, firstReverseMark]
+            .compactMap { $0 }
+            .min()
 
         guard let cueStart else {
             candidateOffset = nil
@@ -120,7 +117,7 @@ struct SourceBoundaryTracker: Sendable {
         let hasCurrentCue = recentSpans.contains {
             $0.lowerBound >= sentenceStart
                 && $0.lowerBound < cueStart
-                && cueLanguage(String(segmentSource.utf16Slice($0)), in: segmentSource)
+                && cueLanguage(String(segmentSource.utf16Slice($0)))
                     == currentLanguage
         }
         let rawCandidate = hasCurrentCue ? cueStart : sentenceStart
@@ -134,21 +131,29 @@ struct SourceBoundaryTracker: Sendable {
         atOrAfter offset: Int,
         in source: String
     ) -> SpokenLanguage? {
-        for span in SpokenLanguageDetector.wordSpans(in: source)
-            where span.lowerBound >= offset
-        {
-            if let language = cueLanguage(String(source.utf16Slice(span)), in: source) {
-                return language
+        let firstWord = SpokenLanguageDetector.wordSpans(in: source)
+            .filter { $0.lowerBound >= offset }
+            .compactMap { span -> (Int, SpokenLanguage)? in
+                guard let language = cueLanguage(String(source.utf16Slice(span))) else {
+                    return nil
+                }
+                return (span.lowerBound, language)
             }
-        }
-        return firstStandaloneSpanishMark(
+            .first
+        let firstMark = firstStandaloneSpanishMark(
             in: source,
             from: offset,
             to: source.utf16.count
-        ).map { _ in .spanish }
+        ).map { ($0, SpokenLanguage.spanish) }
+        switch [firstWord, firstMark].compactMap({ $0 }).min(by: { $0.0 < $1.0 })?.1 {
+        case .some(let language):
+            return language
+        case .none:
+            return nil
+        }
     }
 
-    private func cueLanguage(_ word: String, in _: String) -> SpokenLanguage? {
+    private func cueLanguage(_ word: String) -> SpokenLanguage? {
         let lower = word.lowercased(with: Locale(identifier: "en_US_POSIX"))
         if SpokenLanguageDetector.englishExclusiveWords.contains(lower) {
             return .english

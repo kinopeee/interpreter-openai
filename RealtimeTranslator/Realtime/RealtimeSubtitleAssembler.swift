@@ -151,10 +151,6 @@ struct RealtimeSubtitleAssembler: Sendable {
         return LanguageSwitchSplit(finalized: finalized, current: snapshot())
     }
 
-    mutating func finalizeForLanguageSwitch(now: Date = Date()) -> RealtimeSubtitleUpdate? {
-        splitForLanguageSwitch(at: currentSourceLength, now: now).finalized
-    }
-
     mutating func ingest(
         _ streamEvent: RealtimeTranslationStreamEvent,
         now: Date = Date(),

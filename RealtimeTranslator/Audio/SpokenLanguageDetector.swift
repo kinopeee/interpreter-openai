@@ -192,8 +192,8 @@ enum SpokenLanguageDetector {
 
     static func wordSpans(in text: String) -> [Range<Int>] {
         return scalarWordSpans(in: text).map {
-            let start = String.Index($0.start, within: text).utf16Offset(in: text)
-            let end = String.Index($0.end, within: text).utf16Offset(in: text)
+            let start = $0.start.utf16Offset(in: text)
+            let end = $0.end.utf16Offset(in: text)
             return start..<end
         }
     }

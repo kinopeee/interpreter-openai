@@ -103,43 +103,61 @@ public sealed class SourceBoundaryTracker
         var recentSpans = spans
             .Where(span => span.Start >= windowStart)
             .ToArray();
-        var cueStart = recentSpans
+        var firstReverseWord = recentSpans
             .Select(span => (Span: span, Language: CueLanguage(source[span.Start..span.End])))
             .Where(value => value.Language == reverseLanguage)
             .Select(value => (int?)value.Span.Start)
-            .FirstOrDefault()
-            ?? FirstStandaloneSpanishMark(source, windowStart, source.Length);
+            .FirstOrDefault();
+        var firstReverseMark = FirstStandaloneSpanishMark(source, windowStart, source.Length);
+        var cueStart = new[] { firstReverseWord, firstReverseMark }
+            .Where(value => value is not null)
+            .Select(value => value!.Value)
+            .DefaultIfEmpty()
+            .Min();
+        var hasCue = firstReverseWord is not null || firstReverseMark is not null;
 
-        if (cueStart is null)
+        if (!hasCue)
         {
             CandidateOffset = null;
             return;
         }
 
-        var sentenceStart = SentenceStart(source, windowStart, cueStart.Value);
+        var sentenceStart = SentenceStart(source, windowStart, cueStart);
         var hasCurrentCue = recentSpans.Any(span =>
             span.Start >= sentenceStart
-            && span.Start < cueStart.Value
+            && span.Start < cueStart
             && CueLanguage(source[span.Start..span.End]) == currentLanguage);
-        var rawCandidate = hasCurrentCue ? cueStart.Value : sentenceStart;
+        var rawCandidate = hasCurrentCue ? cueStart : sentenceStart;
         CandidateOffset = MoveBackwardOverNewSidePrefix(rawCandidate, ScalarEntries(source));
     }
 
     private static SpokenLanguage? FirstCueStartingAtOrAfter(string source, int offset)
     {
+        int? firstWordOffset = null;
+        SpokenLanguage? firstWordLanguage = null;
         foreach (var span in SpokenLanguageDetector.WordSpans(source)
             .Where(span => span.Start >= offset))
         {
             var language = CueLanguage(source[span.Start..span.End]);
             if (language is not null)
             {
-                return language;
+                firstWordOffset = span.Start;
+                firstWordLanguage = language;
+                break;
             }
         }
+        var firstMark = FirstStandaloneSpanishMark(source, offset, source.Length);
+        if (firstWordLanguage is null && firstMark is null)
+        {
+            return null;
+        }
 
-        return FirstStandaloneSpanishMark(source, offset, source.Length) is not null
-            ? SpokenLanguage.Spanish
-            : null;
+        if (firstMark is null || (firstWordOffset is not null && firstWordOffset < firstMark))
+        {
+            return firstWordLanguage;
+        }
+
+        return SpokenLanguage.Spanish;
     }
 
     private static SpokenLanguage? CueLanguage(string word)

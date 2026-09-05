@@ -148,9 +148,6 @@ public sealed class RealtimeSubtitleAssembler
         return new LanguageSwitchSplit(finalized, Snapshot());
     }
 
-    public RealtimeSubtitleUpdate? FinalizeForLanguageSwitch(DateTimeOffset now) =>
-        SplitForLanguageSwitch(CurrentSourceLength, now).Finalized;
-
     public RealtimeSubtitleUpdate? Ingest(RealtimeTranslationStreamEvent streamEvent, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(streamEvent);
