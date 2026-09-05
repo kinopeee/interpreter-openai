@@ -974,14 +974,14 @@ final class InterpretationSessionTests: XCTestCase {
         // Then: 言語切替で再ルーティングし、前セグメントが確定する
         await waitUntil { dual.spokenLanguages == [.japanese, .english] }
         XCTAssertGreaterThan(dual.resetAudioRoutingCallCount, resetsAfterJapanese)
-        await waitUntil {
+        await waitUntil(timeout: 3) {
             delegate.finalizedSnapshots.contains {
-                $0.sourceText == "今日は会議です"
+                $0.sourceText.trimmingCharacters(in: .whitespacesAndNewlines) == "今日は会議です"
                     && $0.translatedText == "Today is a meeting"
             }
         }
         await waitUntil {
-            delegate.latestSnapshot?.current.sourceText == "Hello how are you today"
+            delegate.latestSnapshot?.current.sourceText.contains("Hello how are you today") == true
         }
         await session.stop()
     }

@@ -495,6 +495,56 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: macOS と同じ「今日は会議です」→「 Hello how are you today」
+    // When: 間を空けず英語原文が続く
+    // Then: プレフィックスが確定する
+    [Fact]
+    public async Task LanguageFlipFinalizesMacOsMeetingPrefix()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        client.PublishSourceDelta("今日は会議です");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "Today is a meeting");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.TranslatedText.Contains("Today", StringComparison.Ordinal));
+            }
+        });
+        client.PublishSourceDelta(" Hello how are you today");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
+
+        RealtimeSubtitleUpdate finalized = default;
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                finalized = updates.Find(update =>
+                    update.ShouldFinalize
+                    && update.SourceText.Trim() == "今日は会議です"
+                    && update.TranslatedText == "Today is a meeting");
+                return finalized.ShouldFinalize;
+            }
+        });
+        Assert.Equal("今日は会議です", finalized.SourceText.Trim());
+        await session.StopAsync();
+    }
+
     // Given: 訳文のあと同一言語の原文が伸びて stale になったセグメント
     // When: 英語へ文字種が反転する
     // Then: idle では確定しない stale ペアでも切替境界として確定する

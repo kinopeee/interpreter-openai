@@ -118,7 +118,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         at offset: Int,
         now: Date = Date()
     ) -> LanguageSwitchSplit {
-        let clampedOffset = alignedSourceOffset(offset)
+        let clampedOffset = boundaryOffsetMovingWhitespaceToNewSide(offset)
         let splitIndex = String.Index(
             utf16Offset: clampedOffset,
             in: sourceText
@@ -422,6 +422,29 @@ struct RealtimeSubtitleAssembler: Sendable {
             current = next
         }
         return current
+    }
+
+    /// 空白と `¿` / `¡` は新側へ付ける。tracker の candidate が次語先頭でもプレフィックスを合わせる。
+    private func boundaryOffsetMovingWhitespaceToNewSide(_ offset: Int) -> Int {
+        let bounded = alignedSourceOffset(offset)
+        var entries: [(offset: Int, scalar: Unicode.Scalar)] = []
+        var cursor = 0
+        for scalar in sourceText.unicodeScalars {
+            entries.append((offset: cursor, scalar: scalar))
+            cursor += scalar.utf16.count
+        }
+        var result = bounded
+        var index = entries.firstIndex { $0.offset >= bounded } ?? entries.count
+        while index > 0 {
+            let previous = entries[index - 1]
+            let isNewSidePrefix = CharacterSet.whitespacesAndNewlines.contains(previous.scalar)
+                || previous.scalar.value == 0x00BF
+                || previous.scalar.value == 0x00A1
+            guard isNewSidePrefix else { break }
+            result = previous.offset
+            index -= 1
+        }
+        return result
     }
 
     private mutating func hasSeenTranscriptEvent(

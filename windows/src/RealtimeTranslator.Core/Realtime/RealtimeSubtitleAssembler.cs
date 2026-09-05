@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
 
@@ -121,7 +122,7 @@ public sealed class RealtimeSubtitleAssembler
     /// </summary>
     public LanguageSwitchSplit SplitForLanguageSwitch(int offset, DateTimeOffset now)
     {
-        var splitOffset = AlignedSourceOffset(offset);
+        var splitOffset = BoundaryOffsetMovingWhitespaceToNewSide(offset);
         var prefix = _sourceText[..splitOffset];
         var suffix = _sourceText[splitOffset..];
         var hasCompletePair = prefix.Length > 0
@@ -421,6 +422,42 @@ public sealed class RealtimeSubtitleAssembler
         }
 
         return current;
+    }
+
+    /// <summary>空白と ¿ / ¡ は新側へ付ける。tracker の candidate が次語先頭でもプレフィックスを合わせる。</summary>
+    private int BoundaryOffsetMovingWhitespaceToNewSide(int offset)
+    {
+        var bounded = AlignedSourceOffset(offset);
+        var entries = new List<(int Offset, Rune Rune)>();
+        var cursor = 0;
+        foreach (var rune in _sourceText.EnumerateRunes())
+        {
+            entries.Add((cursor, rune));
+            cursor += rune.Utf16SequenceLength;
+        }
+
+        var result = bounded;
+        var index = 0;
+        while (index < entries.Count && entries[index].Offset < bounded)
+        {
+            index++;
+        }
+
+        while (index > 0)
+        {
+            var previous = entries[index - 1];
+            if (!Rune.IsWhiteSpace(previous.Rune)
+                && previous.Rune.Value != 0x00BF
+                && previous.Rune.Value != 0x00A1)
+            {
+                break;
+            }
+
+            result = previous.Offset;
+            index--;
+        }
+
+        return result;
     }
 
     /// <summary>直前 segment 確定後、空のまま次の原文が来たら新 segment として扱う。</summary>

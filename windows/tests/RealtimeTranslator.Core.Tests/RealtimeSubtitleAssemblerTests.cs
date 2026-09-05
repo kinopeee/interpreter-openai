@@ -454,6 +454,28 @@ public sealed class RealtimeSubtitleAssemblerTests
     }
 
     [Fact]
+    public void SplitForLanguageSwitchMovesLeadingWhitespaceToTheNewSide()
+    {
+        // Given: 訳文が付いた日本語のあとに、空白始まりの英語が続く
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+        assembler.Ingest(Source("今日は会議です", "s1", 100), Origin);
+        assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, "Today is a meeting", "t1", 200),
+            Origin);
+        assembler.Ingest(Source(" Hello", "s2", 300), Origin.AddMilliseconds(100));
+
+        // When: tracker が次語先頭（空白の後ろ）を指したまま split する
+        var split = assembler.SplitForLanguageSwitch(8, Origin.AddMilliseconds(200));
+
+        // Then: 空白は新側へ付き、プレフィックスだけが確定する
+        Assert.NotNull(split.Finalized);
+        Assert.Equal("今日は会議です", split.Finalized.Value.SourceText);
+        Assert.Equal("Today is a meeting", split.Finalized.Value.TranslatedText);
+        Assert.Equal(" Hello", split.Current.SourceText);
+    }
+
+    [Fact]
     public void SplitForLanguageSwitchClampsAndAlignsSurrogateBoundary()
     {
         // Given: surrogate pair を含む source

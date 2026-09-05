@@ -288,6 +288,30 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         XCTAssertEqual(split.current.sourceText, " Hello")
     }
 
+    func testSplitForLanguageSwitchMovesLeadingWhitespaceToTheNewSide() {
+        // Given: 訳文が付いた日本語のあとに、空白始まりの英語が続く
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        assembler.expectLane(.english)
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "今日は会議です", eventID: "s1", elapsedMs: 1))
+        )
+        _ = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: "Today is a meeting", eventID: "t1", elapsedMs: 2))
+        )
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: " Hello", eventID: "s2", elapsedMs: 3))
+        )
+
+        // When: tracker が次語先頭（空白の後ろ）を指したまま split する
+        let split = assembler.splitForLanguageSwitch(at: 8)
+
+        // Then: 空白は新側へ付き、プレフィックスだけが確定する
+        XCTAssertEqual(split.finalized?.sourceText, "今日は会議です")
+        XCTAssertEqual(split.finalized?.translatedText, "Today is a meeting")
+        XCTAssertEqual(split.current.sourceText, " Hello")
+    }
+
     func testSplitForLanguageSwitchClampsAndAlignsSurrogateBoundary() {
         // Given: surrogate pair を含む source
         var assembler = RealtimeSubtitleAssembler()
