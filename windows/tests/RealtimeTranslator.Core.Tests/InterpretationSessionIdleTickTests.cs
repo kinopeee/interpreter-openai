@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
@@ -329,6 +329,8 @@ public sealed class InterpretationSessionIdleTickTests
     {
         private readonly object _sync = new();
         private readonly List<SpokenLanguage> _spokenLanguages = [];
+        private int _resetAudioRoutingCount;
+        private RealtimeTranslationOutputLanguage? _currentTarget;
         private readonly List<RealtimeTranslationOutputLanguage> _selectedTargets = [];
         private Channel<RealtimeTranslationStreamEvent> _events =
             Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
@@ -358,9 +360,27 @@ public sealed class InterpretationSessionIdleTickTests
             }
         }
 
-        public int ResetAudioRoutingCount { get; private set; }
+        public int ResetAudioRoutingCount
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _resetAudioRoutingCount;
+                }
+            }
+        }
 
-        public RealtimeTranslationOutputLanguage? CurrentTarget { get; private set; }
+        public RealtimeTranslationOutputLanguage? CurrentTarget
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _currentTarget;
+                }
+            }
+        }
 
         public IReadOnlyList<RealtimeTranslationOutputLanguage> SelectedTargets
         {
@@ -405,8 +425,8 @@ public sealed class InterpretationSessionIdleTickTests
                 DeliveryState = new EventDeliveryState(_epoch);
                 _spokenLanguages.Clear();
                 _selectedTargets.Clear();
-                CurrentTarget = null;
-                ResetAudioRoutingCount = 0;
+                _currentTarget = null;
+                _resetAudioRoutingCount = 0;
                 _events = Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
             }
 
@@ -428,7 +448,7 @@ public sealed class InterpretationSessionIdleTickTests
                     && pair.Counterpart(selected) is { } spoken)
                 {
                     _selectedTargets.Add(selected);
-                    CurrentTarget = selected;
+                    _currentTarget = selected;
                     _spokenLanguages.Add(spoken);
                 }
             }
@@ -444,8 +464,8 @@ public sealed class InterpretationSessionIdleTickTests
         {
             lock (_sync)
             {
-                ResetAudioRoutingCount += 1;
-                CurrentTarget = null;
+                _resetAudioRoutingCount += 1;
+                _currentTarget = null;
             }
 
             return Task.CompletedTask;
