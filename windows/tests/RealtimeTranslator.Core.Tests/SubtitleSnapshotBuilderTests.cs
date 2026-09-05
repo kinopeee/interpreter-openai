@@ -229,4 +229,47 @@ public sealed class SubtitleSnapshotBuilderTests
         Assert.Equal("遅延原文", snapshot.Current.SourceText);
         Assert.Equal("Late", snapshot.Current.TranslatedText);
     }
+
+    // Given: 確定済み字幕と新しいシーケンス番号
+    // When: 古い更新と無効化更新を適用する
+    // Then: 古い更新は無視され、確定済み字幕は保持される
+    [Fact]
+    public void SequenceOrderingIgnoresStaleUpdatesAndInvalidationPreservesFinalizedContent()
+    {
+        var builder = new SubtitleSnapshotBuilder();
+        builder.Apply(
+            new RealtimeSubtitleUpdate(
+                "確定",
+                "Final",
+                IsTranslationCurrent: true,
+                ShouldFinalize: true,
+                SegmentGeneration: 0,
+                Sequence: 2),
+            TranslationState.Listening);
+
+        var stale = builder.Apply(
+            new RealtimeSubtitleUpdate(
+                "古い",
+                "Stale",
+                IsTranslationCurrent: true,
+                ShouldFinalize: false,
+                SegmentGeneration: 0,
+                Sequence: 1),
+            TranslationState.Listening);
+        var invalidated = builder.Apply(
+            new RealtimeSubtitleUpdate(
+                string.Empty,
+                string.Empty,
+                IsTranslationCurrent: false,
+                ShouldFinalize: false,
+                SegmentGeneration: 1,
+                IsInvalidation: true,
+                Sequence: 3),
+            TranslationState.Listening);
+
+        Assert.Equal("Final", stale.Current.TranslatedText);
+        Assert.True(stale.Current.IsFinalized);
+        Assert.Equal("Final", invalidated.Current.TranslatedText);
+        Assert.True(invalidated.Current.IsFinalized);
+    }
 }

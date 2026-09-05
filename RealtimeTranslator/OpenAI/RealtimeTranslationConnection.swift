@@ -39,6 +39,7 @@ struct RealtimeTranslationStreamEvent: Sendable, Equatable {
 }
 
 actor RealtimeTranslationConnection {
+    static let eventBufferLimit = 256
     static let endpointURL = URL(
         string: "wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate"
     )!
@@ -56,6 +57,7 @@ actor RealtimeTranslationConnection {
     private var outputAudioEventCount = 0
     private var receiveTask: Task<Void, Never>?
     private var eventContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation?
+    private var deliveryYielder: EventDeliveryYielder?
     private(set) var events: AsyncStream<RealtimeTranslationStreamEvent>
 
     init(
@@ -75,7 +77,8 @@ actor RealtimeTranslationConnection {
 
     func start(
         apiKey: String,
-        config: RealtimeTranslationSessionConfig
+        config: RealtimeTranslationSessionConfig,
+        deliveryState: EventDeliveryState? = nil
     ) async throws {
         let apiKey = try RealtimeTranslationError.requireNormalizedAPIKey(apiKey)
 
@@ -83,6 +86,13 @@ actor RealtimeTranslationConnection {
         recreateEventStream()
         epoch += 1
         let currentEpoch = epoch
+        let state = deliveryState ?? EventDeliveryState(epoch: currentEpoch)
+        deliveryYielder = EventDeliveryYielder(
+            continuation: eventContinuation!,
+            deliveryState: state,
+            stage: .translation(target),
+            capacity: Self.eventBufferLimit
+        )
         isReady = false
         isClosing = false
         didReceiveClosed = false
@@ -235,7 +245,7 @@ actor RealtimeTranslationConnection {
                     if case .sessionClosed = event {
                         didReceiveClosed = true
                     }
-                    publish(event, epoch: currentEpoch)
+                    guard publish(event, epoch: currentEpoch) else { return }
                     if case .sessionClosed = event {
                         finishEventStream()
                         return
@@ -244,7 +254,7 @@ actor RealtimeTranslationConnection {
                     return
                 } catch {
                     guard currentEpoch == epoch else { return }
-                    publish(
+                    _ = publish(
                         .error(
                             message: UiCopy.text("error.transportDisconnected"),
                             code: "transport"
@@ -261,7 +271,7 @@ actor RealtimeTranslationConnection {
     private func publish(
         _ event: RealtimeTranslationServerEvent,
         epoch currentEpoch: Int
-    ) {
+    ) -> Bool {
         switch event {
         case .outputAudioDelta:
             outputAudioEventCount += 1
@@ -274,7 +284,7 @@ actor RealtimeTranslationConnection {
             #endif
             // MVP は翻訳音声を再生しない。AsyncStream(bufferingNewest) へ入れると
             // Stop の close-drain 待ちで字幕 delta が落ちうるので受信カウントのみにする。
-            return
+            return true
         case .inputTranscriptDelta:
             #if DEBUG
             AppLogger.realtime.notice(
@@ -283,7 +293,7 @@ actor RealtimeTranslationConnection {
             #endif
             // 翻訳接続の input_transcript は原文 authority にしない（専用 transcription のみ）。
             // target=en 翻訳セッションの delta を通すと assembler が原文として取り込む。
-            return
+            return true
         case .outputTranscriptDelta:
             #if DEBUG
             AppLogger.realtime.notice(
@@ -299,20 +309,25 @@ actor RealtimeTranslationConnection {
         default:
             break
         }
-        eventContinuation?.yield(
+        if case .error(let message, let code) = event {
+            deliveryYielder?.deliveryState.tryRecordTermination(
+                EventDeliveryState.classify(code: code, message: message)
+            )
+        }
+        return deliveryYielder?.deliver(
             RealtimeTranslationStreamEvent(
                 lane: .translation(target),
                 event: event,
                 epoch: currentEpoch
             )
-        )
+        ) ?? false
     }
 
     private func classifyServerError(message: String, code: String?) -> RealtimeTranslationError {
         if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
             return .authenticationFailed
         }
-        return .fatalServerError(message)
+        return .fatalServerError(RealtimeTranslationError.sanitizedServerMessage(message))
     }
 
     private func tearDownTransport() async {
@@ -330,6 +345,7 @@ actor RealtimeTranslationConnection {
     private func finishEventStream() {
         eventContinuation?.finish()
         eventContinuation = nil
+        deliveryYielder = nil
     }
 
     private func recreateEventStream() {
@@ -344,7 +360,7 @@ actor RealtimeTranslationConnection {
         continuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation
     ) {
         var continuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation!
-        let stream = AsyncStream(bufferingPolicy: .bufferingNewest(256)) {
+        let stream = AsyncStream(bufferingPolicy: .bufferingOldest(Self.eventBufferLimit)) {
             continuation = $0
         }
         return (stream, continuation)

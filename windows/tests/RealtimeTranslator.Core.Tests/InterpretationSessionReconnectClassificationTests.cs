@@ -202,6 +202,8 @@ public sealed class InterpretationSessionReconnectClassificationTests
         private Channel<RealtimeTranslationStreamEvent> _events =
             Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
         private int _epoch;
+        public EventDeliveryState DeliveryState { get; private set; } = new(0);
+        public RealtimeEventFeed Feed => new(Events, ConnectionEpoch, DeliveryState);
 
         public ChannelReader<RealtimeTranslationStreamEvent> Events
         {
@@ -277,6 +279,7 @@ public sealed class InterpretationSessionReconnectClassificationTests
             lock (_sync)
             {
                 _epoch += 1;
+                DeliveryState = new EventDeliveryState(_epoch);
                 _events = Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
             }
         }

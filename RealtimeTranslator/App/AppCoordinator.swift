@@ -356,7 +356,9 @@ extension AppCoordinator: InterpretationSessionDelegate {
         _ session: InterpretationSession,
         didUpdateSubtitles snapshot: SubtitleSnapshot
     ) {
-        recordFinalizedSubtitleIfNeeded(snapshot.current)
+        if !snapshot.isInvalidation {
+            recordFinalizedSubtitleIfNeeded(snapshot.current)
+        }
 
         let displayedSnapshot: SubtitleSnapshot
         if translationState == .idle,

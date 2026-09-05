@@ -137,6 +137,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, Custo
     case invalidMessage
     case authenticationFailed
     case fatalServerError(SanitizedMessage)
+    case receiveOverflow
     case recoverableTransportFailure(String)
     case sessionUpdateTimeout
     case closeTimeout
@@ -183,6 +184,8 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, Custo
             return copy.text("error.authenticationFailed")
         case .fatalServerError(let message):
             return message.value
+        case .receiveOverflow:
+            return copy.text("error.receiveOverflow")
         case .recoverableTransportFailure:
             return copy.text("error.transportDisconnected")
         case .sessionUpdateTimeout:
@@ -196,7 +199,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, Custo
 
     var isRecoverable: Bool {
         switch self {
-        case .recoverableTransportFailure, .sessionUpdateTimeout:
+        case .recoverableTransportFailure, .receiveOverflow, .sessionUpdateTimeout:
             return true
         case .missingAPIKey, .notConnected, .invalidMessage, .authenticationFailed,
             .fatalServerError, .closeTimeout, .cancelled:

@@ -18,6 +18,8 @@ public interface IDualRealtimeTranslationClient
 
     int ConnectionEpoch { get; }
 
+    RealtimeEventFeed Feed { get; }
+
     Task StartAsync(string apiKey, RealtimeSessionTuning tuning, CancellationToken cancellationToken = default);
 
     Task StartAsync(
@@ -71,6 +73,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     private readonly Queue<ReadOnlyMemory<byte>> _translationPrerollFrames = new();
 
     private Channel<RealtimeTranslationStreamEvent> _events = RealtimeEventChannel.Create();
+    private EventDeliveryState _deliveryState = new(0);
+    private EventDeliveryWriter? _mergeDeliveryWriter;
     private Task? _mergeTask;
     private Task? _translationPumpTask;
     private int _translationPumpGeneration;
@@ -138,6 +142,17 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
     }
 
+    public RealtimeEventFeed Feed
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return new RealtimeEventFeed(_events.Reader, _connectionEpoch, _deliveryState);
+            }
+        }
+    }
+
     internal int PendingTranslationFrameCountForTests
     {
         get
@@ -186,6 +201,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             _events = RealtimeEventChannel.Create();
             _connectionEpoch += 1;
             epoch = _connectionEpoch;
+            _deliveryState = new EventDeliveryState(epoch);
+            _mergeDeliveryWriter = null;
             _isRunning = true;
             _consecutiveTranslationFailures = 0;
             _translationPumpHaltedForTransportFailure = false;
@@ -204,7 +221,12 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             {
                 var starts = new List<Task>
                 {
-                    _sourceConnection.StartAsync(apiKey, tuning, pair, handshakeCts.Token),
+                    _sourceConnection.StartAsync(
+                        apiKey,
+                        tuning,
+                        pair,
+                        _deliveryState,
+                        handshakeCts.Token),
                 };
                 starts.AddRange(pair.Languages().Select(language =>
                     {
@@ -215,6 +237,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                                 target,
                                 null,
                                 tuning.NoiseReduction),
+                            _deliveryState,
                             handshakeCts.Token);
                     }));
 
@@ -297,7 +320,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
 
         BeforeStartEventMergeForTests?.Invoke();
-        StartEventMerge(epoch);
+        StartEventMerge(epoch, _deliveryState);
     }
 
     /// <summary>
@@ -332,7 +355,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         // 原文送信は単独で完了させ、翻訳側の停滞に巻き込まない。
         await _sourceConnection.AppendAudioFrameAsync(pcm16LittleEndian, cancellationToken).ConfigureAwait(false);
 
-        ChannelWriter<RealtimeTranslationStreamEvent>? overflowWriter = null;
+        var overflow = false;
         RealtimeTranslationOutputLanguage overflowTarget = default;
         int overflowEpoch = 0;
         lock (_sync)
@@ -357,20 +380,16 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             {
                 if (!TryEnqueueTranslationFrameLocked(retained, target))
                 {
-                    overflowWriter = _events.Writer;
+                    overflow = true;
                     overflowTarget = target;
                     overflowEpoch = _connectionEpoch;
                 }
             }
         }
 
-        if (overflowWriter is not null)
+        if (overflow)
         {
-            PublishTransportError(
-                overflowWriter,
-                overflowTarget,
-                overflowEpoch,
-                TranslationBacklogErrorMessage);
+            PublishTransportError(overflowTarget, overflowEpoch, TranslationBacklogErrorMessage);
         }
     }
 
@@ -380,7 +399,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     {
         _ = cancellationToken;
 
-        ChannelWriter<RealtimeTranslationStreamEvent>? overflowWriter = null;
+        var overflow = false;
         RealtimeTranslationOutputLanguage overflowTarget = default;
         int overflowEpoch = 0;
         lock (_sync)
@@ -415,7 +434,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             {
                 if (!TryEnqueueTranslationFrameLocked(frame, selected))
                 {
-                    overflowWriter = _events.Writer;
+                    overflow = true;
                     overflowTarget = selected;
                     overflowEpoch = _connectionEpoch;
                     break;
@@ -423,13 +442,9 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             }
         }
 
-        if (overflowWriter is not null)
+        if (overflow)
         {
-            PublishTransportError(
-                overflowWriter,
-                overflowTarget,
-                overflowEpoch,
-                TranslationBacklogErrorMessage);
+            PublishTransportError(overflowTarget, overflowEpoch, TranslationBacklogErrorMessage);
         }
 
         return Task.CompletedTask;
@@ -878,39 +893,35 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         int epoch,
         string message)
     {
-        ChannelWriter<RealtimeTranslationStreamEvent> writer;
+        EventDeliveryWriter? writer;
         lock (_sync)
         {
-            writer = _events.Writer;
+            writer = _mergeDeliveryWriter;
         }
 
-        PublishTransportError(writer, target, epoch, message);
-    }
-
-    private static void PublishTransportError(
-        ChannelWriter<RealtimeTranslationStreamEvent> writer,
-        RealtimeTranslationOutputLanguage target,
-        int epoch,
-        string message)
-    {
-        writer.TryWrite(new RealtimeTranslationStreamEvent(
+        writer?.TryDeliver(new RealtimeTranslationStreamEvent(
             target,
             new RealtimeTranslationServerEvent.ServerError(message, TransportErrorCode),
             epoch));
     }
 
-    private void StartEventMerge(int epoch)
+    private void StartEventMerge(int epoch, EventDeliveryState deliveryState)
     {
         var cts = new CancellationTokenSource();
 
         // Dispose 済み CTS へ触れないよう、Task 開始前に token を確定させる。
         var token = cts.Token;
-        ChannelWriter<RealtimeTranslationStreamEvent> writer;
+        EventDeliveryWriter writer;
         RealtimeTranslationOutputLanguage[] startedTargets;
         lock (_sync)
         {
             _mergeCts = cts;
-            writer = _events.Writer;
+            writer = new EventDeliveryWriter(
+                _events.Writer,
+                deliveryState,
+                EventDeliveryStage.Merge,
+                RealtimeEventChannel.Capacity);
+            _mergeDeliveryWriter = writer;
             startedTargets = _startedTranslationTargets;
         }
 
@@ -942,7 +953,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                 // 全接続のイベント流が終わったら購読側を解放する。
                 if (ConnectionEpoch == epoch)
                 {
-                    writer.TryComplete();
+                    writer.Complete();
+                    deliveryState.CompleteNormally();
                 }
             },
             CancellationToken.None);
@@ -950,7 +962,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
     private async Task MergeOneAsync(
         ChannelReader<RealtimeTranslationStreamEvent> reader,
-        ChannelWriter<RealtimeTranslationStreamEvent> writer,
+        EventDeliveryWriter writer,
         int epoch,
         bool acceptInputTranscript,
         CancellationToken cancellationToken)
@@ -978,7 +990,10 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                 }
 
                 // Dual 側の epoch で貼り直し、接続内部の epoch と揃える。
-                writer.TryWrite(streamEvent with { Epoch = epoch });
+                if (!writer.TryDeliver(streamEvent with { Epoch = epoch }))
+                {
+                    return;
+                }
             }
         }
         catch (OperationCanceledException)
@@ -1005,14 +1020,17 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     {
         CancellationTokenSource? cts;
         Task? mergeTask;
-        ChannelWriter<RealtimeTranslationStreamEvent> writer;
+        EventDeliveryWriter? writer;
+        EventDeliveryState deliveryState;
         lock (_sync)
         {
             cts = _mergeCts;
             _mergeCts = null;
             mergeTask = _mergeTask;
             _mergeTask = null;
-            writer = _events.Writer;
+            writer = _mergeDeliveryWriter;
+            _mergeDeliveryWriter = null;
+            deliveryState = _deliveryState;
         }
 
         if (cts is not null)
@@ -1033,7 +1051,16 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             }
         }
 
-        writer.TryComplete();
+        if (writer is not null)
+        {
+            writer.Complete();
+        }
+        else
+        {
+            _events.Writer.TryComplete();
+        }
+
+        deliveryState.CompleteNormally();
     }
 
     private readonly record struct PendingTranslationFrame(

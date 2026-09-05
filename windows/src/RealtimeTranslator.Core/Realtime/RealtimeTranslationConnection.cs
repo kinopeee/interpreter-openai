@@ -89,9 +89,16 @@ public sealed class RealtimeTranslationConnection : IDisposable
         }
     }
 
+    public Task StartAsync(
+        string apiKey,
+        RealtimeTranslationSessionConfig config,
+        CancellationToken cancellationToken = default) =>
+        StartAsync(apiKey, config, null, cancellationToken);
+
     public async Task StartAsync(
         string apiKey,
         RealtimeTranslationSessionConfig config,
+        EventDeliveryState? deliveryState,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(config);
@@ -141,7 +148,7 @@ public sealed class RealtimeTranslationConnection : IDisposable
                     _isReady = true;
                 }
 
-                StartReceiveLoop(currentEpoch);
+                StartReceiveLoop(currentEpoch, deliveryState ?? new EventDeliveryState(currentEpoch));
             }
             catch
             {
@@ -344,7 +351,7 @@ public sealed class RealtimeTranslationConnection : IDisposable
                 RealtimeTranslationException.SanitizeServerMessage(error.Message));
     }
 
-    private void StartReceiveLoop(int currentEpoch)
+    private void StartReceiveLoop(int currentEpoch, EventDeliveryState deliveryState)
     {
         var cts = new CancellationTokenSource();
 
@@ -357,12 +364,23 @@ public sealed class RealtimeTranslationConnection : IDisposable
             writer = _events.Writer;
         }
 
-        _receiveTask = Task.Run(() => ReceiveLoopAsync(currentEpoch, writer, token), CancellationToken.None);
+        _receiveTask = Task.Run(
+            () => ReceiveLoopAsync(
+                currentEpoch,
+                new EventDeliveryWriter(
+                    writer,
+                    deliveryState,
+                    EventDeliveryStage.Translation,
+                    RealtimeEventChannel.Capacity),
+                deliveryState,
+                token),
+            CancellationToken.None);
     }
 
     private async Task ReceiveLoopAsync(
         int currentEpoch,
-        ChannelWriter<RealtimeTranslationStreamEvent> writer,
+        EventDeliveryWriter writer,
+        EventDeliveryState deliveryState,
         CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -391,13 +409,18 @@ public sealed class RealtimeTranslationConnection : IDisposable
                     return;
                 }
 
-                writer.TryWrite(new RealtimeTranslationStreamEvent(
+                deliveryState.TryRecordTermination(EventDeliveryTermination.TransportFailure);
+                if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(
                     _target,
                     new RealtimeTranslationServerEvent.ServerError(
                         UserCopy.Current.Text("error.transportDisconnected"),
                         "transport"),
-                    currentEpoch));
-                writer.TryComplete();
+                    currentEpoch)))
+                {
+                    return;
+                }
+
+                writer.Complete();
                 return;
             }
 
@@ -419,11 +442,20 @@ public sealed class RealtimeTranslationConnection : IDisposable
                 continue;
             }
 
-            writer.TryWrite(new RealtimeTranslationStreamEvent(_target, serverEvent, currentEpoch));
+            if (serverEvent is RealtimeTranslationServerEvent.ServerError error)
+            {
+                var termination = EventDeliveryState.Classify(error);
+                deliveryState.TryRecordTermination(termination.Termination, termination.SanitizedMessage);
+            }
+
+            if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(_target, serverEvent, currentEpoch)))
+            {
+                return;
+            }
 
             if (serverEvent is RealtimeTranslationServerEvent.SessionClosed)
             {
-                writer.TryComplete();
+                writer.Complete();
                 return;
             }
         }
@@ -478,11 +510,13 @@ public sealed class RealtimeTranslationConnection : IDisposable
 /// <summary>接続が下流へ流すイベント channel。取りこぼしより最新優先で詰まらせない。</summary>
 internal static class RealtimeEventChannel
 {
+    public const int Capacity = 512;
+
     public static Channel<RealtimeTranslationStreamEvent> Create() =>
         Channel.CreateBounded<RealtimeTranslationStreamEvent>(
-            new BoundedChannelOptions(512)
+            new BoundedChannelOptions(Capacity)
             {
-                FullMode = BoundedChannelFullMode.DropOldest,
+                FullMode = BoundedChannelFullMode.Wait,
                 SingleReader = false,
                 SingleWriter = false,
             });

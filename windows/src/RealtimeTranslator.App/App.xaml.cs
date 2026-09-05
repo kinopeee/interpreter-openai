@@ -397,7 +397,7 @@ public partial class App : Application, IDisposable
 
     private void OnSubtitleUpdated(object? sender, RealtimeSubtitleUpdate update)
     {
-        if (update.ShouldFinalize && _settings.RecordSubtitles)
+        if (update.ShouldFinalize && !update.IsInvalidation && _settings.RecordSubtitles)
         {
             // 録音中にオプトインした場合も、最初の確定ペア前に開始マーカーを書く。
             if (_transcriptSession.TryOpenBeforeAppend(recordSubtitles: true))

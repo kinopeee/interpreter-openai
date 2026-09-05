@@ -2,6 +2,7 @@ import Foundation
 
 protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
     var events: AsyncStream<RealtimeTranslationStreamEvent> { get async }
+    var feed: EventFeed { get async }
     func start(apiKey: String, tuning: RealtimeSessionTuning, pair: LanguagePair) async throws
     func appendAudioFrame(_ pcm16LE: Data) async throws
     func selectTranslationTarget(_ target: RealtimeTranslationOutputLanguage?) async throws
@@ -11,7 +12,7 @@ protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
     func beginStopDrainCapture() async
     /// session consumer が stream から読んで適用／破棄したあとに呼ぶ。
     /// stop drain は未消費の recentYields だけをコピーし、既読の nil event_id delta を再適用しない。
-    func acknowledgeConsumedStreamEvent() async
+    func acknowledgeConsumedStreamEvent(runToken: Int?) async
     /// 正常停止。commit/session.close 中の字幕イベントを返し、呼び出し側が assembler へ取り込む。
     /// 接続 close が失敗しても drain 済みイベントは返し、残接続は内部で forceClose する。
     @discardableResult
@@ -21,6 +22,9 @@ protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
 }
 
 actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
+    static let mergedEventBufferLimit = 512
+    static let unacknowledgedRetentionLimit = 513
+    static let stopDrainRetentionLimit = 1024
     /// 100 ms frame × 40 = 直近4秒。言語判定遅延でも発話冒頭を翻訳へ届ける。
     static let translationPrerollFrameLimit = 40
     static let translationPendingFrameLimit = 80
@@ -39,6 +43,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     /// 現在登録中のポンプ世代。古いポンプの終了処理が新ポンプの参照を消さない。
     private var translationPumpGeneration = 0
     private var eventContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation?
+    private var mergeYielder: EventDeliveryYielder?
+    private var deliveryState = EventDeliveryState(epoch: 0)
     private var eventStream: AsyncStream<RealtimeTranslationStreamEvent>
     private(set) var connectionEpoch = 0
     private var isRunning = false
@@ -56,16 +62,19 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     /// closeGracefully 中だけ詰め、停止時の最終 delta 欠落を防ぐ。
     private var stopDrainBuffer: [RealtimeTranslationStreamEvent]?
     /// `events` AsyncStream と同じ容量。finish() が未読を捨ててもここから close drain へ移せる。
-    private static let mergedEventBufferLimit = 512
     /// yield 済み字幕イベントの最新側。stream の bufferingNewest と同じ窓。
-    private var recentYields: [RealtimeTranslationStreamEvent] = []
+    private var recentYields: [(sequence: Int, event: RealtimeTranslationStreamEvent)] = []
     /// `forwardMergedEvent` が yield した回数。recentYields と同じ窓で数える。
-    private var yieldedEventCount = 0
+    private var nextSequence = 0
     /// session consumer が stream から読んで acknowledge した回数。
-    private var consumedEventCount = 0
+    private var ackedSequence = 0
 
     var events: AsyncStream<RealtimeTranslationStreamEvent> {
         eventStream
+    }
+
+    var feed: EventFeed {
+        EventFeed(events: eventStream, runToken: connectionEpoch, deliveryState: deliveryState)
     }
 
     var pendingTranslationFrameCount: Int {
@@ -137,6 +146,13 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         recreateEventStream()
         connectionEpoch += 1
         let epoch = connectionEpoch
+        deliveryState = EventDeliveryState(epoch: epoch)
+        mergeYielder = EventDeliveryYielder(
+            continuation: eventContinuation!,
+            deliveryState: deliveryState,
+            stage: .merge,
+            capacity: Self.mergedEventBufferLimit
+        )
         isRunning = true
         appendedFrameCount = 0
         sourceSentFrameCount = 0
@@ -154,7 +170,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                     try await self.sourceConnection.start(
                         apiKey: apiKey,
                         tuning: tuning,
-                        pair: pair
+                        pair: pair,
+                        deliveryState: self.deliveryState
                     )
                 }
                 for language in pair.languages {
@@ -168,7 +185,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                             config: .withoutSourceTranscription(
                                 target: target,
                                 noiseReduction: tuning.noiseReduction
-                            )
+                            ),
+                            deliveryState: self.deliveryState
                         )
                     }
                 }
@@ -310,13 +328,19 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
             // consumer が generation bump で ingest を止めたあと、
             // AsyncStream.finish() は未読要素を捨てる。Windows Channel と違い再読できないので、
             // 未消費の最新窓だけを移す。既に ingest した nil event_id delta は再適用しない。
-            let unreadCount = min(recentYields.count, max(0, yieldedEventCount - consumedEventCount))
-            stopDrainBuffer = Array(recentYields.suffix(unreadCount))
+            stopDrainBuffer = recentYields
+                .filter { $0.sequence > ackedSequence }
+                .map { $0.event }
         }
     }
 
-    func acknowledgeConsumedStreamEvent() {
-        consumedEventCount += 1
+    func acknowledgeConsumedStreamEvent(runToken: Int? = nil) {
+        if let runToken, runToken != connectionEpoch {
+            return
+        }
+        guard ackedSequence < nextSequence else { return }
+        ackedSequence += 1
+        recentYields.removeAll { $0.sequence <= ackedSequence }
     }
 
     @discardableResult
@@ -371,6 +395,9 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         stopDrainBuffer = nil
         eventContinuation?.finish()
         eventContinuation = nil
+        mergeYielder?.finish()
+        mergeYielder = nil
+        deliveryState.completeNormally()
         if closeFailed {
             await forceClose()
         }
@@ -388,8 +415,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         // beginStopDrainCapture 済みの窓は残す。reconnect の tearDown / generation
         // mismatch の forceClose が、stop が close drain へ渡す未読 delta を消さない。
         recentYields.removeAll(keepingCapacity: true)
-        yieldedEventCount = 0
-        consumedEventCount = 0
+        nextSequence = 0
+        ackedSequence = 0
         connectionEpoch += 1
         invalidateTranslationPump()
         mergeTask?.cancel()
@@ -400,6 +427,9 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         }
         eventContinuation?.finish()
         eventContinuation = nil
+        mergeYielder?.finish()
+        mergeYielder = nil
+        deliveryState.completeNormally()
     }
 
     private func enqueueTranslationFrame(
@@ -489,7 +519,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         AppLogger.realtime.error(
             "Translation pump halted reason=\(reason, privacy: .public) count=\(pendingCount, privacy: .public) limit=\(Self.translationPendingFrameLimit, privacy: .public) target=\(target.rawValue, privacy: .public) epoch=\(self.connectionEpoch, privacy: .public)"
         )
-        eventContinuation?.yield(
+        deliveryState.tryRecordTermination(.transportFailure)
+        _ = mergeYielder?.deliver(
             RealtimeTranslationStreamEvent(
                 lane: .translation(target),
                 event: .error(
@@ -567,22 +598,30 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         if case .outputAudioDelta = event.event {
             return
         }
-        recentYields.append(event)
-        yieldedEventCount += 1
-        if recentYields.count > Self.mergedEventBufferLimit {
-            let overflow = recentYields.count - Self.mergedEventBufferLimit
-            recentYields.removeFirst(overflow)
-            yieldedEventCount -= overflow
-            consumedEventCount = max(0, consumedEventCount - overflow)
+        if deliveryState.didLoseEvents {
+            return
         }
-        eventContinuation?.yield(event)
         if stopDrainBuffer != nil {
+            guard stopDrainBuffer!.count < Self.stopDrainRetentionLimit else {
+                deliveryState.recordLoss(stage: .stopDrain, capacity: Self.stopDrainRetentionLimit)
+                return
+            }
             stopDrainBuffer?.append(event)
+            return
         }
+        nextSequence += 1
+        recentYields.append((sequence: nextSequence, event: event))
+        if recentYields.count > Self.unacknowledgedRetentionLimit {
+            deliveryState.recordLoss(stage: .merge, capacity: Self.unacknowledgedRetentionLimit)
+            mergeYielder?.finish()
+            return
+        }
+        _ = mergeYielder?.deliver(event)
     }
 
     private func finishMergedEventStream() {
-        eventContinuation?.finish()
+        mergeYielder?.finish()
+        deliveryState.completeNormally()
     }
 
     private func noteSourceDelta() {
@@ -599,8 +638,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     private func recreateEventStream() {
         eventContinuation?.finish()
         recentYields.removeAll(keepingCapacity: true)
-        yieldedEventCount = 0
-        consumedEventCount = 0
+        nextSequence = 0
+        ackedSequence = 0
         let pair = Self.makeEventStream()
         eventStream = pair.stream
         eventContinuation = pair.continuation
@@ -611,7 +650,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         continuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation
     ) {
         var continuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation!
-        let stream = AsyncStream(bufferingPolicy: .bufferingNewest(mergedEventBufferLimit)) {
+        let stream = AsyncStream(bufferingPolicy: .bufferingOldest(Self.mergedEventBufferLimit)) {
             continuation = $0
         }
         return (stream, continuation)

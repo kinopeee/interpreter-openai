@@ -6,6 +6,7 @@ struct RealtimeSubtitleUpdate: Equatable, Sendable {
     var isTranslationCurrent: Bool
     var shouldFinalize: Bool
     var segmentGeneration: Int
+    var isInvalidation = false
 }
 
 /// 原文authorityとペア内の2出力を時間整列し、自動lane選択する。
@@ -36,6 +37,10 @@ struct RealtimeSubtitleAssembler: Sendable {
         self.languagePair = languagePair
     }
 
+    var currentSegmentGeneration: Int {
+        segmentGeneration
+    }
+
     mutating func setLanguagePair(_ pair: LanguagePair) {
         languagePair = pair
     }
@@ -55,6 +60,12 @@ struct RealtimeSubtitleAssembler: Sendable {
 
     mutating func beginNewEpoch(_ epoch: Int) {
         reset(epoch: epoch)
+    }
+
+    mutating func discardUnconfirmed() {
+        clearSegmentBuffers(advancingGeneration: true)
+        awaitingSourceAfterFinalize = false
+        lastActivityAt = Date()
     }
 
     /// セッションが判定した期待翻訳lane。同言語echoより優先する。

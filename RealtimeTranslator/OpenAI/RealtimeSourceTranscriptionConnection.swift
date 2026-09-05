@@ -1,6 +1,7 @@
 import Foundation
 
 actor RealtimeSourceTranscriptionConnection {
+    static let eventBufferLimit = 256
     static let endpointURL = URL(
         string: "wss://api.openai.com/v1/realtime?intent=transcription"
     )!
@@ -18,6 +19,7 @@ actor RealtimeSourceTranscriptionConnection {
     private var connectedNoiseReduction: RealtimeTranslationNoiseReduction = .farField
     private var receiveTask: Task<Void, Never>?
     private var eventContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation?
+    private var deliveryYielder: EventDeliveryYielder?
     private(set) var events: AsyncStream<RealtimeTranslationStreamEvent>
 
     init(
@@ -36,12 +38,20 @@ actor RealtimeSourceTranscriptionConnection {
     func start(
         apiKey: String,
         tuning: RealtimeSessionTuning = .default,
-        pair: LanguagePair
+        pair: LanguagePair,
+        deliveryState: EventDeliveryState? = nil
     ) async throws {
         await forceClose()
         recreateEventStream()
         epoch += 1
         let currentEpoch = epoch
+        let state = deliveryState ?? EventDeliveryState(epoch: currentEpoch)
+        deliveryYielder = EventDeliveryYielder(
+            continuation: eventContinuation!,
+            deliveryState: state,
+            stage: .source,
+            capacity: Self.eventBufferLimit
+        )
         didReceiveCompleted = false
 
         let apiKey = try RealtimeTranslationError.requireNormalizedAPIKey(apiKey)
@@ -132,6 +142,7 @@ actor RealtimeSourceTranscriptionConnection {
         await transport.close()
         eventContinuation?.finish()
         eventContinuation = nil
+        deliveryYielder = nil
     }
 
     private func startReceiveLoop(epoch currentEpoch: Int) {
@@ -151,7 +162,7 @@ actor RealtimeSourceTranscriptionConnection {
                             "DBG_TRANSCRIPT_EVENT target=source kind=input epoch=\(currentEpoch, privacy: .public)"
                         )
                         #endif
-                        eventContinuation?.yield(
+                        guard deliveryYielder?.deliver(
                             RealtimeTranslationStreamEvent(
                                 lane: .source,
                                 event: .inputTranscriptDelta(
@@ -162,21 +173,30 @@ actor RealtimeSourceTranscriptionConnection {
                                 ),
                                 epoch: currentEpoch
                             )
-                        )
+                        ) == true else { return }
                     case "conversation.item.input_audio_transcription.completed":
                         didReceiveCompleted = true
                     case "error":
+                        let body = object["error"] as? [String: Any]
+                        let code = body?["code"] as? String
                         let error = classifyError(object)
-                        eventContinuation?.yield(
+                        let message = error.localizedDescription
+                        deliveryYielder?.deliveryState.tryRecordTermination(
+                            EventDeliveryState.classify(
+                                code: code,
+                                message: message
+                            )
+                        )
+                        guard deliveryYielder?.deliver(
                             RealtimeTranslationStreamEvent(
                                 lane: .source,
                                 event: .error(
-                                    message: error.localizedDescription,
+                                    message: message,
                                     code: "transcription"
                                 ),
                                 epoch: currentEpoch
                             )
-                        )
+                        ) == true else { return }
                     default:
                         break
                     }
@@ -184,7 +204,8 @@ actor RealtimeSourceTranscriptionConnection {
                     return
                 } catch {
                     guard currentEpoch == epoch else { return }
-                    eventContinuation?.yield(
+                    deliveryYielder?.deliveryState.tryRecordTermination(.transportFailure)
+                    guard deliveryYielder?.deliver(
                         RealtimeTranslationStreamEvent(
                             lane: .source,
                             event: .error(
@@ -193,7 +214,7 @@ actor RealtimeSourceTranscriptionConnection {
                             ),
                             epoch: currentEpoch
                         )
-                    )
+                        ) == true else { return }
                     return
                 }
             }
@@ -293,7 +314,7 @@ actor RealtimeSourceTranscriptionConnection {
         if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
             return .authenticationFailed
         }
-        return .fatalServerError(message)
+        return .fatalServerError(RealtimeTranslationError.sanitizedServerMessage(message))
     }
 
     private func recreateEventStream() {
@@ -308,7 +329,7 @@ actor RealtimeSourceTranscriptionConnection {
         continuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation
     ) {
         var continuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation!
-        let stream = AsyncStream(bufferingPolicy: .bufferingNewest(256)) {
+        let stream = AsyncStream(bufferingPolicy: .bufferingOldest(Self.eventBufferLimit)) {
             continuation = $0
         }
         return (stream, continuation)

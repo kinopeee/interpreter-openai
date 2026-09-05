@@ -31,10 +31,12 @@ struct LiveSubtitle: Equatable, Sendable {
 struct SubtitleSnapshot: Equatable, Sendable {
     var current: LiveSubtitle
     var statusBanner: String?
+    var isInvalidation = false
 
     static let empty = SubtitleSnapshot(
         current: .empty,
-        statusBanner: nil
+        statusBanner: nil,
+        isInvalidation: false
     )
 
     var presentation: SubtitlePresentation {
