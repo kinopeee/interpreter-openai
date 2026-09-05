@@ -125,11 +125,13 @@ struct RealtimeSubtitleAssembler: Sendable {
         )
         let prefix = String(sourceText[..<splitIndex])
         let suffix = String(sourceText[splitIndex...])
+        let translationReachedBoundary = selectedLane.flatMap { translationSourceEnd[$0] }
+            .map { $0 >= clampedOffset } == true
         let hasCompletePair =
             !prefix.isEmpty
             && selectedLane != nil
             && !currentTranslation.isEmpty
-            && selectedLane.flatMap { translationSourceEnd[$0] } == clampedOffset
+            && translationReachedBoundary
 
         var finalized: RealtimeSubtitleUpdate?
         if hasCompletePair {
@@ -332,13 +334,16 @@ struct RealtimeSubtitleAssembler: Sendable {
     }
 
     private mutating func evaluateFinalize(now: Date) -> RealtimeSubtitleUpdate? {
-        guard !boundaryCandidatePending else { return nil }
         guard !sourceText.isEmpty, selectedLane != nil else { return nil }
         guard now.timeIntervalSince(lastActivityAt) >= Self.idleFinalizeInterval else { return nil }
 
         let translation = currentTranslation
         if !translation.isEmpty, translationIsCurrent {
+            // 未確定の境界候補（文末の製品名など）は、切替未確定のまま idle した完全ペアを止めない。
             return finalizeCurrent(elapsedHint: nil, now: now)
+        }
+        if boundaryCandidatePending {
+            return nil
         }
         if !translation.isEmpty {
             // 旧訳文は確定しないが、次発話の原文が同一セグメントへ連結しないよう境界だけ進める。

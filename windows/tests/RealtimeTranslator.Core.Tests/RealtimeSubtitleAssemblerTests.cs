@@ -409,20 +409,48 @@ public sealed class RealtimeSubtitleAssemblerTests
     }
 
     [Fact]
-    public void BoundaryCandidatePendingBlocksIdleFinalize()
+    public void BoundaryCandidatePendingDoesNotBlockIdleFinalizeOfCurrentPair()
     {
-        // Given: ??????? pending ???????? assembler
+        // Given: 完全ペアのあと境界候補が pending の assembler
         var assembler = NewAssembler();
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
-        assembler.Ingest(Source("?????", "s1", 100), Origin);
-        assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200), Origin);
+        assembler.Ingest(Source("今日は OpenAI", "s1", 100), Origin);
+        assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, "Today it is OpenAI", "t1", 200),
+            Origin);
         assembler.SetBoundaryCandidatePending(true);
 
-        // When: idle ???????
+        // When: idle finalize 間隔を超えて Tick する
         var update = assembler.Tick(Origin.AddSeconds(9));
 
-        // Then: ???????? finalize ?????
-        Assert.Null(update);
+        // Then: 誤検知候補でも現行の完全ペアは確定する
+        Assert.NotNull(update);
+        Assert.True(update.Value.ShouldFinalize);
+        Assert.Equal("今日は OpenAI", update.Value.SourceText);
+        Assert.Equal("Today it is OpenAI", update.Value.TranslatedText);
+    }
+
+    [Fact]
+    public void SplitForLanguageSwitchFinalizesWhenLateTranslationPassedBoundary()
+    {
+        // Given: 新言語側の原文が先に伸びてからプレフィックスの訳文が届く
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+        assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
+        assembler.Ingest(Source(" Hello", "s2", 200), Origin.AddMilliseconds(100));
+        assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 300),
+            Origin.AddMilliseconds(200));
+
+        // When: 確認済み境界で split する
+        var split = assembler.SplitForLanguageSwitch(5, Origin.AddMilliseconds(300));
+
+        // Then: 境界を越えて届いた訳文でもプレフィックスを確定する
+        Assert.NotNull(split.Finalized);
+        Assert.True(split.Finalized.Value.ShouldFinalize);
+        Assert.Equal("こんにちは", split.Finalized.Value.SourceText);
+        Assert.Equal("Hello", split.Finalized.Value.TranslatedText);
+        Assert.Equal(" Hello", split.Current.SourceText);
     }
 
     [Fact]

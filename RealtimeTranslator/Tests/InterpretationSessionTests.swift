@@ -1113,6 +1113,56 @@ final class InterpretationSessionTests: XCTestCase {
         await session.stop()
     }
 
+    func testAmbiguousLatinTailStopFinalizesCompletePair() async throws {
+        // Given: 日本語のあと曖昧なラテン1語が続き、その後に全文の訳文が届く
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "今日は", eventID: "tail-ja", elapsedMs: 1)
+        )
+        await waitUntil { dual.spokenLanguages == [.japanese] }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: " OpenAI", eventID: "tail-latin", elapsedMs: 2)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText.contains("OpenAI") == true
+        }
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(
+                delta: "Today it is OpenAI",
+                eventID: "tail-en",
+                elapsedMs: 3
+            )
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.translatedText.contains("OpenAI") == true
+        }
+
+        // When: 録音を停止する
+        await session.stop()
+
+        // Then: 境界候補が残っていても完全ペアを確定して記録する
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertTrue(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "今日は OpenAI"
+                    && $0.translatedText == "Today it is OpenAI"
+            }
+        )
+    }
+
     func testAB01PendingBoundaryLossInvalidatesAndReconnectsWithoutFinalizing() async throws {
         // Given: 切替候補が保留中で未確定の字幕が存在する
         let dual = FakeDualRealtimeTranslationClient()

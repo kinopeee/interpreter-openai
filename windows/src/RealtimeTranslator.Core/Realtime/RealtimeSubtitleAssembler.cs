@@ -127,7 +127,7 @@ public sealed class RealtimeSubtitleAssembler
         var hasCompletePair = prefix.Length > 0
             && _selectedLane is not null
             && CurrentTranslation.Length > 0
-            && _translationSourceEnd.GetValueOrDefault(_selectedLane.Value) == splitOffset;
+            && _translationSourceEnd.GetValueOrDefault(_selectedLane.Value) >= splitOffset;
         RealtimeSubtitleUpdate? finalized = null;
         if (hasCompletePair)
         {
@@ -306,10 +306,6 @@ public sealed class RealtimeSubtitleAssembler
 
     private RealtimeSubtitleUpdate? EvaluateFinalize(DateTimeOffset now)
     {
-        if (_boundaryCandidatePending)
-        {
-            return null;
-        }
         if (_sourceText.Length == 0 || _selectedLane is null)
         {
             return null;
@@ -322,7 +318,13 @@ public sealed class RealtimeSubtitleAssembler
 
         if (CurrentTranslation.Length > 0 && _translationIsCurrent)
         {
+            // 未確定の境界候補（文末の製品名など）は、切替未確定のまま idle した完全ペアを止めない。
             return FinalizeCurrent(elapsedHint: null, now);
+        }
+
+        if (_boundaryCandidatePending)
+        {
+            return null;
         }
 
         if (CurrentTranslation.Length > 0)

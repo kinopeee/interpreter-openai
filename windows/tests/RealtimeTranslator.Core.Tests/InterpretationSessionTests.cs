@@ -627,6 +627,62 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 日本語のあと曖昧なラテン1語が続き、その後に全文の訳文が届く
+    // When: 録音を停止する
+    // Then: 境界候補が残っていても完全ペアを確定して記録する
+    [Fact]
+    public async Task AmbiguousLatinTailStopFinalizesCompletePair()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        client.PublishSourceDelta("今日は");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count == 1);
+        client.PublishSourceDelta(" OpenAI");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText.Contains("OpenAI", StringComparison.Ordinal));
+            }
+        });
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "Today it is OpenAI");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Contains("OpenAI", StringComparison.Ordinal)
+                    && !update.ShouldFinalize);
+            }
+        });
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        lock (updates)
+        {
+            Assert.Contains(
+                updates,
+                update => update.ShouldFinalize
+                    && update.SourceText == "今日は OpenAI"
+                    && update.TranslatedText == "Today it is OpenAI");
+        }
+    }
+
     // Given: 切替候補が保留中で未確定の字幕が存在する
     // When: 受信損失を記録する
     // Then: 一度だけ無効化され、再接続後に未確定字幕を確定しない

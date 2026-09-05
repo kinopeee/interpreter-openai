@@ -183,6 +183,19 @@
         "expectedFinal": { "sourceText": "", "translatedText": "", "isTranslationCurrent": false, "shouldFinalize": false }
       },
       {
+        "name": "late translation after new-language source still finalizes the prefix",
+        "epoch": 1,
+        "expectLane": "en",
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
+          { "at": 0.2, "kind": "sourceDelta", "lane": "source", "text": " Hello", "eventId": "s2", "elapsedMs": 200 },
+          { "at": 0.3, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 300 },
+          { "at": 0.4, "kind": "languageSwitch", "boundaryOffset": 5 }
+        ],
+        "expectedFinalizedPairs": [{ "sourceText": "こんにちは", "translatedText": "Hello" }],
+        "expectedFinal": { "sourceText": " Hello", "translatedText": "", "isTranslationCurrent": false, "shouldFinalize": false }
+      },
+      {
         "name": "language switch without pair clears buffers for the next source",
         "epoch": 1,
         "expectLane": "en",

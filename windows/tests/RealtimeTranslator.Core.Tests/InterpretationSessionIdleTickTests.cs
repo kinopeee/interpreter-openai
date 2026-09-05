@@ -110,6 +110,64 @@ public sealed class InterpretationSessionIdleTickTests
         await session.StopAsync();
     }
 
+    // Given: 日本語のあと曖昧なラテン1語と全文の訳文がある Listening セッション
+    // When: idle finalize 間隔を超えて Tick する
+    // Then: 境界候補が残っていても完全ペアを確定する
+    [Fact]
+    public async Task IdleTickFinalizesCompletePairWithAmbiguousLatinTail()
+    {
+        var client = new FakeDualClient();
+        var clock = new ControllableTimeProvider(DateTimeOffset.Parse("2026-08-16T00:00:00Z"));
+        using var session = NewSession(client, clock);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        client.PublishSourceDelta("今日は");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishSourceDelta(" OpenAI");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText.Contains("OpenAI", StringComparison.Ordinal));
+            }
+        });
+        client.PublishTranslationDelta(
+            RealtimeTranslationOutputLanguage.English,
+            "Today it is OpenAI");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Contains("OpenAI", StringComparison.Ordinal)
+                    && !update.ShouldFinalize);
+            }
+        });
+
+        clock.Advance(RealtimeSubtitleAssembler.IdleFinalizeInterval + TimeSpan.FromMilliseconds(50));
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.ShouldFinalize
+                    && update.SourceText == "今日は OpenAI"
+                    && update.TranslatedText == "Today it is OpenAI");
+            }
+        });
+        await session.StopAsync();
+    }
+
     private static InterpretationSession NewSession(FakeDualClient client, TimeProvider clock) =>
         new(
             new FakeApiKeyStore("sk-test"),
