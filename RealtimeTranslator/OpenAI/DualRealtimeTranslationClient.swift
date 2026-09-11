@@ -46,6 +46,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
 
     private let sourceConnection: RealtimeSourceTranscriptionConnection
     private let connections: [RealtimeTranslationOutputLanguage: RealtimeTranslationConnection]
+    private let tuning: DualRealtimeTranslationClientTuning
     private let translationDrainTimeoutNanoseconds: UInt64
     private var mergeTask: Task<Void, Never>?
     private var mergedEvents: MergedEventBuffer
@@ -89,8 +90,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         englishConnection: RealtimeTranslationConnection? = nil,
         japaneseConnection: RealtimeTranslationConnection? = nil,
         spanishConnection: RealtimeTranslationConnection? = nil,
-        translationDrainTimeoutNanoseconds: UInt64 = DualRealtimeTranslationClient
-            .defaultTranslationDrainTimeoutNanoseconds,
+        translationDrainTimeoutNanoseconds: UInt64? = nil,
         tuning: DualRealtimeTranslationClientTuning = .default
     ) {
         if let sourceConnection, let englishConnection, let japaneseConnection {
@@ -125,7 +125,11 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                 )
             self.connections = [.english: english, .japanese: japanese, .spanish: spanish]
         }
-        self.translationDrainTimeoutNanoseconds = translationDrainTimeoutNanoseconds
+        self.tuning = tuning
+        // drain の base は明示引数が優先。省略時は注入 tuning の既定値を使い、
+        // per-frame 予算・cap と同じ設定源から計算されるようにする。
+        self.translationDrainTimeoutNanoseconds =
+            translationDrainTimeoutNanoseconds ?? tuning.defaultTranslationDrainTimeoutNanoseconds
         mergedEvents = MergedEventBuffer(tuning: tuning)
         frameQueues = TranslationFrameQueues(
             prerollLimit: tuning.translationPrerollFrameLimit,
@@ -272,7 +276,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         if pump.isTracked {
             pending += 1
         }
-        return Self.resolveTranslationDrainTimeoutNanoseconds(
+        return tuning.resolveTranslationDrainTimeoutNanoseconds(
             baseNanoseconds: translationDrainTimeoutNanoseconds,
             pendingFrameCount: pending
         )
