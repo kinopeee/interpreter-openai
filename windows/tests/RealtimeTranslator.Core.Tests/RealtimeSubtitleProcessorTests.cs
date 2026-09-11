@@ -1,0 +1,182 @@
+using System;
+using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.OpenAI;
+using RealtimeTranslator.Core.Realtime;
+using Xunit;
+
+namespace RealtimeTranslator.Core.Tests;
+
+public sealed class RealtimeSubtitleProcessorTests
+{
+    private static readonly DateTimeOffset Origin = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    // Given: ja-en の epoch 1 を開始した processor
+    // When: 判定前の日本語原文 delta を取り込む
+    // Then: 英語 target が選択され、原文 update が返る
+    [Fact]
+    public void JapaneseSourceSelectsEnglishTarget()
+    {
+        var processor = NewProcessor();
+
+        var result = processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
+
+        Assert.NotNull(result);
+        Assert.Equal(
+            new RealtimeSubtitleRoutingAction.Select(RealtimeTranslationOutputLanguage.English),
+            result.RoutingAction);
+        Assert.True(result.IsSourceUpdate);
+        Assert.Single(result.Updates);
+        Assert.Equal(result.IngestedUpdate, result.Updates[0]);
+        Assert.Equal("今日は晴れです。", result.Updates[0].SourceText);
+        Assert.False(result.Updates[0].ShouldFinalize);
+        Assert.Equal("今日は晴れです。", processor.RoutingSourceText);
+    }
+
+    // Given: 日本語原文で英語 target が選択済み
+    // When: 英語の訳文 delta を取り込む
+    // Then: routing は変わらず訳文 update だけが返る
+    [Fact]
+    public void TranslationDeltaDoesNotChangeRouting()
+    {
+        var processor = NewProcessor();
+        processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
+
+        var result = processor.Process(
+            Translation(RealtimeTranslationOutputLanguage.English, "It is sunny today.", "t1", 2),
+            Origin.AddMilliseconds(2));
+
+        Assert.NotNull(result);
+        Assert.Equal(new RealtimeSubtitleRoutingAction.None(), result.RoutingAction);
+        Assert.False(result.IsSourceUpdate);
+        Assert.Single(result.Updates);
+        Assert.Equal("It is sunny today.", result.Updates[0].TranslatedText);
+        Assert.True(result.Updates[0].IsTranslationCurrent);
+        Assert.False(result.Updates[0].ShouldFinalize);
+    }
+
+    // Given: 日本語原文と英訳で英語 target が選択済み
+    // When: 原文が英語へ切り替わる delta を取り込む
+    // Then: 確定プレフィックスと現行サフィックスを返し target を日本語へ切り替える
+    [Fact]
+    public void LanguageSwitchFinalizesPrefixAndKeepsCurrentSuffix()
+    {
+        var processor = NewProcessor();
+        processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
+        processor.Process(
+            Translation(RealtimeTranslationOutputLanguage.English, "It is sunny today.", "t1", 2),
+            Origin.AddMilliseconds(2));
+
+        // 直近16 scalar 窓に日本語が残るため、この時点では切り替わらない
+        var partial = processor.Process(Source("To", "s2", 3), Origin.AddMilliseconds(3));
+        Assert.NotNull(partial);
+        Assert.Equal(new RealtimeSubtitleRoutingAction.None(), partial.RoutingAction);
+
+        var result = processor.Process(
+            Source("day it is sunny outside", "s3", 4),
+            Origin.AddMilliseconds(4));
+
+        Assert.NotNull(result);
+        Assert.Equal(
+            new RealtimeSubtitleRoutingAction.Switch(RealtimeTranslationOutputLanguage.Japanese),
+            result.RoutingAction);
+        Assert.Equal(2, result.Updates.Count);
+        Assert.True(result.Updates[0].ShouldFinalize);
+        Assert.Equal("今日は晴れです。", result.Updates[0].SourceText);
+        Assert.Equal("It is sunny today.", result.Updates[0].TranslatedText);
+        Assert.False(result.Updates[1].ShouldFinalize);
+        Assert.Equal("Today it is sunny outside", result.Updates[1].SourceText);
+        // 切替後は RoutingSourceTextWindow が末尾16非空白 scalar に切り詰める
+        Assert.Equal("it is sunny outside", processor.RoutingSourceText);
+    }
+
+    // Given: 日本語原文で英語 target が選択済み
+    // When: DiscardUnconfirmed を呼ぶ
+    // Then: 無効化 update が返り routing がリセットされて再選択できる
+    [Fact]
+    public void DiscardUnconfirmedInvalidatesAndResetsRouting()
+    {
+        var processor = NewProcessor();
+        processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
+
+        var invalidation = processor.DiscardUnconfirmed();
+
+        Assert.True(invalidation.IsInvalidation);
+        Assert.Equal(string.Empty, invalidation.SourceText);
+        Assert.Equal(string.Empty, invalidation.TranslatedText);
+        Assert.False(invalidation.ShouldFinalize);
+        Assert.Equal(string.Empty, processor.RoutingSourceText);
+
+        // selected target がリセットされたので次の日本語原文で再選択される
+        var result = processor.Process(
+            Source("こんにちは", "s4", 5),
+            Origin.AddMilliseconds(5));
+        Assert.NotNull(result);
+        Assert.Equal(
+            new RealtimeSubtitleRoutingAction.Select(RealtimeTranslationOutputLanguage.English),
+            result.RoutingAction);
+    }
+
+    // Given: epoch 1 を開始した直後
+    // When: 旧 epoch の原文 delta を取り込む
+    // Then: イベントは無視され state は変わらない
+    [Fact]
+    public void StaleEpochEventIsIgnored()
+    {
+        var processor = NewProcessor();
+
+        var result = processor.Process(
+            new RealtimeTranslationStreamEvent(
+                RealtimeTranslationLane.Source,
+                new RealtimeTranslationServerEvent.InputTranscriptDelta("こんにちは", "s0", 1),
+                0),
+            Origin);
+
+        Assert.Null(result);
+        Assert.Equal(string.Empty, processor.RoutingSourceText);
+        Assert.Equal(0, processor.CurrentSourceLength);
+    }
+
+    // Given: 日本語原文で英語 target が選択済み
+    // When: ResetRoutingForNextSegment 後に次セグメントの原文を取り込む
+    // Then: target が再選択される
+    [Fact]
+    public void ResetRoutingForNextSegmentAllowsReselection()
+    {
+        var processor = NewProcessor();
+        processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
+
+        processor.ResetRoutingForNextSegment();
+        var result = processor.Process(
+            Source("こんにちは", "s5", 6),
+            Origin.AddMilliseconds(6));
+
+        Assert.NotNull(result);
+        Assert.Equal(
+            new RealtimeSubtitleRoutingAction.Select(RealtimeTranslationOutputLanguage.English),
+            result.RoutingAction);
+        Assert.Equal("こんにちは", processor.RoutingSourceText);
+    }
+
+    private static RealtimeSubtitleProcessor NewProcessor()
+    {
+        var processor = new RealtimeSubtitleProcessor();
+        processor.BeginEpoch(1, LanguagePair.JaEn);
+        return processor;
+    }
+
+    private static RealtimeTranslationStreamEvent Source(string text, string eventId, int? elapsedMs) =>
+        new(
+            RealtimeTranslationLane.Source,
+            new RealtimeTranslationServerEvent.InputTranscriptDelta(text, eventId, elapsedMs),
+            1);
+
+    private static RealtimeTranslationStreamEvent Translation(
+        RealtimeTranslationOutputLanguage target,
+        string text,
+        string eventId,
+        int? elapsedMs) =>
+        new(
+            RealtimeTranslationLane.Translation(target),
+            new RealtimeTranslationServerEvent.OutputTranscriptDelta(text, eventId, elapsedMs),
+            1);
+}

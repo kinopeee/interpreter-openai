@@ -632,15 +632,10 @@ final class InterpretationSession {
         now: Date,
         isReplay: Bool = false
     ) -> RealtimeSubtitleProcessingResult? {
-        guard let result = processor.process(streamEvent, now: now, isReplay: isReplay) else {
+        if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
             return nil
         }
-        if result.isSourceUpdate,
-           let feed = activeFeed,
-           checkEventLoss(feed, generation: lifecycleGeneration) {
-            return nil
-        }
-        return result
+        return processor.process(streamEvent, now: now, isReplay: isReplay)
     }
 
     private func resetAudioRoutingForNextSegment() async {
