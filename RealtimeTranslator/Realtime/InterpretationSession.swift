@@ -54,30 +54,19 @@ final class InterpretationSession {
     private var pendingUpdate: RealtimeSubtitleUpdate?
     private var lastRenderedAt = Date.distantPast
     private var lifecycleGeneration = 0
-    private var assembler = RealtimeSubtitleAssembler()
+    private var processor = RealtimeSubtitleProcessor()
     private var reconnectAttempt = 0
-    private var routingSourceText = ""
     /// 現在の録音世代で使う言語ペア。Start 時に固定し、再接続でも settings の変更を取り込まない。
     private var sessionLanguagePair: LanguagePair?
-    private var activeLanguagePair: LanguagePair?
-    private var selectedTranslationTarget: RealtimeTranslationOutputLanguage?
-    private var reverseEvidenceCount = 0
-    private var sourceBoundaryTracker = SourceBoundaryTracker()
     private var activeFeed: EventFeed?
     private var handledLossRunToken: Int?
-
-    private enum SourceRoutingAction {
-        case none
-        case select(RealtimeTranslationOutputLanguage?)
-        case `switch`(RealtimeTranslationOutputLanguage?, LanguageSwitchSplit)
-    }
 
     /// テスト用。generation 確認後・assembler 更新前に差し込む。
     var beforeAssemblerIngestForTests: (() -> Void)?
 
     /// テスト用。ルーティング判定バッファの保持長 (UTF-16)。
     var routingSourceTextLengthForTests: Int {
-        routingSourceText.utf16.count
+        processor.routingSourceText.utf16.count
     }
 
     init(
@@ -149,7 +138,7 @@ final class InterpretationSession {
     /// 録音中に設定画面から変更されたprompt/keywordsを原文セッションへ反映する。
     func applyTuningChange() async {
         guard state == .listening else { return }
-        let tuning = tuningProvider().forPair(activeLanguagePair ?? .jaEn)
+        let tuning = tuningProvider().forPair(processor.activeLanguagePair ?? .jaEn)
         do {
             try await dualClient.updateTranscriptionTuning(tuning)
         } catch {
@@ -294,14 +283,7 @@ final class InterpretationSession {
         // 再接続時 beginNewEpoch は buffer を捨てる。idle finalize 前の完全ペアを
         // 先に確定しないと、オプトイン字幕記録へ .finalized が届かない。
         flushPendingFinalizeIfNeeded()
-        assembler.beginNewEpoch(epoch)
-        sourceBoundaryTracker.reset()
-        assembler.setBoundaryCandidatePending(false)
-        routingSourceText = ""
-        activeLanguagePair = pair
-        selectedTranslationTarget = nil
-        reverseEvidenceCount = 0
-        assembler.setLanguagePair(pair)
+        processor.beginEpoch(epoch, pair: pair)
         await dualClient.resetAudioRouting()
 
         try await audioCapture.start()
@@ -441,44 +423,25 @@ final class InterpretationSession {
             // 適用または明示破棄のあとで acknowledge する。ack を先にすると、
             // この await 中に performStop が走ったとき未適用イベントが stop drain から外れる。
             guard generation == lifecycleGeneration else { return }
-            let sourceDelta: String?
-            let deltaStart = assembler.currentSourceLength
-            if case .inputTranscriptDelta(let delta, _, _) = streamEvent.event,
-               streamEvent.lane.isSource {
-                sourceDelta = delta
-            } else {
-                sourceDelta = nil
-            }
-            if let update = assembler.ingest(streamEvent) {
+            if let result = processSubtitleEvent(streamEvent, now: Date()) {
                 #if DEBUG
                 AppLogger.session.notice(
-                    "DBG_ASSEMBLER_UPDATE epoch=\(streamEvent.epoch, privacy: .public) generation=\(update.segmentGeneration, privacy: .public) sourceEmpty=\(update.sourceText.isEmpty, privacy: .public) translationEmpty=\(update.translatedText.isEmpty, privacy: .public)"
+                    "DBG_ASSEMBLER_UPDATE epoch=\(streamEvent.epoch, privacy: .public) generation=\(result.ingestedUpdate.segmentGeneration, privacy: .public) sourceEmpty=\(result.ingestedUpdate.sourceText.isEmpty, privacy: .public) translationEmpty=\(result.ingestedUpdate.translatedText.isEmpty, privacy: .public)"
                 )
                 #endif
-                if let sourceDelta {
-                    let action = evaluateSourceRouting(
-                        delta: sourceDelta,
-                        deltaStart: deltaStart
-                    )
-                    switch action {
-                    case .none:
-                        enqueueRender(update)
-                    case .select(let target):
-                        enqueueRender(update)
-                        try await dualClient.selectTranslationTarget(target)
-                    case .switch(let target, let split):
-                        if let finalized = split.finalized {
-                            enqueueRender(finalized)
-                        }
-                        enqueueRender(split.current)
-                        await dualClient.resetAudioRouting()
-                        try await dualClient.selectTranslationTarget(target)
-                    }
-                } else {
+                for update in result.updates {
                     enqueueRender(update)
-                    if update.shouldFinalize {
+                }
+                switch result.routingAction {
+                case .none:
+                    if !result.isSourceUpdate && result.ingestedUpdate.shouldFinalize {
                         await resetAudioRoutingForNextSegment()
                     }
+                case .select(let target):
+                    try await dualClient.selectTranslationTarget(target)
+                case .switch(let target):
+                    await dualClient.resetAudioRouting()
+                    try await dualClient.selectTranslationTarget(target)
                 }
             }
             await dualClient.acknowledgeConsumedStreamEvent(runToken: feed.runToken)
@@ -534,9 +497,8 @@ final class InterpretationSession {
                 ingestStopDrainEvents(drainedEvents, feed: feed)
             }
         }
-        sourceBoundaryTracker.reset()
-        assembler.setBoundaryCandidatePending(false)
-        if let tickUpdate = assembler.tick(now: Date()) {
+        processor.clearBoundaryCandidate()
+        if let tickUpdate = processor.tick(now: Date()) {
             apply(tickUpdate)
         }
 
@@ -544,7 +506,7 @@ final class InterpretationSession {
         delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
         aggregator.setStatusBanner(nil)
         sessionLanguagePair = nil
-        activeLanguagePair = nil
+        processor.deactivateLanguagePair()
         state = .idle
         publishSubtitles()
         stopTicker()
@@ -558,32 +520,10 @@ final class InterpretationSession {
             if case .error = streamEvent.event {
                 continue
             }
-            let sourceDelta: String?
-            let deltaStart = assembler.currentSourceLength
-            if case .inputTranscriptDelta(let delta, _, _) = streamEvent.event,
-               streamEvent.lane.isSource {
-                sourceDelta = delta
-            } else {
-                sourceDelta = nil
-            }
-            guard let update = assembler.ingest(streamEvent, isReplay: true) else {
+            guard let result = processSubtitleEvent(streamEvent, now: Date(), isReplay: true) else {
                 continue
             }
-            if let sourceDelta {
-                let action = evaluateSourceRouting(
-                    delta: sourceDelta,
-                    deltaStart: deltaStart
-                )
-                switch action {
-                case .none, .select:
-                    apply(update)
-                case .switch(_, let split):
-                    if let finalized = split.finalized {
-                        apply(finalized)
-                    }
-                    apply(split.current)
-                }
-            } else {
+            for update in result.updates {
                 apply(update)
             }
         }
@@ -615,9 +555,8 @@ final class InterpretationSession {
         await dualClient.forceClose()
         activeFeed = nil
         handledLossRunToken = nil
-        activeLanguagePair = nil
-        sourceBoundaryTracker.reset()
-        assembler.setBoundaryCandidatePending(false)
+        processor.deactivateLanguagePair()
+        processor.clearBoundaryCandidate()
         stopTicker()
         if !keepSubtitles {
             renderTask?.cancel()
@@ -638,7 +577,7 @@ final class InterpretationSession {
         pendingUpdate = nil
 
         let flushAt = Date().addingTimeInterval(RealtimeSubtitleAssembler.idleFinalizeInterval)
-        if let update = assembler.tick(now: flushAt) {
+        if let update = processor.tick(now: flushAt) {
             apply(update)
             return
         }
@@ -688,91 +627,24 @@ final class InterpretationSession {
         }
     }
 
-    private func evaluateSourceRouting(
-        delta: String,
-        deltaStart: Int
-    ) -> SourceRoutingAction {
-        guard let pair = activeLanguagePair else { return .none }
-        if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
-            return .none
+    private func processSubtitleEvent(
+        _ streamEvent: RealtimeTranslationStreamEvent,
+        now: Date,
+        isReplay: Bool = false
+    ) -> RealtimeSubtitleProcessingResult? {
+        guard let result = processor.process(streamEvent, now: now, isReplay: isReplay) else {
+            return nil
         }
-
-        routingSourceText = RoutingSourceTextWindow.trim(
-            routingSourceText + delta,
-            pair: pair
-        )
-        let evidence = SpokenLanguageDetector.recentEvidence(
-            in: routingSourceText,
-            pair: pair
-        )
-        let selection = TranslationTargetSelector.select(
-            pair: pair,
-            currentTarget: selectedTranslationTarget,
-            reverseEvidenceCount: reverseEvidenceCount,
-            evidence: evidence
-        )
-        reverseEvidenceCount = selection.reverseEvidenceCount
-
-        guard selectedTranslationTarget != nil else {
-            guard let target = selection.target else { return .none }
-            selectedTranslationTarget = target
-            sourceBoundaryTracker.reset()
-            assembler.setBoundaryCandidatePending(false)
-            assembler.expectLane(target)
-            return .select(target)
+        if result.isSourceUpdate,
+           let feed = activeFeed,
+           checkEventLoss(feed, generation: lifecycleGeneration) {
+            return nil
         }
-
-        guard let currentTarget = selectedTranslationTarget else {
-            return .none
-        }
-        guard let target = selection.target, target != currentTarget else {
-            guard let currentLanguage = pair.counterpart(of: currentTarget) else {
-                return .none
-            }
-            sourceBoundaryTracker.observe(
-                segmentSource: assembler.currentSourceText,
-                deltaStart: deltaStart,
-                segmentGeneration: assembler.currentSegmentGeneration,
-                pair: pair,
-                currentLanguage: currentLanguage,
-                reverseEvidenceCount: selection.reverseEvidenceCount
-            )
-            assembler.setBoundaryCandidatePending(
-                sourceBoundaryTracker.candidateOffset != nil
-            )
-            return .none
-        }
-
-        if pair != .enEs, let currentLanguage = pair.counterpart(of: currentTarget) {
-            sourceBoundaryTracker.observe(
-                segmentSource: assembler.currentSourceText,
-                deltaStart: deltaStart,
-                segmentGeneration: assembler.currentSegmentGeneration,
-                pair: pair,
-                currentLanguage: currentLanguage,
-                reverseEvidenceCount: 0
-            )
-        }
-        let offset = sourceBoundaryTracker.candidateOffset ?? deltaStart
-        let split = assembler.splitForLanguageSwitch(at: offset)
-        sourceBoundaryTracker.reset()
-        routingSourceText = RoutingSourceTextWindow.trim(
-            assembler.currentSourceText,
-            pair: pair
-        )
-        selectedTranslationTarget = target
-        reverseEvidenceCount = 0
-        assembler.expectLane(target)
-        return .switch(target, split)
+        return result
     }
 
     private func resetAudioRoutingForNextSegment() async {
-        routingSourceText = ""
-        selectedTranslationTarget = nil
-        reverseEvidenceCount = 0
-        sourceBoundaryTracker.reset()
-        assembler.setBoundaryCandidatePending(false)
-        assembler.expectLane(nil)
+        processor.resetRoutingForNextSegment()
         await dualClient.resetAudioRouting()
     }
 
@@ -819,7 +691,7 @@ final class InterpretationSession {
                 {
                     continue
                 }
-                if let update = self.assembler.tick() {
+                if let update = self.processor.tick(now: Date()) {
                     self.enqueueRender(update)
                     if update.shouldFinalize {
                         await self.resetAudioRoutingForNextSegment()
@@ -848,23 +720,10 @@ final class InterpretationSession {
         guard feed.deliveryState.didLoseEvents else { return false }
         if handledLossRunToken != feed.runToken {
             handledLossRunToken = feed.runToken
-            assembler.discardUnconfirmed()
-            sourceBoundaryTracker.reset()
-            assembler.setBoundaryCandidatePending(false)
-            routingSourceText = ""
-            selectedTranslationTarget = nil
-            reverseEvidenceCount = 0
+            let invalidation = processor.discardUnconfirmed()
             renderTask?.cancel()
             renderTask = nil
             pendingUpdate = nil
-            let invalidation = RealtimeSubtitleUpdate(
-                sourceText: "",
-                translatedText: "",
-                isTranslationCurrent: false,
-                shouldFinalize: false,
-                segmentGeneration: assembler.currentSegmentGeneration,
-                isInvalidation: true
-            )
             apply(invalidation)
         }
         return true
