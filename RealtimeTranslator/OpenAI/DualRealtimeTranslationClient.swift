@@ -465,7 +465,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         pump.haltForTransportFailure()
         frameQueues.clearPending()
         AppLogger.realtime.error(
-            "Translation pump halted reason=\(reason, privacy: .public) count=\(pendingCount, privacy: .public) limit=\(Self.translationPendingFrameLimit, privacy: .public) target=\(target.rawValue, privacy: .public) epoch=\(self.connectionEpoch, privacy: .public)"
+            "Translation pump halted reason=\(reason, privacy: .public) count=\(pendingCount, privacy: .public) limit=\(self.tuning.translationPendingFrameLimit, privacy: .public) target=\(target.rawValue, privacy: .public) epoch=\(self.connectionEpoch, privacy: .public)"
         )
         mergedEvents.deliveryState.tryRecordTermination(.transportFailure)
         mergedEvents.deliver(
