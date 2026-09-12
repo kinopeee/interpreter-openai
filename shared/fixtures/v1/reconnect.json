@@ -1,0 +1,94 @@
+{
+  "$schema": "./schema/reconnect.schema.json",
+  "version": 1,
+  "description": "再接続予算の契約。連続障害の開始からの経過時間は単調クロックで測り、壁時計の変化に影響されない。両 OS の ReconnectBudget は jitter を 0 にしてこの fixture を再生する。",
+  "policy": {
+    "initialBackoffMs": 500,
+    "backoffMultiplier": 2,
+    "maxBackoffMs": 8000,
+    "jitterMaxMs": 250,
+    "maxAttempts": 5,
+    "totalBudgetMs": 120000,
+    "stablePeriodMs": 30000,
+    "attemptTimeoutMs": 15000
+  },
+  "rules": [
+    "失敗ごとに attempt を 1 増やし、backoff = min(initialBackoffMs * backoffMultiplier^(attempt-1), maxBackoffMs) + jitter(0..jitterMaxMs) だけ待ってから 3 接続を張り直す",
+    "attempt が maxAttempts を超えたら error.reconnectLimit で停止する",
+    "連続障害の開始（budget 開始）は、最後に Listening を失った失敗の時刻。失敗時点で開始からの経過が totalBudgetMs 以上なら error.reconnectBudgetExhausted で停止する",
+    "Listening に入っただけでは attempt / budget をリセットしない。Listening を stablePeriodMs 以上維持したあとの失敗だけが attempt=0・budget 開始を作り直す",
+    "attemptTimeoutMs は 1 回の接続試行（handshake）の上限で、backoff や budget とは独立に数える",
+    "ユーザーの Stop は backoff 待機中でも即時に受け付け、待機後の再接続は走らない",
+    "壁時計（Date / DateTime.UtcNow）の変化は経過時間に影響しない"
+  ],
+  "budgetExhausted": {
+    "errorMessageKey": "error.reconnectBudgetExhausted"
+  },
+  "attemptLimit": {
+    "errorMessageKey": "error.reconnectLimit"
+  },
+  "cases": [
+    {
+      "name": "continuous failures back off exponentially then hit the attempt limit",
+      "events": [
+        { "atMs": 0, "kind": "failure", "expected": { "decision": "wait", "attempt": 1, "backoffMs": 500 } },
+        { "atMs": 600, "kind": "failure", "expected": { "decision": "wait", "attempt": 2, "backoffMs": 1000 } },
+        { "atMs": 1700, "kind": "failure", "expected": { "decision": "wait", "attempt": 3, "backoffMs": 2000 } },
+        { "atMs": 3800, "kind": "failure", "expected": { "decision": "wait", "attempt": 4, "backoffMs": 4000 } },
+        { "atMs": 7900, "kind": "failure", "expected": { "decision": "wait", "attempt": 5, "backoffMs": 8000 } },
+        { "atMs": 16000, "kind": "failure", "expected": { "decision": "attemptLimit" } }
+      ]
+    },
+    {
+      "name": "short listening does not reset the attempt counter",
+      "events": [
+        { "atMs": 0, "kind": "failure", "expected": { "decision": "wait", "attempt": 1, "backoffMs": 500 } },
+        { "atMs": 1000, "kind": "listening" },
+        { "atMs": 5000, "kind": "failure", "expected": { "decision": "wait", "attempt": 2, "backoffMs": 1000 } },
+        { "atMs": 7000, "kind": "listening" },
+        { "atMs": 20000, "kind": "failure", "expected": { "decision": "wait", "attempt": 3, "backoffMs": 2000 } }
+      ]
+    },
+    {
+      "name": "stable listening resets attempts and budget",
+      "events": [
+        { "atMs": 0, "kind": "failure", "expected": { "decision": "wait", "attempt": 1, "backoffMs": 500 } },
+        { "atMs": 600, "kind": "failure", "expected": { "decision": "wait", "attempt": 2, "backoffMs": 1000 } },
+        { "atMs": 2000, "kind": "listening" },
+        { "atMs": 32000, "kind": "failure", "expected": { "decision": "wait", "attempt": 1, "backoffMs": 500 } }
+      ]
+    },
+    {
+      "name": "stable period boundary is inclusive",
+      "events": [
+        { "atMs": 0, "kind": "failure", "expected": { "decision": "wait", "attempt": 1, "backoffMs": 500 } },
+        { "atMs": 1000, "kind": "listening" },
+        { "atMs": 30999, "kind": "failure", "expected": { "decision": "wait", "attempt": 2, "backoffMs": 1000 } },
+        { "atMs": 32000, "kind": "listening" },
+        { "atMs": 62000, "kind": "failure", "expected": { "decision": "wait", "attempt": 1, "backoffMs": 500 } }
+      ]
+    },
+    {
+      "name": "slow attempts exhaust the total budget before the attempt limit",
+      "events": [
+        { "atMs": 0, "kind": "failure", "expected": { "decision": "wait", "attempt": 1, "backoffMs": 500 } },
+        { "atMs": 40000, "kind": "failure", "expected": { "decision": "wait", "attempt": 2, "backoffMs": 1000 } },
+        { "atMs": 80000, "kind": "failure", "expected": { "decision": "wait", "attempt": 3, "backoffMs": 2000 } },
+        { "atMs": 119999, "kind": "failure", "expected": { "decision": "wait", "attempt": 4, "backoffMs": 4000 } },
+        { "atMs": 120000, "kind": "listening" },
+        { "atMs": 125000, "kind": "failure", "expected": { "decision": "budgetExhausted" } }
+      ]
+    },
+    {
+      "name": "budget starts at the failure that lost listening, not at the first failure ever",
+      "events": [
+        { "atMs": 0, "kind": "failure", "expected": { "decision": "wait", "attempt": 1, "backoffMs": 500 } },
+        { "atMs": 1000, "kind": "listening" },
+        { "atMs": 40000, "kind": "failure", "expected": { "decision": "wait", "attempt": 1, "backoffMs": 500 } },
+        { "atMs": 100000, "kind": "failure", "expected": { "decision": "wait", "attempt": 2, "backoffMs": 1000 } },
+        { "atMs": 159999, "kind": "failure", "expected": { "decision": "wait", "attempt": 3, "backoffMs": 2000 } },
+        { "atMs": 160000, "kind": "failure", "expected": { "decision": "budgetExhausted" } }
+      ]
+    }
+  ]
+}

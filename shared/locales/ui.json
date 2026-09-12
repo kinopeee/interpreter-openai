@@ -649,6 +649,11 @@
       "en": "Reconnect limit reached"
     },
     {
+      "key": "error.reconnectBudgetExhausted",
+      "ja": "再接続を続けられる時間を超えました",
+      "en": "Reconnecting took longer than the allowed time"
+    },
+    {
       "key": "error.audioInputStopped",
       "ja": "音声入力が停止しました",
       "en": "Audio input stopped"

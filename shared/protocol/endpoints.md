@@ -137,9 +137,20 @@ handshake 中の `error` も同じ分類で扱い、keepAlive は読み飛ばし
 | `session.close` → `session.closed` 待ち | 15s |
 | WebSocket `send` | 5s |
 | transcription の commit → completed 待ち | 5s |
-| 再接続リトライ回数 | 最大 5 回 |
-| 再接続 backoff | 500ms 指数 + jitter 250ms |
+| 再接続リトライ回数 | 最大 5 回（`error.reconnectLimit`） |
+| 再接続 backoff | 500ms × 2^(attempt-1)、上限 8s、+ jitter 0–250ms |
+| 再接続の総予算 | 連続障害の開始から 120s（`error.reconnectBudgetExhausted`） |
+| attempt / 予算のリセット | Listening を 30s 以上維持したあとの失敗だけ |
 | 翻訳送信の連続失敗で epoch 更新 | 3 回 |
 
 いずれかの接続が壊れたら 3 本すべてを再接続し、言語判定をリセットする。
 古い epoch の delta は画面へ反映しない。
+
+### 再接続予算（`shared/fixtures/v1/reconnect.json` が正本）
+
+- 経過時間は単調クロック（macOS `ContinuousClock` / Windows `TimeProvider.GetTimestamp`）で測る。壁時計の変化は影響しない。
+- 1 回の接続試行の上限は handshake タイムアウト（15s）で、backoff・総予算とは独立に数える。
+- 失敗のたびに attempt を増やし backoff だけ待つ。attempt が 5 を超えたら `error.reconnectLimit`。
+- 連続障害の開始は「最後に Listening を失った失敗」の時刻。失敗時点でそこからの経過が 120s 以上なら `error.reconnectBudgetExhausted`。総予算は attempt 上限より先に判定する。
+- Listening に入っただけでは attempt / 予算をリセットしない。短時間で再度落ちる接続を「復旧」と数えないため、Listening を 30s 以上維持したあとの失敗だけが attempt=0・予算開始を作り直す。
+- ユーザーの Stop は backoff 待機中でも即時に受け付け、待機後の再接続は走らない。

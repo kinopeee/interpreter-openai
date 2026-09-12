@@ -300,6 +300,7 @@ Windows `SubtitleSnapshotBuilder` は idle / connecting / reconnecting だけ。
 | `error.cancelled` | 翻訳セッションがキャンセルされました |
 | `error.recoverableServer` | 翻訳サーバーが一時的に応答できません。再接続します |
 | `error.reconnectLimit` | 再接続上限に達しました |
+| `error.reconnectBudgetExhausted` | 再接続を続けられる時間を超えました |
 | `error.audioInputStopped` | 音声入力が停止しました |
 | `error.eventStreamStopped` | イベント受信が停止しました |
 | `error.websocketNotConnected` | WebSocketに接続していません |
