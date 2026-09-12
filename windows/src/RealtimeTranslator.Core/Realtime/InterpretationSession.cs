@@ -595,8 +595,13 @@ public sealed class InterpretationSession : IDisposable
 
             if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError error)
             {
-                var (termination, message) = EventDeliveryState.Classify(error);
-                feed.DeliveryState.TryRecordTermination(termination, message);
+                var classification = EventDeliveryState.Classify(error);
+                if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                {
+                    continue;
+                }
+
+                feed.DeliveryState.TryRecordTermination(classification);
                 throw feed.DeliveryState.ToException();
             }
 

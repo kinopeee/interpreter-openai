@@ -115,8 +115,10 @@ public static class RealtimeTranslationMessageCodec
                 var message = StringValue(errorObject?["message"])
                     ?? StringValue(dictionary["message"])
                     ?? RealtimeTranslationException.GenericServerMessage;
-                var code = StringValue(errorObject?["code"]) ?? StringValue(errorObject?["type"]);
-                return new RealtimeTranslationServerEvent.ServerError(message, code);
+                return new RealtimeTranslationServerEvent.ServerError(
+                    message,
+                    StringValue(errorObject?["code"]),
+                    StringValue(errorObject?["type"]));
             }
 
             default:

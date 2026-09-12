@@ -1376,7 +1376,7 @@ public sealed class DualRealtimeTranslationClientParityTests
             error = streamEvent.Event as RealtimeTranslationServerEvent.ServerError;
         }
 
-        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Equal("invalid_api_key", error.Code);
         Assert.Equal("OpenAI APIキーが無効です", error.Message);
         Assert.DoesNotContain("sk-dual-xyz", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
@@ -1397,7 +1397,7 @@ public sealed class DualRealtimeTranslationClientParityTests
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         source.EnqueueJson(
-            """{"type":"error","error":{"message":"upstream echo sk-dual-fatal","code":"server_error"}}""");
+            """{"type":"error","error":{"message":"upstream echo sk-dual-fatal","code":"upstream_failure"}}""");
 
         RealtimeTranslationServerEvent.ServerError? error = null;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -1407,7 +1407,7 @@ public sealed class DualRealtimeTranslationClientParityTests
             error = streamEvent.Event as RealtimeTranslationServerEvent.ServerError;
         }
 
-        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Equal("upstream_failure", error.Code);
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
         Assert.DoesNotContain("sk-dual-fatal", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);

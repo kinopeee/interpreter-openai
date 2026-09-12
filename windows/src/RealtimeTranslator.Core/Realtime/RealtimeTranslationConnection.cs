@@ -128,14 +128,14 @@ public sealed class RealtimeTranslationConnection : IDisposable
                     cancellationToken).ConfigureAwait(false);
 
                 // handshake は共有 channel を消費せず transport から直接読む。
-                var created = await ReceiveDirectEventAsync(cancellationToken).ConfigureAwait(false);
+                var created = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
                 RequireHandshakeEvent<RealtimeTranslationServerEvent.SessionCreated>(created);
 
                 await SendAsync(
                     new RealtimeTranslationClientEvent.SessionUpdate(config),
                     cancellationToken).ConfigureAwait(false);
 
-                var updated = await ReceiveDirectEventAsync(cancellationToken).ConfigureAwait(false);
+                var updated = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
                 RequireHandshakeEvent<RealtimeTranslationServerEvent.SessionUpdated>(updated);
 
                 lock (_sync)
@@ -328,27 +328,34 @@ public sealed class RealtimeTranslationConnection : IDisposable
         return RealtimeTranslationMessageCodec.DecodeServerEvent(data);
     }
 
+    private async Task<RealtimeTranslationServerEvent> ReceiveHandshakeEventAsync(CancellationToken cancellationToken)
+    {
+        // handshake 中の接続維持エラーは読み飛ばして次のイベントを待つ。
+        while (true)
+        {
+            var serverEvent = await ReceiveDirectEventAsync(cancellationToken).ConfigureAwait(false);
+            if (serverEvent is RealtimeTranslationServerEvent.ServerError error)
+            {
+                var classification = EventDeliveryState.Classify(error);
+                if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                {
+                    continue;
+                }
+
+                throw classification.ToException();
+            }
+
+            return serverEvent;
+        }
+    }
+
     private static void RequireHandshakeEvent<T>(RealtimeTranslationServerEvent serverEvent)
         where T : RealtimeTranslationServerEvent
     {
-        if (serverEvent is RealtimeTranslationServerEvent.ServerError error)
-        {
-            throw ClassifyServerError(error);
-        }
-
         if (serverEvent is not T)
         {
             throw new RealtimeTranslationException(RealtimeTranslationErrorKind.InvalidMessage);
         }
-    }
-
-    private static RealtimeTranslationException ClassifyServerError(RealtimeTranslationServerEvent.ServerError error)
-    {
-        return RealtimeTranslationException.IsAuthenticationFailure(error.Code, error.Message)
-            ? new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed)
-            : new RealtimeTranslationException(
-                RealtimeTranslationErrorKind.FatalServerError,
-                RealtimeTranslationException.SanitizeServerMessage(error.Message));
     }
 
     private void StartReceiveLoop(int currentEpoch, EventDeliveryState deliveryState)
@@ -444,8 +451,14 @@ public sealed class RealtimeTranslationConnection : IDisposable
 
             if (serverEvent is RealtimeTranslationServerEvent.ServerError error)
             {
-                var termination = EventDeliveryState.Classify(error);
-                deliveryState.TryRecordTermination(termination.Termination, termination.SanitizedMessage);
+                // 接続維持エラーは termination も下流イベントも出さない。
+                var classification = EventDeliveryState.Classify(error);
+                if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                {
+                    continue;
+                }
+
+                deliveryState.TryRecordTermination(classification);
             }
 
             if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(_target, serverEvent, currentEpoch)))

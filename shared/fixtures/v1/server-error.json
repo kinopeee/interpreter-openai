@@ -1,0 +1,136 @@
+{
+  "$schema": "./schema/server-error.schema.json",
+  "version": 1,
+  "description": "サーバー error イベントの分類契約。error.type と error.code を別々に保持し、許可リストに載った値だけで「接続維持 / 遅延後に再接続 / 停止」を決める。判定に使わなかった文字列や生のサーバー文言は、ログ・状態・アラートへ出さない。handshake 中・通常受信中・source・translation の全経路で同じ分類を使う。",
+  "dispositions": {
+    "keepAlive": "接続を維持し、termination を記録せず、イベントも下流へ流さない",
+    "recover": "既存の再接続へ倒す（backoff 後に 3 接続を張り直す）",
+    "halt": "録音を止めて Error にする。再接続しない"
+  },
+  "terminationPrecedence": [
+    "authenticationFailed",
+    "fatalServerError",
+    "receiveOverflow",
+    "recoverableServerError",
+    "transportFailure"
+  ],
+  "allowlists": {
+    "transportCode": "transport",
+    "keepAliveCodes": ["input_audio_buffer_commit_empty"],
+    "haltCodes": ["insufficient_quota", "billing_hard_limit_reached"],
+    "recoverCodes": ["server_error", "rate_limit_exceeded", "session_expired"],
+    "recoverTypes": ["server_error", "rate_limit_error"]
+  },
+  "recoverableServerError": {
+    "errorKind": "recoverableServerError",
+    "errorMessageKey": "error.recoverableServer",
+    "isRecoverable": true
+  },
+  "cases": [
+    {
+      "name": "internal transport code recovers",
+      "errorType": null,
+      "code": "transport",
+      "message": "socket closed",
+      "expected": { "disposition": "recover", "termination": "transportFailure" }
+    },
+    {
+      "name": "authentication code halts",
+      "errorType": "invalid_request_error",
+      "code": "invalid_api_key",
+      "message": "Incorrect API key provided: sk-leak",
+      "expected": { "disposition": "halt", "termination": "authenticationFailed" }
+    },
+    {
+      "name": "authentication phrase without code halts",
+      "errorType": "invalid_request_error",
+      "code": null,
+      "message": "Missing bearer or basic authentication in header",
+      "expected": { "disposition": "halt", "termination": "authenticationFailed" }
+    },
+    {
+      "name": "quota exhaustion halts even though type is recoverable",
+      "errorType": "server_error",
+      "code": "insufficient_quota",
+      "message": "You exceeded your current quota",
+      "expected": { "disposition": "halt", "termination": "fatalServerError", "sanitizedMessage": "You exceeded your current quota" }
+    },
+    {
+      "name": "empty commit keeps the connection alive",
+      "errorType": "invalid_request_error",
+      "code": "input_audio_buffer_commit_empty",
+      "message": "Error committing input audio buffer: the buffer is empty.",
+      "expected": { "disposition": "keepAlive", "termination": "none" }
+    },
+    {
+      "name": "server_error code recovers",
+      "errorType": null,
+      "code": "server_error",
+      "message": "The server had an error while processing your request",
+      "expected": { "disposition": "recover", "termination": "recoverableServerError" }
+    },
+    {
+      "name": "server_error type only recovers",
+      "errorType": "server_error",
+      "code": null,
+      "message": "boom",
+      "expected": { "disposition": "recover", "termination": "recoverableServerError" }
+    },
+    {
+      "name": "rate limit type recovers",
+      "errorType": "rate_limit_error",
+      "code": "rate_limit_exceeded",
+      "message": "Rate limit reached",
+      "expected": { "disposition": "recover", "termination": "recoverableServerError" }
+    },
+    {
+      "name": "session expiry recovers",
+      "errorType": "invalid_request_error",
+      "code": "session_expired",
+      "message": "Your session hit the maximum duration",
+      "expected": { "disposition": "recover", "termination": "recoverableServerError" }
+    },
+    {
+      "name": "recoverable server error with key material still recovers without keeping the text",
+      "errorType": "server_error",
+      "code": null,
+      "message": "upstream echo sk-should-not-appear",
+      "expected": { "disposition": "recover", "termination": "recoverableServerError" }
+    },
+    {
+      "name": "unknown invalid request halts with sanitized message",
+      "errorType": "invalid_request_error",
+      "code": "unknown_parameter",
+      "message": "Unknown parameter: 'session.foo'",
+      "expected": { "disposition": "halt", "termination": "fatalServerError", "sanitizedMessage": "Unknown parameter: 'session.foo'" }
+    },
+    {
+      "name": "unknown code with key material halts with the generic message",
+      "errorType": null,
+      "code": "something_new",
+      "message": "bearer sk-secret must not escape",
+      "expected": { "disposition": "halt", "termination": "fatalServerError", "sanitizedMessage": "翻訳サーバーでエラーが発生しました" }
+    },
+    {
+      "name": "no type and no code halts",
+      "errorType": null,
+      "code": null,
+      "message": "boom",
+      "expected": { "disposition": "halt", "termination": "fatalServerError", "sanitizedMessage": "boom" }
+    },
+    {
+      "name": "allowlist match is case and whitespace insensitive",
+      "errorType": null,
+      "code": "  SERVER_ERROR ",
+      "message": "boom",
+      "expected": { "disposition": "recover", "termination": "recoverableServerError" }
+    },
+    {
+      "name": "unlisted server-provided string is not trusted",
+      "errorType": "recoverable",
+      "code": "keep_alive",
+      "message": "boom",
+      "expected": { "disposition": "halt", "termination": "fatalServerError", "sanitizedMessage": "boom" }
+    }
+  ]
+}

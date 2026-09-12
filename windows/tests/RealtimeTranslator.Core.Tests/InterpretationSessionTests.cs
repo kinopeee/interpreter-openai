@@ -3065,13 +3065,66 @@ public sealed class InterpretationSessionTests
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
-        client.PublishServerError("Provider echo included sk-should-not-appear", "server_error");
+        client.PublishServerError("Provider echo included sk-should-not-appear", "upstream_failure");
         await WaitUntilAsync(() => session.State == TranslationState.Error);
         await WaitUntilAsync(() => message is not null);
 
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, message);
         Assert.DoesNotContain("sk-", message, StringComparison.Ordinal);
         Assert.Equal(1, client.StartCount);
+    }
+
+    // Given: Listening 中のセッション
+    // When: 接続維持に分類される error（input_audio_buffer_commit_empty）が届く
+    // Then: 録音は止まらず、再接続も Error も起きない
+    [Fact]
+    public async Task KeepAliveServerErrorDoesNotStopListening()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishServerError("buffer is empty", "input_audio_buffer_commit_empty");
+        client.PublishSourceDelta("こんにちは");
+        await WaitUntilAsync(() => session.RoutingSourceTextLengthForTests > 0);
+
+        Assert.Equal(TranslationState.Listening, session.State);
+        Assert.Equal(1, client.StartCount);
+        Assert.Null(message);
+        await session.StopAsync();
+        Assert.Equal(TranslationState.Idle, session.State);
+    }
+
+    // Given: Listening 中のセッション
+    // When: 回復候補に分類される error（server_error）が届く
+    // Then: Error にせず 1 回だけ再接続し、鍵断片を含む文言は出さない
+    [Fact]
+    public async Task RecoverableServerErrorReconnectsOnceWithoutLeakingMessage()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishServerError("upstream echo sk-should-not-appear", "server_error");
+        await WaitUntilAsync(() => client.StartCount >= 2 && session.State == TranslationState.Listening);
+
+        Assert.Equal(2, client.StartCount);
+        Assert.NotEqual(TranslationState.Error, session.State);
+        if (message is not null)
+        {
+            Assert.DoesNotContain("sk-", message, StringComparison.Ordinal);
+        }
+
+        await session.StopAsync();
+        Assert.Equal(TranslationState.Idle, session.State);
     }
 
     // Given: Listening 中のセッション

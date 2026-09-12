@@ -599,6 +599,11 @@
       "en": "Disconnected from the translation server"
     },
     {
+      "key": "error.recoverableServer",
+      "ja": "翻訳サーバーが一時的に応答できません。再接続します",
+      "en": "The translation server is temporarily unavailable. Reconnecting"
+    },
+    {
       "key": "error.sourceDisconnected",
       "ja": "原文字幕サーバーとの接続が切れました",
       "en": "Disconnected from the source-subtitle server"

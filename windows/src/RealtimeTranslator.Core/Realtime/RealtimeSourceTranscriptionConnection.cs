@@ -109,14 +109,14 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                     RealtimeRequestHeaders.For(apiKey, _safetyIdentifier),
                     cancellationToken).ConfigureAwait(false);
 
-                var created = await ReceiveDirectEventAsync(cancellationToken).ConfigureAwait(false);
+                var created = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
                 RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionCreated>(created);
 
                 await SendAsync(
                     new RealtimeSourceTranscriptionClientEvent.SessionUpdate(tuning, pair),
                     cancellationToken).ConfigureAwait(false);
 
-                var updated = await ReceiveDirectEventAsync(cancellationToken).ConfigureAwait(false);
+                var updated = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
                 RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionUpdated>(updated);
 
                 lock (_sync)
@@ -322,18 +322,31 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         return RealtimeSourceTranscriptionCodec.DecodeServerEvent(data);
     }
 
+    private async Task<RealtimeSourceTranscriptionServerEvent> ReceiveHandshakeEventAsync(
+        CancellationToken cancellationToken)
+    {
+        // handshake 中の接続維持エラーは読み飛ばして次のイベントを待つ。
+        while (true)
+        {
+            var serverEvent = await ReceiveDirectEventAsync(cancellationToken).ConfigureAwait(false);
+            if (serverEvent is RealtimeSourceTranscriptionServerEvent.ServerError error)
+            {
+                var classification = EventDeliveryState.Classify(error.ToStreamError());
+                if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                {
+                    continue;
+                }
+
+                throw classification.ToException();
+            }
+
+            return serverEvent;
+        }
+    }
+
     private static void RequireHandshakeEvent<T>(RealtimeSourceTranscriptionServerEvent serverEvent)
         where T : RealtimeSourceTranscriptionServerEvent
     {
-        if (serverEvent is RealtimeSourceTranscriptionServerEvent.ServerError error)
-        {
-            throw RealtimeTranslationException.IsAuthenticationFailure(error.Code, error.Message)
-                ? new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed)
-                : new RealtimeTranslationException(
-                    RealtimeTranslationErrorKind.FatalServerError,
-                    RealtimeTranslationException.SanitizeServerMessage(error.Message));
-        }
-
         if (serverEvent is not T)
         {
             throw new RealtimeTranslationException(RealtimeTranslationErrorKind.InvalidMessage);
@@ -435,9 +448,14 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                     break;
 
                 case RealtimeSourceTranscriptionServerEvent.ServerError error:
-                    var streamError = new RealtimeTranslationServerEvent.ServerError(error.Message, error.Code);
-                    var termination = EventDeliveryState.Classify(streamError);
-                    deliveryState.TryRecordTermination(termination.Termination, termination.SanitizedMessage);
+                    var streamError = error.ToStreamError();
+                    var classification = EventDeliveryState.Classify(streamError);
+                    if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                    {
+                        break;
+                    }
+
+                    deliveryState.TryRecordTermination(classification);
                     if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(
                         RealtimeTranslationLane.Source,
                         streamError,

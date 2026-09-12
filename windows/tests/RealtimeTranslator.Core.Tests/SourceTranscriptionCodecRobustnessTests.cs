@@ -70,7 +70,7 @@ public sealed class SourceTranscriptionCodecRobustnessTests
             Encoding.UTF8.GetBytes("""{"type":"error"}"""));
         var error = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
 
-        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Null(error.Code);
         Assert.Equal(UserCopy.Current.Text("error.sourceSessionGeneric"), error.Message);
     }
 
@@ -84,7 +84,7 @@ public sealed class SourceTranscriptionCodecRobustnessTests
             Encoding.UTF8.GetBytes("""{"type":"error","error":"boom"}"""));
         var error = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
 
-        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Null(error.Code);
         Assert.Equal(UserCopy.Current.Text("error.sourceSessionGeneric"), error.Message);
     }
 
@@ -95,10 +95,10 @@ public sealed class SourceTranscriptionCodecRobustnessTests
     public void EmptyErrorMessageBecomesGenericServerMessage()
     {
         var actual = RealtimeSourceTranscriptionCodec.DecodeServerEvent(
-            Encoding.UTF8.GetBytes("""{"type":"error","error":{"message":"","code":"server_error"}}"""));
+            Encoding.UTF8.GetBytes("""{"type":"error","error":{"message":"","code":"upstream_failure"}}"""));
         var error = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
 
-        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Equal("upstream_failure", error.Code);
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
         Assert.DoesNotContain("sk-", error.Message, System.StringComparison.Ordinal);
     }

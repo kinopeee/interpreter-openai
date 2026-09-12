@@ -28,7 +28,7 @@ public sealed class RealtimeSourceTranscriptionRuntimeErrorTests
             """{"type":"error","error":{"message":"rate_limit exceeded","code":"rate_limit_exceeded"}}""");
         var errorEvent = await ReadOneAsync(connection.Events);
         var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(errorEvent.Event);
-        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Equal("rate_limit_exceeded", error.Code);
         Assert.False(connection.Events.Completion.IsCompleted);
 
         transport.EnqueueJson(
@@ -69,7 +69,7 @@ public sealed class RealtimeSourceTranscriptionRuntimeErrorTests
             dual,
             streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.ServerError);
         var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(errorEvent.Event);
-        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Equal("rate_limit_exceeded", error.Code);
         Assert.True(errorEvent.Lane.IsSource);
         Assert.False(dual.Events.Completion.IsCompleted);
 

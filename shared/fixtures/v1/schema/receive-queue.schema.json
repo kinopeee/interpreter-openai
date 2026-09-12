@@ -46,12 +46,12 @@
     },
     "terminationPrecedence": {
       "type": "array",
-      "minItems": 4,
-      "maxItems": 4,
+      "minItems": 5,
+      "maxItems": 5,
       "uniqueItems": true,
       "items": {
         "type": "string",
-        "enum": ["authenticationFailed", "fatalServerError", "receiveOverflow", "transportFailure"]
+        "enum": ["authenticationFailed", "fatalServerError", "receiveOverflow", "recoverableServerError", "transportFailure"]
       }
     },
     "overflow": {

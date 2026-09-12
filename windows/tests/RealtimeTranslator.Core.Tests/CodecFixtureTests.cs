@@ -87,6 +87,7 @@ public sealed class CodecFixtureTests
                 var typed = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(actual);
                 Assert.Equal(SharedFixtures.Text(expected["message"]), typed.Message);
                 Assert.Equal(SharedFixtures.OptionalText(expected["code"]), typed.Code);
+                Assert.Equal(SharedFixtures.OptionalText(expected["errorType"]), typed.ErrorType);
                 break;
             }
 

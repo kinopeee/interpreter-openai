@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.Localization;
+using RealtimeTranslator.Core.Realtime;
 
 namespace RealtimeTranslator.Core.OpenAI;
 
@@ -43,7 +44,12 @@ public abstract record RealtimeSourceTranscriptionServerEvent
     /// <summary>commit の待ち合わせを解除する。</summary>
     public sealed record TranscriptionCompleted : RealtimeSourceTranscriptionServerEvent;
 
-    public sealed record ServerError(string Message, string? Code) : RealtimeSourceTranscriptionServerEvent;
+    /// <summary>Message は正規化済み。Code / ErrorType は原文の <c>error.code</c> / <c>error.type</c>。</summary>
+    public sealed record ServerError(string Message, string? Code, string? ErrorType)
+        : RealtimeSourceTranscriptionServerEvent
+    {
+        public RealtimeTranslationServerEvent.ServerError ToStreamError() => new(Message, Code, ErrorType);
+    }
 
     /// <summary>この接続では意味を持たない payload。破棄する。</summary>
     public sealed record Ignored : RealtimeSourceTranscriptionServerEvent;
@@ -54,7 +60,6 @@ public static class RealtimeSourceTranscriptionCodec
 {
     public const string TranscriptionModel = "gpt-live-transcribe";
 
-    public const string ErrorCode = "transcription";
 
     /// <summary>認識対象言語。相手言語を確定する前から両方受け付ける。</summary>
     public static ImmutableArray<string> Languages(LanguagePair pair) =>
@@ -147,29 +152,42 @@ public static class RealtimeSourceTranscriptionCodec
                 return new RealtimeSourceTranscriptionServerEvent.TranscriptionCompleted();
 
             case "error":
+            {
+                var body = payload["error"] as JsonObject;
+                var classification = Classify(payload);
                 return new RealtimeSourceTranscriptionServerEvent.ServerError(
-                    ClassifyError(payload).Message,
-                    ErrorCode);
+                    classification.Termination == EventDeliveryTermination.AuthenticationFailed
+                        ? classification.ToException().Message
+                        : RealtimeTranslationException.SanitizeServerMessage(
+                            ReadString(body?["message"]) ?? DefaultErrorMessage),
+                    ReadString(body?["code"]),
+                    ReadString(body?["type"]));
+            }
 
             default:
                 return new RealtimeSourceTranscriptionServerEvent.Ignored();
         }
     }
 
-    /// <summary>ハンドシェイク応答が期待した type でないときに投げる例外を組み立てる。</summary>
-    public static RealtimeTranslationException ClassifyError(JsonObject payload)
+    /// <summary>error payload を共有の分類契約（server-error.json）で分類する。</summary>
+    public static RealtimeServerErrorClassification Classify(JsonObject payload)
     {
         ArgumentNullException.ThrowIfNull(payload);
 
         var body = payload["error"] as JsonObject;
-        var message = ReadString(body?["message"]) ?? DefaultErrorMessage;
-        var code = ReadString(body?["code"]);
+        return RealtimeServerErrorClassification.Classify(
+            ReadString(body?["type"]),
+            ReadString(body?["code"]),
+            ReadString(body?["message"]) ?? DefaultErrorMessage);
+    }
 
-        return RealtimeTranslationException.IsAuthenticationFailure(code, message)
-            ? new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed)
-            : new RealtimeTranslationException(
-                RealtimeTranslationErrorKind.FatalServerError,
-                RealtimeTranslationException.SanitizeServerMessage(message));
+    /// <summary>ハンドシェイク応答が期待した type でないときに投げる例外を組み立てる。</summary>
+    public static RealtimeTranslationException ClassifyError(JsonObject payload)
+    {
+        var classification = Classify(payload);
+        return classification.Disposition == RealtimeServerErrorDisposition.KeepAlive
+            ? new RealtimeTranslationException(RealtimeTranslationErrorKind.InvalidMessage)
+            : classification.ToException();
     }
 
     public static JsonObject SessionUpdatePayload(
