@@ -49,6 +49,7 @@
 
 - 利用者自身のOpenAI APIキーはmacOS Keychainへ保存し、設定画面から取り込む。DEBUGビルドでは環境変数`OPENAI_API_KEY`からも自動取り込みできる。
 - 実行状態はDEBUGビルドのみ`/tmp/realtimetranslator.status`へ書き出す（Releaseでは作らない）。
+- DEBUGビルドの `DBG_` ログ（`notice` レベル）は unified logging に保存されるため、事後に `log show --last <N>m --predicate 'subsystem == "com.realtimetranslator.app"' --style compact --info` で取り出せる。再現前に `log stream` を起動し忘れても採取をやり直す必要はない。
 - クラッシュ時は最新のDiagnosticReportsと該当スレッドを確認し、推測だけで修正しない。
 
 ## ビルドと検証
@@ -66,6 +67,7 @@ xcodebuild test -scheme RealtimeTranslator \
 ```
 
 - 実行は`./scripts/run.sh`を使い、バイナリを直接起動しない。LaunchServices経由でTCC権限を認識させる。
+- Devin CLI などサンドボックス化されたエージェント環境では Keychain の署名鍵と `log` コマンドにアクセスできない（`xcodebuild` は「Signing certificate is invalid」、`codesign` は `errSecInternalComponent`、`log` は「Cannot run while sandboxed」で失敗する）。証明書の失効と誤認せず、署名付き `xcodebuild`・`./scripts/run.sh`・`log stream` / `log show` は利用者のターミナルで実行する。
 - macOS の `xcodebuild test` はローカルおよび `.github/workflows/release.yml` の package (macOS) ジョブでも検証する。
 - 検証範囲と実機確認の要件はルートの「検証の選び方」に従う。手動項目は [VALIDATION.md の macOS版](../VALIDATION.md#macos版) を参照する。
 - macOS Devbox の実デスクトップを操作・診断する場合は [macos-devbox-gui](../.agents/skills/macos-devbox-gui/SKILL.md) を参照する。使い捨て Devbox 専用の手順を実機へ適用しない。
