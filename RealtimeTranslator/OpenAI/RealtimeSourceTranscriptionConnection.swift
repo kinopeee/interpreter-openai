@@ -25,7 +25,7 @@ actor RealtimeSourceTranscriptionConnection {
     init(
         transport: any RealtimeWebSocketTransport = URLSessionWebSocketTransport(),
         safetyIdentifier: String,
-        handshakeTimeoutNanoseconds: UInt64 = 15_000_000_000,
+        handshakeTimeoutNanoseconds: UInt64 = RealtimeTranslationConnection.defaultHandshakeTimeoutNanoseconds,
         closeTimeoutNanoseconds: UInt64 = 5_000_000_000
     ) {
         self.transport = transport

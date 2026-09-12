@@ -39,6 +39,8 @@ struct RealtimeTranslationStreamEvent: Sendable, Equatable {
 }
 
 actor RealtimeTranslationConnection {
+    /// 1 回の接続試行（handshake）の上限。再接続予算とは独立に数える。
+    static let defaultHandshakeTimeoutNanoseconds: UInt64 = 15_000_000_000
     static let eventBufferLimit = 256
     static let endpointURL = URL(
         string: "wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate"
@@ -64,7 +66,7 @@ actor RealtimeTranslationConnection {
         target: RealtimeTranslationOutputLanguage,
         transport: any RealtimeWebSocketTransport = URLSessionWebSocketTransport(),
         safetyIdentifier: String,
-        sessionUpdateTimeoutNanoseconds: UInt64 = 15_000_000_000,
+        sessionUpdateTimeoutNanoseconds: UInt64 = RealtimeTranslationConnection.defaultHandshakeTimeoutNanoseconds,
         closeTimeoutNanoseconds: UInt64 = 15_000_000_000
     ) {
         self.target = target

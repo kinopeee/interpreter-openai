@@ -19,8 +19,6 @@ protocol InterpretationSessionDelegate: AnyObject {
 @MainActor
 final class InterpretationSession {
     private static let transcriptionRenderInterval: TimeInterval = 0.16
-    private static let maxReconnectAttempts = 5
-    private static let initialReconnectDelayNanoseconds: UInt64 = 500_000_000
     /// 録音停止後、最後の字幕ペアを読み取れるよう残す時間。
     static let defaultPostStopSubtitleRetentionNanoseconds: UInt64 = 5_000_000_000
 
@@ -34,6 +32,7 @@ final class InterpretationSession {
     private let postStopSubtitleRetentionNanoseconds: UInt64
     private let tuningProvider: @MainActor () -> RealtimeSessionTuning
     private let languagePairProvider: @MainActor () -> LanguagePair
+    private var reconnectBudget: ReconnectBudget
 
     private(set) var state: TranslationState = .idle {
         didSet {
@@ -55,7 +54,6 @@ final class InterpretationSession {
     private var lastRenderedAt = Date.distantPast
     private var lifecycleGeneration = 0
     private var processor = RealtimeSubtitleProcessor()
-    private var reconnectAttempt = 0
     /// 現在の録音世代で使う言語ペア。Start 時に固定し、再接続でも settings の変更を取り込まない。
     private var sessionLanguagePair: LanguagePair?
     private var activeFeed: EventFeed?
@@ -78,7 +76,8 @@ final class InterpretationSession {
         postStopSubtitleRetentionNanoseconds: UInt64 = InterpretationSession
             .defaultPostStopSubtitleRetentionNanoseconds,
         tuningProvider: @escaping @MainActor () -> RealtimeSessionTuning = { .default },
-        languagePairProvider: @escaping @MainActor () -> LanguagePair = { .jaEn }
+        languagePairProvider: @escaping @MainActor () -> LanguagePair = { .jaEn },
+        reconnectBudget: ReconnectBudget = ReconnectBudget()
     ) {
         self.apiKeyStore = apiKeyStore
         self.audioCapture = audioCapture
@@ -88,6 +87,7 @@ final class InterpretationSession {
         self.postStopSubtitleRetentionNanoseconds = postStopSubtitleRetentionNanoseconds
         self.tuningProvider = tuningProvider
         self.languagePairProvider = languagePairProvider
+        self.reconnectBudget = reconnectBudget
     }
 
     func start() async {
@@ -105,7 +105,7 @@ final class InterpretationSession {
 
         lifecycleGeneration += 1
         let generation = lifecycleGeneration
-        reconnectAttempt = 0
+        reconnectBudget.reset()
         // 録音開始時点のペアを世代全体で固定する。録音中の設定変更は再接続でも反映しない
         // （VALIDATION: 停止→次の録音開始後にだけ新しいペアが反映される）。
         sessionLanguagePair = languagePairProvider()
@@ -200,14 +200,20 @@ final class InterpretationSession {
             }
 
             guard generation == lifecycleGeneration else { return }
-            guard reconnectAttempt < Self.maxReconnectAttempts else {
+            let decision = reconnectBudget.recordFailure()
+            guard decision.kind == .wait else {
                 await tearDownStreaming()
                 flushPendingFinalizeIfNeeded()
-                enterErrorMessage(UiCopy.text("error.reconnectLimit"))
+                enterErrorMessage(
+                    UiCopy.text(
+                        decision.kind == .budgetExhausted
+                            ? "error.reconnectBudgetExhausted"
+                            : "error.reconnectLimit"
+                    )
+                )
                 return
             }
 
-            reconnectAttempt += 1
             state = .reconnecting
             let micMessage = RealtimeAudioCaptureError.inputDeviceChanged.errorDescription
             if let reconnectDetail, let micMessage, reconnectDetail == micMessage {
@@ -218,10 +224,8 @@ final class InterpretationSession {
             publishSubtitles()
             await tearDownStreaming(keepSubtitles: true)
 
-            let delay = Self.initialReconnectDelayNanoseconds
-                << UInt64(min(reconnectAttempt - 1, 4))
-            let jitter = UInt64.random(in: 0...250_000_000)
-            try? await Task.sleep(nanoseconds: delay + jitter)
+            // 停止（cancel）で待ちを即座に打ち切る。ループ先頭の世代確認で再接続を始めない。
+            try? await Task.sleep(for: decision.delay)
         }
     }
 
@@ -294,7 +298,7 @@ final class InterpretationSession {
         }
 
         state = .listening
-        reconnectAttempt = 0
+        reconnectBudget.recordListening()
         aggregator.setStatusBanner(UiCopy.text("banner.listening"))
         startTicker(intervalNanoseconds: activeTickerIntervalNanoseconds)
         publishSubtitles()
@@ -738,8 +742,8 @@ final class InterpretationSession {
     private func reconnectingBanner(detail: String?) -> String {
         let substitutions = [
             "detail": detail ?? "",
-            "attempt": String(reconnectAttempt),
-            "max": String(Self.maxReconnectAttempts),
+            "attempt": String(reconnectBudget.currentAttempt),
+            "max": String(reconnectBudget.policy.maxAttempts),
         ]
         return UiCopy.text("banner.reconnectingProgress", substitutions)
             .trimmingCharacters(in: .whitespaces)
