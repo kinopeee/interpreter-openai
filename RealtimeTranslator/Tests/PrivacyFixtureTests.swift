@@ -179,6 +179,7 @@ final class PrivacyFixtureTests: XCTestCase {
             (.authenticationFailed, "error.authenticationFailed"),
             (.receiveOverflow, "error.receiveOverflow"),
             (.recoverableTransportFailure("test"), "error.transportDisconnected"),
+            (.recoverableServerError, "error.recoverableServer"),
             (.sessionUpdateTimeout, "error.sessionUpdateTimeout"),
             (.closeTimeout, "error.closeTimeout"),
             (.cancelled, "error.cancelled"),
@@ -238,6 +239,8 @@ final class PrivacyFixtureTests: XCTestCase {
             return .fatalServerError("test")
         case "recoverableTransportFailure":
             return .recoverableTransportFailure("test")
+        case "recoverableServerError":
+            return .recoverableServerError
         case "sessionUpdateTimeout":
             return .sessionUpdateTimeout
         case "closeTimeout":

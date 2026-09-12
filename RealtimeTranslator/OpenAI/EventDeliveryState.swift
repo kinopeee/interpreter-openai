@@ -11,6 +11,7 @@ enum EventDeliveryStage: Sendable, Equatable {
 enum EventDeliveryTermination: Comparable, Sendable {
     case none
     case transportFailure
+    case recoverableServerError
     case receiveOverflow
     case fatalServerError(String)
     case authenticationFailed
@@ -21,12 +22,14 @@ enum EventDeliveryTermination: Comparable, Sendable {
             return 0
         case .transportFailure:
             return 1
-        case .receiveOverflow:
+        case .recoverableServerError:
             return 2
-        case .fatalServerError:
+        case .receiveOverflow:
             return 3
-        case .authenticationFailed:
+        case .fatalServerError:
             return 4
+        case .authenticationFailed:
+            return 5
         }
     }
 
@@ -127,14 +130,15 @@ final class EventDeliveryState: @unchecked Sendable {
         }
     }
 
-    static func classify(code: String?, message: String) -> EventDeliveryTermination {
-        if code == "transport" {
-            return .transportFailure
-        }
-        if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
-            return .authenticationFailed
-        }
-        return .fatalServerError(RealtimeTranslationError.sanitizedServerMessage(message))
+    /// keepAlive は何も記録しない。それ以外は優先順位に従って termination を更新する。
+    @discardableResult
+    func tryRecordTermination(_ classification: RealtimeServerErrorClassification) -> Bool {
+        guard classification.disposition != .keepAlive else { return false }
+        return tryRecordTermination(classification.termination)
+    }
+
+    static func classify(errorType: String?, code: String?, message: String) -> RealtimeServerErrorClassification {
+        RealtimeServerErrorClassification.classify(errorType: errorType, code: code, message: message)
     }
 
     func makeError() -> RealtimeTranslationError {
@@ -143,6 +147,8 @@ final class EventDeliveryState: @unchecked Sendable {
             return .recoverableTransportFailure("event delivery ended")
         case .transportFailure:
             return .recoverableTransportFailure("event delivery transport failure")
+        case .recoverableServerError:
+            return .recoverableServerError
         case .receiveOverflow:
             return .receiveOverflow
         case .fatalServerError(let message):

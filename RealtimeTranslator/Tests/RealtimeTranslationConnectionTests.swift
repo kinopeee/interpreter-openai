@@ -455,7 +455,7 @@ final class RealtimeTranslationConnectionTests: XCTestCase {
             "type": "error",
             "error": [
                 "message": "upstream echo sk-should-not-appear",
-                "code": "server_error",
+                "code": "upstream_failure",
             ],
         ])
 

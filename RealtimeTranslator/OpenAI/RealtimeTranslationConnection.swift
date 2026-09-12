@@ -108,24 +108,18 @@ actor RealtimeTranslationConnection {
             )
 
             // handshakeは共有streamを消費せず、transportから直接読む。
-            let created = try await receiveDirectEvent(
+            let created = try await receiveHandshakeEvent(
                 timeoutNanoseconds: sessionUpdateTimeoutNanoseconds
             )
-            if case .error(let message, let code) = created {
-                throw classifyServerError(message: message, code: code)
-            }
             guard case .sessionCreated = created else {
                 throw RealtimeTranslationError.invalidMessage
             }
 
             try await send(.sessionUpdate(config))
 
-            let updated = try await receiveDirectEvent(
+            let updated = try await receiveHandshakeEvent(
                 timeoutNanoseconds: sessionUpdateTimeoutNanoseconds
             )
-            if case .error(let message, let code) = updated {
-                throw classifyServerError(message: message, code: code)
-            }
             guard case .sessionUpdated = updated else {
                 throw RealtimeTranslationError.invalidMessage
             }
@@ -257,7 +251,8 @@ actor RealtimeTranslationConnection {
                     _ = publish(
                         .error(
                             message: UiCopy.text("error.transportDisconnected"),
-                            code: "transport"
+                            code: RealtimeServerErrorClassification.transportCode,
+                            errorType: nil
                         ),
                         epoch: currentEpoch
                     )
@@ -309,10 +304,17 @@ actor RealtimeTranslationConnection {
         default:
             break
         }
-        if case .error(let message, let code) = event {
-            deliveryYielder?.deliveryState.tryRecordTermination(
-                EventDeliveryState.classify(code: code, message: message)
+        if case .error(let message, let code, let errorType) = event {
+            let classification = EventDeliveryState.classify(
+                errorType: errorType,
+                code: code,
+                message: message
             )
+            // keepAlive は接続も stream もそのまま。termination も下流イベントも出さない。
+            if classification.disposition == .keepAlive {
+                return true
+            }
+            deliveryYielder?.deliveryState.tryRecordTermination(classification)
         }
         return deliveryYielder?.deliver(
             RealtimeTranslationStreamEvent(
@@ -323,11 +325,23 @@ actor RealtimeTranslationConnection {
         ) ?? false
     }
 
-    private func classifyServerError(message: String, code: String?) -> RealtimeTranslationError {
-        if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
-            return .authenticationFailed
+    /// handshake 中の error も共通分類で扱う。keepAlive は読み飛ばして次のイベントを待つ。
+    private func receiveHandshakeEvent(timeoutNanoseconds: UInt64) async throws -> RealtimeTranslationServerEvent {
+        while true {
+            let event = try await receiveDirectEvent(timeoutNanoseconds: timeoutNanoseconds)
+            guard case .error(let message, let code, let errorType) = event else {
+                return event
+            }
+            let classification = RealtimeServerErrorClassification.classify(
+                errorType: errorType,
+                code: code,
+                message: message
+            )
+            if classification.disposition == .keepAlive {
+                continue
+            }
+            throw classification.makeError()
         }
-        return .fatalServerError(RealtimeTranslationError.sanitizedServerMessage(message))
     }
 
     private func tearDownTransport() async {

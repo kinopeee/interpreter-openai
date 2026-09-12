@@ -224,7 +224,7 @@ private final class RoutingHarness {
         let transportErrors = harness.transportErrors
         harness.collector = Task {
             for await event in stream {
-                if case .error(_, let code) = event.event, code == "transport" {
+                if case .error(_, let code, _) = event.event, code == "transport" {
                     await transportErrors.increment()
                 }
             }

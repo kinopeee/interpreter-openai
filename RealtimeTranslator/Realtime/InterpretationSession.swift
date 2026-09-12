@@ -411,10 +411,17 @@ final class InterpretationSession {
                 continue
             }
 
-            if case .error(let message, let code) = streamEvent.event {
-                feed.deliveryState.tryRecordTermination(
-                    EventDeliveryState.classify(code: code, message: message)
+            if case .error(let message, let code, let errorType) = streamEvent.event {
+                let classification = EventDeliveryState.classify(
+                    errorType: errorType,
+                    code: code,
+                    message: message
                 )
+                if classification.disposition == .keepAlive {
+                    await dualClient.acknowledgeConsumedStreamEvent(runToken: feed.runToken)
+                    continue
+                }
+                feed.deliveryState.tryRecordTermination(classification)
                 throw feed.deliveryState.makeError()
             }
 

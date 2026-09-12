@@ -491,7 +491,7 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         let collector = Task {
             var transportErrors = 0
             for await event in stream {
-                if case .error(_, let code) = event.event, code == "transport" {
+                if case .error(_, let code, _) = event.event, code == "transport" {
                     transportErrors += 1
                     if transportErrors == 1 {
                         firstError.fulfill()

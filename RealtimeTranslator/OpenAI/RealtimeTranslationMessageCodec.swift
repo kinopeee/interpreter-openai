@@ -82,9 +82,11 @@ enum RealtimeTranslationMessageCodec {
             let message = (errorObject?["message"] as? String)
                 ?? (dictionary["message"] as? String)
                 ?? RealtimeTranslationError.genericServerMessage
-            let code = (errorObject?["code"] as? String)
-                ?? (errorObject?["type"] as? String)
-            return .error(message: message, code: code)
+            return .error(
+                message: message,
+                code: errorObject?["code"] as? String,
+                errorType: errorObject?["type"] as? String
+            )
         default:
             return .unknown(type: type)
         }
