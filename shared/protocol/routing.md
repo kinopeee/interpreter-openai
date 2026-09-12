@@ -100,7 +100,7 @@ translation lane として分離する。一次信号はセッションが設定
 |---|---|
 | idle finalize | 8 秒 |
 | 重複除去 | `event_id` の集合で判定 |
-| 確定後カットオフ | `elapsed_ms <= finalizedCutoff` の delta は破棄 |
+| 確定後カットオフ | lane（source / 各 target）ごとの `elapsed_ms <= finalizedCutoff[lane]` の delta は破棄。`elapsed_ms` は接続ごとに独立した時計のため lane 間で比較しない |
 | 原文 delta の受理 | `source` lane のみ |
 
 - 確定直後は `awaitingSourceAfterFinalize` を立て、次の source delta が来るまで訳文 delta を破棄する（保持中の完全ペアを旧 segment の訳文で壊さないため）。

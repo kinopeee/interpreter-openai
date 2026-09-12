@@ -328,7 +328,7 @@ public sealed class RealtimeSubtitleAssemblerTests
         Assert.True(idle.Value.ShouldFinalize);
     }
 
-    // Given: idle 確定したセグメント（訳文 elapsed_ms が cutoff になる）
+    // Given: idle 確定したセグメント（原文 lane の elapsed_ms が cutoff になる）
     // When: cutoff 以下の elapsed を持つ遅延原文が届く
     // Then: 新セグメントへ連結せず、確定済みペアを上書きしない
     [Fact]
@@ -340,7 +340,7 @@ public sealed class RealtimeSubtitleAssemblerTests
         assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200), Origin);
         var finalized = assembler.Tick(Origin.AddSeconds(9));
 
-        var late = assembler.Ingest(Source("遅延原文", "s-late", 150), Origin.AddSeconds(9.2));
+        var late = assembler.Ingest(Source("遅延原文", "s-late", 80), Origin.AddSeconds(9.2));
         var fresh = assembler.Ingest(Source("ありがとう", "s-new", 400), Origin.AddSeconds(9.4));
 
         Assert.True(finalized?.ShouldFinalize);
@@ -352,6 +352,33 @@ public sealed class RealtimeSubtitleAssemblerTests
         Assert.Equal(string.Empty, fresh.Value.TranslatedText);
         Assert.False(fresh.Value.IsTranslationCurrent);
         Assert.Equal(1, fresh.Value.SegmentGeneration);
+    }
+
+    // Given: en lane で確定し、cutoff が en lane の時計で 20200 まで進んでいる
+    // When: 言語切替後、新しい原文と ja lane の訳文（elapsed 13400 < en cutoff）が届く
+    // Then: 他 lane の cutoff に引っかからず ja lane の訳文を受理する
+    [Fact]
+    public void TranslationOnNewLaneBelowOtherLaneCutoffIsAccepted()
+    {
+        var assembler = NewAssembler();
+        assembler.Ingest(Source("こんにちは", "s1", 20200), Origin);
+        assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 20200), Origin);
+        var split = assembler.SplitForLanguageSwitch(5, Origin);
+        assembler.Ingest(Source("Hi there", "s3", 20300), Origin);
+
+        var stale = assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, " stale", "t2", 20100),
+            Origin);
+        var japanese = assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.Japanese, "やあ", "t3", 13400),
+            Origin);
+
+        Assert.NotNull(split.Finalized);
+        Assert.Equal("Hello", split.Finalized.Value.TranslatedText);
+        Assert.Null(stale);
+        Assert.NotNull(japanese);
+        Assert.Equal("やあ", japanese.Value.TranslatedText);
+        Assert.True(japanese.Value.IsTranslationCurrent);
     }
 
     // Given: epoch 1 で event_id を消費し、idle 確定で elapsed cutoff が残っている assembler

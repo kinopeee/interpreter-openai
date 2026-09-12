@@ -6,7 +6,7 @@ enum RealtimeTranslationOutputLanguage: String, Sendable, Equatable, Hashable {
     case spanish = "es"
 }
 
-enum RealtimeTranslationLane: Sendable, Equatable {
+enum RealtimeTranslationLane: Sendable, Equatable, Hashable {
     case source
     case translation(RealtimeTranslationOutputLanguage)
 

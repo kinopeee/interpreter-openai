@@ -348,10 +348,25 @@
           { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 100 },
           { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 200 },
           { "at": 9, "kind": "tick" },
-          { "at": 9.2, "kind": "sourceDelta", "lane": "source", "text": "遅延原文", "eventId": "s-late", "elapsedMs": 150 }
+          { "at": 9.2, "kind": "sourceDelta", "lane": "source", "text": "遅延原文", "eventId": "s-late", "elapsedMs": 80 }
         ],
         "expectedFinalizedPairs": [{ "sourceText": "こんにちは", "translatedText": "Hello" }],
         "expectedFinal": { "sourceText": "こんにちは", "translatedText": "Hello", "isTranslationCurrent": true, "shouldFinalize": true }
+      },
+      {
+        "name": "post-switch lane deltas below the other lane cutoff are accepted",
+        "epoch": 1,
+        "steps": [
+          { "at": 0, "kind": "sourceDelta", "lane": "source", "text": "こんにちは", "eventId": "s1", "elapsedMs": 20200 },
+          { "at": 0.2, "kind": "translationDelta", "lane": "en", "text": "Hello", "eventId": "t1", "elapsedMs": 20200 },
+          { "at": 0.3, "kind": "languageSwitch", "boundaryOffset": 5 },
+          { "at": 0.4, "kind": "sourceDelta", "lane": "source", "text": "stale", "eventId": "s2", "elapsedMs": 20100 },
+          { "at": 0.5, "kind": "sourceDelta", "lane": "source", "text": "Hi there", "eventId": "s3", "elapsedMs": 20300 },
+          { "at": 0.6, "kind": "translationDelta", "lane": "en", "text": " stale", "eventId": "t2", "elapsedMs": 20100 },
+          { "at": 0.7, "kind": "translationDelta", "lane": "ja", "text": "やあ", "eventId": "t3", "elapsedMs": 13400 }
+        ],
+        "expectedFinalizedPairs": [{ "sourceText": "こんにちは", "translatedText": "Hello" }],
+        "expectedFinal": { "sourceText": "Hi there", "translatedText": "やあ", "isTranslationCurrent": true, "shouldFinalize": false }
       }
     ]
   },

@@ -692,6 +692,42 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         XCTAssertEqual(second?.translatedText, "yesyes")
     }
 
+    func testTranslationOnNewLaneBelowOtherLaneCutoffIsAccepted() {
+        // Given: en lane で確定し、cutoff が en lane の時計で 20200 まで進んでいる
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        let start = Date()
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: "s1", elapsedMs: 20200)),
+            now: start
+        )
+        _ = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: "Hello", eventID: "t1", elapsedMs: 20200)),
+            now: start
+        )
+
+        // When: 言語切替で確定し、新しい原文と ja lane の訳文（elapsed 13400 < en cutoff）が届く
+        let split = assembler.splitForLanguageSwitch(at: 5, now: start)
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "Hi there", eventID: "s3", elapsedMs: 20300)),
+            now: start.addingTimeInterval(0.1)
+        )
+        let stale = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: " stale", eventID: "t2", elapsedMs: 20100)),
+            now: start.addingTimeInterval(0.2)
+        )
+        let japanese = assembler.ingest(
+            event(.japanese, .outputTranscriptDelta(delta: "やあ", eventID: "t3", elapsedMs: 13400)),
+            now: start.addingTimeInterval(0.3)
+        )
+
+        // Then: 他 lane の cutoff に引っかからず ja lane の訳文を受理する
+        XCTAssertEqual(split.finalized?.translatedText, "Hello")
+        XCTAssertNil(stale)
+        XCTAssertEqual(japanese?.translatedText, "やあ")
+        XCTAssertEqual(japanese?.isTranslationCurrent, true)
+    }
+
     private func event(
         _ target: RealtimeTranslationOutputLanguage,
         _ serverEvent: RealtimeTranslationServerEvent,
