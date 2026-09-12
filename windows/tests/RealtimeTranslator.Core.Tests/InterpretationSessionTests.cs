@@ -2235,6 +2235,7 @@ public sealed class InterpretationSessionTests
         client.RemainingStartFailures = InterpretationSession.MaxReconnectAttempts;
         client.PublishTransportError();
         await WaitUntilAsync(() => session.State == TranslationState.Error);
+        await WaitUntilAsync(() => message is not null);
 
         // 初回 Start 成功 + MaxReconnectAttempts 回の失敗 Start を消費したこと。
         Assert.Equal(0, client.RemainingStartFailures);
