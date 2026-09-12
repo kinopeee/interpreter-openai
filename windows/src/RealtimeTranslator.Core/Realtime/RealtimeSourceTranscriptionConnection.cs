@@ -46,7 +46,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
         _transport = transport;
         _safetyIdentifier = safetyIdentifier;
-        _handshakeTimeout = handshakeTimeout ?? TimeSpan.FromSeconds(15);
+        _handshakeTimeout = handshakeTimeout ?? RealtimeTranslationConnection.DefaultHandshakeTimeout;
         _closeTimeout = closeTimeout ?? TimeSpan.FromSeconds(5);
     }
 

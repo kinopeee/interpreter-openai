@@ -12,6 +12,9 @@ namespace RealtimeTranslator.Core.Realtime;
 /// <summary>翻訳 target 1 つ分の Realtime 接続。1 target = 1 接続で混線させない。</summary>
 public sealed class RealtimeTranslationConnection : IDisposable
 {
+    /// <summary>1 回の接続試行（handshake）の上限。再接続予算とは独立に数える。</summary>
+    public static readonly TimeSpan DefaultHandshakeTimeout = TimeSpan.FromSeconds(15);
+
     public static readonly Uri EndpointUrl =
         new("wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate");
 
@@ -46,7 +49,7 @@ public sealed class RealtimeTranslationConnection : IDisposable
         _target = target;
         _transport = transport;
         _safetyIdentifier = safetyIdentifier;
-        _sessionUpdateTimeout = sessionUpdateTimeout ?? TimeSpan.FromSeconds(15);
+        _sessionUpdateTimeout = sessionUpdateTimeout ?? DefaultHandshakeTimeout;
         _closeTimeout = closeTimeout ?? TimeSpan.FromSeconds(15);
     }
 
