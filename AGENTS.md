@@ -42,6 +42,7 @@ OpenAI Realtime Translation によるリアルタイム字幕アプリ。macOS 2
 - 原文deltaの末尾ウィンドウの証拠を言語切替とルーティングの信号として使う。日英・日西は文字種、英西は語などの証拠を使い、全ペアを文字種反転として扱わない。判定・ルーティングの契約は `shared/fixtures/v1/language.json` と `shared/fixtures/v1/routing.json` を参照する。
 - 受信イベントの上限超過を検知し、欠落した接続世代の未確定字幕を無効化する。欠落後のペアを確定・記録せず、既に確定した字幕は保持する。終了理由・エラー通知を通常イベントの混雑や正常終了通知で失わない。優先順位と容量の正本は `shared/fixtures/v1/receive-queue.json`。送信キューの上限とは区別する。
 - 古い接続epochのdeltaは画面へ反映しない。
+- 翻訳 delta の `elapsed_ms` は翻訳セッション（lane）ごとに独立した時計。確定後カットオフは lane 別に保持し、lane を跨いで比較しない。契約は `shared/protocol/routing.md` の字幕整列表を参照する。
 
 ## 字幕UIの不変条件
 

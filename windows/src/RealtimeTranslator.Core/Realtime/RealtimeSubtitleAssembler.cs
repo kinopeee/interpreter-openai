@@ -39,8 +39,10 @@ public sealed class RealtimeSubtitleAssembler
     private readonly HashSet<string> _seenEventIds = new(StringComparer.Ordinal);
     private LanguagePair _languagePair;
     private DateTimeOffset _lastActivityAt = DateTimeOffset.MinValue;
-    private int? _finalizedCutoffElapsedMs;
-    private int? _maxTranslationElapsedMs;
+    // elapsed_ms は接続ごとに独立した時計。lane 間で比較すると切替直後の
+    // 新 lane の delta をすべて捨ててしまうため、確定カットオフと観測最大値は lane ごとに保持する。
+    private readonly Dictionary<RealtimeTranslationLane, int> _finalizedCutoffElapsedMs = new();
+    private readonly Dictionary<RealtimeTranslationLane, int> _maxElapsedMs = new();
     private bool _awaitingSourceAfterFinalize;
     private bool _boundaryCandidatePending;
     private bool _translationIsCurrent;
@@ -59,8 +61,8 @@ public sealed class RealtimeSubtitleAssembler
         ClearSegmentBuffers(advancingGeneration: false);
         _expectedLane = null;
         _seenEventIds.Clear();
-        _finalizedCutoffElapsedMs = null;
-        _maxTranslationElapsedMs = null;
+        _finalizedCutoffElapsedMs.Clear();
+        _maxElapsedMs.Clear();
         _awaitingSourceAfterFinalize = false;
         _boundaryCandidatePending = false;
         _translationIsCurrent = false;
@@ -132,7 +134,7 @@ public sealed class RealtimeSubtitleAssembler
         RealtimeSubtitleUpdate? finalized = null;
         if (hasCompletePair)
         {
-            _finalizedCutoffElapsedMs = _maxTranslationElapsedMs;
+            ApplyFinalizedCutoffs();
             finalized = new RealtimeSubtitleUpdate(
                 prefix,
                 CurrentTranslation,
@@ -183,7 +185,9 @@ public sealed class RealtimeSubtitleAssembler
 
     private RealtimeSubtitleUpdate? AppendSource(string delta, string? eventId, int? elapsedMs, DateTimeOffset now)
     {
-        if (delta.Length == 0 || IsDuplicateOrStale(eventId, elapsedMs))
+        // 実 API の原文 delta は elapsed_ms を持たない（shared/protocol/endpoints.md）。
+        // source lane の cutoff は fixture 契約（late source delta）との互換のためだけに評価する。
+        if (delta.Length == 0 || IsDuplicateOrStale(eventId, elapsedMs, RealtimeTranslationLane.Source))
         {
             return null;
         }
@@ -200,6 +204,7 @@ public sealed class RealtimeSubtitleAssembler
         }
 
         _sourceText += delta;
+        RememberElapsed(elapsedMs, RealtimeTranslationLane.Source);
         _lastActivityAt = now;
         if (extendingExistingSource && CurrentTranslation.Length > 0)
         {
@@ -220,14 +225,16 @@ public sealed class RealtimeSubtitleAssembler
     {
         // 確定後に届いた旧 segment の訳文で、保持中の完全ペアを上書きしない。
         // 次の source delta が来るまで target delta は破棄する。
-        if (delta.Length == 0 || _awaitingSourceAfterFinalize || IsDuplicateOrStale(eventId, elapsedMs))
+        if (delta.Length == 0
+            || _awaitingSourceAfterFinalize
+            || IsDuplicateOrStale(eventId, elapsedMs, RealtimeTranslationLane.Translation(target)))
         {
             return null;
         }
 
         _translationText[target] = _translationText.GetValueOrDefault(target, string.Empty) + delta;
         _translationSourceEnd[target] = _sourceText.Length;
-        RememberTranslationElapsed(elapsedMs);
+        RememberElapsed(elapsedMs, RealtimeTranslationLane.Translation(target));
 
         _lastActivityAt = now;
 
@@ -257,14 +264,16 @@ public sealed class RealtimeSubtitleAssembler
         return Snapshot();
     }
 
-    private bool IsDuplicateOrStale(string? eventId, int? elapsedMs)
+    private bool IsDuplicateOrStale(string? eventId, int? elapsedMs, RealtimeTranslationLane lane)
     {
         if (eventId is not null && !_seenEventIds.Add(eventId))
         {
             return true;
         }
 
-        return elapsedMs is { } elapsed && _finalizedCutoffElapsedMs is { } cutoff && elapsed <= cutoff;
+        return elapsedMs is { } elapsed
+            && _finalizedCutoffElapsedMs.TryGetValue(lane, out var cutoff)
+            && elapsed <= cutoff;
     }
 
     private void ResolveLaneIfNeeded()
@@ -339,7 +348,11 @@ public sealed class RealtimeSubtitleAssembler
 
     private RealtimeSubtitleUpdate FinalizeCurrent(int? elapsedHint, DateTimeOffset now)
     {
-        _finalizedCutoffElapsedMs = elapsedHint ?? _maxTranslationElapsedMs;
+        ApplyFinalizedCutoffs();
+        if (elapsedHint is { } hint && _selectedLane is { } selectedLane)
+        {
+            _finalizedCutoffElapsedMs[RealtimeTranslationLane.Translation(selectedLane)] = hint;
+        }
 
         var update = new RealtimeSubtitleUpdate(
             _sourceText,
@@ -374,20 +387,28 @@ public sealed class RealtimeSubtitleAssembler
 
     private void AbandonStaleSegment(DateTimeOffset now)
     {
-        _finalizedCutoffElapsedMs = _maxTranslationElapsedMs;
+        ApplyFinalizedCutoffs();
         ClearSegmentBuffers(advancingGeneration: true);
         _awaitingSourceAfterFinalize = true;
         _lastActivityAt = now;
     }
 
-    private void RememberTranslationElapsed(int? elapsedMs)
+    private void ApplyFinalizedCutoffs()
+    {
+        foreach (var pair in _maxElapsedMs)
+        {
+            _finalizedCutoffElapsedMs[pair.Key] = pair.Value;
+        }
+    }
+
+    private void RememberElapsed(int? elapsedMs, RealtimeTranslationLane lane)
     {
         if (elapsedMs is not { } elapsed)
         {
             return;
         }
 
-        _maxTranslationElapsedMs = _maxTranslationElapsedMs is { } max
+        _maxElapsedMs[lane] = _maxElapsedMs.TryGetValue(lane, out var max)
             ? Math.Max(max, elapsed)
             : elapsed;
     }

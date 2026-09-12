@@ -34,8 +34,10 @@ struct RealtimeSubtitleAssembler: Sendable {
     /// replay で落とす。未適用の同一本文反復は残す。segment 境界で捨てる。
     private var seenNilEventKeys = Set<String>()
     private var lastActivityAt = Date.distantPast
-    private var finalizedCutoffElapsedMs: Int?
-    private var maxTranslationElapsedMs: Int?
+    /// elapsed_ms は接続ごとに独立した時計。lane 間で比較すると切替直後の
+    /// 新 lane の delta をすべて捨ててしまうため、確定カットオフと観測最大値は lane ごとに保持する。
+    private var finalizedCutoffElapsedMs: [RealtimeTranslationLane: Int] = [:]
+    private var maxElapsedMs: [RealtimeTranslationLane: Int] = [:]
     private var awaitingSourceAfterFinalize = false
     private var boundaryCandidatePending = false
     private var translationIsCurrent = false
@@ -67,8 +69,8 @@ struct RealtimeSubtitleAssembler: Sendable {
         expectedLane = nil
         seenEventIDs.removeAll(keepingCapacity: true)
         seenNilEventKeys.removeAll(keepingCapacity: true)
-        finalizedCutoffElapsedMs = nil
-        maxTranslationElapsedMs = nil
+        finalizedCutoffElapsedMs.removeAll(keepingCapacity: true)
+        maxElapsedMs.removeAll(keepingCapacity: true)
         awaitingSourceAfterFinalize = false
         boundaryCandidatePending = false
         translationIsCurrent = false
@@ -135,7 +137,7 @@ struct RealtimeSubtitleAssembler: Sendable {
 
         var finalized: RealtimeSubtitleUpdate?
         if hasCompletePair {
-            finalizedCutoffElapsedMs = maxTranslationElapsedMs
+            applyFinalizedCutoffs()
             finalized = RealtimeSubtitleUpdate(
                 sourceText: prefix,
                 translatedText: currentTranslation,
@@ -200,7 +202,9 @@ struct RealtimeSubtitleAssembler: Sendable {
         if let eventID, !seenEventIDs.insert(eventID).inserted {
             return nil
         }
-        if let elapsedMs, let cutoff = finalizedCutoffElapsedMs, elapsedMs <= cutoff {
+        // 実 API の原文 delta は elapsed_ms を持たない（shared/protocol/endpoints.md）。
+        // source lane の cutoff は fixture 契約（late source delta）との互換のためだけに評価する。
+        if let elapsedMs, let cutoff = finalizedCutoffElapsedMs[.source], elapsedMs <= cutoff {
             return nil
         }
 
@@ -221,6 +225,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         }
 
         sourceText += delta
+        rememberElapsed(elapsedMs, lane: .source)
         lastActivityAt = now
         if extendingExistingSource && !currentTranslation.isEmpty {
             // 原文が伸びた間の旧訳文は表示用に残すが、現行でも確定対象でもない。
@@ -249,13 +254,13 @@ struct RealtimeSubtitleAssembler: Sendable {
         ) {
             return nil
         }
-        if let elapsedMs, let cutoff = finalizedCutoffElapsedMs, elapsedMs <= cutoff {
+        if let elapsedMs, let cutoff = finalizedCutoffElapsedMs[.translation(target)], elapsedMs <= cutoff {
             return nil
         }
 
         translationText[target, default: ""] += delta
         translationSourceEnd[target] = sourceText.utf16.count
-        rememberTranslationElapsed(elapsedMs)
+        rememberElapsed(elapsedMs, lane: .translation(target))
 
         lastActivityAt = now
 
@@ -356,7 +361,10 @@ struct RealtimeSubtitleAssembler: Sendable {
         elapsedHint: Int?,
         now: Date
     ) -> RealtimeSubtitleUpdate {
-        finalizedCutoffElapsedMs = elapsedHint ?? maxTranslationElapsedMs
+        applyFinalizedCutoffs()
+        if let elapsedHint, let selectedLane {
+            finalizedCutoffElapsedMs[.translation(selectedLane)] = elapsedHint
+        }
         let update = RealtimeSubtitleUpdate(
             sourceText: sourceText,
             translatedText: currentTranslation,
@@ -387,15 +395,21 @@ struct RealtimeSubtitleAssembler: Sendable {
     }
 
     private mutating func abandonStaleSegment(now: Date) {
-        finalizedCutoffElapsedMs = maxTranslationElapsedMs
+        applyFinalizedCutoffs()
         clearSegmentBuffers(advancingGeneration: true)
         awaitingSourceAfterFinalize = true
         lastActivityAt = now
     }
 
-    private mutating func rememberTranslationElapsed(_ elapsedMs: Int?) {
+    private mutating func applyFinalizedCutoffs() {
+        for (lane, elapsedMs) in maxElapsedMs {
+            finalizedCutoffElapsedMs[lane] = elapsedMs
+        }
+    }
+
+    private mutating func rememberElapsed(_ elapsedMs: Int?, lane: RealtimeTranslationLane) {
         guard let elapsedMs else { return }
-        maxTranslationElapsedMs = max(maxTranslationElapsedMs ?? elapsedMs, elapsedMs)
+        maxElapsedMs[lane] = max(maxElapsedMs[lane] ?? elapsedMs, elapsedMs)
     }
 
     private mutating func clearSegmentBuffers(advancingGeneration: Bool) {
