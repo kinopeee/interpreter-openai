@@ -294,10 +294,10 @@ actor RealtimeTranslationConnection {
             // 翻訳接続の input_transcript は原文 authority にしない（専用 transcription のみ）。
             // target=en 翻訳セッションの delta を通すと assembler が原文として取り込む。
             return true
-        case .outputTranscriptDelta(_, _, let elapsedMs):
+        case .outputTranscriptDelta:
             #if DEBUG
             AppLogger.realtime.notice(
-                "DBG_TRANSCRIPT_EVENT target=\(self.target.rawValue, privacy: .public) kind=output epoch=\(currentEpoch, privacy: .public) elapsedMs=\(elapsedMs ?? -1, privacy: .public)"
+                "DBG_TRANSCRIPT_EVENT target=\(self.target.rawValue, privacy: .public) kind=output epoch=\(currentEpoch, privacy: .public)"
             )
             #endif
         case .error:

@@ -137,7 +137,7 @@ struct RealtimeSubtitleAssembler: Sendable {
 
         var finalized: RealtimeSubtitleUpdate?
         if hasCompletePair {
-            finalizedCutoffElapsedMs = maxElapsedMs
+            applyFinalizedCutoffs()
             finalized = RealtimeSubtitleUpdate(
                 sourceText: prefix,
                 translatedText: currentTranslation,
@@ -202,6 +202,8 @@ struct RealtimeSubtitleAssembler: Sendable {
         if let eventID, !seenEventIDs.insert(eventID).inserted {
             return nil
         }
+        // 実 API の原文 delta は elapsed_ms を持たない（shared/protocol/endpoints.md）。
+        // source lane の cutoff は fixture 契約（late source delta）との互換のためだけに評価する。
         if let elapsedMs, let cutoff = finalizedCutoffElapsedMs[.source], elapsedMs <= cutoff {
             return nil
         }
@@ -225,16 +227,6 @@ struct RealtimeSubtitleAssembler: Sendable {
         sourceText += delta
         rememberElapsed(elapsedMs, lane: .source)
         lastActivityAt = now
-        #if DEBUG
-        let dbgLen = sourceText.utf16.count
-        let dbgExpected = expectedLane?.rawValue ?? "nil"
-        let dbgSelected = selectedLane?.rawValue ?? "nil"
-        let dbgCutoff = finalizedCutoffElapsedMs[.source] ?? -1
-        let dbgGen = segmentGeneration
-        AppLogger.subtitle.notice(
-            "DBG_SOURCE_APPEND len=\(dbgLen, privacy: .public) expected=\(dbgExpected, privacy: .public) selected=\(dbgSelected, privacy: .public) cutoff=\(dbgCutoff, privacy: .public) gen=\(dbgGen, privacy: .public)"
-        )
-        #endif
         if extendingExistingSource && !currentTranslation.isEmpty {
             // 原文が伸びた間の旧訳文は表示用に残すが、現行でも確定対象でもない。
             translationIsCurrent = false
@@ -254,22 +246,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         guard !delta.isEmpty else { return nil }
         // 確定後に届いた旧segmentの訳文で、保持中の完全ペアを上書きしない。
         // 次のsource deltaが来るまでtarget deltaは破棄する。
-        #if DEBUG
-        let dbgTarget = target.rawValue
-        let dbgElapsed = elapsedMs ?? -1
-        let dbgCutoff = finalizedCutoffElapsedMs[.translation(target)] ?? -1
-        let dbgExpected = expectedLane?.rawValue ?? "nil"
-        let dbgSelected = selectedLane?.rawValue ?? "nil"
-        let dbgGen = segmentGeneration
-        #endif
-        guard !awaitingSourceAfterFinalize else {
-            #if DEBUG
-            AppLogger.subtitle.notice(
-                "DBG_TRANSLATION_DROP reason=awaitingSource target=\(dbgTarget, privacy: .public) elapsedMs=\(dbgElapsed, privacy: .public) gen=\(dbgGen, privacy: .public)"
-            )
-            #endif
-            return nil
-        }
+        guard !awaitingSourceAfterFinalize else { return nil }
         if hasSeenTranscriptEvent(
             eventID: eventID,
             key: "translation|\(target.rawValue)|\(delta)|\(elapsedMs.map(String.init) ?? "")",
@@ -278,18 +255,8 @@ struct RealtimeSubtitleAssembler: Sendable {
             return nil
         }
         if let elapsedMs, let cutoff = finalizedCutoffElapsedMs[.translation(target)], elapsedMs <= cutoff {
-            #if DEBUG
-            AppLogger.subtitle.notice(
-                "DBG_TRANSLATION_DROP reason=cutoff target=\(dbgTarget, privacy: .public) elapsedMs=\(dbgElapsed, privacy: .public) cutoff=\(dbgCutoff, privacy: .public) gen=\(dbgGen, privacy: .public)"
-            )
-            #endif
             return nil
         }
-        #if DEBUG
-        AppLogger.subtitle.notice(
-            "DBG_TRANSLATION_ACCEPT target=\(dbgTarget, privacy: .public) elapsedMs=\(dbgElapsed, privacy: .public) cutoff=\(dbgCutoff, privacy: .public) expected=\(dbgExpected, privacy: .public) selected=\(dbgSelected, privacy: .public) gen=\(dbgGen, privacy: .public)"
-        )
-        #endif
 
         translationText[target, default: ""] += delta
         translationSourceEnd[target] = sourceText.utf16.count
@@ -394,7 +361,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         elapsedHint: Int?,
         now: Date
     ) -> RealtimeSubtitleUpdate {
-        finalizedCutoffElapsedMs = maxElapsedMs
+        applyFinalizedCutoffs()
         if let elapsedHint, let selectedLane {
             finalizedCutoffElapsedMs[.translation(selectedLane)] = elapsedHint
         }
@@ -428,10 +395,16 @@ struct RealtimeSubtitleAssembler: Sendable {
     }
 
     private mutating func abandonStaleSegment(now: Date) {
-        finalizedCutoffElapsedMs = maxElapsedMs
+        applyFinalizedCutoffs()
         clearSegmentBuffers(advancingGeneration: true)
         awaitingSourceAfterFinalize = true
         lastActivityAt = now
+    }
+
+    private mutating func applyFinalizedCutoffs() {
+        for (lane, elapsedMs) in maxElapsedMs {
+            finalizedCutoffElapsedMs[lane] = elapsedMs
+        }
     }
 
     private mutating func rememberElapsed(_ elapsedMs: Int?, lane: RealtimeTranslationLane) {

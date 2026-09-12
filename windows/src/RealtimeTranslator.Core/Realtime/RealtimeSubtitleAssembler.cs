@@ -185,6 +185,8 @@ public sealed class RealtimeSubtitleAssembler
 
     private RealtimeSubtitleUpdate? AppendSource(string delta, string? eventId, int? elapsedMs, DateTimeOffset now)
     {
+        // 実 API の原文 delta は elapsed_ms を持たない（shared/protocol/endpoints.md）。
+        // source lane の cutoff は fixture 契約（late source delta）との互換のためだけに評価する。
         if (delta.Length == 0 || IsDuplicateOrStale(eventId, elapsedMs, RealtimeTranslationLane.Source))
         {
             return null;
