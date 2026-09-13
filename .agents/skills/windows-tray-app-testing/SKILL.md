@@ -51,8 +51,7 @@ a "install .NET Desktop Runtime" dialog. Reuse the same `$dotnetRoot`:
 ```powershell
 $env:DOTNET_ROOT = $dotnetRoot
 $env:PATH = "$dotnetRoot;$env:PATH"
-$exePath = (Resolve-Path 'windows\src\RealtimeTranslator.Appin\Release
-et10.0-windows\RealtimeTranslator.App.exe').Path
+$exePath = (Resolve-Path 'windows\src\RealtimeTranslator.App\bin\Release\net10.0-windows\RealtimeTranslator.App.exe').Path
 Start-Process -FilePath $exePath
 ```
 
