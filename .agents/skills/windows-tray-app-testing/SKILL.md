@@ -13,30 +13,37 @@ The .NET SDK may be installed user-locally, under the user profile, or at
 same value. Reuse this block for both build and launch.
 
 ```powershell
+# The host looks for global.json from the *current directory* upward, so run the
+# probe and the build from windows/ (as .github/workflows/release.yml does).
+Push-Location windows
 $sdkCandidates = @(
   "$env:LOCALAPPDATA\Microsoft\dotnet",
   "$env:USERPROFILE\dotnet",
   "${env:ProgramFiles}\dotnet"
 )
 # A runtime-only install also ships dotnet.exe, so validate that the host can
-# resolve the SDK pinned by windows/global.json (run from the repo root).
+# resolve the SDK pinned by windows/global.json (10.0.100, latestFeature).
 $dotnetRoot = $sdkCandidates | Where-Object {
   $exe = Join-Path $_ 'dotnet.exe'
   (Test-Path -LiteralPath $exe) -and
     ((& $exe --version 2>$null) -match '^10\.') -and ($LASTEXITCODE -eq 0)
 } | Select-Object -First 1
 if (-not $dotnetRoot) {
+  Pop-Location
   throw 'No dotnet.exe that resolves SDK 10 found (see windows/global.json).'
 }
 $env:DOTNET_ROOT = $dotnetRoot
 $env:PATH = "$dotnetRoot;$env:PATH"
 dotnet --version
-dotnet build windows/RealtimeTranslator.slnx -c Release
-dotnet test  windows/RealtimeTranslator.slnx -c Release
+dotnet build RealtimeTranslator.slnx -c Release
+dotnet test  RealtimeTranslator.slnx -c Release
+Pop-Location
 ```
 
 `windows/global.json` pins SDK `10.0.100` with `rollForward: latestFeature`. If
 `dotnet --version` shows a different major, a different `dotnet.exe` won PATH.
+Running `dotnet` from the repo root skips `windows/global.json` entirely, so the
+probe would accept any 10.x SDK and the build could use one outside the policy.
 
 If restore fails with "No sources found", add nuget.org once:
 `dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org`
