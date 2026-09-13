@@ -341,7 +341,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
             var serverEvent = await ReceiveDirectEventAsync(cancellationToken, remaining).ConfigureAwait(false);
             if (serverEvent is RealtimeSourceTranscriptionServerEvent.ServerError error)
             {
-                var classification = EventDeliveryState.Classify(error.ToStreamError());
+                var classification = error.Classification;
                 if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
                 {
                     continue;
@@ -459,7 +459,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
                 case RealtimeSourceTranscriptionServerEvent.ServerError error:
                     var streamError = error.ToStreamError();
-                    var classification = EventDeliveryState.Classify(streamError);
+                    var classification = error.Classification;
                     if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
                     {
                         break;

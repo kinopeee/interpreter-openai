@@ -137,6 +137,31 @@ public sealed class ServerErrorClassificationFixtureTests
             EventDeliveryState.Classify(translation).Disposition);
     }
 
+    // Given: 認証失敗の文言を持つが code が transport / invalid_request_error の error
+    // When: 分類する / 原文 codec で復号してから再分類する
+    // Then: どちらも AuthenticationFailed（transport 扱いで再接続に回らず、復号後も分類が変わらない）
+    [Fact]
+    public void AuthenticationEvidenceWinsOverTransportCodeAndSurvivesSourceDecoding()
+    {
+        var direct = RealtimeServerErrorClassification.Classify(
+            null,
+            RealtimeServerErrorClassification.TransportCode,
+            "Incorrect API key provided: sk-secret");
+        Assert.Equal(RealtimeServerErrorDisposition.Halt, direct.Disposition);
+        Assert.Equal(EventDeliveryTermination.AuthenticationFailed, direct.Termination);
+
+        var utf8 = Encoding.UTF8.GetBytes(
+            """{"type":"error","error":{"message":"Incorrect API key provided: sk-secret","type":"invalid_request_error","code":"invalid_request_error"}}""");
+        var source = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(
+            RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8));
+        Assert.DoesNotContain("sk-secret", source.Message, StringComparison.Ordinal);
+        Assert.Equal(EventDeliveryTermination.AuthenticationFailed, source.Classification.Termination);
+        // 表示文言（ローカライズ済み）から再分類すると認証の根拠が失われる。接続側は Classification を使う。
+        Assert.NotEqual(
+            EventDeliveryTermination.AuthenticationFailed,
+            EventDeliveryState.Classify(source.ToStreamError()).Termination);
+    }
+
     // Given: handshake 中の翻訳接続と原文接続
     // When: session.created の前に接続維持 error が届く
     // Then: どちらも読み飛ばして handshake を完了する

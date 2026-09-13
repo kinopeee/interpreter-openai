@@ -48,6 +48,15 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
         XCTAssertTrue(precedence.allSatisfy { $0 > EventDeliveryTermination.none })
         XCTAssertEqual(precedence.count, 5)
 
+        // 認証失敗の根拠があれば code=transport でも再接続へ回さない
+        let authOverTransport = RealtimeServerErrorClassification.classify(
+            errorType: nil,
+            code: RealtimeServerErrorClassification.transportCode,
+            message: "Incorrect API key provided: sk-secret"
+        )
+        XCTAssertEqual(authOverTransport.disposition, .halt)
+        XCTAssertEqual(authOverTransport.termination, .authenticationFailed)
+
         let recoverable = try XCTUnwrap(fixture["recoverableServerError"] as? [String: Any])
         XCTAssertTrue(RealtimeTranslationError.recoverableServerError.isRecoverable)
         XCTAssertEqual(
@@ -260,7 +269,9 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
         case "keepAlive": return .keepAlive
         case "recover": return .recover
         case "halt": return .halt
-        default: fatalError("unknown disposition")
+        default:
+            XCTFail("unknown disposition: \(SharedFixtures.text(value))")
+            return .halt
         }
     }
 
@@ -273,7 +284,9 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
         case "receiveOverflow": return .receiveOverflow
         case "recoverableServerError": return .recoverableServerError
         case "transportFailure": return .transportFailure
-        default: fatalError("unknown termination")
+        default:
+            XCTFail("unknown termination: \(SharedFixtures.text(value))")
+            return .none
         }
     }
 }

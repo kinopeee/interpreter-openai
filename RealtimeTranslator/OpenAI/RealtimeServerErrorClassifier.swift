@@ -27,13 +27,14 @@ struct RealtimeServerErrorClassification: Sendable, Equatable {
         let normalizedCode = normalize(code)
         let normalizedType = normalize(errorType)
 
-        if normalizedCode == transportCode {
-            return RealtimeServerErrorClassification(disposition: .recover, termination: .transportFailure)
-        }
-
+        // 認証失敗は code に関わらず最優先（transport 扱いで再接続に回さない）。
         // code が無い error は type を認証判定へ回す（既存の fallback と同じ範囲を守る）。
         if RealtimeTranslationError.isAuthenticationFailure(code: code ?? errorType, message: message) {
             return RealtimeServerErrorClassification(disposition: .halt, termination: .authenticationFailed)
+        }
+
+        if normalizedCode == transportCode {
+            return RealtimeServerErrorClassification(disposition: .recover, termination: .transportFailure)
         }
 
         if matches(haltCodes, normalizedCode) || matches(haltCodes, normalizedType) {

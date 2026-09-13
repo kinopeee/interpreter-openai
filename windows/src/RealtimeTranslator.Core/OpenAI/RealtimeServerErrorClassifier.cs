@@ -59,20 +59,21 @@ public readonly record struct RealtimeServerErrorClassification(
         var normalizedCode = Normalize(code);
         var normalizedType = Normalize(errorType);
 
-        if (normalizedCode == TransportCode)
-        {
-            return new(
-                RealtimeServerErrorDisposition.Recover,
-                EventDeliveryTermination.TransportFailure,
-                null);
-        }
-
+        // 認証失敗は code に関わらず最優先（transport 扱いで再接続に回さない）。
         // code が無い error は type を認証判定へ回す（既存の fallback と同じ範囲を守る）。
         if (RealtimeTranslationException.IsAuthenticationFailure(code ?? errorType, message))
         {
             return new(
                 RealtimeServerErrorDisposition.Halt,
                 EventDeliveryTermination.AuthenticationFailed,
+                null);
+        }
+
+        if (normalizedCode == TransportCode)
+        {
+            return new(
+                RealtimeServerErrorDisposition.Recover,
+                EventDeliveryTermination.TransportFailure,
                 null);
         }
 

@@ -44,8 +44,15 @@ public abstract record RealtimeSourceTranscriptionServerEvent
     /// <summary>commit の待ち合わせを解除する。</summary>
     public sealed record TranscriptionCompleted : RealtimeSourceTranscriptionServerEvent;
 
-    /// <summary>Message は正規化済み。Code / ErrorType は原文の <c>error.code</c> / <c>error.type</c>。</summary>
-    public sealed record ServerError(string Message, string? Code, string? ErrorType)
+    /// <summary>
+    /// Message は表示用に正規化済み（認証失敗はローカライズ文言に置き換わる）。
+    /// Classification は原文の type / code / message から一度だけ決めた分類で、Message から再分類してはならない。
+    /// </summary>
+    public sealed record ServerError(
+        string Message,
+        string? Code,
+        string? ErrorType,
+        RealtimeServerErrorClassification Classification)
         : RealtimeSourceTranscriptionServerEvent
     {
         public RealtimeTranslationServerEvent.ServerError ToStreamError() => new(Message, Code, ErrorType);
@@ -161,7 +168,8 @@ public static class RealtimeSourceTranscriptionCodec
                         : RealtimeTranslationException.SanitizeServerMessage(
                             ReadString(body?["message"]) ?? DefaultErrorMessage),
                     ReadString(body?["code"]),
-                    ReadString(body?["type"]));
+                    ReadString(body?["type"]),
+                    classification);
             }
 
             default:
