@@ -18,21 +18,25 @@ $sdkCandidates = @(
   "$env:USERPROFILE\dotnet",
   "${env:ProgramFiles}\dotnet"
 )
+# A runtime-only install also ships dotnet.exe, so validate that the host can
+# resolve the SDK pinned by windows/global.json (run from the repo root).
 $dotnetRoot = $sdkCandidates | Where-Object {
-  Test-Path -LiteralPath (Join-Path $_ 'dotnet.exe')
+  $exe = Join-Path $_ 'dotnet.exe'
+  (Test-Path -LiteralPath $exe) -and
+    ((& $exe --version 2>$null) -match '^10\.') -and ($LASTEXITCODE -eq 0)
 } | Select-Object -First 1
 if (-not $dotnetRoot) {
-  throw 'dotnet.exe not found. Install SDK 10 (see windows/global.json).'
+  throw 'No dotnet.exe that resolves SDK 10 found (see windows/global.json).'
 }
 $env:DOTNET_ROOT = $dotnetRoot
 $env:PATH = "$dotnetRoot;$env:PATH"
-dotnet --info
+dotnet --version
 dotnet build windows/RealtimeTranslator.slnx -c Release
 dotnet test  windows/RealtimeTranslator.slnx -c Release
 ```
 
 `windows/global.json` pins SDK `10.0.100` with `rollForward: latestFeature`. If
-`dotnet --info` shows a different major, a different `dotnet.exe` won PATH.
+`dotnet --version` shows a different major, a different `dotnet.exe` won PATH.
 
 If restore fails with "No sources found", add nuget.org once:
 `dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org`
@@ -47,7 +51,9 @@ a "install .NET Desktop Runtime" dialog. Reuse the same `$dotnetRoot`:
 ```powershell
 $env:DOTNET_ROOT = $dotnetRoot
 $env:PATH = "$dotnetRoot;$env:PATH"
-Start-Process "<path>\RealtimeTranslator.App.exe"
+$exePath = (Resolve-Path 'windows\src\RealtimeTranslator.Appin\Release
+et10.0-windows\RealtimeTranslator.App.exe').Path
+Start-Process -FilePath $exePath
 ```
 
 The app has **no main window** — it is tray-resident plus a click-through subtitle overlay
@@ -87,7 +93,9 @@ but the synchronous start-path side effects (e.g. writing the transcript session
 
 ## Preparing real audio capture on Windows VMs
 
-- Disabled audio services cannot be started. Set both to Manual, then start them:
+- Disabled audio services cannot be started. In an **elevated** PowerShell
+  (`Set-Service` / `Start-Service` need Administrator), set both to Manual, then
+  start them:
 
 ```powershell
 Set-Service AudioEndpointBuilder -StartupType Manual
@@ -111,8 +119,23 @@ Start-Service Audiosrv
 
 - For an offline-start test, back up the hosts file's exact bytes, temporarily map
   `api.openai.com` to both `127.0.0.1` and `::1`, then `Clear-DnsClientCache`.
-  Restore the original file and flush DNS afterwards. This affects new OpenAI
-  connections only; it does not sever an already-established WebSocket.
+  Run the whole test inside an elevated `try/finally` so an ordinary failure still
+  restores the original bytes and flushes DNS (an abrupt process/VM kill can still
+  leave the mapping in place — check `hosts` first on the next run). This affects
+  new OpenAI connections only; it does not sever an already-established WebSocket.
+
+```powershell
+$hosts  = "$env:SystemRoot\System32\drivers\etc\hosts"
+$backup = [IO.File]::ReadAllBytes($hosts)
+try {
+  Add-Content -LiteralPath $hosts -Value "127.0.0.1 api.openai.com", "::1 api.openai.com"
+  Clear-DnsClientCache
+  # ... start the app, observe reconnect attempts, stop ...
+} finally {
+  [IO.File]::WriteAllBytes($hosts, $backup)
+  Clear-DnsClientCache
+}
+```
 - Local refusal can take several seconds per connect attempt on Windows, so
   elapsed runtime includes connection failures as well as exponential backoff.
   Do not mistake that overhead for a backoff-policy violation.
