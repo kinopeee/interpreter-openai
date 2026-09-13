@@ -37,9 +37,9 @@ public interface IRealtimeAudioCapture
 /// <summary>録音・3 接続・字幕組み立てを束ねるセッション。UI 非依存。</summary>
 public sealed class InterpretationSession : IDisposable
 {
+    /// <summary><see cref="ReconnectPolicy.Default"/> と同じ値。fixture との整合はテストで確認する。</summary>
     public const int MaxReconnectAttempts = 5;
 
-    private static readonly TimeSpan DefaultInitialReconnectDelay = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan DefaultTickInterval = TimeSpan.FromMilliseconds(200);
 
     private readonly IApiKeyStore _apiKeyStore;
@@ -47,7 +47,7 @@ public sealed class InterpretationSession : IDisposable
     private readonly IDualRealtimeTranslationClient _dualClient;
     private readonly Func<RealtimeSessionTuning> _tuningProvider;
     private readonly TimeProvider _timeProvider;
-    private readonly TimeSpan _initialReconnectDelay;
+    private readonly ReconnectBudget _reconnectBudget;
     private readonly TimeSpan _tickInterval;
     private readonly Func<LanguagePair> _languagePairProvider;
     private readonly RealtimeSubtitleProcessor _processor = new();
@@ -59,7 +59,6 @@ public sealed class InterpretationSession : IDisposable
     /// <summary>進行中の Stop。二重 Stop を macOS の stopTask と同様に合流させる。</summary>
     private Task? _stopTask;
     private int _lifecycleGeneration;
-    private int _reconnectAttempt;
     private TranslationState _state = TranslationState.Idle;
     /// <summary>現在の録音世代で使う言語ペア。Start 時に固定し、再接続でも settings の変更を取り込まない。</summary>
     private LanguagePair? _sessionLanguagePair;
@@ -104,7 +103,9 @@ public sealed class InterpretationSession : IDisposable
         TimeProvider? timeProvider = null,
         TimeSpan? initialReconnectDelay = null,
         TimeSpan? tickInterval = null,
-        Func<LanguagePair>? languagePairProvider = null)
+        Func<LanguagePair>? languagePairProvider = null,
+        ReconnectPolicy? reconnectPolicy = null,
+        Func<TimeSpan, TimeSpan>? reconnectJitter = null)
     {
         ArgumentNullException.ThrowIfNull(apiKeyStore);
         ArgumentNullException.ThrowIfNull(audioCapture);
@@ -115,7 +116,13 @@ public sealed class InterpretationSession : IDisposable
         _dualClient = dualClient;
         _tuningProvider = tuningProvider ?? (() => RealtimeSessionTuning.Default);
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _initialReconnectDelay = initialReconnectDelay ?? DefaultInitialReconnectDelay;
+        var policy = reconnectPolicy ?? ReconnectPolicy.Default;
+        if (initialReconnectDelay is { } initialBackoff)
+        {
+            policy = policy with { InitialBackoff = initialBackoff };
+        }
+
+        _reconnectBudget = new ReconnectBudget(policy, _timeProvider, reconnectJitter);
         _tickInterval = tickInterval ?? DefaultTickInterval;
         _languagePairProvider = languagePairProvider ?? (() => LanguagePair.JaEn);
     }
@@ -185,7 +192,7 @@ public sealed class InterpretationSession : IDisposable
             previousCts?.Dispose();
             _lifecycleGeneration += 1;
             generation = _lifecycleGeneration;
-            _reconnectAttempt = 0;
+            _reconnectBudget.Reset();
             // 録音開始時点のペアを世代全体で固定する。録音中の設定変更は再接続でも反映しない
             // （VALIDATION: 停止→次の録音開始後にだけ新しいペアが反映される）。
             _sessionLanguagePair = _languagePairProvider();
@@ -413,36 +420,29 @@ public sealed class InterpretationSession : IDisposable
                 return;
             }
 
-            int attempt;
+            ReconnectDecision decision;
             lock (_sync)
             {
-                if (_reconnectAttempt >= MaxReconnectAttempts)
-                {
-                    attempt = -1;
-                }
-                else
-                {
-                    _reconnectAttempt += 1;
-                    attempt = _reconnectAttempt;
-                }
+                decision = _reconnectBudget.RecordFailure();
             }
 
-            if (attempt < 0)
+            if (decision.Kind != ReconnectDecisionKind.Wait)
             {
                 await TearDownStreamingAsync().ConfigureAwait(false);
                 FlushPendingFinalizeIfNeeded();
-                EnterError(UserCopy.Current.Text("error.reconnectLimit"));
+                EnterError(UserCopy.Current.Text(
+                    decision.Kind == ReconnectDecisionKind.BudgetExhausted
+                        ? "error.reconnectBudgetExhausted"
+                        : "error.reconnectLimit"));
                 return;
             }
 
             SetState(TranslationState.Reconnecting);
             await TearDownStreamingAsync().ConfigureAwait(false);
 
-            // 指数バックオフ。5 回目以降は頭打ちにする。
-            var delay = _initialReconnectDelay * Math.Pow(2, Math.Min(attempt - 1, 4));
             try
             {
-                await Task.Delay(delay, _timeProvider, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(decision.Delay, _timeProvider, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -497,7 +497,7 @@ public sealed class InterpretationSession : IDisposable
         SetState(TranslationState.Listening);
         lock (_sync)
         {
-            _reconnectAttempt = 0;
+            _reconnectBudget.RecordListening();
         }
 
         using var streamCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -595,8 +595,13 @@ public sealed class InterpretationSession : IDisposable
 
             if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError error)
             {
-                var (termination, message) = EventDeliveryState.Classify(error);
-                feed.DeliveryState.TryRecordTermination(termination, message);
+                var classification = EventDeliveryState.Classify(error);
+                if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                {
+                    continue;
+                }
+
+                feed.DeliveryState.TryRecordTermination(classification);
                 throw feed.DeliveryState.ToException();
             }
 

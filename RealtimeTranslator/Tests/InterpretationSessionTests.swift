@@ -77,7 +77,7 @@ final class InterpretationSessionTests: XCTestCase {
         // When: transport error で再接続する
         dual.emit(
             target: .english,
-            event: .error(message: "socket closed", code: "transport")
+            event: .error(message: "socket closed", code: "transport", errorType: nil)
         )
         await waitUntil(timeout: 3) {
             session.state == .listening && dual.startCallCount > startCountAtListening
@@ -116,7 +116,8 @@ final class InterpretationSessionTests: XCTestCase {
             target: .english,
             event: .error(
                 message: UiCopy.text("error.translationBacklog"),
-                code: "transport"
+                code: "transport",
+                errorType: nil
             ),
             epoch: initialEpoch
         )
@@ -130,7 +131,8 @@ final class InterpretationSessionTests: XCTestCase {
             target: .english,
             event: .error(
                 message: UiCopy.text("error.translationBacklog"),
-                code: "transport"
+                code: "transport",
+                errorType: nil
             ),
             epoch: initialEpoch
         )
@@ -464,7 +466,7 @@ final class InterpretationSessionTests: XCTestCase {
         // When: ストリーミング中にtransport errorが届く
         dual.emit(
             target: .english,
-            event: .error(message: "socket closed", code: "transport")
+            event: .error(message: "socket closed", code: "transport", errorType: nil)
         )
 
         // Then: feed側のframe待ちでraceが固まらず、再接続してlisteningへ戻る
@@ -760,7 +762,7 @@ final class InterpretationSessionTests: XCTestCase {
         // When: transport error で再接続し beginNewEpoch する
         dual.emit(
             target: .english,
-            event: .error(message: "socket closed", code: "transport")
+            event: .error(message: "socket closed", code: "transport", errorType: nil)
         )
 
         // Then: 捨てる前に .finalized が発行され、オプトイン字幕記録へ届く
@@ -816,7 +818,7 @@ final class InterpretationSessionTests: XCTestCase {
         // When: 認証失敗でセッションが止まる
         dual.emit(
             target: .english,
-            event: .error(message: "Incorrect API key provided", code: "invalid_api_key")
+            event: .error(message: "Incorrect API key provided", code: "invalid_api_key", errorType: nil)
         )
         await waitUntil { session.state == .error }
 
@@ -1353,7 +1355,8 @@ final class InterpretationSessionTests: XCTestCase {
             target: .english,
             event: .error(
                 message: "Incorrect API key provided: sk-leak-example",
-                code: "invalid_api_key"
+                code: "invalid_api_key",
+                errorType: nil
             )
         )
         await waitUntil { session.state == .error }
@@ -1388,7 +1391,8 @@ final class InterpretationSessionTests: XCTestCase {
             target: .english,
             event: .error(
                 message: "Provider echo included sk-should-not-appear",
-                code: "server_error"
+                code: "upstream_failure",
+                errorType: nil
             )
         )
         await waitUntil { session.state == .error }
@@ -1420,7 +1424,8 @@ final class InterpretationSessionTests: XCTestCase {
             target: .english,
             event: .error(
                 message: "certificate authority rejected the peer (code 4010)",
-                code: "authority_mismatch"
+                code: "authority_mismatch",
+                errorType: nil
             )
         )
         await waitUntil { session.state == .error }

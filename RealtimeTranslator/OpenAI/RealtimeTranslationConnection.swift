@@ -39,6 +39,8 @@ struct RealtimeTranslationStreamEvent: Sendable, Equatable {
 }
 
 actor RealtimeTranslationConnection {
+    /// 1 回の接続試行（handshake）の上限。再接続予算とは独立に数える。
+    static let defaultHandshakeTimeoutNanoseconds: UInt64 = 15_000_000_000
     static let eventBufferLimit = 256
     static let endpointURL = URL(
         string: "wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate"
@@ -64,7 +66,7 @@ actor RealtimeTranslationConnection {
         target: RealtimeTranslationOutputLanguage,
         transport: any RealtimeWebSocketTransport = URLSessionWebSocketTransport(),
         safetyIdentifier: String,
-        sessionUpdateTimeoutNanoseconds: UInt64 = 15_000_000_000,
+        sessionUpdateTimeoutNanoseconds: UInt64 = RealtimeTranslationConnection.defaultHandshakeTimeoutNanoseconds,
         closeTimeoutNanoseconds: UInt64 = 15_000_000_000
     ) {
         self.target = target
@@ -108,24 +110,18 @@ actor RealtimeTranslationConnection {
             )
 
             // handshakeは共有streamを消費せず、transportから直接読む。
-            let created = try await receiveDirectEvent(
+            let created = try await receiveHandshakeEvent(
                 timeoutNanoseconds: sessionUpdateTimeoutNanoseconds
             )
-            if case .error(let message, let code) = created {
-                throw classifyServerError(message: message, code: code)
-            }
             guard case .sessionCreated = created else {
                 throw RealtimeTranslationError.invalidMessage
             }
 
             try await send(.sessionUpdate(config))
 
-            let updated = try await receiveDirectEvent(
+            let updated = try await receiveHandshakeEvent(
                 timeoutNanoseconds: sessionUpdateTimeoutNanoseconds
             )
-            if case .error(let message, let code) = updated {
-                throw classifyServerError(message: message, code: code)
-            }
             guard case .sessionUpdated = updated else {
                 throw RealtimeTranslationError.invalidMessage
             }
@@ -257,7 +253,8 @@ actor RealtimeTranslationConnection {
                     _ = publish(
                         .error(
                             message: UiCopy.text("error.transportDisconnected"),
-                            code: "transport"
+                            code: RealtimeServerErrorClassification.transportCode,
+                            errorType: nil
                         ),
                         epoch: currentEpoch
                     )
@@ -309,10 +306,17 @@ actor RealtimeTranslationConnection {
         default:
             break
         }
-        if case .error(let message, let code) = event {
-            deliveryYielder?.deliveryState.tryRecordTermination(
-                EventDeliveryState.classify(code: code, message: message)
+        if case .error(let message, let code, let errorType) = event {
+            let classification = EventDeliveryState.classify(
+                errorType: errorType,
+                code: code,
+                message: message
             )
+            // keepAlive は接続も stream もそのまま。termination も下流イベントも出さない。
+            if classification.disposition == .keepAlive {
+                return true
+            }
+            deliveryYielder?.deliveryState.tryRecordTermination(classification)
         }
         return deliveryYielder?.deliver(
             RealtimeTranslationStreamEvent(
@@ -323,11 +327,31 @@ actor RealtimeTranslationConnection {
         ) ?? false
     }
 
-    private func classifyServerError(message: String, code: String?) -> RealtimeTranslationError {
-        if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
-            return .authenticationFailed
+    /// handshake 中の error も共通分類で扱う。keepAlive は読み飛ばして次のイベントを待つ。
+    /// 期限は handshake 1 段あたり 1 つ（keep-alive で延長しない）。
+    private func receiveHandshakeEvent(timeoutNanoseconds: UInt64) async throws -> RealtimeTranslationServerEvent {
+        let deadline = ContinuousClock.now + .nanoseconds(Int64(timeoutNanoseconds))
+        while true {
+            let remaining = ContinuousClock.now.duration(to: deadline)
+            guard remaining > .zero else {
+                throw RealtimeTranslationError.sessionUpdateTimeout
+            }
+            let event = try await receiveDirectEvent(
+                timeoutNanoseconds: UInt64(ReconnectBudget.nanoseconds(remaining))
+            )
+            guard case .error(let message, let code, let errorType) = event else {
+                return event
+            }
+            let classification = RealtimeServerErrorClassification.classify(
+                errorType: errorType,
+                code: code,
+                message: message
+            )
+            if classification.disposition == .keepAlive {
+                continue
+            }
+            throw classification.makeError()
         }
-        return .fatalServerError(RealtimeTranslationError.sanitizedServerMessage(message))
     }
 
     private func tearDownTransport() async {

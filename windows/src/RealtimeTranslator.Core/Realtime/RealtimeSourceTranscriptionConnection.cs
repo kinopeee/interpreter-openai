@@ -46,7 +46,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
         _transport = transport;
         _safetyIdentifier = safetyIdentifier;
-        _handshakeTimeout = handshakeTimeout ?? TimeSpan.FromSeconds(15);
+        _handshakeTimeout = handshakeTimeout ?? RealtimeTranslationConnection.DefaultHandshakeTimeout;
         _closeTimeout = closeTimeout ?? TimeSpan.FromSeconds(5);
     }
 
@@ -109,14 +109,14 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                     RealtimeRequestHeaders.For(apiKey, _safetyIdentifier),
                     cancellationToken).ConfigureAwait(false);
 
-                var created = await ReceiveDirectEventAsync(cancellationToken).ConfigureAwait(false);
+                var created = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
                 RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionCreated>(created);
 
                 await SendAsync(
                     new RealtimeSourceTranscriptionClientEvent.SessionUpdate(tuning, pair),
                     cancellationToken).ConfigureAwait(false);
 
-                var updated = await ReceiveDirectEventAsync(cancellationToken).ConfigureAwait(false);
+                var updated = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
                 RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionUpdated>(updated);
 
                 lock (_sync)
@@ -305,10 +305,17 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         _transport.SendAsync(RealtimeSourceTranscriptionCodec.Encode(clientEvent), cancellationToken);
 
     private async Task<RealtimeSourceTranscriptionServerEvent> ReceiveDirectEventAsync(
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan? remaining = null)
     {
+        var budget = remaining ?? _handshakeTimeout;
+        if (budget <= TimeSpan.Zero)
+        {
+            throw new RealtimeTranslationException(RealtimeTranslationErrorKind.SessionUpdateTimeout);
+        }
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_handshakeTimeout);
+        timeout.CancelAfter(budget);
         byte[] data;
         try
         {
@@ -322,18 +329,34 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         return RealtimeSourceTranscriptionCodec.DecodeServerEvent(data);
     }
 
+    private async Task<RealtimeSourceTranscriptionServerEvent> ReceiveHandshakeEventAsync(
+        CancellationToken cancellationToken)
+    {
+        // handshake 中の接続維持エラーは読み飛ばして次のイベントを待つ。
+        // 期限は handshake 1 段あたり 1 つ（keep-alive で延長しない）。
+        var started = Stopwatch.GetTimestamp();
+        while (true)
+        {
+            var remaining = _handshakeTimeout - Stopwatch.GetElapsedTime(started);
+            var serverEvent = await ReceiveDirectEventAsync(cancellationToken, remaining).ConfigureAwait(false);
+            if (serverEvent is RealtimeSourceTranscriptionServerEvent.ServerError error)
+            {
+                var classification = error.Classification;
+                if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                {
+                    continue;
+                }
+
+                throw classification.ToException();
+            }
+
+            return serverEvent;
+        }
+    }
+
     private static void RequireHandshakeEvent<T>(RealtimeSourceTranscriptionServerEvent serverEvent)
         where T : RealtimeSourceTranscriptionServerEvent
     {
-        if (serverEvent is RealtimeSourceTranscriptionServerEvent.ServerError error)
-        {
-            throw RealtimeTranslationException.IsAuthenticationFailure(error.Code, error.Message)
-                ? new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed)
-                : new RealtimeTranslationException(
-                    RealtimeTranslationErrorKind.FatalServerError,
-                    RealtimeTranslationException.SanitizeServerMessage(error.Message));
-        }
-
         if (serverEvent is not T)
         {
             throw new RealtimeTranslationException(RealtimeTranslationErrorKind.InvalidMessage);
@@ -435,9 +458,14 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                     break;
 
                 case RealtimeSourceTranscriptionServerEvent.ServerError error:
-                    var streamError = new RealtimeTranslationServerEvent.ServerError(error.Message, error.Code);
-                    var termination = EventDeliveryState.Classify(streamError);
-                    deliveryState.TryRecordTermination(termination.Termination, termination.SanitizedMessage);
+                    var streamError = error.ToStreamError();
+                    var classification = error.Classification;
+                    if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                    {
+                        break;
+                    }
+
+                    deliveryState.TryRecordTermination(classification);
                     if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(
                         RealtimeTranslationLane.Source,
                         streamError,

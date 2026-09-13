@@ -473,7 +473,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                 lane: .translation(target),
                 event: .error(
                     message: UiCopy.text(messageKey),
-                    code: "transport"
+                    code: RealtimeServerErrorClassification.transportCode,
+                    errorType: nil
                 ),
                 epoch: connectionEpoch
             )

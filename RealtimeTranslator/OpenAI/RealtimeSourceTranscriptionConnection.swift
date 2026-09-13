@@ -25,7 +25,7 @@ actor RealtimeSourceTranscriptionConnection {
     init(
         transport: any RealtimeWebSocketTransport = URLSessionWebSocketTransport(),
         safetyIdentifier: String,
-        handshakeTimeoutNanoseconds: UInt64 = 15_000_000_000,
+        handshakeTimeoutNanoseconds: UInt64 = RealtimeTranslationConnection.defaultHandshakeTimeoutNanoseconds,
         closeTimeoutNanoseconds: UInt64 = 5_000_000_000
     ) {
         self.transport = transport
@@ -64,18 +64,18 @@ actor RealtimeSourceTranscriptionConnection {
                     "OpenAI-Safety-Identifier": safetyIdentifier,
                 ]
             )
-            let created = try await receiveJSON(timeoutNanoseconds: handshakeTimeoutNanoseconds)
+            let created = try await receiveHandshakeJSON(timeoutNanoseconds: handshakeTimeoutNanoseconds)
             guard created["type"] as? String == "session.created" else {
-                throw classifyError(created)
+                throw RealtimeTranslationError.invalidMessage
             }
 
             connectedNoiseReduction = tuning.noiseReduction
             languagePair = pair
             try await sendJSON(makeSessionUpdatePayload(tuning: tuning, pair: pair))
 
-            let updated = try await receiveJSON(timeoutNanoseconds: handshakeTimeoutNanoseconds)
+            let updated = try await receiveHandshakeJSON(timeoutNanoseconds: handshakeTimeoutNanoseconds)
             guard updated["type"] as? String == "session.updated" else {
-                throw classifyError(updated)
+                throw RealtimeTranslationError.invalidMessage
             }
             guard currentEpoch == epoch else {
                 throw RealtimeTranslationError.cancelled
@@ -177,22 +177,24 @@ actor RealtimeSourceTranscriptionConnection {
                     case "conversation.item.input_audio_transcription.completed":
                         didReceiveCompleted = true
                     case "error":
-                        let body = object["error"] as? [String: Any]
-                        let code = body?["code"] as? String
-                        let error = classifyError(object)
-                        let message = error.localizedDescription
-                        deliveryYielder?.deliveryState.tryRecordTermination(
-                            EventDeliveryState.classify(
-                                code: code,
-                                message: message
-                            )
+                        let serverError = Self.serverError(object)
+                        let classification = EventDeliveryState.classify(
+                            errorType: serverError.errorType,
+                            code: serverError.code,
+                            message: serverError.message
                         )
+                        // keepAlive は接続も stream もそのまま。termination も下流イベントも出さない。
+                        if classification.disposition == .keepAlive {
+                            continue
+                        }
+                        deliveryYielder?.deliveryState.tryRecordTermination(classification)
                         guard deliveryYielder?.deliver(
                             RealtimeTranslationStreamEvent(
                                 lane: .source,
                                 event: .error(
-                                    message: message,
-                                    code: "transcription"
+                                    message: serverError.message,
+                                    code: serverError.code,
+                                    errorType: serverError.errorType
                                 ),
                                 epoch: currentEpoch
                             )
@@ -210,7 +212,8 @@ actor RealtimeSourceTranscriptionConnection {
                             lane: .source,
                             event: .error(
                                 message: UiCopy.text("error.sourceDisconnected"),
-                                code: "transport"
+                                code: RealtimeServerErrorClassification.transportCode,
+                                errorType: nil
                             ),
                             epoch: currentEpoch
                         )
@@ -307,14 +310,39 @@ actor RealtimeSourceTranscriptionConnection {
         return object
     }
 
-    private func classifyError(_ object: [String: Any]) -> RealtimeTranslationError {
+    /// handshake 中の error も翻訳接続と同じ分類で扱う。keepAlive は読み飛ばして次を待つ。
+    /// 期限は handshake 1 段あたり 1 つ（keep-alive で延長しない）。
+    private func receiveHandshakeJSON(timeoutNanoseconds: UInt64) async throws -> [String: Any] {
+        let deadline = ContinuousClock.now + .nanoseconds(Int64(timeoutNanoseconds))
+        while true {
+            let remaining = ContinuousClock.now.duration(to: deadline)
+            guard remaining > .zero else {
+                throw RealtimeTranslationError.sessionUpdateTimeout
+            }
+            let object = try await receiveJSON(
+                timeoutNanoseconds: UInt64(ReconnectBudget.nanoseconds(remaining))
+            )
+            guard object["type"] as? String == "error" else {
+                return object
+            }
+            let serverError = Self.serverError(object)
+            let classification = RealtimeServerErrorClassification.classify(
+                errorType: serverError.errorType,
+                code: serverError.code,
+                message: serverError.message
+            )
+            if classification.disposition == .keepAlive {
+                continue
+            }
+            throw classification.makeError()
+        }
+    }
+
+    /// `error.code` / `error.type` は原文接続固有の値へ置き換えず、サーバーの値をそのまま保持する。
+    static func serverError(_ object: [String: Any]) -> (message: String, code: String?, errorType: String?) {
         let body = object["error"] as? [String: Any]
         let message = body?["message"] as? String ?? UiCopy.text("error.sourceSessionGeneric")
-        let code = body?["code"] as? String
-        if RealtimeTranslationError.isAuthenticationFailure(code: code, message: message) {
-            return .authenticationFailed
-        }
-        return .fatalServerError(RealtimeTranslationError.sanitizedServerMessage(message))
+        return (message, body?["code"] as? String, body?["type"] as? String)
     }
 
     private func recreateEventStream() {

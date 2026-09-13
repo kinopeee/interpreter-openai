@@ -19,6 +19,7 @@ public enum EventDeliveryTermination
 {
     None = 0,
     TransportFailure,
+    RecoverableServerError,
     ReceiveOverflow,
     FatalServerError,
     AuthenticationFailed,
@@ -168,31 +169,25 @@ public sealed class EventDeliveryState
                     message),
             EventDeliveryTermination.ReceiveOverflow =>
                 new RealtimeTranslationException(RealtimeTranslationErrorKind.ReceiveOverflow),
+            EventDeliveryTermination.RecoverableServerError =>
+                new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableServerError),
             EventDeliveryTermination.TransportFailure =>
                 new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableTransportFailure),
             _ => throw new InvalidOperationException("Event delivery has no termination."),
         };
     }
 
-    public static (EventDeliveryTermination Termination, string? SanitizedMessage) Classify(
+    public static RealtimeServerErrorClassification Classify(
         RealtimeTranslationServerEvent.ServerError error)
     {
         ArgumentNullException.ThrowIfNull(error);
-
-        if (error.Code == DualRealtimeTranslationClient.TransportErrorCode)
-        {
-            return (EventDeliveryTermination.TransportFailure, null);
-        }
-
-        if (RealtimeTranslationException.IsAuthenticationFailure(error.Code, error.Message))
-        {
-            return (EventDeliveryTermination.AuthenticationFailed, null);
-        }
-
-        return (
-            EventDeliveryTermination.FatalServerError,
-            RealtimeTranslationException.SanitizeServerMessage(error.Message));
+        return RealtimeServerErrorClassification.Classify(error.ErrorType, error.Code, error.Message);
     }
+
+    /// <summary>分類結果を記録する。接続維持なら何も記録せず false。</summary>
+    public bool TryRecordTermination(RealtimeServerErrorClassification classification) =>
+        classification.Disposition != RealtimeServerErrorDisposition.KeepAlive
+        && TryRecordTermination(classification.Termination, classification.SanitizedMessage);
 }
 
 internal sealed class EventDeliveryWriter

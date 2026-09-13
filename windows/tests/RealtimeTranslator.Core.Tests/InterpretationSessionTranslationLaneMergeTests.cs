@@ -33,7 +33,7 @@ public sealed class InterpretationSessionTranslationLaneMergeTests
         Assert.Equal(1, english.ConnectCount);
 
         english.EnqueueJson(
-            """{"type":"error","error":{"message":"Provider echo included sk-lane-secret","code":"server_error"}}""");
+            """{"type":"error","error":{"message":"Provider echo included sk-lane-secret","code":"upstream_failure"}}""");
 
         await WaitUntilAsync(() => session.State == TranslationState.Error);
         await WaitUntilAsync(() => message is not null);

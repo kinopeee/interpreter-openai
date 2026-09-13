@@ -118,7 +118,8 @@ enum RealtimeTranslationServerEvent: Sendable, Equatable {
     case outputTranscriptDelta(delta: String, eventID: String?, elapsedMs: Int?)
     case outputAudioDelta
     case sessionClosed
-    case error(message: String, code: String?)
+    /// `error.code` と `error.type` は別々に保持し、分類は許可リストだけで行う。
+    case error(message: String, code: String?, errorType: String?)
     case unknown(type: String)
 }
 
@@ -137,6 +138,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, Custo
     case invalidMessage
     case authenticationFailed
     case fatalServerError(SanitizedMessage)
+    case recoverableServerError
     case receiveOverflow
     case recoverableTransportFailure(String)
     case sessionUpdateTimeout
@@ -184,6 +186,8 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, Custo
             return copy.text("error.authenticationFailed")
         case .fatalServerError(let message):
             return message.value
+        case .recoverableServerError:
+            return copy.text("error.recoverableServer")
         case .receiveOverflow:
             return copy.text("error.receiveOverflow")
         case .recoverableTransportFailure:
@@ -199,7 +203,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, Custo
 
     var isRecoverable: Bool {
         switch self {
-        case .recoverableTransportFailure, .receiveOverflow, .sessionUpdateTimeout:
+        case .recoverableTransportFailure, .recoverableServerError, .receiveOverflow, .sessionUpdateTimeout:
             return true
         case .missingAPIKey, .notConnected, .invalidMessage, .authenticationFailed,
             .fatalServerError, .closeTimeout, .cancelled:

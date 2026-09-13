@@ -134,6 +134,7 @@ public sealed class ReceiveOverflowFixtureTests
             "authenticationFailed" => EventDeliveryTermination.AuthenticationFailed,
             "fatalServerError" => EventDeliveryTermination.FatalServerError,
             "receiveOverflow" => EventDeliveryTermination.ReceiveOverflow,
+            "recoverableServerError" => EventDeliveryTermination.RecoverableServerError,
             "transportFailure" => EventDeliveryTermination.TransportFailure,
             _ => throw new Xunit.Sdk.XunitException("unknown termination"),
         };

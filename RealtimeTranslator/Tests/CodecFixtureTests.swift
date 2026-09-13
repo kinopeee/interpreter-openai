@@ -48,11 +48,12 @@ final class CodecFixtureTests: XCTestCase {
                 }
                 assertDelta(expected, delta: delta, eventID: eventID, elapsedMs: elapsedMs)
             case "error":
-                guard case .error(let message, let code) = actual else {
+                guard case .error(let message, let code, let errorType) = actual else {
                     return XCTFail("expected error")
                 }
                 XCTAssertEqual(SharedFixtures.text(expected["message"]), message)
                 XCTAssertEqual(SharedFixtures.optionalText(expected["code"]), code)
+                XCTAssertEqual(SharedFixtures.optionalText(expected["errorType"]), errorType)
             case "unknown":
                 guard case .unknown(let type) = actual else {
                     return XCTFail("expected unknown")
@@ -210,7 +211,7 @@ final class CodecFixtureTests: XCTestCase {
 
             case "error":
                 let event = try await waitForEvent(box)
-                guard case .error(let message, let code) = event.event else {
+                guard case .error(let message, let code, let errorType) = event.event else {
                     XCTFail("expected error for \(name)")
                     collector.cancel()
                     await connection.forceClose()
@@ -218,6 +219,7 @@ final class CodecFixtureTests: XCTestCase {
                 }
                 XCTAssertEqual(SharedFixtures.text(expected["message"]), message, name)
                 XCTAssertEqual(SharedFixtures.optionalText(expected["code"]), code, name)
+                XCTAssertEqual(SharedFixtures.optionalText(expected["errorType"]), errorType, name)
 
             default:
                 XCTFail("unhandled transcription decode kind \(kind)")

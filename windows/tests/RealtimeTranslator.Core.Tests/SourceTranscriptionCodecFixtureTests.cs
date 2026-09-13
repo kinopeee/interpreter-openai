@@ -86,6 +86,7 @@ public sealed class SourceTranscriptionCodecFixtureTests
                 var typed = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
                 Assert.Equal(SharedFixtures.Text(expected["message"]), typed.Message);
                 Assert.Equal(SharedFixtures.OptionalText(expected["code"]), typed.Code);
+                Assert.Equal(SharedFixtures.OptionalText(expected["errorType"]), typed.ErrorType);
                 break;
             }
 
@@ -107,7 +108,7 @@ public sealed class SourceTranscriptionCodecFixtureTests
         var actual = RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8);
         var error = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
 
-        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Equal("invalid_api_key", error.Code);
         Assert.Equal("OpenAI APIキーが無効です", error.Message);
         Assert.DoesNotContain("sk-codec-xyz", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
@@ -120,7 +121,7 @@ public sealed class SourceTranscriptionCodecFixtureTests
     public void FatalRuntimeErrorIsTaggedTranscriptionAndRedactsKeyMaterial()
     {
         var utf8 = Encoding.UTF8.GetBytes(
-            """{"type":"error","error":{"message":"upstream echo sk-codec-fatal","code":"server_error"}}""");
+            """{"type":"error","error":{"message":"upstream echo sk-codec-fatal","code":"upstream_failure"}}""");
 
         var classified = RealtimeSourceTranscriptionCodec.ClassifyError(
             JsonNode.Parse(utf8)!.AsObject());
@@ -129,7 +130,7 @@ public sealed class SourceTranscriptionCodecFixtureTests
 
         Assert.Equal(RealtimeTranslationErrorKind.FatalServerError, classified.Kind);
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, classified.Message);
-        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Equal("upstream_failure", error.Code);
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
         Assert.DoesNotContain("sk-codec-fatal", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);

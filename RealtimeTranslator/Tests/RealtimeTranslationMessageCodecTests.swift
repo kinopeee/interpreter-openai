@@ -135,7 +135,7 @@ final class RealtimeTranslationMessageCodecTests: XCTestCase {
             (#"{"type":"session.closed"}"#, .sessionClosed),
             (
                 #"{"type":"error","error":{"message":"bad key","code":"invalid_api_key"}}"#,
-                .error(message: "bad key", code: "invalid_api_key")
+                .error(message: "bad key", code: "invalid_api_key", errorType: nil)
             ),
         ]
 

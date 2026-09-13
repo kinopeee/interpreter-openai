@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Realtime;
 using Xunit;
@@ -2256,14 +2257,48 @@ public sealed class InterpretationSessionTests
         Assert.Equal("Complete pair before max reconnect", finalized.TranslatedText);
     }
 
-    // Given: Listening 中に transport error が起きても毎回再接続に成功する
-    // When: 上限回数を超えても成功回復を繰り返す
-    // Then: 成功接続で試行カウンタがリセットされ、Error に落ちない
+    // Given: Listening 中に transport error が起きるたび再接続には成功するが、Listening が安定期間（30s）に届かない
+    // When: 上限回数を超えて失敗を繰り返す
+    // Then: 短い Listening では試行カウンタがリセットされず、上限で error.reconnectLimit に落ちる
     [Fact]
-    public async Task SuccessfulReconnectResetsAttemptCounterBeforeLimit()
+    public async Task ShortListeningDoesNotResetAttemptCounter()
     {
         var client = new FakeDualClient();
-        using var session = NewSession(client);
+        var clock = new MonotonicClock();
+        using var session = NewSession(client, timeProvider: clock);
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var expectedStarts = 1;
+        for (var index = 0; index < InterpretationSession.MaxReconnectAttempts; index += 1)
+        {
+            clock.Advance(TimeSpan.FromSeconds(5));
+            client.PublishTransportError();
+            expectedStarts += 1;
+            await WaitUntilAsync(() =>
+                client.StartCount >= expectedStarts && session.State == TranslationState.Listening);
+        }
+
+        clock.Advance(TimeSpan.FromSeconds(5));
+        client.PublishTransportError();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        Assert.Equal(expectedStarts, client.StartCount);
+        Assert.Equal(UserCopy.Current.Text("error.reconnectLimit"), message);
+    }
+
+    // Given: 再接続後の Listening が安定期間（30s）以上続く
+    // When: 上限回数を超えて失敗を繰り返す
+    // Then: 安定運転後の失敗で試行カウンタと予算がリセットされ、Error に落ちない
+    [Fact]
+    public async Task StableListeningResetsAttemptCounterBeforeLimit()
+    {
+        var client = new FakeDualClient();
+        var clock = new MonotonicClock();
+        using var session = NewSession(client, timeProvider: clock);
         string? message = null;
         session.MessageEncountered += (_, value) => message = value;
 
@@ -2273,6 +2308,7 @@ public sealed class InterpretationSessionTests
         var expectedStarts = 1;
         for (var index = 0; index < InterpretationSession.MaxReconnectAttempts + 1; index += 1)
         {
+            clock.Advance(ReconnectPolicy.Default.StablePeriod);
             client.PublishTransportError();
             expectedStarts += 1;
             await WaitUntilAsync(() =>
@@ -2285,6 +2321,65 @@ public sealed class InterpretationSessionTests
         Assert.Null(message);
         await session.StopAsync();
         Assert.Equal(TranslationState.Idle, session.State);
+    }
+
+    // Given: 総予算 10s・安定期間 30s の policy と、再接続には成功するが短時間で落ち続ける接続
+    // When: 連続障害の開始から 10s を超えて再び失敗する
+    // Then: 試行回数が上限前でも error.reconnectBudgetExhausted で停止する
+    [Fact]
+    public async Task TotalBudgetExhaustionStopsBeforeAttemptLimit()
+    {
+        var client = new FakeDualClient();
+        var clock = new MonotonicClock();
+        var policy = ReconnectPolicy.Default with { TotalBudget = TimeSpan.FromSeconds(10) };
+        using var session = NewSession(client, timeProvider: clock, reconnectPolicy: policy);
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishTransportError();
+        await WaitUntilAsync(() => client.StartCount >= 2 && session.State == TranslationState.Listening);
+
+        clock.Advance(TimeSpan.FromSeconds(11));
+        client.PublishTransportError();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        Assert.Equal(2, client.StartCount);
+        Assert.Equal(UserCopy.Current.Text("error.reconnectBudgetExhausted"), message);
+    }
+
+    // Given: 壁時計だけが大きく進む（NTP 補正やスリープ復帰）
+    // When: 単調クロックは進めずに失敗を繰り返す
+    // Then: 壁時計は予算にも安定期間にも影響せず、既定の回数だけ再接続してから上限に落ちる
+    [Fact]
+    public async Task WallClockJumpDoesNotAffectReconnectBudget()
+    {
+        var client = new FakeDualClient();
+        var clock = new MonotonicClock();
+        var policy = ReconnectPolicy.Default with { TotalBudget = TimeSpan.FromSeconds(10) };
+        using var session = NewSession(client, timeProvider: clock, reconnectPolicy: policy);
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var expectedStarts = 1;
+        for (var index = 0; index < InterpretationSession.MaxReconnectAttempts; index += 1)
+        {
+            clock.AdvanceWallClockOnly(TimeSpan.FromHours(1));
+            client.PublishTransportError();
+            expectedStarts += 1;
+            await WaitUntilAsync(() =>
+                client.StartCount >= expectedStarts && session.State == TranslationState.Listening);
+        }
+
+        clock.AdvanceWallClockOnly(TimeSpan.FromHours(1));
+        client.PublishTransportError();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+        Assert.Equal(UserCopy.Current.Text("error.reconnectLimit"), message);
     }
 
     // Given: 初回 target 選択が recoverable 例外になる dual
@@ -3065,13 +3160,66 @@ public sealed class InterpretationSessionTests
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
-        client.PublishServerError("Provider echo included sk-should-not-appear", "server_error");
+        client.PublishServerError("Provider echo included sk-should-not-appear", "upstream_failure");
         await WaitUntilAsync(() => session.State == TranslationState.Error);
         await WaitUntilAsync(() => message is not null);
 
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, message);
         Assert.DoesNotContain("sk-", message, StringComparison.Ordinal);
         Assert.Equal(1, client.StartCount);
+    }
+
+    // Given: Listening 中のセッション
+    // When: 接続維持に分類される error（input_audio_buffer_commit_empty）が届く
+    // Then: 録音は止まらず、再接続も Error も起きない
+    [Fact]
+    public async Task KeepAliveServerErrorDoesNotStopListening()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishServerError("buffer is empty", "input_audio_buffer_commit_empty");
+        client.PublishSourceDelta("こんにちは");
+        await WaitUntilAsync(() => session.RoutingSourceTextLengthForTests > 0);
+
+        Assert.Equal(TranslationState.Listening, session.State);
+        Assert.Equal(1, client.StartCount);
+        Assert.Null(message);
+        await session.StopAsync();
+        Assert.Equal(TranslationState.Idle, session.State);
+    }
+
+    // Given: Listening 中のセッション
+    // When: 回復候補に分類される error（server_error）が届く
+    // Then: Error にせず 1 回だけ再接続し、鍵断片を含む文言は出さない
+    [Fact]
+    public async Task RecoverableServerErrorReconnectsOnceWithoutLeakingMessage()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        string? message = null;
+        session.MessageEncountered += (_, value) => message = value;
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishServerError("upstream echo sk-should-not-appear", "server_error");
+        await WaitUntilAsync(() => client.StartCount >= 2 && session.State == TranslationState.Listening);
+
+        Assert.Equal(2, client.StartCount);
+        Assert.NotEqual(TranslationState.Error, session.State);
+        if (message is not null)
+        {
+            Assert.DoesNotContain("sk-", message, StringComparison.Ordinal);
+        }
+
+        await session.StopAsync();
+        Assert.Equal(TranslationState.Idle, session.State);
     }
 
     // Given: Listening 中のセッション
@@ -3143,15 +3291,20 @@ public sealed class InterpretationSessionTests
         Func<RealtimeSessionTuning>? tuningProvider = null,
         FakeAudioCapture? audio = null,
         Func<LanguagePair>? languagePairProvider = null,
-        TimeSpan? initialReconnectDelay = null) =>
+        TimeSpan? initialReconnectDelay = null,
+        TimeProvider? timeProvider = null,
+        ReconnectPolicy? reconnectPolicy = null) =>
         new(
             new FakeApiKeyStore(apiKey),
             audio ?? new FakeAudioCapture(),
             client,
             tuningProvider,
+            timeProvider: timeProvider,
             initialReconnectDelay: initialReconnectDelay ?? TimeSpan.FromMilliseconds(1),
             tickInterval: TimeSpan.FromMilliseconds(20),
-            languagePairProvider: languagePairProvider);
+            languagePairProvider: languagePairProvider,
+            reconnectPolicy: reconnectPolicy,
+            reconnectJitter: _ => TimeSpan.Zero);
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {

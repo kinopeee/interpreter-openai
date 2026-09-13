@@ -202,7 +202,8 @@
           "properties": {
             "kind": { "const": "error" },
             "message": { "type": "string" },
-            "code": { "type": ["string", "null"] }
+            "code": { "type": ["string", "null"] },
+            "errorType": { "type": ["string", "null"] }
           }
         }
       ]
@@ -244,7 +245,8 @@
           "properties": {
             "kind": { "const": "error" },
             "message": { "type": "string" },
-            "code": { "type": ["string", "null"] }
+            "code": { "type": ["string", "null"] },
+            "errorType": { "type": ["string", "null"] }
           }
         },
         {

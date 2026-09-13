@@ -168,9 +168,14 @@
       "expected": { "kind": "error", "message": "boom", "code": "server_error" }
     },
     {
-      "name": "error falls back to error.type when code is absent",
+      "name": "error keeps error.type separately when code is absent",
       "json": "{\"type\":\"error\",\"error\":{\"message\":\"boom\",\"type\":\"invalid_request_error\"}}",
-      "expected": { "kind": "error", "message": "boom", "code": "invalid_request_error" }
+      "expected": { "kind": "error", "message": "boom", "code": null, "errorType": "invalid_request_error" }
+    },
+    {
+      "name": "error keeps both error.type and error.code",
+      "json": "{\"type\":\"error\",\"error\":{\"message\":\"boom\",\"type\":\"invalid_request_error\",\"code\":\"unknown_parameter\"}}",
+      "expected": { "kind": "error", "message": "boom", "code": "unknown_parameter", "errorType": "invalid_request_error" }
     },
     {
       "name": "error falls back to top level message",
@@ -322,9 +327,14 @@
       "expected": { "kind": "transcriptionCompleted" }
     },
     {
-      "name": "transcription errors are tagged with the transcription code",
+      "name": "transcription errors keep the original server code",
       "json": "{\"type\":\"error\",\"error\":{\"message\":\"boom\",\"code\":\"server_error\"}}",
-      "expected": { "kind": "error", "message": "boom", "code": "transcription" }
+      "expected": { "kind": "error", "message": "boom", "code": "server_error", "errorType": null }
+    },
+    {
+      "name": "transcription errors keep error.type when code is absent",
+      "json": "{\"type\":\"error\",\"error\":{\"message\":\"boom\",\"type\":\"server_error\"}}",
+      "expected": { "kind": "error", "message": "boom", "code": null, "errorType": "server_error" }
     },
     {
       "name": "translation event names are not understood here",

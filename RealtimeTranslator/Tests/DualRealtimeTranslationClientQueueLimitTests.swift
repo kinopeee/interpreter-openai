@@ -77,7 +77,7 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
                 let epoch = await harness.dual.connectionEpoch
                 XCTAssertEqual(error.epoch, epoch)
                 XCTAssertEqual(error.lane, .translation(.english))
-                guard case .error(let message, let code) = error.event else {
+                guard case .error(let message, let code, _) = error.event else {
                     XCTFail("expected transport error")
                     await harness.forceClose()
                     continue
@@ -205,7 +205,7 @@ final class DualRealtimeTranslationClientQueueLimitTests: XCTestCase {
         XCTAssertEqual(errors, 1)
         XCTAssertTrue(halted)
         XCTAssertEqual(error.epoch, epoch)
-        guard case .error(let message, let code) = error.event else {
+        guard case .error(let message, let code, _) = error.event else {
             XCTFail("expected transport error")
             await harness.forceClose()
             return
@@ -766,7 +766,7 @@ private actor QueueEventCollector {
 
     func transportErrors() -> [RealtimeTranslationStreamEvent] {
         events.filter {
-            guard case .error(_, let code) = $0.event else { return false }
+            guard case .error(_, let code, _) = $0.event else { return false }
             return code == "transport"
         }
     }

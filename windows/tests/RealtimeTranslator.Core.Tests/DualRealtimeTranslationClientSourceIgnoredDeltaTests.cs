@@ -87,7 +87,7 @@ public sealed class DualRealtimeTranslationClientSourceIgnoredDeltaTests
             error = streamEvent.Event as RealtimeTranslationServerEvent.ServerError;
         }
 
-        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Null(error.Code);
         Assert.Equal(UserCopy.Current.Text("error.sourceSessionGeneric"), error.Message);
 
         source.EnqueueJson(

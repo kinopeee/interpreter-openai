@@ -247,6 +247,7 @@ public sealed class PrivacyFixtureTests
          "fatalServerError" => RealtimeTranslationErrorKind.FatalServerError,
          "recoverableTransportFailure" => RealtimeTranslationErrorKind.RecoverableTransportFailure,
          "receiveOverflow" => RealtimeTranslationErrorKind.ReceiveOverflow,
+         "recoverableServerError" => RealtimeTranslationErrorKind.RecoverableServerError,
         "sessionUpdateTimeout" => RealtimeTranslationErrorKind.SessionUpdateTimeout,
         "closeTimeout" => RealtimeTranslationErrorKind.CloseTimeout,
         "cancelled" => RealtimeTranslationErrorKind.Cancelled,

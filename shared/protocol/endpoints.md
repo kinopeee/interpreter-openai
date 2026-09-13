@@ -53,10 +53,25 @@ WebSocket を同時に張る。翻訳側 target は pair の2言語である。
 | `session.output_transcript.delta` | OutputTranscriptDelta | 同上 |
 | `session.output_audio.delta` | OutputAudioDelta | **payload をデコードしない**マーカー |
 | `session.closed` | SessionClosed | |
-| `error` | Error | `error.message` / `error.code`（`error.type` へフォールバック） |
+| `error` | Error | `error.message` / `error.code` / `error.type` を**別々に**保持する（フォールバック合成はしない） |
 | 上記以外 | Unknown(type) | 型名だけ保持して無視する |
 
 不正 JSON は `InvalidMessage` エラーとして扱う（接続は再接続対象）。
+
+### サーバー `error` の分類
+
+翻訳接続・原文接続とも同じ分類器を使い、`error.type` と `error.code` を許可リストで照合する
+（正本: `shared/fixtures/v1/server-error.json`）。サーバーが送る文字列を分類名として信用しない。
+
+| disposition | 条件 | 挙動 |
+|---|---|---|
+| keepAlive | `code` が `input_audio_buffer_commit_empty` | 接続維持。termination を記録せず、下流へも流さない |
+| recover | `code` が `server_error` / `rate_limit_exceeded` / `session_expired`、または `type` が `server_error` / `rate_limit_error` | `recoverableServerError` として既存の再接続へ倒す |
+| halt（認証） | 既存の認証判定（`invalid_api_key` 等） | `authenticationFailed`。再接続しない |
+| halt（致命） | `insufficient_quota` / `billing_hard_limit_reached`、および許可リスト外すべて | `fatalServerError`。文言は鍵・Authorization を伏せた正規化文言だけ |
+
+終了理由の優先順位は `authenticationFailed > fatalServerError > receiveOverflow > recoverableServerError > transportFailure`。
+handshake 中の `error` も同じ分類で扱い、keepAlive は読み飛ばして handshake を続ける。
 
 翻訳接続の `session.input_transcript.delta` は原文 authority として使わない。
 字幕の原文は下の transcription 接続だけを正とする。
@@ -108,7 +123,7 @@ WebSocket を同時に張る。翻訳側 target は pair の2言語である。
 | `session.created` / `session.updated` | handshake 判定 |
 | `conversation.item.input_audio_transcription.delta` | 原文 delta。`delta` が空なら捨てる。`event_id` を重複排除に使い、`item_id` は使わない（同一 turn で共通のため） |
 | `conversation.item.input_audio_transcription.completed` | commit 完了マーカー。close 待ちの解除に使う |
-| `error` | 認証判定後、正規化した文言を流す |
+| `error` | 翻訳接続と同じ分類器で扱う。`code` / `type` は原文接続固有の値へ置き換えない |
 | 上記以外 | 無視 |
 
 原文イベントの lane は `source` であり、translation target を source の識別子に流用しない。
@@ -122,9 +137,20 @@ WebSocket を同時に張る。翻訳側 target は pair の2言語である。
 | `session.close` → `session.closed` 待ち | 15s |
 | WebSocket `send` | 5s |
 | transcription の commit → completed 待ち | 5s |
-| 再接続リトライ回数 | 最大 5 回 |
-| 再接続 backoff | 500ms 指数 + jitter 250ms |
+| 再接続リトライ回数 | 最大 5 回（`error.reconnectLimit`） |
+| 再接続 backoff | 500ms × 2^(attempt-1)、上限 8s、+ jitter 0–250ms |
+| 再接続の総予算 | 連続障害の開始から 120s（`error.reconnectBudgetExhausted`） |
+| attempt / 予算のリセット | Listening を 30s 以上維持したあとの失敗だけ |
 | 翻訳送信の連続失敗で epoch 更新 | 3 回 |
 
 いずれかの接続が壊れたら 3 本すべてを再接続し、言語判定をリセットする。
 古い epoch の delta は画面へ反映しない。
+
+### 再接続予算（`shared/fixtures/v1/reconnect.json` が正本）
+
+- 経過時間は単調クロック（macOS `ContinuousClock` / Windows `TimeProvider.GetTimestamp`）で測る。壁時計の変化は影響しない。
+- 1 回の接続試行の上限は handshake タイムアウト（15s）で、backoff・総予算とは独立に数える。
+- 失敗のたびに attempt を増やし backoff だけ待つ。attempt が 5 を超えたら `error.reconnectLimit`。
+- 連続障害の開始は「最後に Listening を失った失敗」の時刻。失敗時点でそこからの経過が 120s 以上なら `error.reconnectBudgetExhausted`。総予算は attempt 上限より先に判定する。
+- Listening に入っただけでは attempt / 予算をリセットしない。短時間で再度落ちる接続を「復旧」と数えないため、Listening を 30s 以上維持したあとの失敗だけが attempt=0・予算開始を作り直す。
+- ユーザーの Stop は backoff 待機中でも即時に受け付け、待機後の再接続は走らない。

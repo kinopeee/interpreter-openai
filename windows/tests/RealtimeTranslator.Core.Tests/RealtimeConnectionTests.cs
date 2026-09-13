@@ -150,7 +150,7 @@ public sealed class RealtimeConnectionTests
     {
         var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
         transport.EnqueueJson(
-            """{"type":"error","error":{"message":"upstream echo sk-should-not-appear","code":"server_error"}}""");
+            """{"type":"error","error":{"message":"upstream echo sk-should-not-appear","code":"upstream_failure"}}""");
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
@@ -785,7 +785,7 @@ public sealed class RealtimeConnectionTests
     {
         var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
         transport.EnqueueJson(
-            """{"type":"error","error":{"message":"upstream echo sk-should-not-appear","code":"server_error"}}""");
+            """{"type":"error","error":{"message":"upstream echo sk-should-not-appear","code":"upstream_failure"}}""");
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
@@ -903,7 +903,7 @@ public sealed class RealtimeConnectionTests
         var streamEvent = await ReadOneAsync(connection.Events);
 
         var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(streamEvent.Event);
-        Assert.Equal(RealtimeSourceTranscriptionCodec.ErrorCode, error.Code);
+        Assert.Equal("invalid_api_key", error.Code);
         Assert.Equal("OpenAI APIキーが無効です", error.Message);
         Assert.DoesNotContain("sk-runtime-xyz", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);

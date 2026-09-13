@@ -137,6 +137,7 @@
     { "error": "recoverableTransportFailure", "isRecoverable": true },
     { "error": "sessionUpdateTimeout", "isRecoverable": true },
     { "error": "receiveOverflow", "isRecoverable": true },
+    { "error": "recoverableServerError", "isRecoverable": true },
     { "error": "missingAPIKey", "isRecoverable": false },
     { "error": "notConnected", "isRecoverable": false },
     { "error": "invalidMessage", "isRecoverable": false },

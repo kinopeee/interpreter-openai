@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v1/schema/server-error.schema.json",
+  "title": "Server error classification contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "version",
+    "description",
+    "dispositions",
+    "terminationPrecedence",
+    "allowlists",
+    "recoverableServerError",
+    "cases"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "dispositions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keepAlive", "recover", "halt"],
+      "properties": {
+        "keepAlive": { "type": "string" },
+        "recover": { "type": "string" },
+        "halt": { "type": "string" }
+      }
+    },
+    "terminationPrecedence": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "authenticationFailed",
+          "fatalServerError",
+          "receiveOverflow",
+          "recoverableServerError",
+          "transportFailure"
+        ]
+      }
+    },
+    "allowlists": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transportCode", "keepAliveCodes", "haltCodes", "recoverCodes", "recoverTypes"],
+      "properties": {
+        "transportCode": { "const": "transport" },
+        "keepAliveCodes": { "$ref": "#/$defs/codeList" },
+        "haltCodes": { "$ref": "#/$defs/codeList" },
+        "recoverCodes": { "$ref": "#/$defs/codeList" },
+        "recoverTypes": { "$ref": "#/$defs/codeList" }
+      }
+    },
+    "recoverableServerError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["errorKind", "errorMessageKey", "isRecoverable"],
+      "properties": {
+        "errorKind": { "const": "recoverableServerError" },
+        "errorMessageKey": { "type": "string" },
+        "isRecoverable": { "const": true }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "errorType", "code", "message", "expected"],
+        "properties": {
+          "name": { "type": "string" },
+          "errorType": { "type": ["string", "null"] },
+          "code": { "type": ["string", "null"] },
+          "message": { "type": "string" },
+          "expected": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["disposition", "termination"],
+            "properties": {
+              "disposition": { "type": "string", "enum": ["keepAlive", "recover", "halt"] },
+              "termination": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "authenticationFailed",
+                  "fatalServerError",
+                  "recoverableServerError",
+                  "transportFailure"
+                ]
+              },
+              "sanitizedMessage": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "codeList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

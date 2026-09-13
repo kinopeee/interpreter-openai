@@ -196,9 +196,11 @@ final class EventDeliveryStateTests: XCTestCase {
         XCTAssertEqual(state.makeError(), .authenticationFailed)
 
         let fatal = EventDeliveryState.classify(
-            code: "server_error",
+            errorType: nil,
+            code: "upstream_failure",
             message: "bearer sk-secret must not escape"
         )
-        XCTAssertEqual(fatal, .fatalServerError(RealtimeTranslationError.genericServerMessage))
+        XCTAssertEqual(fatal.disposition, .halt)
+        XCTAssertEqual(fatal.termination, .fatalServerError(RealtimeTranslationError.genericServerMessage))
     }
 }

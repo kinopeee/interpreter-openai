@@ -63,7 +63,9 @@ public abstract record RealtimeTranslationServerEvent
 
     public sealed record SessionClosed : RealtimeTranslationServerEvent;
 
-    public sealed record ServerError(string Message, string? Code) : RealtimeTranslationServerEvent;
+    /// <summary><c>error.code</c> と <c>error.type</c> は別々に保持し、分類は許可リストだけで行う。</summary>
+    public sealed record ServerError(string Message, string? Code, string? ErrorType = null)
+        : RealtimeTranslationServerEvent;
 
     public sealed record Unknown(string Type) : RealtimeTranslationServerEvent;
 }

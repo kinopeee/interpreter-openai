@@ -13,6 +13,7 @@ public enum RealtimeTranslationErrorKind
     AuthenticationFailed,
     FatalServerError,
     RecoverableTransportFailure,
+    RecoverableServerError,
     ReceiveOverflow,
     SessionUpdateTimeout,
     CloseTimeout,
@@ -49,6 +50,7 @@ public sealed partial class RealtimeTranslationException : Exception
     public string? ServerMessage { get; }
 
     public bool IsRecoverable => Kind is RealtimeTranslationErrorKind.RecoverableTransportFailure
+        or RealtimeTranslationErrorKind.RecoverableServerError
         or RealtimeTranslationErrorKind.ReceiveOverflow
         or RealtimeTranslationErrorKind.SessionUpdateTimeout;
 
@@ -118,6 +120,7 @@ public sealed partial class RealtimeTranslationException : Exception
             RealtimeTranslationErrorKind.AuthenticationFailed => copy.Text("error.authenticationFailed"),
             RealtimeTranslationErrorKind.FatalServerError => SanitizeServerMessage(serverMessage ?? string.Empty),
             RealtimeTranslationErrorKind.RecoverableTransportFailure => copy.Text("error.transportDisconnected"),
+            RealtimeTranslationErrorKind.RecoverableServerError => copy.Text("error.recoverableServer"),
             RealtimeTranslationErrorKind.ReceiveOverflow => copy.Text("error.receiveOverflow"),
             RealtimeTranslationErrorKind.SessionUpdateTimeout => copy.Text("error.sessionUpdateTimeout"),
             RealtimeTranslationErrorKind.CloseTimeout => copy.Text("error.closeTimeout"),

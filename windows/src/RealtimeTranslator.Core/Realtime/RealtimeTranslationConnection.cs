@@ -12,6 +12,9 @@ namespace RealtimeTranslator.Core.Realtime;
 /// <summary>翻訳 target 1 つ分の Realtime 接続。1 target = 1 接続で混線させない。</summary>
 public sealed class RealtimeTranslationConnection : IDisposable
 {
+    /// <summary>1 回の接続試行（handshake）の上限。再接続予算とは独立に数える。</summary>
+    public static readonly TimeSpan DefaultHandshakeTimeout = TimeSpan.FromSeconds(15);
+
     public static readonly Uri EndpointUrl =
         new("wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate");
 
@@ -46,7 +49,7 @@ public sealed class RealtimeTranslationConnection : IDisposable
         _target = target;
         _transport = transport;
         _safetyIdentifier = safetyIdentifier;
-        _sessionUpdateTimeout = sessionUpdateTimeout ?? TimeSpan.FromSeconds(15);
+        _sessionUpdateTimeout = sessionUpdateTimeout ?? DefaultHandshakeTimeout;
         _closeTimeout = closeTimeout ?? TimeSpan.FromSeconds(15);
     }
 
@@ -128,14 +131,14 @@ public sealed class RealtimeTranslationConnection : IDisposable
                     cancellationToken).ConfigureAwait(false);
 
                 // handshake は共有 channel を消費せず transport から直接読む。
-                var created = await ReceiveDirectEventAsync(cancellationToken).ConfigureAwait(false);
+                var created = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
                 RequireHandshakeEvent<RealtimeTranslationServerEvent.SessionCreated>(created);
 
                 await SendAsync(
                     new RealtimeTranslationClientEvent.SessionUpdate(config),
                     cancellationToken).ConfigureAwait(false);
 
-                var updated = await ReceiveDirectEventAsync(cancellationToken).ConfigureAwait(false);
+                var updated = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
                 RequireHandshakeEvent<RealtimeTranslationServerEvent.SessionUpdated>(updated);
 
                 lock (_sync)
@@ -311,10 +314,18 @@ public sealed class RealtimeTranslationConnection : IDisposable
     private Task SendAsync(RealtimeTranslationClientEvent clientEvent, CancellationToken cancellationToken) =>
         _transport.SendAsync(RealtimeTranslationMessageCodec.Encode(clientEvent), cancellationToken);
 
-    private async Task<RealtimeTranslationServerEvent> ReceiveDirectEventAsync(CancellationToken cancellationToken)
+    private async Task<RealtimeTranslationServerEvent> ReceiveDirectEventAsync(
+        CancellationToken cancellationToken,
+        TimeSpan? remaining = null)
     {
+        var budget = remaining ?? _sessionUpdateTimeout;
+        if (budget <= TimeSpan.Zero)
+        {
+            throw new RealtimeTranslationException(RealtimeTranslationErrorKind.SessionUpdateTimeout);
+        }
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_sessionUpdateTimeout);
+        timeout.CancelAfter(budget);
         byte[] data;
         try
         {
@@ -328,27 +339,37 @@ public sealed class RealtimeTranslationConnection : IDisposable
         return RealtimeTranslationMessageCodec.DecodeServerEvent(data);
     }
 
+    private async Task<RealtimeTranslationServerEvent> ReceiveHandshakeEventAsync(CancellationToken cancellationToken)
+    {
+        // handshake 中の接続維持エラーは読み飛ばして次のイベントを待つ。
+        // 期限は handshake 1 段あたり 1 つ（keep-alive で延長しない）。
+        var started = Stopwatch.GetTimestamp();
+        while (true)
+        {
+            var remaining = _sessionUpdateTimeout - Stopwatch.GetElapsedTime(started);
+            var serverEvent = await ReceiveDirectEventAsync(cancellationToken, remaining).ConfigureAwait(false);
+            if (serverEvent is RealtimeTranslationServerEvent.ServerError error)
+            {
+                var classification = EventDeliveryState.Classify(error);
+                if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                {
+                    continue;
+                }
+
+                throw classification.ToException();
+            }
+
+            return serverEvent;
+        }
+    }
+
     private static void RequireHandshakeEvent<T>(RealtimeTranslationServerEvent serverEvent)
         where T : RealtimeTranslationServerEvent
     {
-        if (serverEvent is RealtimeTranslationServerEvent.ServerError error)
-        {
-            throw ClassifyServerError(error);
-        }
-
         if (serverEvent is not T)
         {
             throw new RealtimeTranslationException(RealtimeTranslationErrorKind.InvalidMessage);
         }
-    }
-
-    private static RealtimeTranslationException ClassifyServerError(RealtimeTranslationServerEvent.ServerError error)
-    {
-        return RealtimeTranslationException.IsAuthenticationFailure(error.Code, error.Message)
-            ? new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed)
-            : new RealtimeTranslationException(
-                RealtimeTranslationErrorKind.FatalServerError,
-                RealtimeTranslationException.SanitizeServerMessage(error.Message));
     }
 
     private void StartReceiveLoop(int currentEpoch, EventDeliveryState deliveryState)
@@ -444,8 +465,14 @@ public sealed class RealtimeTranslationConnection : IDisposable
 
             if (serverEvent is RealtimeTranslationServerEvent.ServerError error)
             {
-                var termination = EventDeliveryState.Classify(error);
-                deliveryState.TryRecordTermination(termination.Termination, termination.SanitizedMessage);
+                // 接続維持エラーは termination も下流イベントも出さない。
+                var classification = EventDeliveryState.Classify(error);
+                if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                {
+                    continue;
+                }
+
+                deliveryState.TryRecordTermination(classification);
             }
 
             if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(_target, serverEvent, currentEpoch)))
