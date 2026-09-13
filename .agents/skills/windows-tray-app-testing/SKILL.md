@@ -7,15 +7,32 @@ description: How to build, launch and GUI-test the Windows WPF RealtimeTranslato
 
 ## Build
 
-The .NET SDK may be installed user-locally or at `C:\Program Files\dotnet` and
-not on PATH. Check both locations (and `%USERPROFILE%\dotnet` used by the
-blueprint), then set `DOTNET_ROOT` and prefix PATH with the directory found:
+The .NET SDK may be installed user-locally, under the user profile, or at
+`C:\Program Files\dotnet`, and may be absent from PATH. Detect an existing
+`dotnet.exe`, set `DOTNET_ROOT` to that directory, and prefix PATH with the
+same value. Reuse this block for both build and launch.
 
 ```powershell
-$env:PATH="$env:LOCALAPPDATA\Microsoft\dotnet;$env:PATH"
+$sdkCandidates = @(
+  "$env:LOCALAPPDATA\Microsoft\dotnet",
+  "$env:USERPROFILE\dotnet",
+  "${env:ProgramFiles}\dotnet"
+)
+$dotnetRoot = $sdkCandidates | Where-Object {
+  Test-Path -LiteralPath (Join-Path $_ 'dotnet.exe')
+} | Select-Object -First 1
+if (-not $dotnetRoot) {
+  throw 'dotnet.exe not found. Install SDK 10 (see windows/global.json).'
+}
+$env:DOTNET_ROOT = $dotnetRoot
+$env:PATH = "$dotnetRoot;$env:PATH"
+dotnet --info
 dotnet build windows/RealtimeTranslator.slnx -c Release
 dotnet test  windows/RealtimeTranslator.slnx -c Release
 ```
+
+`windows/global.json` pins SDK `10.0.100` with `rollForward: latestFeature`. If
+`dotnet --info` shows a different major, a different `dotnet.exe` won PATH.
 
 If restore fails with "No sources found", add nuget.org once:
 `dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org`
@@ -24,12 +41,12 @@ If restore fails with "No sources found", add nuget.org once:
 
 Output exe: `windows\src\RealtimeTranslator.App\bin\Release\net10.0-windows\RealtimeTranslator.App.exe`
 
-**Important:** if the SDK is user-local, launching the exe directly pops a
-"install .NET Desktop Runtime" dialog. Set `DOTNET_ROOT` first:
+**Important:** if the resolved SDK is user-local, launching the exe directly pops
+a "install .NET Desktop Runtime" dialog. Reuse the same `$dotnetRoot`:
 
 ```powershell
-$env:DOTNET_ROOT="$env:LOCALAPPDATA\Microsoft\dotnet"
-$env:PATH="$env:DOTNET_ROOT;$env:PATH"
+$env:DOTNET_ROOT = $dotnetRoot
+$env:PATH = "$dotnetRoot;$env:PATH"
 Start-Process "<path>\RealtimeTranslator.App.exe"
 ```
 
@@ -70,9 +87,17 @@ but the synchronous start-path side effects (e.g. writing the transcript session
 
 ## Preparing real audio capture on Windows VMs
 
-- Apply the blueprint's `Set-Service ... -StartupType Manual` for both
-  `AudioEndpointBuilder` and `Audiosrv` before starting them; disabled services
-  cannot be started. Apply microphone consent for desktop/NonPackaged apps.
+- Disabled audio services cannot be started. Set both to Manual, then start them:
+
+```powershell
+Set-Service AudioEndpointBuilder -StartupType Manual
+Set-Service Audiosrv -StartupType Manual
+Start-Service AudioEndpointBuilder
+Start-Service Audiosrv
+```
+
+- Then allow microphone access for desktop / NonPackaged apps (Settings →
+  Privacy & security → Microphone → "Let desktop apps access your microphone").
 - If `Get-PnpDevice -Class AudioEndpoint` returns no devices, use VB-Audio's
   official https://vb-audio.com/Cable/ installer. Extract the package and launch
   `VBCABLE_Setup_x64.exe` as administrator; click **Install Driver** and complete
@@ -91,8 +116,11 @@ but the synchronous start-path side effects (e.g. writing the transcript session
 - Local refusal can take several seconds per connect attempt on Windows, so
   elapsed runtime includes connection failures as well as exponential backoff.
   Do not mistake that overhead for a backoff-policy violation.
-- The real overlay exposes `StatusBannerTextBlock` as a UI Automation ID beneath
-  the `Realtime Translator subtitles` window. A read-only observer can timestamp
+- The overlay window title is `overlay.windowTitle` (`Realtime Translator
+  subtitles` / `Realtime Translator 字幕`). The status banner TextBlock is
+  named `StatusBannerTextBlock` in XAML but does **not** set
+  `AutomationProperties.AutomationId`. Locate the banner by that window title
+  plus its visible text (idle / connecting / reconnecting), and timestamp
   changes while recording the visible UI; never substitute UIA text for visual
   screenshot assertions.
 - If a provided key is rejected, do not claim live Listening from a simulated
