@@ -311,9 +311,17 @@ actor RealtimeSourceTranscriptionConnection {
     }
 
     /// handshake 中の error も翻訳接続と同じ分類で扱う。keepAlive は読み飛ばして次を待つ。
+    /// 期限は handshake 1 段あたり 1 つ（keep-alive で延長しない）。
     private func receiveHandshakeJSON(timeoutNanoseconds: UInt64) async throws -> [String: Any] {
+        let deadline = ContinuousClock.now + .nanoseconds(Int64(timeoutNanoseconds))
         while true {
-            let object = try await receiveJSON(timeoutNanoseconds: timeoutNanoseconds)
+            let remaining = ContinuousClock.now.duration(to: deadline)
+            guard remaining > .zero else {
+                throw RealtimeTranslationError.sessionUpdateTimeout
+            }
+            let object = try await receiveJSON(
+                timeoutNanoseconds: UInt64(ReconnectBudget.nanoseconds(remaining))
+            )
             guard object["type"] as? String == "error" else {
                 return object
             }

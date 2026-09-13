@@ -1,7 +1,9 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.OpenAI;
@@ -161,6 +163,54 @@ public sealed class ServerErrorClassificationFixtureTests
         await source.StartAsync("sk-test", RealtimeSessionTuning.Default);
         Assert.False(source.Events.Completion.IsCompleted);
         await source.ForceCloseAsync();
+    }
+
+    // Given: handshake timeout 300ms、keep-alive error が 50ms 間隔で届き続ける両接続
+    // When: session.created が永久に届かない
+    // Then: keep-alive で期限は延びず、1 回の handshake 期限で SessionUpdateTimeout になる
+    [Fact]
+    public async Task HandshakeKeepAliveErrorsDoNotExtendTimeoutOnBothConnections()
+    {
+        const string keepAlive =
+            """{"type":"error","error":{"message":"buffer empty","code":"input_audio_buffer_commit_empty"}}""";
+        var timeout = TimeSpan.FromMilliseconds(300);
+
+        var translationTransport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        translationTransport.AfterInboundRead = () =>
+        {
+            Thread.Sleep(50);
+            translationTransport.EnqueueJson(keepAlive);
+        };
+        translationTransport.EnqueueJson(keepAlive);
+        var translation = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            translationTransport,
+            "test-safety",
+            sessionUpdateTimeout: timeout);
+        var started = Stopwatch.GetTimestamp();
+        var translationError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => translation.StartAsync(
+                "sk-test",
+                RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+        Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, translationError.Kind);
+        Assert.InRange(Stopwatch.GetElapsedTime(started), timeout, TimeSpan.FromSeconds(10));
+
+        var sourceTransport = new FakeRealtimeServerTransport { AutoHandshake = false };
+        sourceTransport.AfterInboundRead = () =>
+        {
+            Thread.Sleep(50);
+            sourceTransport.EnqueueJson(keepAlive);
+        };
+        sourceTransport.EnqueueJson(keepAlive);
+        var source = new RealtimeSourceTranscriptionConnection(
+            sourceTransport,
+            "test-safety",
+            handshakeTimeout: timeout);
+        started = Stopwatch.GetTimestamp();
+        var sourceError = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => source.StartAsync("sk-test", RealtimeSessionTuning.Default));
+        Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, sourceError.Kind);
+        Assert.InRange(Stopwatch.GetElapsedTime(started), timeout, TimeSpan.FromSeconds(10));
     }
 
     // Given: handshake 中の翻訳接続

@@ -328,9 +328,17 @@ actor RealtimeTranslationConnection {
     }
 
     /// handshake 中の error も共通分類で扱う。keepAlive は読み飛ばして次のイベントを待つ。
+    /// 期限は handshake 1 段あたり 1 つ（keep-alive で延長しない）。
     private func receiveHandshakeEvent(timeoutNanoseconds: UInt64) async throws -> RealtimeTranslationServerEvent {
+        let deadline = ContinuousClock.now + .nanoseconds(Int64(timeoutNanoseconds))
         while true {
-            let event = try await receiveDirectEvent(timeoutNanoseconds: timeoutNanoseconds)
+            let remaining = ContinuousClock.now.duration(to: deadline)
+            guard remaining > .zero else {
+                throw RealtimeTranslationError.sessionUpdateTimeout
+            }
+            let event = try await receiveDirectEvent(
+                timeoutNanoseconds: UInt64(ReconnectBudget.nanoseconds(remaining))
+            )
             guard case .error(let message, let code, let errorType) = event else {
                 return event
             }

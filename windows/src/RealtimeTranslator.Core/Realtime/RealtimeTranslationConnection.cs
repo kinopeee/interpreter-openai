@@ -314,10 +314,18 @@ public sealed class RealtimeTranslationConnection : IDisposable
     private Task SendAsync(RealtimeTranslationClientEvent clientEvent, CancellationToken cancellationToken) =>
         _transport.SendAsync(RealtimeTranslationMessageCodec.Encode(clientEvent), cancellationToken);
 
-    private async Task<RealtimeTranslationServerEvent> ReceiveDirectEventAsync(CancellationToken cancellationToken)
+    private async Task<RealtimeTranslationServerEvent> ReceiveDirectEventAsync(
+        CancellationToken cancellationToken,
+        TimeSpan? remaining = null)
     {
+        var budget = remaining ?? _sessionUpdateTimeout;
+        if (budget <= TimeSpan.Zero)
+        {
+            throw new RealtimeTranslationException(RealtimeTranslationErrorKind.SessionUpdateTimeout);
+        }
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_sessionUpdateTimeout);
+        timeout.CancelAfter(budget);
         byte[] data;
         try
         {
@@ -334,9 +342,12 @@ public sealed class RealtimeTranslationConnection : IDisposable
     private async Task<RealtimeTranslationServerEvent> ReceiveHandshakeEventAsync(CancellationToken cancellationToken)
     {
         // handshake 中の接続維持エラーは読み飛ばして次のイベントを待つ。
+        // 期限は handshake 1 段あたり 1 つ（keep-alive で延長しない）。
+        var started = Stopwatch.GetTimestamp();
         while (true)
         {
-            var serverEvent = await ReceiveDirectEventAsync(cancellationToken).ConfigureAwait(false);
+            var remaining = _sessionUpdateTimeout - Stopwatch.GetElapsedTime(started);
+            var serverEvent = await ReceiveDirectEventAsync(cancellationToken, remaining).ConfigureAwait(false);
             if (serverEvent is RealtimeTranslationServerEvent.ServerError error)
             {
                 var classification = EventDeliveryState.Classify(error);

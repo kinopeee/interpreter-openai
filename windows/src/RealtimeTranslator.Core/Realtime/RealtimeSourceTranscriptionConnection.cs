@@ -305,10 +305,17 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         _transport.SendAsync(RealtimeSourceTranscriptionCodec.Encode(clientEvent), cancellationToken);
 
     private async Task<RealtimeSourceTranscriptionServerEvent> ReceiveDirectEventAsync(
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan? remaining = null)
     {
+        var budget = remaining ?? _handshakeTimeout;
+        if (budget <= TimeSpan.Zero)
+        {
+            throw new RealtimeTranslationException(RealtimeTranslationErrorKind.SessionUpdateTimeout);
+        }
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_handshakeTimeout);
+        timeout.CancelAfter(budget);
         byte[] data;
         try
         {
@@ -326,9 +333,12 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         CancellationToken cancellationToken)
     {
         // handshake 中の接続維持エラーは読み飛ばして次のイベントを待つ。
+        // 期限は handshake 1 段あたり 1 つ（keep-alive で延長しない）。
+        var started = Stopwatch.GetTimestamp();
         while (true)
         {
-            var serverEvent = await ReceiveDirectEventAsync(cancellationToken).ConfigureAwait(false);
+            var remaining = _handshakeTimeout - Stopwatch.GetElapsedTime(started);
+            var serverEvent = await ReceiveDirectEventAsync(cancellationToken, remaining).ConfigureAwait(false);
             if (serverEvent is RealtimeSourceTranscriptionServerEvent.ServerError error)
             {
                 var classification = EventDeliveryState.Classify(error.ToStreamError());
