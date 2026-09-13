@@ -60,8 +60,9 @@ public readonly record struct RealtimeServerErrorClassification(
         var normalizedType = Normalize(errorType);
 
         // 認証失敗は code に関わらず最優先（transport 扱いで再接続に回さない）。
-        // code が無い error は type を認証判定へ回す（既存の fallback と同じ範囲を守る）。
-        if (RealtimeTranslationException.IsAuthenticationFailure(code ?? errorType, message))
+        // code と type は独立して認証判定に回す（type だけに根拠がある場合も拾う）。
+        if (RealtimeTranslationException.IsAuthenticationFailure(code, message)
+            || RealtimeTranslationException.IsAuthenticationFailure(errorType, message))
         {
             return new(
                 RealtimeServerErrorDisposition.Halt,

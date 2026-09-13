@@ -49,6 +49,13 @@
       "expected": { "disposition": "halt", "termination": "authenticationFailed" }
     },
     {
+      "name": "authentication type halts even when code is transport",
+      "errorType": "authentication_error",
+      "code": "transport",
+      "message": "socket closed",
+      "expected": { "disposition": "halt", "termination": "authenticationFailed" }
+    },
+    {
       "name": "quota exhaustion halts even though type is recoverable",
       "errorType": "server_error",
       "code": "insufficient_quota",
