@@ -209,6 +209,57 @@ Remove-Item -Recurse -Force "$env:LOCALAPPDATA\RealtimeTranslator" -ErrorAction 
 cmdkey /delete:RealtimeTranslator:openai-api-key
 ```
 
+## Feeding real speech through VB-CABLE
+
+- The app captures the default **Communications** input (`DataFlow.Capture`,
+  `Role.Communications`), not an arbitrary/default multimedia endpoint. Verify
+  that role resolves to `CABLE Output` using NAudio before a live test.
+- Device Manager may label the render endpoint `Speakers (VB-Audio Virtual
+  Cable)` while NAudio exposes `CABLE Input (VB-Audio Virtual Cable)`. Enumerate
+  active NAudio endpoints rather than assuming Device Manager labels match.
+- English speech can be generated without Python, pip, or external TTS:
+  PowerShell `Add-Type -AssemblyName System.Speech`, instantiate
+  `System.Speech.Synthesis.SpeechSynthesizer`, enumerate `GetInstalledVoices()`,
+  choose an installed voice (e.g. Microsoft Zira Desktop), then
+  `SetOutputToWaveFile(...)` and `Speak(...)`. Dispose the synthesizer before
+  opening the WAV. This is real synthesized audio, not mocked subtitle events.
+- An external scratch Windows .NET helper with NAudio 2.2.1 can route the WAV
+  explicitly: select the active render endpoint beginning `CABLE Input`, create
+  `WasapiOut(device, AudioClientShareMode.Shared, true, 100)`, initialize with
+  `AudioFileReader`, and play. A small WinForms GUI with Play/Stop controls and
+  known spoken text makes recordings interpretable. Use `OutputType=WinExe`;
+  launching a console/GUI hybrid with `-WindowStyle Hidden` can hide its form.
+- Label the helper as an audio stimulus, not the app under test. Keep helper
+  code/output outside the repo; never populate the app transcript or inject
+  application events when claiming live end-to-end verification.
+- During capture Windows may add a microphone tray indicator and shift hidden
+  icon positions. Reinspect before using the tray. `Ctrl+Alt+Space` is useful
+  for immediately stopping translation after stopping the stimulus.
+- Stop can retain final subtitles briefly before the idle banner becomes
+  visible. Verify final source/translation text in the UTF-8 transcript, not
+  only the status banner. Notepad's Format > Word Wrap makes long entries visible.
+- A `/v1/models` HTTP 200 confirms general key validity, not realtime model
+  permissions. Require actual live source **and** translated subtitles as
+  evidence; remove the stored key after testing.
+
+## Interpreting native smoke-test evidence
+
+- A clean profile follows the Windows UI language. For Japanese screenshots on
+  an English VM, open General, choose Japanese in the display-language combo,
+  close settings to flush, quit through the tray, and relaunch. This is an
+  ordinary persisted setting, not a localization failure.
+- If clicking the notification chevron is unreliable, `Win+B` then `Enter`
+  opens the hidden-icons popup. Reinspect icon positions before right-clicking.
+- A transcript session marker is written in `App.BeginTranslation` **before**
+  `InterpretationSession.StartAsync`. It proves transcript opt-in gating, not
+  successful client startup. In `DualRealtimeTranslationClient`, event merge
+  arming follows successful connection handshakes; a dummy-key failure cannot
+  validate merged events, queued audio delivery, or active-session drain.
+- Invalid-key feedback can be a Windows tray toast while the subtitle overlay
+  has no status text. Capture the toast promptly. A tray menu returning to
+  Start translation proves retry is available, not that an active session's
+  Stop path was exercised.
+
 ## Devin Secrets Needed
 
 - `OPENAI_API_KEY` — only for live speech/translation validation (requires a mic or virtual
