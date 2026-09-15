@@ -18,7 +18,6 @@ protocol InterpretationSessionDelegate: AnyObject {
 
 @MainActor
 final class InterpretationSession {
-    private static let transcriptionRenderInterval: TimeInterval = 0.16
     /// 録音停止後、最後の字幕ペアを読み取れるよう残す時間。
     static let defaultPostStopSubtitleRetentionNanoseconds: UInt64 = 5_000_000_000
 
@@ -28,6 +27,7 @@ final class InterpretationSession {
     private let audioCapture: any RealtimeAudioCaptureServicing
     private let dualClient: any DualRealtimeTranslationClienting
     private let aggregator: SubtitleAggregator
+    private let displayScheduler: SubtitleDisplayScheduler
     private let activeTickerIntervalNanoseconds: UInt64
     private let postStopSubtitleRetentionNanoseconds: UInt64
     private let tuningProvider: @MainActor () -> RealtimeSessionTuning
@@ -48,10 +48,6 @@ final class InterpretationSession {
     private var tickerTask: Task<Void, Never>?
     private var stopTask: Task<Void, Never>?
     private var sessionTask: Task<Void, Never>?
-    private var renderTask: Task<Void, Never>?
-    private var postStopClearTask: Task<Void, Never>?
-    private var pendingUpdate: RealtimeSubtitleUpdate?
-    private var lastRenderedAt = Date.distantPast
     private var lifecycleGeneration = 0
     private var processor = RealtimeSubtitleProcessor()
     /// 現在の録音世代で使う言語ペア。Start 時に固定し、再接続でも settings の変更を取り込まない。
@@ -77,17 +73,20 @@ final class InterpretationSession {
             .defaultPostStopSubtitleRetentionNanoseconds,
         tuningProvider: @escaping @MainActor () -> RealtimeSessionTuning = { .default },
         languagePairProvider: @escaping @MainActor () -> LanguagePair = { .jaEn },
-        reconnectBudget: ReconnectBudget = ReconnectBudget()
+        reconnectBudget: ReconnectBudget = ReconnectBudget(),
+        displayScheduler: SubtitleDisplayScheduler = SubtitleDisplayScheduler()
     ) {
         self.apiKeyStore = apiKeyStore
         self.audioCapture = audioCapture
         self.dualClient = dualClient
         self.aggregator = aggregator
+        self.displayScheduler = displayScheduler
         self.activeTickerIntervalNanoseconds = activeTickerIntervalNanoseconds
         self.postStopSubtitleRetentionNanoseconds = postStopSubtitleRetentionNanoseconds
         self.tuningProvider = tuningProvider
         self.languagePairProvider = languagePairProvider
         self.reconnectBudget = reconnectBudget
+        self.displayScheduler.delegate = self
     }
 
     func start() async {
@@ -482,10 +481,7 @@ final class InterpretationSession {
         let runningSessionTask = sessionTask
         runningSessionTask?.cancel()
         sessionTask = nil
-        renderTask?.cancel()
-        renderTask = nil
-        let pending = pendingUpdate
-        pendingUpdate = nil
+        let pending = displayScheduler.takePendingUpdate()
 
         // 先に音声と session consumer を止め、close drain を破棄されないようにする。
         // generation を上げたまま consumer が生きていると、commit/session.close の
@@ -497,7 +493,7 @@ final class InterpretationSession {
 
         // スロットル中の旧 snapshot を先に適用し、その後の close drain で上書きする。
         if let pending {
-            apply(pending)
+            displayScheduler.renderNow(pending)
         }
 
         let drainedEvents = await dualClient.closeGracefully()
@@ -510,7 +506,7 @@ final class InterpretationSession {
         }
         processor.clearBoundaryCandidate()
         if let tickUpdate = processor.tick(now: Date()) {
-            apply(tickUpdate)
+            displayScheduler.renderNow(tickUpdate)
         }
 
         let snapshot = aggregator.forceFinalize()
@@ -535,7 +531,7 @@ final class InterpretationSession {
                 continue
             }
             for update in result.updates {
-                apply(update)
+                displayScheduler.renderNow(update)
             }
         }
     }
@@ -544,21 +540,20 @@ final class InterpretationSession {
         cancelPostStopSubtitleClear()
         guard !aggregator.snapshot().current.isEmpty else { return }
         let generation = lifecycleGeneration
-        let retention = postStopSubtitleRetentionNanoseconds
-        postStopClearTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: retention)
-            guard let self, !Task.isCancelled else { return }
-            guard self.lifecycleGeneration == generation else { return }
-            guard self.state == .idle else { return }
+        displayScheduler.schedulePostStopClear(
+            afterNanoseconds: postStopSubtitleRetentionNanoseconds
+        ) { [weak self] in
+            guard let self else { return false }
+            return self.lifecycleGeneration == generation && self.state == .idle
+        } onClear: { [weak self] in
+            guard let self else { return }
             self.aggregator.reset()
             self.publishSubtitles()
-            self.postStopClearTask = nil
         }
     }
 
     private func cancelPostStopSubtitleClear() {
-        postStopClearTask?.cancel()
-        postStopClearTask = nil
+        displayScheduler.cancelPostStopClear()
     }
 
     private func tearDownStreaming(keepSubtitles: Bool = false) async {
@@ -570,9 +565,7 @@ final class InterpretationSession {
         processor.clearBoundaryCandidate()
         stopTicker()
         if !keepSubtitles {
-            renderTask?.cancel()
-            renderTask = nil
-            pendingUpdate = nil
+            displayScheduler.discardPending()
         }
     }
 
@@ -582,14 +575,12 @@ final class InterpretationSession {
         if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
             return
         }
-        renderTask?.cancel()
-        renderTask = nil
         // スロットル中の live snapshot より assembler を正とする。
-        pendingUpdate = nil
+        displayScheduler.discardPending()
 
         let flushAt = Date().addingTimeInterval(RealtimeSubtitleAssembler.idleFinalizeInterval)
         if let update = processor.tick(now: flushAt) {
-            apply(update)
+            displayScheduler.renderNow(update)
             return
         }
 
@@ -613,29 +604,7 @@ final class InterpretationSession {
         if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
             return
         }
-        if update.shouldFinalize {
-            renderTask?.cancel()
-            renderTask = nil
-            pendingUpdate = nil
-            apply(update)
-            return
-        }
-
-        pendingUpdate = update
-        guard renderTask == nil else { return }
-
-        let elapsed = Date().timeIntervalSince(lastRenderedAt)
-        let delay = max(0, Self.transcriptionRenderInterval - elapsed)
-        renderTask = Task { @MainActor [weak self] in
-            if delay > 0 {
-                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            }
-            guard let self, !Task.isCancelled else { return }
-            self.renderTask = nil
-            guard let pending = self.pendingUpdate else { return }
-            self.pendingUpdate = nil
-            self.apply(pending)
-        }
+        displayScheduler.enqueue(update)
     }
 
     private func processSubtitleEvent(
@@ -654,6 +623,7 @@ final class InterpretationSession {
         await dualClient.resetAudioRouting()
     }
 
+    /// scheduler からの描画要求を aggregator・delegate へ反映する。
     private func apply(_ update: RealtimeSubtitleUpdate) {
         if update.isInvalidation {
             let snapshot = aggregator.invalidateCurrent()
@@ -661,7 +631,6 @@ final class InterpretationSession {
             return
         }
 
-        lastRenderedAt = Date()
         if state == .listening || state == .reconnecting {
             aggregator.setStatusBanner(nil)
         }
@@ -727,10 +696,8 @@ final class InterpretationSession {
         if handledLossRunToken != feed.runToken {
             handledLossRunToken = feed.runToken
             let invalidation = processor.discardUnconfirmed()
-            renderTask?.cancel()
-            renderTask = nil
-            pendingUpdate = nil
-            apply(invalidation)
+            displayScheduler.discardPending()
+            displayScheduler.renderNow(invalidation)
         }
         return true
     }
@@ -760,4 +727,13 @@ final class InterpretationSession {
         delegate?.interpretationSession(self, didEncounterMessage: message)
     }
 
+}
+
+extension InterpretationSession: SubtitleDisplaySchedulerDelegate {
+    func subtitleDisplayScheduler(
+        _ scheduler: SubtitleDisplayScheduler,
+        requestsRenderOf update: RealtimeSubtitleUpdate
+    ) {
+        apply(update)
+    }
 }
