@@ -217,12 +217,15 @@ cmdkey /delete:RealtimeTranslator:openai-api-key
 - Device Manager may label the render endpoint `Speakers (VB-Audio Virtual
   Cable)` while NAudio exposes `CABLE Input (VB-Audio Virtual Cable)`. Enumerate
   active NAudio endpoints rather than assuming Device Manager labels match.
-- English speech can be generated without Python, pip, or external TTS:
-  PowerShell `Add-Type -AssemblyName System.Speech`, instantiate
-  `System.Speech.Synthesis.SpeechSynthesizer`, enumerate `GetInstalledVoices()`,
-  choose an installed voice (e.g. Microsoft Zira Desktop), then
-  `SetOutputToWaveFile(...)` and `Speak(...)`. Dispose the synthesizer before
-  opening the WAV. This is real synthesized audio, not mocked subtitle events.
+- English speech can be generated without Python, pip, or external TTS.
+  Run this step in Windows PowerShell 5.1 (`powershell.exe`), not `pwsh`:
+  `Add-Type -AssemblyName System.Speech` loads the .NET Framework assembly,
+  then instantiate `System.Speech.Synthesis.SpeechSynthesizer`, enumerate
+  `GetInstalledVoices()`, choose an installed voice (e.g. Microsoft Zira
+  Desktop), then `SetOutputToWaveFile(...)` and `Speak(...)`. Dispose the
+  synthesizer before opening the WAV. This is real synthesized audio, not
+  mocked subtitle events. In `pwsh` the assembly may load while `Speak`
+  still fails.
 - An external scratch Windows .NET helper with NAudio 2.2.1 can route the WAV
   explicitly: select the active render endpoint beginning `CABLE Input`, create
   `WasapiOut(device, AudioClientShareMode.Shared, true, 100)`, initialize with
