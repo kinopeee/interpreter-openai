@@ -73,6 +73,7 @@ Pre-flight the TCC grant first — on a fresh Devbox `screencapture` cannot
 prompt, and a denied capture exits silently producing no video:
 
 ```bash
+rm -f /tmp/tcc_probe.png
 /usr/sbin/screencapture -x /tmp/tcc_probe.png && file /tmp/tcc_probe.png   # expect "PNG image data"
 ```
 
@@ -144,7 +145,7 @@ Timing notes:
 ## 5. Cleanup
 
 ```bash
-pids="$(pgrep -f '[R]ealtimeTranslator' || true)"
+pids="$(pgrep -f '/RealtimeTranslator\.app/Contents/MacOS/RealtimeTranslator$' || true)"
 [ -z "$pids" ] || kill $pids
 ```
 
