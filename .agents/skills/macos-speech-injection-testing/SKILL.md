@@ -144,7 +144,8 @@ Timing notes:
 ## 5. Cleanup
 
 ```bash
-pgrep -fl RealtimeTranslator && kill <pid>   # specific PID only; never pkill -f
+pids="$(pgrep -f '[R]ealtimeTranslator' || true)"
+[ -z "$pids" ] || kill $pids
 ```
 
 If you applied a temporary TCC grant, restore with the same `TCC_DB` /
