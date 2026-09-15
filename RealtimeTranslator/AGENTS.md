@@ -70,4 +70,4 @@ xcodebuild test -scheme RealtimeTranslator \
 - Devin CLI などサンドボックス化されたエージェント環境では Keychain の署名鍵と `log` コマンドにアクセスできない（`xcodebuild` は「Signing certificate is invalid」、`codesign` は `errSecInternalComponent`、`log` は「Cannot run while sandboxed」で失敗する）。証明書の失効と誤認せず、署名付き `xcodebuild`・`./scripts/run.sh`・`log stream` / `log show` は利用者のターミナルで実行する。
 - macOS の `xcodebuild test` はローカルおよび `.github/workflows/release.yml` の package (macOS) ジョブでも検証する。
 - 検証範囲と実機確認の要件はルートの「検証の選び方」に従う。手動項目は [VALIDATION.md の macOS版](../VALIDATION.md#macos版) を参照する。
-- macOS Devbox の実デスクトップを操作・診断する場合は [macos-devbox-gui](../.agents/skills/macos-devbox-gui/SKILL.md) を参照する。使い捨て Devbox 専用の手順を実機へ適用しない。
+- macOS Devbox の実デスクトップを操作・診断する場合は [macos-devbox-gui](../.agents/skills/macos-devbox-gui/SKILL.md) を参照する。物理マイクが無い Devbox で実音声→字幕→翻訳の証拠を取る場合は、BlackHole の有無を確認したうえで [macos-speech-injection-testing](../.agents/skills/macos-speech-injection-testing/SKILL.md) を使う。使い捨て Devbox 専用の手順を実機へ適用しない。

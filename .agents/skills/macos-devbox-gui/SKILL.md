@@ -544,6 +544,12 @@ print(AVCaptureDevice.devices(for: .audio).count)
 returned `0`. Therefore the real microphone path was not testable in this
 environment. Do not infer microphone behavior from a visual launch check.
 
+Newer Devbox images may ship **BlackHole 2ch** as the default input and
+output. Confirm with `system_profiler SPAudioDataType` rather than assuming
+either this zero-device result or a loopback device. When BlackHole is the
+default in/out, speech-injection evidence is
+[macos-speech-injection-testing](../macos-speech-injection-testing/SKILL.md).
+
 `ffmpeg` was not installed (`which ffmpeg` exited with status `1`). Possible
 future capture alternatives are `/usr/sbin/screencapture -v` or an
 AVFoundation-based recorder; neither was needed for the GUI evidence.
