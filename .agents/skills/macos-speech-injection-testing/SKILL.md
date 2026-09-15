@@ -14,11 +14,13 @@ capture path (AVAudioEngine default input -> Realtime API -> subtitle overlay).
 Prerequisites (usually from [macos-devbox-gui](../macos-devbox-gui/SKILL.md)):
 
 - App built (`xcodegen generate` + `xcodebuild ... build`, unsigned-shim flags
-  `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO` if no signing cert) and
-  started via `./scripts/run.sh`. An unsigned build verifies pipeline/rendering
-  behavior only — it does NOT exercise production signing or Hardened Runtime
-  entitlement behavior (e.g. the signed audio-input entitlement), so treat its
-  evidence as functional/visual, not production-equivalent.
+  `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO` if no signing cert) as a
+  **DEBUG** build and started via `./scripts/run.sh`. The status-file poll
+  below exists only in DEBUG; Release writes nothing. An unsigned build
+  verifies pipeline/rendering behavior only — it does NOT exercise production
+  signing or Hardened Runtime entitlement behavior (e.g. the signed
+  audio-input entitlement), so treat its evidence as functional/visual, not
+  production-equivalent.
 - OpenAI API key stored in Keychain via Settings, mic consent toggle ON, and the
   app's mic TCC permission granted via the OS prompt.
 - Read `.agents/skills/macos-devbox-gui/SKILL.md` first; its `scripts/guievent.swift`
@@ -32,8 +34,10 @@ BlackHole is a loopback device: audio played to its **output** appears on its
 
 Verified on the `namespace-devin-macos` Devbox image, where BlackHole 2ch ships
 preinstalled and is already the default input/output. Other images may have no
-audio devices at all — confirm presence first; if BlackHole is missing, install
-it (`brew install blackhole-2ch`) and make it the default before proceeding.
+audio devices at all — confirm presence first. If BlackHole is missing,
+`brew install blackhole-2ch` is a last resort on a disposable Devbox only
+(audio drivers often need a reload or reboot). If install is not viable,
+stop; the microphone path is untestable and this skill does not apply.
 
 ## 1. Confirm BlackHole exists and is the default device
 
@@ -94,16 +98,22 @@ Coordinate clicks can open stray Finder windows; always use the hotkey via
 cd .agents/skills/macos-devbox-gui/scripts
 /usr/sbin/screencapture -x /tmp/sp_01_idle.png                    # overlay shows the idle hint
 swift guievent.swift key --flags control,option 49                # start recording
-# Poll the DEBUG status file until the session is listening (no fixed sleep —
-# connection setup has no upper bound; abort early on an error state):
-for _ in $(seq 60); do
-  state=$(tail -1 /tmp/realtimetranslator.status 2>/dev/null || echo "")
-  [ "$state" = "listening" ] && break
-  case "$state" in *error*|*fail*) echo "app state: $state"; exit 1;; esac
+# Poll DEBUG status file first line (overwrite, not append). Abort on error.
+ok=0
+for _ in $(seq 1 60); do
+  status=$(sed -n '1p' /tmp/realtimetranslator.status 2>/dev/null || true)
+  case "$status" in
+    listening) ok=1; break ;;
+    error) echo "status file reports error; abort speech injection"; exit 1 ;;
+  esac
   sleep 1
 done
-[ "$(tail -1 /tmp/realtimetranslator.status)" = "listening" ] || { echo "timeout waiting for listening"; exit 1; }
-/usr/sbin/screencapture -x /tmp/sp_02_connecting.png
+if [ "$ok" != 1 ]; then
+  echo "timed out waiting for listening; abort speech injection"
+  sed -n '1p' /tmp/realtimetranslator.status 2>/dev/null || true
+  exit 1
+fi
+/usr/sbin/screencapture -x /tmp/sp_02_listening.png
 afplay /tmp/ja_speech.aiff &                                      # audio -> BlackHole -> app mic
 sleep 4 && /usr/sbin/screencapture -x /tmp/sp_03_playing.png      # source subtitle appears
 sleep 4 && /usr/sbin/screencapture -x /tmp/sp_04_during.png       # source + translation streaming
@@ -112,16 +122,18 @@ sleep 8 && swift guievent.swift key --flags control,option 49     # stop (same h
 sleep 1 && /usr/sbin/screencapture -x /tmp/sp_07_stopped_subs_remain.png  # "Ending recording..." subs remain
 sleep 6 && /usr/sbin/screencapture -x /tmp/sp_08_closing.png      # subs still visible during closing
 sleep 5 && /usr/sbin/screencapture -x /tmp/sp_09_idle.png         # cleared -> idle (post-stop clear)
-cat /tmp/realtimetranslator.status                                # boot/connecting/listening/closing/idle
+sed -n '1p' /tmp/realtimetranslator.status                        # boot/connecting/listening/closing/idle
 ```
 
 Timing notes:
 
-- Play audio ONLY after `/tmp/realtimetranslator.status` (DEBUG builds) shows
-  `listening` as its last line; playing during `connecting` loses the audio.
-  The file appends one state per line — use `tail -1`, not a fixed sleep.
+- Play audio ONLY after `/tmp/realtimetranslator.status` (DEBUG builds) first
+  line is `listening`; playing during `connecting` loses the audio. The file
+  is overwritten each write (`status` then optional `translationState`);
+  read the first line. Do not replace the poll with a fixed `sleep`.
 - Verify subtitle content by eyeballing the overlay in the PNGs — the status
-  file only carries state transitions, never subtitle text.
+  file only carries state transitions, never subtitle text. Print only the
+  first line; do not dump the file into logs or alerts.
 - Expected: Japanese source text accumulates, then the English translation
   streams beneath it. Partial-translation rendering may keep small gaps
   (e.g. "...ve started") — that is Realtime API incremental output, not an
@@ -132,8 +144,10 @@ Timing notes:
 ## 5. Cleanup
 
 ```bash
-pgrep -fl RealtimeTranslator && kill <pid>
+pgrep -fl RealtimeTranslator && kill <pid>   # specific PID only; never pkill -f
 ```
 
+If you applied a temporary TCC grant, restore with the same `TCC_DB` /
+`TCC_BACKUP` via `.agents/skills/macos-devbox-gui/scripts/tcc-restore-backup.sh`.
 If you never changed audio routing or the TCC database, there is nothing to
 restore.
