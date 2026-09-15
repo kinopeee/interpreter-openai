@@ -97,15 +97,16 @@ public sealed class DualRealtimeTranslationClientTuningTests
     }
 
     // Given: pending 上限 0
-    // When: 容量を見る
-    // Then: 空きはなく、enqueue 判定は呼び出し側が halt する
+    // When: 抽出コンポーネントへ渡す
+    // Then: 即 backlog halt になる値なので ArgumentOutOfRangeException になる
     [Fact]
-    public void ZeroPendingLimitHasNoCapacity()
+    public void ZeroPendingLimitIsRejected()
     {
-        var queues = new TranslationFrameQueues(
-            DualRealtimeTranslationClientTuning.Default with { PendingFrameLimit = 0 });
-        Assert.False(queues.HasPendingCapacity);
-        Assert.Equal(0, queues.PendingCount);
+        var tuning = DualRealtimeTranslationClientTuning.Default with { PendingFrameLimit = 0 };
+        var error = Assert.Throws<ArgumentOutOfRangeException>(tuning.EnsureValid);
+        Assert.Equal(nameof(DualRealtimeTranslationClientTuning.PendingFrameLimit), error.ParamName);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new TranslationFrameQueues(tuning));
+        Assert.Throws<ArgumentOutOfRangeException>(() => CreateDual(tuning));
     }
 
     private static DualRealtimeTranslationClient CreateDual(

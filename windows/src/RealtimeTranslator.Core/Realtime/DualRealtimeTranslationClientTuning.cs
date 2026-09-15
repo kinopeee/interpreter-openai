@@ -41,13 +41,13 @@ public sealed record DualRealtimeTranslationClientTuning
     public static DualRealtimeTranslationClientTuning Default { get; } = new();
 
     /// <summary>
-    /// 負の容量・予算を拒否する。0 は機能オフ（preroll 非保持、pending 即 halt、
-    /// 連続失敗 1 回で halt、frame 加算なし）として明示的に許す。
+    /// 負の容量・予算を拒否する。preroll 0 は非保持、連続失敗 0 は 1 回で halt、
+    /// drain 加算 0 は frame 加算なし。pending 0 は即 backlog halt になるため拒否する。
     /// </summary>
     public void EnsureValid()
     {
         ArgumentOutOfRangeException.ThrowIfNegative(PrerollFrameLimit, nameof(PrerollFrameLimit));
-        ArgumentOutOfRangeException.ThrowIfNegative(PendingFrameLimit, nameof(PendingFrameLimit));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(PendingFrameLimit, nameof(PendingFrameLimit));
         ArgumentOutOfRangeException.ThrowIfNegative(ConsecutiveFailureLimit, nameof(ConsecutiveFailureLimit));
         ArgumentOutOfRangeException.ThrowIfNegative(
             DrainTimeoutMillisecondsPerPendingFrame,
