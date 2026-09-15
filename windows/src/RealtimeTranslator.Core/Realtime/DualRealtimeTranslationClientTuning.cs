@@ -41,6 +41,25 @@ public sealed record DualRealtimeTranslationClientTuning
     public static DualRealtimeTranslationClientTuning Default { get; } = new();
 
     /// <summary>
+    /// 負の容量・予算を拒否する。0 は機能オフ（preroll 非保持、pending 即 halt、
+    /// 連続失敗 1 回で halt、frame 加算なし）として明示的に許す。
+    /// </summary>
+    public void EnsureValid()
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(PrerollFrameLimit, nameof(PrerollFrameLimit));
+        ArgumentOutOfRangeException.ThrowIfNegative(PendingFrameLimit, nameof(PendingFrameLimit));
+        ArgumentOutOfRangeException.ThrowIfNegative(ConsecutiveFailureLimit, nameof(ConsecutiveFailureLimit));
+        ArgumentOutOfRangeException.ThrowIfNegative(
+            DrainTimeoutMillisecondsPerPendingFrame,
+            nameof(DrainTimeoutMillisecondsPerPendingFrame));
+        ArgumentOutOfRangeException.ThrowIfLessThan(DrainTimeoutCap, TimeSpan.Zero, nameof(DrainTimeoutCap));
+        ArgumentOutOfRangeException.ThrowIfLessThan(
+            DefaultCloseDrainTimeout,
+            TimeSpan.Zero,
+            nameof(DefaultCloseDrainTimeout));
+    }
+
+    /// <summary>
     /// 停止時 drain 予算。base（既定5秒）に未送信 frame 分を足し、cap（30秒）で打ち切る。
     /// テストが短い base を注入しているときはその base を下限・基準にする。
     /// </summary>

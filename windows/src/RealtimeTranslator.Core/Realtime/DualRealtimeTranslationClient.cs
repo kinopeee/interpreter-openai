@@ -110,6 +110,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
 
         _clientTuning = clientTuning ?? DualRealtimeTranslationClientTuning.Default;
+        _clientTuning.EnsureValid();
         _queues = new TranslationFrameQueues(_clientTuning);
         _pump = new TranslationPumpSupervisor(_clientTuning);
         // 既定 5 秒。送信停滞でも CloseGracefully が session.close へ進める上限。

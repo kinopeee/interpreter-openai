@@ -16,6 +16,7 @@ internal sealed class TranslationPumpSupervisor
     public TranslationPumpSupervisor(DualRealtimeTranslationClientTuning tuning)
     {
         ArgumentNullException.ThrowIfNull(tuning);
+        tuning.EnsureValid();
         _failureLimit = tuning.ConsecutiveFailureLimit;
     }
 

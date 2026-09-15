@@ -18,6 +18,7 @@ internal sealed class TranslationFrameQueues
     public TranslationFrameQueues(DualRealtimeTranslationClientTuning tuning)
     {
         ArgumentNullException.ThrowIfNull(tuning);
+        tuning.EnsureValid();
         _prerollLimit = tuning.PrerollFrameLimit;
         _pendingLimit = tuning.PendingFrameLimit;
     }
