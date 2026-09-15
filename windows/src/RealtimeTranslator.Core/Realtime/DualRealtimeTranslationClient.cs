@@ -193,6 +193,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         EnsureConnectionsForPair(pair);
 
         int epoch;
+        EventDeliveryState deliveryState;
         lock (_sync)
         {
             _connectionEpoch += 1;
@@ -203,9 +204,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             _selectedTranslationTarget = null;
             _queues.ClearAll();
             _pump.RecycleCancellation();
+            deliveryState = _eventBuffer.DeliveryState;
         }
-
-        var deliveryState = _eventBuffer.DeliveryState;
 
         using var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
