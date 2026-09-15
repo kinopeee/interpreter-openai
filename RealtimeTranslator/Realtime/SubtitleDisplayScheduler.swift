@@ -52,7 +52,8 @@ final class SubtitleDisplayScheduler {
 
         // 遅延は TimeInterval で先に求め、UInt64 へは短い残り時間だけ変換する。
         // lastRenderedAt 初期値は distantPast のため、経過ナノ秒を先に UInt64 化すると溢れて trap する。
-        let elapsed = nowProvider().timeIntervalSince(lastRenderedAt)
+        // 時計が巻き戻った場合は経過 0 として扱い、遅延が描画間隔を超えないようにする。
+        let elapsed = max(0, nowProvider().timeIntervalSince(lastRenderedAt))
         let intervalSeconds = Double(renderIntervalNanoseconds) / 1_000_000_000
         let delaySeconds = max(0, intervalSeconds - elapsed)
         let delayNanoseconds = delaySeconds > 0

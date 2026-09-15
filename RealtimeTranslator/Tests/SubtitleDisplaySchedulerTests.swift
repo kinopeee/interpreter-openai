@@ -130,6 +130,31 @@ final class SubtitleDisplaySchedulerTests: XCTestCase {
         XCTAssertEqual(delegate.rendered.map(\.sourceText), ["直前の描画"])
     }
 
+    func testBackwardClockShiftDoesNotExceedRenderInterval() async {
+        // Given: 描画直後に壁時計が巻き戻る
+        let clock = ManualClock()
+        let sleeper = SleeperSpy()
+        sleeper.waitsForRelease = true
+        let delegate = SchedulerDelegateSpy()
+        let scheduler = SubtitleDisplayScheduler(
+            nowProvider: { clock.now },
+            sleeper: { nanoseconds in await sleeper.sleep(nanoseconds) }
+        )
+        scheduler.delegate = delegate
+        scheduler.renderNow(makeUpdate(source: "直前の描画"))
+        clock.advance(by: -5.0)
+
+        // When: 途中更新を投入する
+        scheduler.enqueue(makeUpdate(source: "巻き戻し後"))
+
+        // Then: 遅延は描画間隔（約160ms）に収まり、巻き戻し分を足さない
+        await waitUntil { sleeper.calls.count == 1 }
+        XCTAssertEqual(sleeper.calls.count, 1)
+        let reservedDelay = Int64(bitPattern: sleeper.calls[0])
+        XCTAssertGreaterThanOrEqual(reservedDelay, 159_000_000)
+        XCTAssertLessThanOrEqual(reservedDelay, 161_000_000)
+    }
+
     func testFirstInProgressUpdateFromDistantPastRendersWithoutOverflow() async {
         // Given: 未描画（lastRenderedAt が distantPast）のスケジューラ
         let sleeper = SleeperSpy()
@@ -237,6 +262,8 @@ final class SubtitleDisplaySchedulerTests: XCTestCase {
         )
 
         // When: 待機解放前に取消す
+        await waitUntil { sleeper.calls.count == 1 }
+        XCTAssertEqual(sleeper.calls, [1_000])
         scheduler.cancelPostStopClear()
         sleeper.releaseAll()
         try? await Task.sleep(nanoseconds: 50_000_000)
