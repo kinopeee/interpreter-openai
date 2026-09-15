@@ -130,6 +130,25 @@ final class SubtitleDisplaySchedulerTests: XCTestCase {
         XCTAssertEqual(delegate.rendered.map(\.sourceText), ["直前の描画"])
     }
 
+    func testFirstInProgressUpdateFromDistantPastRendersWithoutOverflow() async {
+        // Given: 未描画（lastRenderedAt が distantPast）のスケジューラ
+        let sleeper = SleeperSpy()
+        let delegate = SchedulerDelegateSpy()
+        let scheduler = SubtitleDisplayScheduler(
+            sleeper: { nanoseconds in await sleeper.sleep(nanoseconds) }
+        )
+        scheduler.delegate = delegate
+        let update = makeUpdate(source: "初回の途中")
+
+        // When: 初回の途中更新を投入する
+        scheduler.enqueue(update)
+        await waitUntil { delegate.rendered.count == 1 }
+
+        // Then: 経過ナノ秒の UInt64 化で trap せず、待機なしで描画される
+        XCTAssertEqual(delegate.rendered, [update])
+        XCTAssertTrue(sleeper.calls.isEmpty)
+    }
+
     func testInvalidationRenderDoesNotRecordRenderTime() async {
         // Given: 無効化更新を描画した直後
         let sleeper = SleeperSpy()

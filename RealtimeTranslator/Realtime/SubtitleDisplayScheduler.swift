@@ -27,7 +27,7 @@ final class SubtitleDisplayScheduler {
     private var postStopClearTask: Task<Void, Never>?
 
     init(
-        renderIntervalNanoseconds: UInt64 = Self.defaultRenderIntervalNanoseconds,
+        renderIntervalNanoseconds: UInt64 = SubtitleDisplayScheduler.defaultRenderIntervalNanoseconds,
         nowProvider: @escaping @MainActor () -> Date = { Date() },
         sleeper: @escaping @MainActor (UInt64) async -> Void = { nanoseconds in
             try? await Task.sleep(nanoseconds: nanoseconds)
@@ -50,12 +50,14 @@ final class SubtitleDisplayScheduler {
         pendingUpdate = update
         guard renderTask == nil else { return }
 
-        let elapsedNanoseconds = UInt64(
-            max(0, nowProvider().timeIntervalSince(lastRenderedAt)) * 1_000_000_000
-        )
-        let delayNanoseconds = elapsedNanoseconds >= renderIntervalNanoseconds
-            ? 0
-            : renderIntervalNanoseconds - elapsedNanoseconds
+        // 遅延は TimeInterval で先に求め、UInt64 へは短い残り時間だけ変換する。
+        // lastRenderedAt 初期値は distantPast のため、経過ナノ秒を先に UInt64 化すると溢れて trap する。
+        let elapsed = nowProvider().timeIntervalSince(lastRenderedAt)
+        let intervalSeconds = Double(renderIntervalNanoseconds) / 1_000_000_000
+        let delaySeconds = max(0, intervalSeconds - elapsed)
+        let delayNanoseconds = delaySeconds > 0
+            ? UInt64(delaySeconds * 1_000_000_000)
+            : 0
         renderTask = Task { @MainActor [weak self] in
             if delayNanoseconds > 0 {
                 await self?.sleeper(delayNanoseconds)
