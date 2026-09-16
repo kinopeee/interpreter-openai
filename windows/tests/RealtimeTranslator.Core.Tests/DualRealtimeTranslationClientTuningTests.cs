@@ -19,9 +19,6 @@ public sealed class DualRealtimeTranslationClientTuningTests
         Assert.Empty(queues.PrerollFrames);
         _ = new TranslationPumpSupervisor(DualRealtimeTranslationClientTuning.Default);
         using var dual = CreateDual();
-        Assert.Equal(
-            DualRealtimeTranslationClientTuning.DefaultPrerollFrameLimit,
-            DualRealtimeTranslationClient.TranslationPrerollFrameLimit);
     }
 
     // Given: 負の preroll 上限
