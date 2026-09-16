@@ -660,7 +660,9 @@ final class InterpretationSession {
         let invalidation = processor.markAudioLoss(now: Date())
         displayScheduler.discardPending()
         displayScheduler.renderNow(invalidation)
-        await dualClient.resetAudioRouting()
+        if !processor.hasSelectedTranslationTarget {
+            await dualClient.resetAudioRouting()
+        }
     }
 
     /// scheduler からの描画要求を aggregator・delegate へ反映する。
@@ -708,7 +710,7 @@ final class InterpretationSession {
                 }
                 if let update = self.processor.tick(now: Date()) {
                     self.enqueueRender(update)
-                    if update.shouldFinalize {
+                    if update.shouldFinalize || update.isInvalidation {
                         await self.resetAudioRoutingForNextSegment()
                     }
                 }

@@ -134,6 +134,19 @@ final class RealtimeSubtitleProcessorTests: XCTestCase {
         XCTAssertEqual(result?.routingAction, .select(.english))
     }
 
+    // Given: 日本語原文で英語 target が選択済みのprocessor
+    // When: 音声欠落を通知する
+    // Then: selected translation target が解除される
+    func testAudioLossClearsSelectedTranslationTarget() {
+        var processor = makeProcessor()
+        _ = processor.process(source("今日は晴れです。", "s1", 1), now: origin)
+        XCTAssertTrue(processor.hasSelectedTranslationTarget)
+
+        _ = processor.markAudioLoss(now: origin)
+
+        XCTAssertFalse(processor.hasSelectedTranslationTarget)
+    }
+
     // Given: epoch 1 を開始した直後
     // When: 旧 epoch の原文 delta を取り込む
     // Then: イベントは無視され state は変わらない

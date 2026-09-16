@@ -3272,6 +3272,46 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: loss reset 待ちの routing gate と Listening session
+    // When: loss reset 中に新しい原文で target 選択が完了する
+    // Then: 新しい target を維持し、古い loss の routing reset を省略する
+    [Fact]
+    public async Task AudioLossDoesNotResetRoutingAfterFreshTargetSelection()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        using var session = NewSession(client, audio: audio);
+        var sourceObserved = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        session.SubtitleUpdated += (_, update) =>
+        {
+            if (update.SourceText == "こんにちは")
+            {
+                sourceObserved.TrySetResult();
+            }
+        };
+        session.BeforeAudioLossRoutingResetForTests = async () =>
+        {
+            client.PublishSourceDelta("こんにちは");
+            await sourceObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        var resetCountBeforeLoss = client.ResetAudioRoutingCount;
+
+        audio.Write(new CapturedAudioFrame(1, 0, new byte[4_800], 0, 0));
+        audio.Write(new CapturedAudioFrame(1, 9, new byte[4_800], 0, 900));
+
+        await WaitUntilAsync(() => session.AudioLossMetrics.LostMilliseconds == 800);
+        await WaitUntilAsync(() => client.SelectedTargets.Count > 0);
+
+        Assert.Equal(resetCountBeforeLoss, client.ResetAudioRoutingCount);
+        Assert.Equal(RealtimeTranslationOutputLanguage.English, client.SelectedTargets[^1]);
+        Assert.Equal(1, client.StartCount);
+        await session.StopAsync();
+    }
+
     // Given: 同一窓内に32枚分の欠落を二度記録する Listening session
     // When: 二つ目の欠落 frame を処理する
     // Then: 既存の recoverable path で再接続し Listening に戻る

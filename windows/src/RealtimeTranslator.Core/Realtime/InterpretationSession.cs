@@ -73,6 +73,8 @@ public sealed class InterpretationSession : IDisposable
 
     internal Action? BeforeRoutingResetForTests { get; set; }
 
+    internal Func<Task>? BeforeAudioLossRoutingResetForTests { get; set; }
+
     public InterpretationSession(
         IApiKeyStore apiKeyStore,
         IRealtimeAudioCapture audioCapture,
@@ -777,7 +779,21 @@ public sealed class InterpretationSession : IDisposable
         await _routingGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
+            if (BeforeAudioLossRoutingResetForTests is { } hook)
+            {
+                await hook().ConfigureAwait(false);
+            }
+
+            bool skip;
+            lock (_sync)
+            {
+                skip = _processor.HasSelectedTranslationTarget;
+            }
+
+            if (!skip)
+            {
+                await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
+            }
         }
         finally
         {

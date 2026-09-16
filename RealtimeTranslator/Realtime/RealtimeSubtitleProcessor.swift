@@ -24,6 +24,7 @@ struct RealtimeSubtitleProcessor: Sendable {
     var currentSourceLength: Int { assembler.currentSourceLength }
     var currentSegmentGeneration: Int { assembler.currentSegmentGeneration }
     var isCurrentSegmentTainted: Bool { assembler.isCurrentSegmentTainted }
+    var hasSelectedTranslationTarget: Bool { selectedTranslationTarget != nil }
 
     mutating func beginEpoch(_ epoch: Int, pair: LanguagePair) {
         assembler.beginNewEpoch(epoch)

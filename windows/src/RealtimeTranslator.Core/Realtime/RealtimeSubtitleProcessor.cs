@@ -40,6 +40,8 @@ internal sealed class RealtimeSubtitleProcessor
 
     internal bool IsCurrentSegmentTainted => _assembler.IsCurrentSegmentTainted;
 
+    public bool HasSelectedTranslationTarget => _selectedTranslationTarget is not null;
+
     internal void BeginEpoch(int epoch, LanguagePair pair)
     {
         _assembler.SetLanguagePair(pair);

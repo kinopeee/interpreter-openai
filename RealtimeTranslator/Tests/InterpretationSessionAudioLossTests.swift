@@ -88,6 +88,50 @@ final class InterpretationSessionAudioLossTests: XCTestCase {
         await session.stop()
     }
 
+    func testTaintedIdleAbandonmentResetsDualRouting() async {
+        // Given: 欠落後に始まった未確定の原文と訳文を持つsession
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        audio.emit(sequence: 0)
+        audio.emit(sequence: 9)
+        await waitUntil { session.audioLossMetrics.lostMilliseconds == 800 }
+        let resetCountBeforeTaintedSegment = dual.resetAudioRoutingCallCount
+
+        dual.publishSourceDelta("欠落後の発話")
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText == "欠落後の発話"
+        }
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "After loss", eventID: "tainted-idle", elapsedMs: nil)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.translatedText == "After loss"
+        }
+
+        // When: 汚染されたsegmentがidle finalize時間を超える
+        await waitUntil(timeout: 10) {
+            dual.resetAudioRoutingCallCount > resetCountBeforeTaintedSegment
+                && delegate.latestSnapshot?.current.isEmpty == true
+        }
+
+        // Then: 無効化後にroutingがresetされ、汚染ペアはcurrentに残らない
+        XCTAssertGreaterThan(dual.resetAudioRoutingCallCount, resetCountBeforeTaintedSegment)
+        XCTAssertTrue(delegate.latestSnapshot?.current.isEmpty == true)
+        await session.stop()
+    }
+
     func testFinalizedSubtitleSurvivesAudioLoss() async {
         // Given: 先に確定した字幕を持つsession
         let audio = FakeRealtimeAudioCaptureService()
