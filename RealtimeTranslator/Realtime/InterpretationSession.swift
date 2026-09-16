@@ -41,10 +41,6 @@ final class InterpretationSession {
         }
     }
 
-    var isTickerRunning: Bool {
-        tickerTask != nil
-    }
-
     private var tickerTask: Task<Void, Never>?
     private var stopTask: Task<Void, Never>?
     private var sessionTask: Task<Void, Never>?
