@@ -3293,6 +3293,57 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 音声欠落のあと汚染窓内に完全ペアがある Listening session
+    // When: transport error で再接続 flush する
+    // Then: 汚染ペアは ShouldFinalize せず、再接続して Listening に戻る
+    [Fact]
+    public async Task ReconnectFlushDoesNotFinalizeTaintedPair()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        using var session = NewSession(client, audio: audio);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        audio.Write(new CapturedAudioFrame(1, 0, new byte[4_800], 0, 0));
+        audio.Write(new CapturedAudioFrame(1, 33, new byte[4_800], 0, 3_400));
+        await WaitUntilAsync(() => session.AudioLossMetrics.LostMilliseconds == 3_200);
+
+        client.PublishSourceDelta("こんにちは");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Hello");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Contains("Hello", StringComparison.Ordinal)
+                    && !update.ShouldFinalize);
+            }
+        });
+
+        client.PublishTransportError();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening && client.StartCount >= 2);
+
+        lock (updates)
+        {
+            Assert.DoesNotContain(
+                updates,
+                update => update.ShouldFinalize
+                    && update.SourceText == "こんにちは"
+                    && update.TranslatedText == "Hello");
+        }
+
+        await session.StopAsync();
+    }
+
     private static InterpretationSession NewSession(
         FakeDualClient client,
         string? apiKey = "sk-test",

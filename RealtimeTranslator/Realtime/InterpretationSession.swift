@@ -528,14 +528,13 @@ final class InterpretationSession {
             }
         }
         processor.clearBoundaryCandidate()
-        if let tickUpdate = processor.tick(now: Date()) {
-            displayScheduler.renderNow(tickUpdate)
-        }
-
         if processor.isCurrentSegmentTainted {
             let invalidation = processor.discardUnconfirmed()
             displayScheduler.renderNow(invalidation)
         } else {
+            if let tickUpdate = processor.tick(now: Date()) {
+                displayScheduler.renderNow(tickUpdate)
+            }
             let snapshot = aggregator.forceFinalize()
             delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
         }
@@ -606,6 +605,12 @@ final class InterpretationSession {
         // スロットル中の live snapshot より assembler を正とする。
         displayScheduler.discardPending()
 
+        if processor.isCurrentSegmentTainted {
+            let invalidation = processor.discardUnconfirmed()
+            displayScheduler.renderNow(invalidation)
+            return
+        }
+
         let flushAt = Date().addingTimeInterval(RealtimeSubtitleAssembler.idleFinalizeInterval)
         if let update = processor.tick(now: flushAt) {
             displayScheduler.renderNow(update)
@@ -616,11 +621,6 @@ final class InterpretationSession {
         // aggregator に残っている場合がある — 字幕記録のため確定する。
         let before = aggregator.snapshot().current
         guard before.state != .finalized else { return }
-        if processor.isCurrentSegmentTainted {
-            let invalidation = processor.discardUnconfirmed()
-            displayScheduler.renderNow(invalidation)
-            return
-        }
         let snapshot = aggregator.forceFinalize()
         guard snapshot.current.state == .finalized else { return }
         delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)

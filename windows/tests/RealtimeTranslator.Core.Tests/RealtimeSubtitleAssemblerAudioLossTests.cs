@@ -84,6 +84,37 @@ public sealed class RealtimeSubtitleAssemblerAudioLossTests
         Assert.Null(split.Finalized);
     }
 
+    // Given: 汚染された原文の途中に言語切替境界がある
+    // When: suffix を残したあと新しい訳文を受け取り idle finalize する
+    // Then: 汚染 suffix は確定せず破棄される
+    [Fact]
+    public void TaintedLanguageSwitchKeepsSuffixFromFinalizing()
+    {
+        var assembler = NewAssembler();
+        assembler.MarkAudioLoss(Origin);
+        assembler.Ingest(Source("こんにちはHello", "s1"), Origin.AddMilliseconds(1));
+        assembler.Ingest(Translation("Hello", "t1"), Origin.AddMilliseconds(2));
+
+        var split = assembler.SplitForLanguageSwitch(5, Origin.AddMilliseconds(3));
+
+        Assert.Null(split.Finalized);
+        Assert.Equal("Hello", assembler.CurrentSourceText);
+        Assert.True(assembler.IsCurrentSegmentTainted);
+
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.Japanese);
+        assembler.Ingest(
+            new RealtimeTranslationStreamEvent(
+                RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.Japanese),
+                new RealtimeTranslationServerEvent.OutputTranscriptDelta("こんにちは", "t2", 300),
+                1),
+            Origin.AddSeconds(1));
+        var update = assembler.Tick(Origin.AddSeconds(10));
+
+        Assert.Null(update);
+        Assert.Equal(string.Empty, assembler.CurrentSourceText);
+        Assert.False(assembler.IsCurrentSegmentTainted);
+    }
+
     private static RealtimeSubtitleAssembler NewAssembler()
     {
         var assembler = new RealtimeSubtitleAssembler();

@@ -154,10 +154,8 @@ struct RealtimeSubtitleAssembler: Sendable {
 
         var finalized: RealtimeSubtitleUpdate?
         if hasCompletePair {
-            if currentSegmentTainted {
-                abandonStaleSegment(now: now)
-            } else {
-                applyFinalizedCutoffs()
+            applyFinalizedCutoffs()
+            if !currentSegmentTainted {
                 finalized = RealtimeSubtitleUpdate(
                     sourceText: prefix,
                     translatedText: currentTranslation,
@@ -168,8 +166,10 @@ struct RealtimeSubtitleAssembler: Sendable {
             }
         }
 
+        let keepTaint = currentSegmentTainted && !suffix.isEmpty
         clearSegmentBuffers(advancingGeneration: true)
         sourceText = suffix
+        currentSegmentTainted = keepTaint
         awaitingSourceAfterFinalize = suffix.isEmpty
         boundaryCandidatePending = false
         lastActivityAt = now

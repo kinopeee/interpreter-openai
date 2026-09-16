@@ -68,6 +68,44 @@ final class RealtimeSubtitleAssemblerAudioLossTests: XCTestCase {
         XCTAssertNil(split.finalized)
     }
 
+    func testLanguageSwitchKeepsTaintedSuffixFromFinalizing() {
+        // Given: 汚染された原文の途中に言語切替境界がある
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        assembler.expectLane(.english)
+        assembler.markAudioLoss(now: origin)
+        _ = assembler.ingest(
+            source("こんにちはHello", "s1"),
+            now: origin.addingTimeInterval(1)
+        )
+        _ = assembler.ingest(
+            translation("Hello", "t1"),
+            now: origin.addingTimeInterval(1)
+        )
+
+        // When: 切替で suffix を残し、新しい訳文が届いて idle する
+        let split = assembler.splitForLanguageSwitch(at: 5, now: origin.addingTimeInterval(2))
+        XCTAssertNil(split.finalized)
+        XCTAssertEqual(assembler.currentSourceText, "Hello")
+        XCTAssertTrue(assembler.isCurrentSegmentTainted)
+
+        assembler.expectLane(.japanese)
+        _ = assembler.ingest(
+            RealtimeTranslationStreamEvent(
+                lane: .translation(.japanese),
+                event: .outputTranscriptDelta(delta: "こんにちは", eventID: "t2", elapsedMs: nil),
+                epoch: 1
+            ),
+            now: origin.addingTimeInterval(3)
+        )
+        let update = assembler.tick(now: origin.addingTimeInterval(12))
+
+        // Then: 汚染 suffix は確定せず破棄される
+        XCTAssertNil(update)
+        XCTAssertEqual(assembler.currentSourceText, "")
+        XCTAssertFalse(assembler.isCurrentSegmentTainted)
+    }
+
     private func source(_ value: String, _ id: String) -> RealtimeTranslationStreamEvent {
         RealtimeTranslationStreamEvent(
             lane: .source,

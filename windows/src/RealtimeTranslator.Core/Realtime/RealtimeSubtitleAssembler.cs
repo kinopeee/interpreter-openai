@@ -150,13 +150,9 @@ public sealed class RealtimeSubtitleAssembler
         RealtimeSubtitleUpdate? finalized = null;
         if (hasCompletePair)
         {
-            if (_currentSegmentTainted)
+            ApplyFinalizedCutoffs();
+            if (!_currentSegmentTainted)
             {
-                AbandonStaleSegment(now);
-            }
-            else
-            {
-                ApplyFinalizedCutoffs();
                 finalized = new RealtimeSubtitleUpdate(
                     prefix,
                     CurrentTranslation,
@@ -166,8 +162,10 @@ public sealed class RealtimeSubtitleAssembler
             }
         }
 
+        var keepTaint = _currentSegmentTainted && suffix.Length > 0;
         ClearSegmentBuffers(advancingGeneration: true);
         _sourceText = suffix;
+        _currentSegmentTainted = keepTaint;
         _awaitingSourceAfterFinalize = suffix.Length == 0;
         _boundaryCandidatePending = false;
         _lastActivityAt = now;

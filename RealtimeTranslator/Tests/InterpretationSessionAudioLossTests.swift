@@ -158,4 +158,47 @@ final class InterpretationSessionAudioLossTests: XCTestCase {
         XCTAssertEqual(session.audioLossMetrics.lossEvents, 1)
         await session.stop()
     }
+
+    func testReconnectFlushDoesNotFinalizeTaintedPair() async {
+        // Given: 音声欠落のあと汚染窓内に完全ペアがある session
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        audio.emit(sequence: 0)
+        audio.emit(sequence: 33)
+        await waitUntil { session.audioLossMetrics.lostMilliseconds == 3_200 }
+
+        dual.publishSourceDelta("こんにちは")
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Hello", eventID: "tainted-flush", elapsedMs: nil)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.translatedText.contains("Hello") == true
+        }
+
+        // When: transport error で再接続 flush する
+        dual.emit(
+            target: .english,
+            event: .error(message: "socket closed", code: "transport", errorType: nil)
+        )
+        await waitUntil(timeout: 3) { session.state == .listening && dual.startCallCount >= 2 }
+
+        // Then: 汚染ペアは確定一覧に残らない
+        XCTAssertFalse(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "こんにちは" && $0.translatedText == "Hello"
+            }
+        )
+        await session.stop()
+    }
 }
