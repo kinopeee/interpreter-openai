@@ -64,22 +64,8 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
     public async Task StartAsync(
         string apiKey,
         RealtimeSessionTuning tuning,
-        CancellationToken cancellationToken = default) =>
-        await StartAsync(apiKey, tuning, LanguagePair.JaEn, null, cancellationToken)
-            .ConfigureAwait(false);
-
-    public async Task StartAsync(
-        string apiKey,
-        RealtimeSessionTuning tuning,
-        LanguagePair pair,
-        CancellationToken cancellationToken = default) =>
-        await StartAsync(apiKey, tuning, pair, null, cancellationToken).ConfigureAwait(false);
-
-    public async Task StartAsync(
-        string apiKey,
-        RealtimeSessionTuning tuning,
-        LanguagePair pair,
-        EventDeliveryState? deliveryState,
+        LanguagePair pair = LanguagePair.JaEn,
+        EventDeliveryState? deliveryState = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(tuning);

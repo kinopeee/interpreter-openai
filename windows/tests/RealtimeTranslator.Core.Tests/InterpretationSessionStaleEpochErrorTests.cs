@@ -229,13 +229,7 @@ public sealed class InterpretationSessionStaleEpochErrorTests
         public Task StartAsync(
             string apiKey,
             RealtimeSessionTuning tuning,
-            CancellationToken cancellationToken = default) =>
-            StartAsync(apiKey, tuning, LanguagePair.JaEn, cancellationToken);
-
-        public Task StartAsync(
-            string apiKey,
-            RealtimeSessionTuning tuning,
-            LanguagePair pair,
+            LanguagePair pair = LanguagePair.JaEn,
             CancellationToken cancellationToken = default)
         {
             lock (_sync)

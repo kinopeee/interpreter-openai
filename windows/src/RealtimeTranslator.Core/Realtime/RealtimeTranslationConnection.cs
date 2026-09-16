@@ -92,16 +92,10 @@ public sealed class RealtimeTranslationConnection : IDisposable
         }
     }
 
-    public Task StartAsync(
-        string apiKey,
-        RealtimeTranslationSessionConfig config,
-        CancellationToken cancellationToken = default) =>
-        StartAsync(apiKey, config, null, cancellationToken);
-
     public async Task StartAsync(
         string apiKey,
         RealtimeTranslationSessionConfig config,
-        EventDeliveryState? deliveryState,
+        EventDeliveryState? deliveryState = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(config);

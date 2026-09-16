@@ -633,7 +633,7 @@ public sealed class RealtimeConnectionTests
         var startTask = connection.StartAsync(
             "sk-test",
             SessionConfigs.EnglishTargetWithoutSourceTranscription(),
-            caller.Token);
+            cancellationToken: caller.Token);
 
         await WaitUntilAsync(() => transport.ConnectCount >= 1);
         await caller.CancelAsync();
@@ -654,7 +654,7 @@ public sealed class RealtimeConnectionTests
             "test-safety",
             handshakeTimeout: TimeSpan.FromSeconds(15));
         using var caller = new CancellationTokenSource();
-        var startTask = connection.StartAsync("sk-test", RealtimeSessionTuning.Default, caller.Token);
+        var startTask = connection.StartAsync("sk-test", RealtimeSessionTuning.Default, cancellationToken: caller.Token);
 
         await WaitUntilAsync(() => transport.ConnectCount >= 1);
         await caller.CancelAsync();

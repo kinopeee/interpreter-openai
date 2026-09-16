@@ -235,16 +235,10 @@ public sealed class InterpretationSessionReconnectClassificationTests
 
         public TaskCompletionSource? StartGate { get; set; }
 
-        public Task StartAsync(
-            string apiKey,
-            RealtimeSessionTuning tuning,
-            CancellationToken cancellationToken = default) =>
-            StartAsync(apiKey, tuning, LanguagePair.JaEn, cancellationToken);
-
         public async Task StartAsync(
             string apiKey,
             RealtimeSessionTuning tuning,
-            LanguagePair pair,
+            LanguagePair pair = LanguagePair.JaEn,
             CancellationToken cancellationToken = default)
         {
             Task? gateTask;

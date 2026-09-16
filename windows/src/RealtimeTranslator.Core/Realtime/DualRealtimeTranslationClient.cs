@@ -20,12 +20,10 @@ public interface IDualRealtimeTranslationClient
 
     RealtimeEventFeed Feed { get; }
 
-    Task StartAsync(string apiKey, RealtimeSessionTuning tuning, CancellationToken cancellationToken = default);
-
     Task StartAsync(
         string apiKey,
         RealtimeSessionTuning tuning,
-        LanguagePair pair,
+        LanguagePair pair = LanguagePair.JaEn,
         CancellationToken cancellationToken = default);
 
     Task AppendAudioFrameAsync(ReadOnlyMemory<byte> pcm16LittleEndian, CancellationToken cancellationToken = default);
@@ -161,13 +159,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     public async Task StartAsync(
         string apiKey,
         RealtimeSessionTuning tuning,
-        CancellationToken cancellationToken = default) =>
-        await StartAsync(apiKey, tuning, LanguagePair.JaEn, cancellationToken).ConfigureAwait(false);
-
-    public async Task StartAsync(
-        string apiKey,
-        RealtimeSessionTuning tuning,
-        LanguagePair pair,
+        LanguagePair pair = LanguagePair.JaEn,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(tuning);
