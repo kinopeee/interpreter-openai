@@ -80,11 +80,6 @@ public sealed class ReconnectBudget
         _jitter = jitter ?? DefaultJitter;
     }
 
-    public ReconnectPolicy Policy => _policy;
-
-    /// <summary>現在の連続障害内で消費した attempt。</summary>
-    public int Attempt => _attempt;
-
     /// <summary>録音開始時。すべて忘れる。</summary>
     public void Reset()
     {
