@@ -422,6 +422,7 @@ final class InterpretationSession {
                     code: code
                 )
                 if let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID) {
+                    displayScheduler.discardPending()
                     // halt/recover の flushPendingFinalizeIfNeeded が discardPending するため、
                     // 間引きせず即時適用し、aggregator の未確定ペアを先に消す。
                     displayScheduler.renderNow(invalidation)
@@ -618,6 +619,7 @@ final class InterpretationSession {
             return
         }
         if update.isInvalidation {
+            displayScheduler.discardPending()
             displayScheduler.renderNow(update)
             return
         }
