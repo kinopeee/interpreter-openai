@@ -10,10 +10,6 @@ public sealed record RealtimeTranslationSessionConfig(
 {
     public const string SourceTranscriptionModel = "gpt-realtime-whisper";
 
-    public static RealtimeTranslationSessionConfig EnglishTargetWithSourceTranscription(
-        RealtimeTranslationNoiseReduction? noiseReduction = RealtimeTranslationNoiseReduction.FarField) =>
-        new(RealtimeTranslationOutputLanguage.English, SourceTranscriptionModel, noiseReduction);
-
     public static RealtimeTranslationSessionConfig EnglishTargetWithoutSourceTranscription(
         RealtimeTranslationNoiseReduction? noiseReduction = RealtimeTranslationNoiseReduction.FarField) =>
         new(RealtimeTranslationOutputLanguage.English, null, noiseReduction);
@@ -21,10 +17,6 @@ public sealed record RealtimeTranslationSessionConfig(
     public static RealtimeTranslationSessionConfig JapaneseTargetWithoutSourceTranscription(
         RealtimeTranslationNoiseReduction? noiseReduction = RealtimeTranslationNoiseReduction.FarField) =>
         new(RealtimeTranslationOutputLanguage.Japanese, null, noiseReduction);
-
-    public static RealtimeTranslationSessionConfig SpanishTargetWithoutSourceTranscription(
-        RealtimeTranslationNoiseReduction? noiseReduction = RealtimeTranslationNoiseReduction.FarField) =>
-        new(RealtimeTranslationOutputLanguage.Spanish, null, noiseReduction);
 }
 
 /// <summary>クライアントからサーバーへ送るイベント。</summary>
