@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+@testable import RealtimeTranslator
 
 /// `shared/fixtures/v1` を読み込むヘルパ。fixture が唯一の正本。
 enum SharedFixtures {
@@ -245,5 +246,38 @@ enum SharedFixtures {
         case invalidRoot(path: String)
         case missingSection(fixture: String, section: String)
         case invalidCase(fixture: String, section: String, name: String)
+    }
+}
+
+/// テスト専用の session config ファクトリ。本番は専用transcription接続を使い、
+/// `inputTranscriptionModel` は `shared/fixtures/v1/codec.json` の codec 契約を検証するためにだけ立てる。
+extension RealtimeTranslationSessionConfig {
+    static func englishTargetWithSourceTranscription(
+        noiseReduction: RealtimeTranslationNoiseReduction = .farField
+    ) -> RealtimeTranslationSessionConfig {
+        withSourceTranscription(target: .english, noiseReduction: noiseReduction)
+    }
+
+    static func withSourceTranscription(
+        target: RealtimeTranslationOutputLanguage,
+        noiseReduction: RealtimeTranslationNoiseReduction = .farField
+    ) -> RealtimeTranslationSessionConfig {
+        RealtimeTranslationSessionConfig(
+            outputLanguage: target,
+            inputTranscriptionModel: "gpt-realtime-whisper",
+            noiseReduction: noiseReduction
+        )
+    }
+
+    static func englishTargetWithoutSourceTranscription(
+        noiseReduction: RealtimeTranslationNoiseReduction = .farField
+    ) -> RealtimeTranslationSessionConfig {
+        withoutSourceTranscription(target: .english, noiseReduction: noiseReduction)
+    }
+
+    static func japaneseTargetWithoutSourceTranscription(
+        noiseReduction: RealtimeTranslationNoiseReduction = .farField
+    ) -> RealtimeTranslationSessionConfig {
+        withoutSourceTranscription(target: .japanese, noiseReduction: noiseReduction)
     }
 }
