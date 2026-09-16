@@ -385,6 +385,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
         await state.Completion.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Then: 損失が記録されても認証失敗の優先順位を保持する
+        // Completion は termination 記録時点で完了し、損失記録はその直後なので記録完了を待つ。
+        await WaitUntilAsync(() => state.DidLoseEvents);
         Assert.True(state.DidLoseEvents);
         Assert.Equal(EventDeliveryTermination.AuthenticationFailed, state.Termination);
         await connection.ForceCloseAsync();
@@ -400,6 +402,20 @@ public sealed class InterpretationSessionReceiveOverflowTests
 
     private static TaskCompletionSource NewGate() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition())
+            {
+                return;
+            }
+
+            await Task.Delay(10);
+        }
+    }
 
     private static async Task WaitForStateAsync(
         InterpretationSession session,

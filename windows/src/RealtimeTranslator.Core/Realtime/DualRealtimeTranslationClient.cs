@@ -260,7 +260,14 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             }
             finally
             {
-                _lifecycleGate.Release();
+                try
+                {
+                    _lifecycleGate.Release();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Dispose 済みなら解放は不要。
+                }
             }
         }
         catch

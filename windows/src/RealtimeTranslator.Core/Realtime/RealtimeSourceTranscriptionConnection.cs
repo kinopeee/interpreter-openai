@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -14,26 +13,18 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 {
     public static readonly Uri EndpointUrl = new("wss://api.openai.com/v1/realtime?intent=transcription");
 
-    private static readonly TimeSpan ClosePollInterval = TimeSpan.FromMilliseconds(50);
-
     private readonly IRealtimeWebSocketTransport _transport;
     private readonly string _safetyIdentifier;
     private readonly TimeSpan _handshakeTimeout;
     private readonly TimeSpan _closeTimeout;
-    private readonly object _sync = new();
-    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+    private readonly RealtimeConnectionLifecycle _lifecycle;
 
-    private Channel<RealtimeTranslationStreamEvent> _events = RealtimeEventChannel.Create();
-    private int _epoch;
     private bool _isReady;
     private bool _didReceiveCompleted;
     private LanguagePair _pair = LanguagePair.JaEn;
 
     /// <summary>接続開始時の noise_reduction。live update では変更しない。</summary>
     private RealtimeTranslationNoiseReduction _connectedNoiseReduction = RealtimeTranslationNoiseReduction.FarField;
-
-    private CancellationTokenSource? _receiveCts;
-    private Task? _receiveTask;
 
     public RealtimeSourceTranscriptionConnection(
         IRealtimeWebSocketTransport transport,
@@ -48,18 +39,10 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         _safetyIdentifier = safetyIdentifier;
         _handshakeTimeout = handshakeTimeout ?? RealtimeTranslationConnection.DefaultHandshakeTimeout;
         _closeTimeout = closeTimeout ?? TimeSpan.FromSeconds(5);
+        _lifecycle = new RealtimeConnectionLifecycle(transport);
     }
 
-    public ChannelReader<RealtimeTranslationStreamEvent> Events
-    {
-        get
-        {
-            lock (_sync)
-            {
-                return _events.Reader;
-            }
-        }
-    }
+    public ChannelReader<RealtimeTranslationStreamEvent> Events => _lifecycle.Events;
 
     public async Task StartAsync(
         string apiKey,
@@ -71,17 +54,15 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         ArgumentNullException.ThrowIfNull(tuning);
         apiKey = RealtimeApiKey.Require(apiKey);
 
-        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _lifecycle.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await TearDownTransportAsync(bumpEpoch: true).ConfigureAwait(false);
+            await _lifecycle.TearDownTransportAsync(bumpEpoch: true).ConfigureAwait(false);
 
             int currentEpoch;
-            lock (_sync)
+            lock (_lifecycle.Sync)
             {
-                _events = RealtimeEventChannel.Create();
-                _epoch += 1;
-                currentEpoch = _epoch;
+                currentEpoch = _lifecycle.ResetForReconnect();
                 _isReady = false;
                 _didReceiveCompleted = false;
                 _connectedNoiseReduction = tuning.NoiseReduction;
@@ -96,18 +77,20 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                     cancellationToken).ConfigureAwait(false);
 
                 var created = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
-                RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionCreated>(created);
+                RealtimeConnectionLifecycle
+                    .RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionCreated>(created);
 
                 await SendAsync(
                     new RealtimeSourceTranscriptionClientEvent.SessionUpdate(tuning, pair),
                     cancellationToken).ConfigureAwait(false);
 
                 var updated = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
-                RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionUpdated>(updated);
+                RealtimeConnectionLifecycle
+                    .RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionUpdated>(updated);
 
-                lock (_sync)
+                lock (_lifecycle.Sync)
                 {
-                    if (currentEpoch != _epoch)
+                    if (!_lifecycle.IsCurrentEpoch(currentEpoch))
                     {
                         throw new RealtimeTranslationException(RealtimeTranslationErrorKind.Cancelled);
                     }
@@ -115,17 +98,21 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                     _isReady = true;
                 }
 
-                StartReceiveLoop(currentEpoch, deliveryState ?? new EventDeliveryState(currentEpoch));
+                _lifecycle.StartReceiveLoop(
+                    currentEpoch,
+                    deliveryState ?? new EventDeliveryState(currentEpoch),
+                    EventDeliveryStage.Source,
+                    ReceiveLoopAsync);
             }
             catch
             {
-                await TearDownTransportAsync(bumpEpoch: true).ConfigureAwait(false);
+                await _lifecycle.TearDownTransportAsync(bumpEpoch: true).ConfigureAwait(false);
                 throw;
             }
         }
         finally
         {
-            _lifecycleGate.Release();
+            _lifecycle.ReleaseGate();
         }
     }
 
@@ -136,7 +123,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
         RealtimeTranslationNoiseReduction connectedNoiseReduction;
         LanguagePair pair;
-        lock (_sync)
+        lock (_lifecycle.Sync)
         {
             if (!_isReady)
             {
@@ -157,7 +144,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         ReadOnlyMemory<byte> pcm16LittleEndian,
         CancellationToken cancellationToken = default)
     {
-        lock (_sync)
+        lock (_lifecycle.Sync)
         {
             if (!_isReady)
             {
@@ -173,11 +160,11 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
     public async Task CloseGracefullyAsync(CancellationToken cancellationToken = default)
     {
-        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _lifecycle.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             bool wasReady;
-            lock (_sync)
+            lock (_lifecycle.Sync)
             {
                 wasReady = _isReady;
                 _isReady = false;
@@ -185,7 +172,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
             if (!wasReady)
             {
-                await TearDownTransportAsync(bumpEpoch: true).ConfigureAwait(false);
+                await _lifecycle.TearDownTransportAsync(bumpEpoch: true).ConfigureAwait(false);
                 return;
             }
 
@@ -201,35 +188,13 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 // 相手が既に落ちている場合も completed 待ちへ進む。
             }
 
-            var elapsed = Stopwatch.StartNew();
-            while (elapsed.Elapsed < _closeTimeout)
-            {
-                lock (_sync)
-                {
-                    if (_didReceiveCompleted)
-                    {
-                        break;
-                    }
-                }
+            var completed = await _lifecycle.WaitForCloseSignalAsync(
+                () => _didReceiveCompleted,
+                _closeTimeout,
+                bumpEpochOnCancel: true,
+                cancellationToken).ConfigureAwait(false);
 
-                try
-                {
-                    await Task.Delay(ClosePollInterval, cancellationToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    await TearDownTransportAsync(bumpEpoch: true).ConfigureAwait(false);
-                    throw;
-                }
-            }
-
-            bool completed;
-            lock (_sync)
-            {
-                completed = _didReceiveCompleted;
-            }
-
-            await TearDownTransportAsync(bumpEpoch: true).ConfigureAwait(false);
+            await _lifecycle.TearDownTransportAsync(bumpEpoch: true).ConfigureAwait(false);
             if (!completed)
             {
                 throw new RealtimeTranslationException(RealtimeTranslationErrorKind.CloseTimeout);
@@ -237,143 +202,46 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         }
         finally
         {
-            _lifecycleGate.Release();
+            _lifecycle.ReleaseGate();
         }
     }
 
     public async Task ForceCloseAsync()
     {
-        await _lifecycleGate.WaitAsync().ConfigureAwait(false);
+        await _lifecycle.Gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            lock (_sync)
+            lock (_lifecycle.Sync)
             {
                 _isReady = false;
             }
 
-            await TearDownTransportAsync(bumpEpoch: true).ConfigureAwait(false);
+            await _lifecycle.TearDownTransportAsync(bumpEpoch: true).ConfigureAwait(false);
         }
         finally
         {
-            _lifecycleGate.Release();
+            _lifecycle.ReleaseGate();
         }
     }
 
-    public void Dispose()
-    {
-        CancellationTokenSource? cts;
-        lock (_sync)
-        {
-            _isReady = false;
-            _epoch += 1;
-            cts = _receiveCts;
-            _receiveCts = null;
-        }
-
-        if (cts is not null)
-        {
-            try
-            {
-                cts.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-                // 二重 Dispose は無視する。
-            }
-
-            cts.Dispose();
-        }
-
-        _lifecycleGate.Dispose();
-    }
+    public void Dispose() => _lifecycle.Dispose(() => _isReady = false);
 
     private Task SendAsync(RealtimeSourceTranscriptionClientEvent clientEvent, CancellationToken cancellationToken) =>
         _transport.SendAsync(RealtimeSourceTranscriptionCodec.Encode(clientEvent), cancellationToken);
 
-    private async Task<RealtimeSourceTranscriptionServerEvent> ReceiveDirectEventAsync(
-        CancellationToken cancellationToken,
-        TimeSpan? remaining = null)
-    {
-        var budget = remaining ?? _handshakeTimeout;
-        if (budget <= TimeSpan.Zero)
-        {
-            throw new RealtimeTranslationException(RealtimeTranslationErrorKind.SessionUpdateTimeout);
-        }
+    private Task<RealtimeSourceTranscriptionServerEvent> ReceiveHandshakeEventAsync(
+        CancellationToken cancellationToken) =>
+        _lifecycle.ReceiveHandshakeEventAsync(
+            RealtimeSourceTranscriptionCodec.DecodeServerEvent,
+            TryClassifyError,
+            _handshakeTimeout,
+            cancellationToken);
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(budget);
-        byte[] data;
-        try
-        {
-            data = await _transport.ReceiveAsync(timeout.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new RealtimeTranslationException(RealtimeTranslationErrorKind.SessionUpdateTimeout);
-        }
-
-        return RealtimeSourceTranscriptionCodec.DecodeServerEvent(data);
-    }
-
-    private async Task<RealtimeSourceTranscriptionServerEvent> ReceiveHandshakeEventAsync(
-        CancellationToken cancellationToken)
-    {
-        // handshake 中の接続維持エラーは読み飛ばして次のイベントを待つ。
-        // 期限は handshake 1 段あたり 1 つ（keep-alive で延長しない）。
-        var started = Stopwatch.GetTimestamp();
-        while (true)
-        {
-            var remaining = _handshakeTimeout - Stopwatch.GetElapsedTime(started);
-            var serverEvent = await ReceiveDirectEventAsync(cancellationToken, remaining).ConfigureAwait(false);
-            if (serverEvent is RealtimeSourceTranscriptionServerEvent.ServerError error)
-            {
-                var classification = error.Classification;
-                if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
-                {
-                    continue;
-                }
-
-                throw classification.ToException();
-            }
-
-            return serverEvent;
-        }
-    }
-
-    private static void RequireHandshakeEvent<T>(RealtimeSourceTranscriptionServerEvent serverEvent)
-        where T : RealtimeSourceTranscriptionServerEvent
-    {
-        if (serverEvent is not T)
-        {
-            throw new RealtimeTranslationException(RealtimeTranslationErrorKind.InvalidMessage);
-        }
-    }
-
-    private void StartReceiveLoop(int currentEpoch, EventDeliveryState deliveryState)
-    {
-        var cts = new CancellationTokenSource();
-
-        // Dispose 済み CTS へ触れないよう、Task 開始前に token を確定させる。
-        var token = cts.Token;
-        ChannelWriter<RealtimeTranslationStreamEvent> writer;
-        lock (_sync)
-        {
-            _receiveCts = cts;
-            writer = _events.Writer;
-        }
-
-        _receiveTask = Task.Run(
-            () => ReceiveLoopAsync(
-                currentEpoch,
-                new EventDeliveryWriter(
-                    writer,
-                    deliveryState,
-                    EventDeliveryStage.Source,
-                    RealtimeEventChannel.Capacity),
-                deliveryState,
-                token),
-            CancellationToken.None);
-    }
+    private static RealtimeServerErrorClassification? TryClassifyError(
+        RealtimeSourceTranscriptionServerEvent serverEvent) =>
+        serverEvent is RealtimeSourceTranscriptionServerEvent.ServerError error
+            ? error.Classification
+            : null;
 
     private async Task ReceiveLoopAsync(
         int currentEpoch,
@@ -387,7 +255,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
             try
             {
                 var data = await _transport.ReceiveAsync(cancellationToken).ConfigureAwait(false);
-                if (!IsCurrentEpoch(currentEpoch))
+                if (!_lifecycle.IsCurrentEpoch(currentEpoch))
                 {
                     return;
                 }
@@ -402,7 +270,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
             catch (Exception)
 #pragma warning restore CA1031
             {
-                if (!IsCurrentEpoch(currentEpoch))
+                if (!_lifecycle.IsCurrentEpoch(currentEpoch))
                 {
                     return;
                 }
@@ -436,7 +304,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                     break;
 
                 case RealtimeSourceTranscriptionServerEvent.TranscriptionCompleted:
-                    lock (_sync)
+                    lock (_lifecycle.Sync)
                     {
                         _didReceiveCompleted = true;
                     }
@@ -466,55 +334,5 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                     break;
             }
         }
-    }
-
-    private bool IsCurrentEpoch(int currentEpoch)
-    {
-        lock (_sync)
-        {
-            return currentEpoch == _epoch;
-        }
-    }
-
-    private async Task TearDownTransportAsync(bool bumpEpoch)
-    {
-        CancellationTokenSource? cts;
-        Task? receiveTask;
-        ChannelWriter<RealtimeTranslationStreamEvent> writer;
-        lock (_sync)
-        {
-            if (bumpEpoch)
-            {
-                _epoch += 1;
-            }
-
-            cts = _receiveCts;
-            _receiveCts = null;
-            receiveTask = _receiveTask;
-            _receiveTask = null;
-            writer = _events.Writer;
-        }
-
-        if (cts is not null)
-        {
-            await cts.CancelAsync().ConfigureAwait(false);
-            cts.Dispose();
-        }
-
-        await _transport.CloseAsync().ConfigureAwait(false);
-
-        if (receiveTask is not null)
-        {
-            try
-            {
-                await receiveTask.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // cancel 済みの受信ループは正常終了として扱う。
-            }
-        }
-
-        writer.TryComplete();
     }
 }
