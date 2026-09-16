@@ -34,6 +34,8 @@ enum SessionTerminationKind: String, Sendable, Equatable {
     case cancelled
     /// 再接続 budget の枯渇（RealtimeTranslationError にはない終了分類）。
     case reconnectBudgetExhausted
+    /// 再接続試行回数の上限（RealtimeTranslationError にはない終了分類）。
+    case reconnectAttemptLimit
     /// ユーザーによる停止。
     case userStopped
     /// RealtimeTranslationError 以外の失敗（デバイス・未知のエラー）。

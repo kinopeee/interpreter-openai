@@ -183,6 +183,29 @@ final class InterpretationSessionReconnectBudgetTests: XCTestCase {
         XCTAssertEqual(delegate.messages.last, UiCopy.text("error.reconnectLimit"))
     }
 
+    // Given: 再接続には成功するが Listening が安定期間に届かず試行上限まで失敗が続く
+    // When: attempt 上限を超えて Error に落ちる
+    // Then: 終了診断は reconnectAttemptLimit で記録される
+    func testAttemptLimitRecordsReconnectAttemptLimit() async {
+        let dual = FakeDualRealtimeTranslationClient()
+        let clock = ManualMonotonicClock()
+        let (session, _) = makeSession(dual: dual, clock: clock)
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        var expectedStarts = 1
+        for _ in 0..<ReconnectPolicy.default.maxAttempts {
+            clock.advance(.seconds(5))
+            expectedStarts += 1
+            await failAndRecover(session, dual, expectedStarts: expectedStarts)
+        }
+        clock.advance(.seconds(5))
+        dual.emit(target: .english, event: .error(message: "socket closed", code: "transport", errorType: nil))
+        await waitUntil(timeout: 3) { session.state == .error }
+
+        XCTAssertEqual(session.latestHealthTermination?.kind, .reconnectAttemptLimit)
+    }
+
     func testStableListeningResetsAttemptCounterBeforeLimit() async {
         // Given: 再接続後の Listening が毎回 30s 以上続く
         let dual = FakeDualRealtimeTranslationClient()

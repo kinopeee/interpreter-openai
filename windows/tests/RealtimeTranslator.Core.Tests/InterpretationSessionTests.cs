@@ -3558,6 +3558,66 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: Dual Start（handshake）待ちで止まっているセッション（世代 1、attempt epoch 1）
+    // When: Listening 到達前に StopAsync する
+    // Then: attempt 診断は試行開始時の世代 generation=1・epoch=1・UserStopped で記録される
+    [Fact]
+    public async Task StopDuringHandshakeEmitsAttemptGeneration()
+    {
+        var client = new FakeDualClient();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StartGate = gate;
+        using var session = NewSession(client, timeProvider: new MonotonicClock());
+
+        var startTask = session.StartAsync();
+        await WaitUntilAsync(() => client.StartCount == 1);
+
+        var stopTask = session.StopAsync();
+        client.StartGate = null;
+        gate.SetResult();
+        await stopTask;
+        await startTask;
+        await WaitUntilAsync(() => session.State == TranslationState.Idle);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(SessionTerminationKind.UserStopped, diagnostic.Kind);
+        Assert.Equal(1, diagnostic.Generation);
+        Assert.Equal(1, diagnostic.Epoch);
+    }
+
+    // Given: 再接続には成功するが Listening が安定期間に届かず試行上限まで失敗が続く
+    // When: attempt 上限を超えて Error に落ちる
+    // Then: 終了診断は ReconnectAttemptLimit で記録される
+    [Fact]
+    public async Task AttemptLimitEmitsReconnectAttemptLimit()
+    {
+        var client = new FakeDualClient();
+        var clock = new MonotonicClock();
+        using var session = NewSession(client, timeProvider: clock);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var expectedStarts = 1;
+        for (var index = 0; index < InterpretationSession.MaxReconnectAttempts; index += 1)
+        {
+            clock.Advance(TimeSpan.FromSeconds(5));
+            client.PublishTransportError();
+            expectedStarts += 1;
+            await WaitUntilAsync(() =>
+                client.StartCount >= expectedStarts && session.State == TranslationState.Listening);
+        }
+
+        clock.Advance(TimeSpan.FromSeconds(5));
+        client.PublishTransportError();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        Assert.Equal(
+            SessionTerminationKind.ReconnectAttemptLimit,
+            session.LatestTerminationDiagnostic?.Kind);
+    }
+
     // Given: 受信が一度もないセッション
     // When: 接続直後の tick 群を回す
     // Then: count=0 を受信と誤認せず SinceReceive は null のまま

@@ -71,6 +71,7 @@ final class InterpretationSession {
     /// 世代未開始（pre-Listening）の終了診断用に、接続試行の開始時刻と意図 epoch を保持する。
     private var healthAttemptStart: Duration?
     private var healthAttemptEpoch = 0
+    private var healthAttemptGeneration = 0
     private var lastHealthSnapshotLogAt: Duration?
     private var connectionCountInGeneration = 0
     /// テスト・診断用の最新 snapshot（検知には使わない）。
@@ -231,7 +232,11 @@ final class InterpretationSession {
             guard generation == lifecycleGeneration else { return }
             let decision = reconnectBudget.recordFailure()
             guard decision.kind == .wait else {
-                recordHealthTermination(kind: .reconnectBudgetExhausted)
+                recordHealthTermination(
+                    kind: decision.kind == .budgetExhausted
+                        ? .reconnectBudgetExhausted
+                        : .reconnectAttemptLimit
+                )
                 await tearDownStreaming()
                 flushPendingFinalizeIfNeeded()
                 enterErrorMessage(
@@ -302,6 +307,7 @@ final class InterpretationSession {
         connectionCountInGeneration += 1
         healthAttemptStart = healthNow()
         healthAttemptEpoch = connectionCountInGeneration
+        healthAttemptGeneration = lifecycleGeneration
         let apiKey = try requireAPIKey()
         state = .connecting
         aggregator.setStatusBanner(UiCopy.text("banner.connecting"))
@@ -835,7 +841,7 @@ final class InterpretationSession {
             diagnostic = SessionTerminationDiagnostic(
                 kind: kind,
                 connectionDuration: max(.zero, now - attemptStart),
-                generation: lifecycleGeneration,
+                generation: healthAttemptGeneration,
                 epoch: healthAttemptEpoch
             )
         } else {

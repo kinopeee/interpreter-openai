@@ -42,6 +42,8 @@ public enum SessionTerminationKind
     Cancelled,
     /// <summary>再接続 budget の枯渇（RealtimeTranslationErrorKind にはない終了分類）。</summary>
     ReconnectBudgetExhausted,
+    /// <summary>再接続試行回数の上限（RealtimeTranslationErrorKind にはない終了分類）。</summary>
+    ReconnectAttemptLimit,
     /// <summary>ユーザーによる停止。</summary>
     UserStopped,
     /// <summary>RealtimeTranslationErrorKind 以外の失敗（デバイス・未知のエラー）。</summary>

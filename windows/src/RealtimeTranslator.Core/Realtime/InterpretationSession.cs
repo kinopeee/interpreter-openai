@@ -59,6 +59,7 @@ public sealed class InterpretationSession : IDisposable
     /// <summary>世代未開始（pre-Listening）の終了診断用に、接続試行の開始時刻と意図 epoch を保持する。</summary>
     private TimeSpan? _healthAttemptStart;
     private int _healthAttemptEpoch;
+    private int _healthAttemptGeneration;
     private bool _healthGenerationEnded = true;
     private int _connectionCountInGeneration;
 
@@ -382,6 +383,7 @@ public sealed class InterpretationSession : IDisposable
     {
         while (IsCurrentGeneration(generation) && !cancellationToken.IsCancellationRequested)
         {
+            Exception? recoverableError = null;
             try
             {
                 await ConnectAndStreamAsync(generation, cancellationToken).ConfigureAwait(false);
@@ -410,9 +412,9 @@ public sealed class InterpretationSession : IDisposable
             catch (Exception error)
 #pragma warning restore CA1031
             {
-                // recoverable transport failure / 音声デバイス失敗。終了診断を記録して
-                // 下の再接続へ進む（検知に対して再接続・lane 変更は行わない）。
-                RecordHealthTermination(SessionTerminationKindMapping.FromException(error));
+                // recoverable transport failure / 音声デバイス失敗。予算判定が wait を
+                // 返す場合だけ終了診断として記録する（予算超過ならそちらの kind で記録）。
+                recoverableError = error;
             }
 
             if (!IsCurrentGeneration(generation) || cancellationToken.IsCancellationRequested)
@@ -428,7 +430,10 @@ public sealed class InterpretationSession : IDisposable
 
             if (decision.Kind != ReconnectDecisionKind.Wait)
             {
-                RecordHealthTermination(SessionTerminationKind.ReconnectBudgetExhausted);
+                RecordHealthTermination(
+                    decision.Kind == ReconnectDecisionKind.BudgetExhausted
+                        ? SessionTerminationKind.ReconnectBudgetExhausted
+                        : SessionTerminationKind.ReconnectAttemptLimit);
                 await TearDownStreamingAsync().ConfigureAwait(false);
                 FlushPendingFinalizeIfNeeded();
                 EnterError(UserCopy.Current.Text(
@@ -436,6 +441,12 @@ public sealed class InterpretationSession : IDisposable
                         ? "error.reconnectBudgetExhausted"
                         : "error.reconnectLimit"));
                 return;
+            }
+
+            // recoverable 失敗も終了診断として記録する（診断のみ、挙動は変えない）。
+            if (recoverableError is { } recoverable)
+            {
+                RecordHealthTermination(SessionTerminationKindMapping.FromException(recoverable));
             }
 
             SetState(TranslationState.Reconnecting);
@@ -460,6 +471,7 @@ public sealed class InterpretationSession : IDisposable
             _connectionCountInGeneration += 1;
             _healthAttemptStart = HealthNow();
             _healthAttemptEpoch = _connectionCountInGeneration;
+            _healthAttemptGeneration = _lifecycleGeneration;
         }
 
         var apiKey = RequireApiKey();
@@ -1102,7 +1114,7 @@ public sealed class InterpretationSession : IDisposable
                 LatestTerminationDiagnostic = new SessionTerminationDiagnostic(
                     kind,
                     duration < TimeSpan.Zero ? TimeSpan.Zero : duration,
-                    _lifecycleGeneration,
+                    _healthAttemptGeneration,
                     _healthAttemptEpoch);
             }
             else
