@@ -13,7 +13,8 @@ enum PCM16AudioActivity {
         var peak = 0
         let sampleCount = buffer.count / 2
         for index in 0..<sampleCount {
-            let value = buffer.load(
+            // Data の slice は 2 バイトアライメントが保証されないため unaligned load を使う。
+            let value = buffer.loadUnaligned(
                 fromByteOffset: index * 2,
                 as: Int16.self
             )

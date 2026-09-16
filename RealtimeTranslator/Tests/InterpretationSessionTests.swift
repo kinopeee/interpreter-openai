@@ -1692,13 +1692,13 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
             throw startError
         }
         if let startGate {
-            try await withCheckedThrowingContinuation {
-                (cont: CheckedContinuation<Void, Error>) in
-                if Task.isCancelled {
-                    cont.resume(throwing: CancellationError())
-                    return
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation {
+                    (cont: CheckedContinuation<Void, Error>) in
+                    startGate.arm(cont)
                 }
-                startGate.throwingContinuation = cont
+            } onCancel: {
+                startGate.cancel()
             }
         }
         continuation?.finish()
@@ -1993,6 +1993,31 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
 final class CheckedContinuationBox: @unchecked Sendable {
     var continuation: CheckedContinuation<Void, Never>?
     var throwingContinuation: CheckedContinuation<Void, Error>?
+    /// onCancel は MainActor 外で呼ばれ得るため arm/cancel は lock で保護する。
+    private let lock = NSLock()
+    private var isCancelled = false
+
+    /// 待機 continuation を登録する。既にキャンセル済みなら即座に CancellationError で返す。
+    func arm(_ cont: CheckedContinuation<Void, Error>) {
+        lock.lock()
+        if isCancelled {
+            lock.unlock()
+            cont.resume(throwing: CancellationError())
+            return
+        }
+        throwingContinuation = cont
+        lock.unlock()
+    }
+
+    /// キャンセルを記録し、登録済みの待機 continuation を CancellationError で解放する。
+    func cancel() {
+        lock.lock()
+        isCancelled = true
+        let cont = throwingContinuation
+        throwingContinuation = nil
+        lock.unlock()
+        cont?.resume(throwing: CancellationError())
+    }
 
     func resume() {
         if let throwingContinuation {
