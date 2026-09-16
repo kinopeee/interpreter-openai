@@ -182,6 +182,8 @@ internal sealed class RealtimeSubtitleProcessor
                     currentLanguage,
                     selection.ReverseEvidenceCount);
             }
+            _assembler.SetBoundaryCandidatePending(
+                _sourceBoundaryTracker.CandidateOffset is not null);
 
             _assembler.SetBoundaryCandidatePending(
                 _sourceBoundaryTracker.CandidateOffset is not null);

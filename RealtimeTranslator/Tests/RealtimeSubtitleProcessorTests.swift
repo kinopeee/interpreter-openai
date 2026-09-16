@@ -81,6 +81,36 @@ final class RealtimeSubtitleProcessorTests: XCTestCase {
         XCTAssertEqual(processor.routingSourceText, "it is sunny outside")
     }
 
+    // Given: 日本語原文と stale な英訳で英語 target が選択済み
+    // When: ゲート未満の英語 delta を取り込んで idle する
+    // Then: 境界候補が pending のまま原文を保持し、後続 delta で候補位置から切り替える
+    func testJapaneseBoundaryCandidateRemainsPendingUntilLatinGate() {
+        var processor = makeProcessor()
+        _ = processor.process(source("今日は晴れです。", "s1", 1), now: origin)
+        _ = processor.process(
+            translation(.english, "It is sunny today.", "t1", 2),
+            now: origin.addingTimeInterval(0.002)
+        )
+
+        let partial = processor.process(
+            source("Today it is", "s2", 3),
+            now: origin.addingTimeInterval(0.003)
+        )
+        XCTAssertEqual(partial?.routingAction, RealtimeSubtitleRoutingAction.none)
+        XCTAssertNil(processor.tick(now: origin.addingTimeInterval(9)))
+        XCTAssertEqual(processor.currentSourceLength, "今日は晴れです。Today it is".utf16.count)
+
+        let result = processor.process(
+            source(" sunny outside", "s3", 4),
+            now: origin.addingTimeInterval(9.004)
+        )
+
+        XCTAssertEqual(result?.routingAction, .switch(.japanese))
+        XCTAssertEqual(result?.updates[0].sourceText, "今日は晴れです。")
+        XCTAssertEqual(result?.updates[0].shouldFinalize, true)
+        XCTAssertEqual(result?.updates[1].sourceText, "Today it is sunny outside")
+    }
+
     // Given: 日本語原文で英語 target が選択済み
     // When: discardUnconfirmed を呼ぶ
     // Then: 無効化 update が返り routing がリセットされて再選択できる

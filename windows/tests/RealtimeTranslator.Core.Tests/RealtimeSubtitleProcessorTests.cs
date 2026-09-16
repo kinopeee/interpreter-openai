@@ -89,6 +89,39 @@ public sealed class RealtimeSubtitleProcessorTests
         Assert.Equal("it is sunny outside", processor.RoutingSourceText);
     }
 
+    // Given: 日本語原文と stale な英訳で英語 target が選択済み
+    // When: ゲート未満の英語 delta を取り込んで idle する
+    // Then: 境界候補が pending のまま原文を保持し、後続 delta で候補位置から切り替える
+    [Fact]
+    public void JapaneseBoundaryCandidateRemainsPendingUntilLatinGate()
+    {
+        var processor = NewProcessor();
+        processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
+        processor.Process(
+            Translation(RealtimeTranslationOutputLanguage.English, "It is sunny today.", "t1", 2),
+            Origin.AddMilliseconds(2));
+
+        var partial = processor.Process(
+            Source("Today it is", "s2", 3),
+            Origin.AddMilliseconds(3));
+        Assert.NotNull(partial);
+        Assert.Equal(new RealtimeSubtitleRoutingAction.None(), partial.RoutingAction);
+        Assert.Null(processor.Tick(Origin.AddSeconds(9)));
+        Assert.Equal("今日は晴れです。Today it is".Length, processor.CurrentSourceLength);
+
+        var result = processor.Process(
+            Source(" sunny outside", "s3", 4),
+            Origin.AddSeconds(9).AddMilliseconds(4));
+
+        Assert.NotNull(result);
+        Assert.Equal(
+            new RealtimeSubtitleRoutingAction.Switch(RealtimeTranslationOutputLanguage.Japanese),
+            result.RoutingAction);
+        Assert.Equal("今日は晴れです。", result.Updates[0].SourceText);
+        Assert.True(result.Updates[0].ShouldFinalize);
+        Assert.Equal("Today it is sunny outside", result.Updates[1].SourceText);
+    }
+
     // Given: 日本語原文で英語 target が選択済み
     // When: DiscardUnconfirmed を呼ぶ
     // Then: 無効化 update が返り routing がリセットされて再選択できる
