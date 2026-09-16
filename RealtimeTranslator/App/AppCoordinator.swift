@@ -117,6 +117,8 @@ final class AppCoordinator: NSObject {
             openTranscriptSessionIfNeeded()
         }
 
+        // 前世代の health 検知を新しい接続世代へ持ち越さない。
+        latestHealthStatus = nil
         writeStatusFile("starting")
         Task { await interpretationSession.start() }
     }
@@ -344,6 +346,9 @@ extension AppCoordinator: InterpretationSessionDelegate {
         didUpdateState state: TranslationState
     ) {
         translationState = state
+        if state == .idle {
+            latestHealthStatus = nil
+        }
         menuBarController.refresh()
         writeStatusFile(state.rawValue)
         if state == .idle {

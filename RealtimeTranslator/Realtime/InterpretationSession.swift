@@ -333,8 +333,11 @@ final class InterpretationSession {
         // 期限の remaining は受信時に一度だけ壁時計で算出し、以後は単調時計で追う。
         let wallNow = wallClockNow()
         for lane in Self.healthLanes {
-            let remaining = feed.deliveryState.sessionExpiry(lane).map {
-                Duration.seconds(Double($0) - wallNow)
+            let remaining = feed.deliveryState.sessionExpiry(lane).flatMap {
+                RealtimeSessionExpiry.remaining(
+                    expiresAtUnixSeconds: $0,
+                    wallNowUnixSeconds: Int64(wallNow)
+                )
             }
             healthMonitor.recordSessionExpiry(lane: lane, remaining: remaining, now: monitorNow)
         }

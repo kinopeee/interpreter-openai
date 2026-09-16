@@ -415,7 +415,23 @@ extension SessionHealthSnapshot: CustomStringConvertible {
             + "sinceReceiveMs=\(sinceReceive.map { String($0.wholeMillisecondsTruncated) } ?? "-") "
             + "sinceSourceProgressMs=\(sinceSourceProgress.map { String($0.wholeMillisecondsTruncated) } ?? "-") "
             + "sourceProgressCount=\(sourceProgressCount) "
-            + "translationProgressCount=\(translationProgressCount)"
+            + "translationProgressCount=\(translationProgressCount) "
+            + "sinceCaptureMs=\(sinceCapture.map { String($0.wholeMillisecondsTruncated) } ?? "-") "
+            + "sinceSendSuccessMs=\(sinceSendSuccess.map { String($0.wholeMillisecondsTruncated) } ?? "-") "
+            + "expiryRemainingMs=\(expiryRemainingDescription)"
+    }
+
+    /// `expiryRemainingMs=<lane>:<ms>[,...]`（lane 順固定、値不明は `-`、map 空なら全体 `-`）。
+    private var expiryRemainingDescription: String {
+        if laneExpiryRemaining.isEmpty { return "-" }
+        return laneExpiryRemaining.keys
+            .sorted { laneOrder($0) < laneOrder($1) }
+            .map { lane in
+                let value = laneExpiryRemaining[lane].flatMap { $0 }
+                    .map { String($0.wholeMillisecondsTruncated) } ?? "-"
+                return "\(lane.healthLogName):\(value)"
+            }
+            .joined(separator: ",")
     }
 }
 

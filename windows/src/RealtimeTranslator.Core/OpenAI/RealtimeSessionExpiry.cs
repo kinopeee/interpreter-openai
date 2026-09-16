@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json.Nodes;
 
 namespace RealtimeTranslator.Core.OpenAI;
@@ -25,5 +26,23 @@ public static class RealtimeSessionExpiry
         return value.TryGetValue<long>(out var expiresAt) && expiresAt >= 0
             ? expiresAt
             : null;
+    }
+
+    /// <summary>
+    /// <c>expires_at − 壁時計</c> を残り秒へ変換する。
+    /// 差が ±10 年（315,360,000 秒）を超える場合や減算がオーバーフローする場合は
+    /// 「不明」として null を返し、<see cref="TimeSpan.FromSeconds"/> で例外にしない。
+    /// </summary>
+    public static long? RemainingSeconds(long expiresAtUnixSeconds, long wallNowUnixSeconds)
+    {
+        try
+        {
+            var diff = checked(expiresAtUnixSeconds - wallNowUnixSeconds);
+            return diff is > 315_360_000L or < -315_360_000L ? null : diff;
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
     }
 }

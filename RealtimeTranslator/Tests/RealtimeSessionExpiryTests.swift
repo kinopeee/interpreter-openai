@@ -131,3 +131,34 @@ final class EventDeliveryStateReceiveAndExpiryTests: XCTestCase {
         XCTAssertNil(state.sessionExpiry(.translation(.english)))
     }
 }
+
+final class RealtimeSessionExpiryRemainingTests: XCTestCase {
+    // Given: 正常な expires_at と現在の壁時計
+    // When: remaining で残り時間へ変換する
+    // Then: 130 秒の Duration が返る
+    func testRemainingReturnsNormalDifference() {
+        let remaining = RealtimeSessionExpiry.remaining(
+            expiresAtUnixSeconds: 1_756_324_625 + 130,
+            wallNowUnixSeconds: 1_756_324_625
+        )
+        XCTAssertEqual(remaining, .seconds(130))
+    }
+
+    // Given: Int.max 相当の巨大な expires_at
+    // When: remaining で変換する
+    // Then: ±10 年の範囲外として nil が返る（例外にならない）
+    func testRemainingRejectsHugeValue() {
+        XCTAssertNil(
+            RealtimeSessionExpiry.remaining(
+                expiresAtUnixSeconds: Int.max,
+                wallNowUnixSeconds: 0
+            )
+        )
+        XCTAssertNil(
+            RealtimeSessionExpiry.remaining(
+                expiresAtUnixSeconds: 0,
+                wallNowUnixSeconds: Int64.max
+            )
+        )
+    }
+}

@@ -3428,6 +3428,29 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 受信が一度もないセッション
+    // When: 接続直後の tick 群を回す
+    // Then: count=0 を受信と誤認せず SinceReceive は null のまま
+    [Fact]
+    public async Task FirstTicksDoNotFabricateReceives()
+    {
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture();
+        var client = new FakeDualClient();
+        using var session = NewSession(client, audio: audio, timeProvider: clock);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await Task.Delay(200);
+
+        Assert.NotNull(session.LatestHealthSnapshot);
+        Assert.Null(session.LatestHealthSnapshot!.SinceReceive);
+
+        await session.StopAsync();
+    }
+
     private static InterpretationSession NewSession(
         FakeDualClient client,
         string? apiKey = "sk-test",

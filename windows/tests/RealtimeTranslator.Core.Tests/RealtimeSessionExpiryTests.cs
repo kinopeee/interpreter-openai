@@ -99,6 +99,28 @@ public sealed class RealtimeSessionExpiryTests
     {
         Assert.Equal(0L, RealtimeSessionExpiry.ParseExpiresAt(Session(JsonValue.Create(0L))));
     }
+
+    // Given: 正常な expires_at と現在の壁時計
+    // When: RemainingSeconds で残り秒へ変換する
+    // Then: 130 が返る
+    [Fact]
+    public void RemainingSecondsReturnsNormalDifference()
+    {
+        Assert.Equal(
+            130L,
+            RealtimeSessionExpiry.RemainingSeconds(1_756_324_625L + 130L, 1_756_324_625L));
+    }
+
+    // Given: long.MaxValue 相当の巨大な expires_at / 壁時計
+    // When: RemainingSeconds で変換する
+    // Then: ±10 年の範囲外・オーバーフローは null が返る（例外にならない）
+    [Fact]
+    public void RemainingSecondsRejectsHugeValue()
+    {
+        Assert.Null(RealtimeSessionExpiry.RemainingSeconds(long.MaxValue, 0L));
+        Assert.Null(RealtimeSessionExpiry.RemainingSeconds(0L, long.MaxValue));
+        Assert.Null(RealtimeSessionExpiry.RemainingSeconds(0L, long.MinValue));
+    }
 }
 
 public sealed class EventDeliveryStateReceiveAndExpiryTests

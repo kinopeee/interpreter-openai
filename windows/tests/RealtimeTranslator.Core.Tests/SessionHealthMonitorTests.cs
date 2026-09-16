@@ -178,6 +178,26 @@ public sealed class SessionHealthMonitorTests
         Assert.True(Pcm16AudioActivity.NormalizedPeakAmplitude(below) <= 0.005);
     }
 
+    // Given: en lane に残り 130 秒の期限が記録された monitor
+    // When: Evaluate の snapshot を ToString する
+    // Then: expiryRemainingMs=en:130000 と sinceCapture/sinceSendSuccess を含む
+    [Fact]
+    public void SnapshotToStringIncludesExpiryRemaining()
+    {
+        var monitor = new SessionHealthMonitor();
+        monitor.BeginGeneration(1, 1, false, TimeSpan.Zero);
+        monitor.RecordSessionExpiry(
+            RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
+            TimeSpan.FromSeconds(130),
+            TimeSpan.Zero);
+
+        var (snapshot, _) = monitor.Evaluate(TimeSpan.Zero);
+        var text = snapshot.ToString();
+        Assert.Contains("expiryRemainingMs=en:130000", text);
+        Assert.Contains("sinceCaptureMs=-", text);
+        Assert.Contains("sinceSendSuccessMs=-", text);
+    }
+
     public static TheoryData<string> ScenarioNames => SharedFixtures.CaseNames("health", "scenarios");
 
     private static int At(JsonObject step, string field = "at") => step[field]!.GetValue<int>();

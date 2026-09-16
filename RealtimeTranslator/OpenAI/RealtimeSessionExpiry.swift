@@ -29,4 +29,16 @@ enum RealtimeSessionExpiry {
         }
         return number.intValue
     }
+
+    /// `expires_at − 壁時計` を残り時間へ変換する。
+    /// 差が ±10 年（315,360,000 秒）を超える場合や減算がオーバーフローする場合は
+    /// 「不明」として nil を返す。
+    static func remaining(expiresAtUnixSeconds: Int, wallNowUnixSeconds: Int64) -> Duration? {
+        let (diff, overflow) = Int64(expiresAtUnixSeconds)
+            .subtractingReportingOverflow(wallNowUnixSeconds)
+        guard !overflow, diff <= 315_360_000, diff >= -315_360_000 else {
+            return nil
+        }
+        return .seconds(diff)
+    }
 }

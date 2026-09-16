@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using RealtimeTranslator.Core.OpenAI;
 
 namespace RealtimeTranslator.Core.Realtime;
@@ -123,10 +124,30 @@ public sealed record SessionHealthSnapshot
         var lane = SelectedLane?.ToLogString() ?? "-";
         var sinceReceive = SinceReceive is { } value ? ((long)value.TotalMilliseconds).ToString() : "-";
         var sinceSource = SinceSourceProgress is { } value2 ? ((long)value2.TotalMilliseconds).ToString() : "-";
+        var sinceCapture = SinceCapture is { } value3 ? ((long)value3.TotalMilliseconds).ToString() : "-";
+        var sinceSend = SinceSendSuccess is { } value4 ? ((long)value4.TotalMilliseconds).ToString() : "-";
         return $"phase={Phase} generation={Generation} epoch={Epoch} "
             + $"elapsedMs={(long)ConnectionElapsed.TotalMilliseconds} "
             + $"lane={lane} sinceReceiveMs={sinceReceive} sinceSourceProgressMs={sinceSource} "
-            + $"sourceProgressCount={SourceProgressCount} translationProgressCount={TranslationProgressCount}";
+            + $"sourceProgressCount={SourceProgressCount} translationProgressCount={TranslationProgressCount} "
+            + $"sinceCaptureMs={sinceCapture} sinceSendSuccessMs={sinceSend} "
+            + $"expiryRemainingMs={ExpiryRemainingDescription()}";
+    }
+
+    /// <summary>`expiryRemainingMs=<lane>:<ms>[,...]`（lane 順固定、値不明は `-`、map 空なら全体 `-`）。</summary>
+    private string ExpiryRemainingDescription()
+    {
+        if (LaneExpiryRemaining.Count == 0)
+        {
+            return "-";
+        }
+
+        var lanes = new List<RealtimeTranslationLane>(LaneExpiryRemaining.Keys);
+        lanes.Sort(static (a, b) => SessionHealthMonitor.LaneOrder(a).CompareTo(SessionHealthMonitor.LaneOrder(b)));
+        return string.Join(
+            ",",
+            lanes.Select(lane => $"{lane.ToLogString()}:"
+                + (LaneExpiryRemaining[lane] is { } v ? ((long)v.TotalMilliseconds).ToString() : "-")));
     }
 }
 
@@ -443,7 +464,7 @@ public sealed class SessionHealthMonitor
     }
 
     /// <summary>expiry 検知の lane 反復順を固定する（検知列は kind 順→lane 順）。</summary>
-    private static int LaneOrder(RealtimeTranslationLane lane)
+    internal static int LaneOrder(RealtimeTranslationLane lane)
     {
         if (lane.IsSource)
         {

@@ -508,7 +508,10 @@ public sealed class InterpretationSession : IDisposable
                 var expiry = feed.DeliveryState.SessionExpiry(lane);
                 _healthMonitor.RecordSessionExpiry(
                     lane,
-                    expiry is { } value ? TimeSpan.FromSeconds(value - wallNow) : null,
+                    expiry is { } value
+                        && RealtimeSessionExpiry.RemainingSeconds(value, wallNow) is { } seconds
+                        ? TimeSpan.FromSeconds(seconds)
+                        : null,
                     monitorNow);
             }
         }
@@ -748,9 +751,10 @@ public sealed class InterpretationSession : IDisposable
 
             RealtimeSubtitleUpdate? update;
             var feed = GetActiveFeed();
+            IReadOnlyList<SessionHealthDetection> healthDetections;
             lock (_sync)
             {
-                HealthTick(feed);
+                healthDetections = HealthTick(feed);
                 if (feed is { DeliveryState.DidLoseEvents: true })
                 {
                     update = null;
@@ -759,6 +763,11 @@ public sealed class InterpretationSession : IDisposable
                 {
                     update = _processor.Tick(_timeProvider.GetUtcNow());
                 }
+            }
+
+            foreach (var detection in healthDetections)
+            {
+                HealthDetected?.Invoke(this, detection);
             }
 
             if (feed is { DeliveryState.DidLoseEvents: true })
@@ -1005,18 +1014,19 @@ public sealed class InterpretationSession : IDisposable
     /// 各 lane の decode 受信数の差分で RecordReceive し、Evaluate を回す。
     /// 検知に対して再接続や lane 変更は行わない（診断のみ）。_sync の下で呼ぶ。
     /// </summary>
-    private void HealthTick(RealtimeEventFeed? feed)
+    /// 戻り値は _sync 解放後に HealthDetected へ流す検知列。
+    private IReadOnlyList<SessionHealthDetection> HealthTick(RealtimeEventFeed? feed)
     {
         if (feed is null)
         {
-            return;
+            return Array.Empty<SessionHealthDetection>();
         }
 
         var now = HealthNow();
         foreach (var lane in HealthLanes)
         {
             var count = feed.DeliveryState.ReceiveCount(lane);
-            if (!_healthReceiveCounts.TryGetValue(lane, out var previous) || count > previous)
+            if (count > (_healthReceiveCounts.TryGetValue(lane, out var previous) ? previous : 0))
             {
                 _healthMonitor.RecordReceive(lane, now);
             }
@@ -1026,10 +1036,7 @@ public sealed class InterpretationSession : IDisposable
 
         var (snapshot, detections) = _healthMonitor.Evaluate(now);
         LatestHealthSnapshot = snapshot;
-        foreach (var detection in detections)
-        {
-            HealthDetected?.Invoke(this, detection);
-        }
+        return detections;
     }
 
     /// <summary>

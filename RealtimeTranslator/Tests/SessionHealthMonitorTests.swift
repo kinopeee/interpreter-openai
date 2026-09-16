@@ -126,6 +126,24 @@ final class SessionHealthMonitorFixtureTests: XCTestCase {
         }
     }
 
+    // Given: en lane に残り 130 秒の期限が記録された monitor
+    // When: evaluate の snapshot を description する
+    // Then: expiryRemainingMs=en:130000 と sinceCapture/sinceSendSuccess を含む
+    func testSnapshotDescriptionIncludesExpiryRemaining() {
+        var monitor = SessionHealthMonitor()
+        monitor.beginGeneration(generation: 1, epoch: 1, isRecovery: false, now: .zero)
+        monitor.recordSessionExpiry(
+            lane: .translation(.english),
+            remaining: .seconds(130),
+            now: .zero
+        )
+
+        let (snapshot, _) = monitor.evaluate(now: .zero)
+        XCTAssertTrue(snapshot.description.contains("expiryRemainingMs=en:130000"))
+        XCTAssertTrue(snapshot.description.contains("sinceCaptureMs=-"))
+        XCTAssertTrue(snapshot.description.contains("sinceSendSuccessMs=-"))
+    }
+
     private func number(_ object: [String: Any], _ key: String) -> Int {
         SharedFixtures.number(object[key])
     }
