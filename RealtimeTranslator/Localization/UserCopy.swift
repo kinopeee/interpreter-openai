@@ -189,7 +189,6 @@ enum UserCopyError: Error {
     case missingStrings
     case invalidEntry
     case missingField(String)
-    case catalogNotFound
 }
 
 enum UserCopyStore {

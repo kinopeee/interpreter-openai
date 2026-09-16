@@ -19,8 +19,8 @@ public sealed class UserCopyTests
     {
         var json = SharedFixtures.UiCatalogJson;
 
-        Assert.Empty(UserCopy.DuplicateKeys(json));
-        Assert.Empty(UserCopy.PlaceholderMismatches(json));
+        Assert.Empty(UserCopyCatalogLint.DuplicateKeys(json));
+        Assert.Empty(UserCopyCatalogLint.PlaceholderMismatches(json));
 
         var copy = UserCopy.Parse(json, UiLocale.Ja);
         Assert.Equal(UiLocale.Ja, copy.Locale);
@@ -149,10 +149,10 @@ public sealed class UserCopyTests
     {
         Assert.Equal(
             new HashSet<string>(StringComparer.Ordinal) { "hotkey" },
-            UserCopy.PlaceholderNames("ok {hotkey} and {名前} and {1bad}"));
+            UserCopyCatalogLint.PlaceholderNames("ok {hotkey} and {名前} and {1bad}"));
         Assert.Equal(
             new HashSet<string>(StringComparer.Ordinal) { "_ok", "_", "a1" },
-            UserCopy.PlaceholderNames("{_ok} {_} {a1}"));
+            UserCopyCatalogLint.PlaceholderNames("{_ok} {_} {a1}"));
     }
 
     // Given: 重複キーを含むカタログ
@@ -174,7 +174,7 @@ public sealed class UserCopyTests
             }
             """;
 
-        var duplicates = UserCopy.DuplicateKeys(json);
+        var duplicates = UserCopyCatalogLint.DuplicateKeys(json);
         Assert.Single(duplicates);
         Assert.Equal("dup", duplicates[0]);
     }
@@ -285,7 +285,7 @@ public sealed class UserCopyTests
             }
             """;
 
-        var mismatches = UserCopy.PlaceholderMismatches(json);
+        var mismatches = UserCopyCatalogLint.PlaceholderMismatches(json);
         Assert.Single(mismatches);
         Assert.Equal("bad", mismatches[0]);
     }
