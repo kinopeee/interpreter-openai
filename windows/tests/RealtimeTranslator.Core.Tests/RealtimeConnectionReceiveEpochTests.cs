@@ -26,7 +26,7 @@ public sealed class RealtimeConnectionReceiveEpochTests
             "test-safety");
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         transport.AfterInboundRead = () =>
@@ -86,7 +86,7 @@ public sealed class RealtimeConnectionReceiveEpochTests
             "test-safety");
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.JapaneseTargetWithoutSourceTranscription());
+            SessionConfigs.JapaneseTargetWithoutSourceTranscription());
 
         var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         transport.AfterInboundRead = () =>

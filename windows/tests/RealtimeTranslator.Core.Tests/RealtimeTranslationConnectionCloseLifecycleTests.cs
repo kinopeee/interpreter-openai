@@ -30,7 +30,7 @@ public sealed class RealtimeTranslationConnectionCloseLifecycleTests
             closeTimeout: TimeSpan.FromMilliseconds(250));
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         var first = await Assert.ThrowsAsync<RealtimeTranslationException>(
             () => connection.CloseGracefullyAsync());
@@ -59,7 +59,7 @@ public sealed class RealtimeTranslationConnectionCloseLifecycleTests
             closeTimeout: TimeSpan.FromMilliseconds(400));
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.JapaneseTargetWithoutSourceTranscription());
+            SessionConfigs.JapaneseTargetWithoutSourceTranscription());
 
         var first = connection.CloseGracefullyAsync();
         var second = connection.CloseGracefullyAsync();
@@ -85,7 +85,7 @@ public sealed class RealtimeTranslationConnectionCloseLifecycleTests
             closeTimeout: TimeSpan.FromSeconds(5));
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         using var caller = new CancellationTokenSource();
         var closeTask = connection.CloseGracefullyAsync(caller.Token);

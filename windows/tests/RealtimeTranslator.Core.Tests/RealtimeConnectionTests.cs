@@ -29,7 +29,7 @@ public sealed class RealtimeConnectionTests
 
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
         await connection.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("frame"));
 
         Assert.Equal("session.update", TypeOf(transport.Sent[0]));
@@ -53,7 +53,7 @@ public sealed class RealtimeConnectionTests
 
         await translation.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.JapaneseTargetWithoutSourceTranscription());
+            SessionConfigs.JapaneseTargetWithoutSourceTranscription());
         await source.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         Assert.Equal(
@@ -89,7 +89,7 @@ public sealed class RealtimeConnectionTests
 
         var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
 
         Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, error.Kind);
         Assert.True(transport.CloseCount >= 1);
@@ -111,7 +111,7 @@ public sealed class RealtimeConnectionTests
 
         var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
 
         Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
         Assert.DoesNotContain("sk-live-xyz", error.Message, StringComparison.Ordinal);
@@ -134,7 +134,7 @@ public sealed class RealtimeConnectionTests
 
         var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
 
         Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
         Assert.DoesNotContain("sk-leak-example", error.Message, StringComparison.Ordinal);
@@ -159,7 +159,7 @@ public sealed class RealtimeConnectionTests
 
         var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
 
         Assert.Equal(RealtimeTranslationErrorKind.FatalServerError, error.Kind);
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
@@ -183,7 +183,7 @@ public sealed class RealtimeConnectionTests
 
         var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
 
         Assert.Equal(RealtimeTranslationErrorKind.InvalidMessage, error.Kind);
         Assert.True(transport.CloseCount >= 1);
@@ -203,7 +203,7 @@ public sealed class RealtimeConnectionTests
 
         var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
             "   ",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
 
         Assert.Equal(RealtimeTranslationErrorKind.MissingApiKey, error.Kind);
         Assert.Equal(0, transport.ConnectCount);
@@ -226,7 +226,7 @@ public sealed class RealtimeConnectionTests
 
         var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
 
         Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
         Assert.DoesNotContain("bearer", error.Message, StringComparison.OrdinalIgnoreCase);
@@ -248,7 +248,7 @@ public sealed class RealtimeConnectionTests
 
         var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
             "sk-proj-abc\n3:26",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
 
         Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
         Assert.Equal(0, transport.ConnectCount);
@@ -268,7 +268,7 @@ public sealed class RealtimeConnectionTests
 
         await connection.StartAsync(
             "sk-proj-AAAA\nBBBB",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         Assert.Equal("Bearer sk-proj-AAAABBBB", transport.ConnectedHeaders["Authorization"]);
         await connection.ForceCloseAsync();
@@ -287,7 +287,7 @@ public sealed class RealtimeConnectionTests
             "test-safety");
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.JapaneseTargetWithoutSourceTranscription());
+            SessionConfigs.JapaneseTargetWithoutSourceTranscription());
 
         transport.EnqueueJson("""{"type":"session.output_transcript.delta","delta":"こんにちは","event_id":"e1"}""");
         var streamEvent = await ReadOneAsync(connection.Events);
@@ -312,7 +312,7 @@ public sealed class RealtimeConnectionTests
             "test-safety");
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         transport.EnqueueJson(
             """{"type":"session.input_transcript.delta","delta":"polluting source","event_id":"in-1","elapsed_ms":10}""");
@@ -356,7 +356,7 @@ public sealed class RealtimeConnectionTests
             "test-safety");
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         // bounded(512) + DropOldest を超える量。フィルタが無いと後続の訳文が落ちる。
         for (var index = 0; index < 600; index += 1)
@@ -404,7 +404,7 @@ public sealed class RealtimeConnectionTests
             "test-safety");
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         transport.EnqueueRaw(Encoding.UTF8.GetBytes("{not json"));
         var streamEvent = await ReadOneAsync(connection.Events);
@@ -427,7 +427,7 @@ public sealed class RealtimeConnectionTests
             "test-safety");
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         transport.EnqueueJson("""{"type":"session.unknown.noise"}""");
         transport.EnqueueJson(
@@ -460,7 +460,7 @@ public sealed class RealtimeConnectionTests
             closeTimeout: ShortTimeout);
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
             () => connection.CloseGracefullyAsync());
@@ -483,7 +483,7 @@ public sealed class RealtimeConnectionTests
             closeTimeout: TimeSpan.FromSeconds(2));
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         transport.FailNextSend();
         transport.EnqueueJson("""{"type":"session.closed"}""");
@@ -510,7 +510,7 @@ public sealed class RealtimeConnectionTests
             "test-safety");
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         await connection.CloseGracefullyAsync();
 
@@ -632,7 +632,7 @@ public sealed class RealtimeConnectionTests
         using var caller = new CancellationTokenSource();
         var startTask = connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription(),
+            SessionConfigs.EnglishTargetWithoutSourceTranscription(),
             caller.Token);
 
         await WaitUntilAsync(() => transport.ConnectCount >= 1);

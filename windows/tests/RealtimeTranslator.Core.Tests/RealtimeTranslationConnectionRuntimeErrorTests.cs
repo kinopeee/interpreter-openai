@@ -26,7 +26,7 @@ public sealed class RealtimeTranslationConnectionRuntimeErrorTests
             "test-safety");
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         transport.EnqueueJson(
             """{"type":"error","error":{"message":"rate_limit exceeded","code":"rate_limit_exceeded"}}""");
@@ -59,7 +59,7 @@ public sealed class RealtimeTranslationConnectionRuntimeErrorTests
             "test-safety");
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.JapaneseTargetWithoutSourceTranscription());
+            SessionConfigs.JapaneseTargetWithoutSourceTranscription());
 
         transport.EnqueueJson("""{"type":"session.foo_bar"}""");
         var unknownEvent = await ReadOneAsync(connection.Events);
