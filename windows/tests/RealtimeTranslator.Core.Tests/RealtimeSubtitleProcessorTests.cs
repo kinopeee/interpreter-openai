@@ -248,6 +248,35 @@ public sealed class RealtimeSubtitleProcessorTests
             $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap");
     }
 
+    // Given: 日本語原文と英訳のあと、ゲート未達の 3 語製品名が続く
+    // When: idle finalize 間隔を超えて Tick する
+    // Then: 切替は起きず、pending のまま stale セグメントを abandon しない
+    [Fact]
+    public void GatedJapaneseProductNameKeepsPendingAndDoesNotAbandon()
+    {
+        var processor = NewProcessor();
+        processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
+        processor.Process(
+            Translation(RealtimeTranslationOutputLanguage.English, "It is sunny today.", "t1", 2),
+            Origin.AddMilliseconds(2));
+
+        var gated = processor.Process(
+            Source(" Google Cloud Platform", "s2", 3),
+            Origin.AddMilliseconds(3));
+        Assert.NotNull(gated);
+        Assert.Equal(new RealtimeSubtitleRoutingAction.None(), gated.RoutingAction);
+        Assert.False(gated.Updates[0].IsTranslationCurrent);
+
+        var generation = processor.SegmentGeneration;
+        var sourceLength = processor.CurrentSourceLength;
+
+        var tick = processor.Tick(Origin.AddSeconds(9));
+
+        Assert.Null(tick);
+        Assert.Equal(generation, processor.SegmentGeneration);
+        Assert.Equal(sourceLength, processor.CurrentSourceLength);
+    }
+
     // Given: 日本語セグメントのあと、長い空白 run で隔てられた複数語の英語 delta
     // When: UTF-16 文字数キャップだけだと末尾 1 語しか残らない入力を取り込む
     // Then: RecentEvidence ウィンドウを保ち英語反転し、バッファは上限以内に収まる

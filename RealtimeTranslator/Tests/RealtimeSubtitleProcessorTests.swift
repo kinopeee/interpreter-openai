@@ -173,6 +173,34 @@ final class RealtimeSubtitleProcessorTests: XCTestCase {
         )
     }
 
+    // Given: 日本語原文と英訳のあと、ゲート未達の 3 語製品名が続く
+    // When: idle finalize 間隔を超えて Tick する
+    // Then: 切替は起きず、pending のまま stale セグメントを abandon しない
+    func testGatedJapaneseProductNameKeepsPendingAndDoesNotAbandon() {
+        var processor = makeProcessor()
+        _ = processor.process(source("今日は晴れです。", "s1", 1), now: origin)
+        _ = processor.process(
+            translation(.english, "It is sunny today.", "t1", 2),
+            now: origin.addingTimeInterval(0.002)
+        )
+
+        let gated = processor.process(
+            source(" Google Cloud Platform", "s2", 3),
+            now: origin.addingTimeInterval(0.003)
+        )
+        XCTAssertEqual(gated?.routingAction, RealtimeSubtitleRoutingAction.none)
+        XCTAssertEqual(gated?.updates[0].isTranslationCurrent, false)
+
+        let generation = processor.currentSegmentGeneration
+        let sourceLength = processor.currentSourceLength
+
+        let tick = processor.tick(now: origin.addingTimeInterval(9))
+
+        XCTAssertNil(tick)
+        XCTAssertEqual(processor.currentSegmentGeneration, generation)
+        XCTAssertEqual(processor.currentSourceLength, sourceLength)
+    }
+
     // Given: 日本語セグメントのあと、長い空白 run で隔てられた複数語の英語 delta
     // When: UTF-16 文字数キャップだけだと末尾 1 語しか残らない入力を取り込む
     // Then: RecentEvidence ウィンドウを保ち英語反転し、バッファは上限以内に収まる
