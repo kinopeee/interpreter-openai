@@ -314,7 +314,7 @@ public sealed class CapturedAudioFramePipelineTests
         Assert.Equal(capacity, remaining);
     }
 
-    // Given: 32 枚の bounded frame channel に stamp 済み frame を40件投入する
+    // Given: 最初の frame を処理した後、bounded frame channel へ残り39件を投入する
     // When: 読み手が遅れてから channel を読み出す
     // Then: 最新32件を保持し、tracker は8枚 / 800msの欠落を検知する
     [Fact]
@@ -323,7 +323,21 @@ public sealed class CapturedAudioFramePipelineTests
         var channel = WasapiAudioCaptureService.CreateFrameChannel();
         var tracker = new AudioLossTracker();
 
-        for (var sequence = 0; sequence < 40; sequence++)
+        Assert.True(channel.Writer.TryWrite(new CapturedAudioFrame(
+            1,
+            0,
+            new byte[Pcm16FramePacketizer.BytesPerFrame],
+            0,
+            0)));
+        Assert.True(channel.Reader.TryRead(out var firstFrame));
+        tracker.Observe(
+            firstFrame.Generation,
+            firstFrame.Sequence,
+            firstFrame.DiscardedMilliseconds,
+            0,
+            0);
+
+        for (var sequence = 1; sequence < 40; sequence++)
         {
             Assert.True(channel.Writer.TryWrite(new CapturedAudioFrame(
                 1,
@@ -385,7 +399,7 @@ public sealed class CapturedAudioFramePipelineTests
         Buffer.BlockCopy(retained, 0, input, discarded.Length, retained.Length);
 
         pipeline.Push(input, input.Length);
-        var frames = pipeline.ReadFrames(Pcm16FramePacketizer.SamplesPerFrame);
+        var frames = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
 
         Assert.Equal(
             retainedMilliseconds / Pcm16FramePacketizer.FrameDurationMilliseconds,
