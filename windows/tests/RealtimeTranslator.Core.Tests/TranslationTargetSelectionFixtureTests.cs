@@ -9,6 +9,25 @@ public sealed class TranslationTargetSelectionFixtureTests
 {
     public static TheoryData<string> Cases => SharedFixtures.CaseNames("routing", "targetSelection");
 
+    // Given: shared fixture の script switch gate
+    // When: selector の定数と照合する
+    // Then: C# 実装の閾値が共有契約と一致する
+    [Fact]
+    public void ScriptSwitchGateMatchesFixture()
+    {
+        var gate = SharedFixtures.Load("routing")["scriptSwitchGate"]!.AsObject();
+
+        Assert.Equal(
+            SharedFixtures.Number(gate["minimumLatinWords"]),
+            TranslationTargetSelector.ScriptSwitchMinimumLatinWords);
+        Assert.Equal(
+            SharedFixtures.Number(gate["minimumLatinScalars"]),
+            TranslationTargetSelector.ScriptSwitchMinimumLatinScalars);
+        Assert.Equal(
+            SharedFixtures.Number(gate["minimumJapaneseScalars"]),
+            TranslationTargetSelector.ScriptSwitchMinimumJapaneseScalars);
+    }
+
     // Given: target は出力言語である targetSelection fixture
     // When: evidence を純粋な target 調停器へ順に渡す
     // Then: 各段階の出力 target と一致する
@@ -27,7 +46,18 @@ public sealed class TranslationTargetSelectionFixtureTests
         foreach (var step in fixture["evidence"]!.AsArray())
         {
             var evidence = ParseEvidence(SharedFixtures.Text(step!["evidence"]));
-            var selection = TranslationTargetSelector.Select(pair, current, reverseCount, evidence);
+            var oppositeRun = step!["oppositeRun"] is { } run
+                ? new OppositeScriptRun(
+                    SharedFixtures.Number(run["latinWords"]),
+                    SharedFixtures.Number(run["latinScalars"]),
+                    SharedFixtures.Number(run["japaneseScalars"]))
+                : (OppositeScriptRun?)null;
+            var selection = TranslationTargetSelector.Select(
+                pair,
+                current,
+                reverseCount,
+                evidence,
+                oppositeRun);
             current = selection.Target;
             reverseCount = selection.ReverseEvidenceCount;
             var expected = step["expectedTarget"] is { } target

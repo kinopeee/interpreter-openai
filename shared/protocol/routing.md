@@ -76,7 +76,19 @@ discarded, and the suffix becomes the new current source.
 `en-es` は初回の確定 evidence で即時に target を選択する。以降の切替は、現在言語と
 逆の確定 evidence が**連続2回の delta 評価**で継続した場合だけ行う。`ambiguousLatin`、
 `none`、同一言語 evidence が挟まった場合はカウンタをリセットする。`ja-en` / `ja-es`
-は確定 evidence で即時反転する。
+は初回選択だけ従来どおり確定 evidence で即時に target を選択し、稼働中の切替には
+`SourceBoundaryTracker` の候補以降の opposite-script run を使う。Latin へ切り替える
+場合は累積 source 上で **4 語以上かつ 16 scalar 以上**、日本語へ切り替える場合は
+**2 Japanese scalar 以上**が必要である。delta の分割や途中までの語は差分の個数ではなく
+候補以降に蓄積した source 全体で測る。候補は own script が戻ると取り消し、切替時の
+split は従来どおり候補 offset で行う。
+
+| pair / 状態 | 初回選択 | 稼働中の逆方向切替 | reverse counter |
+|---|---|---|---|
+| `en-es` | 確定 evidence で即時 | 逆方向 evidence が連続2回 | 2回 gate |
+| `ja-en` / `ja-es` | 確定 evidence で即時 | candidate 以降が Latin 4語かつ16 scalar、または日本語2 scalar | 常に0 |
+
+この gate は preroll flush、split offset、lane の `elapsed_ms` 時計を変更しない。
 
 判定に使う原文バッファは上限 `16 * recentEvidenceWindow`（UTF-16）で切り詰める。
 

@@ -10,11 +10,16 @@ public readonly record struct TranslationTargetSelection(
 /// <summary>pair と evidence から翻訳出力 target を調停する純粋な状態遷移。</summary>
 public static class TranslationTargetSelector
 {
+    public const int ScriptSwitchMinimumLatinWords = 4;
+    public const int ScriptSwitchMinimumLatinScalars = SpokenLanguageDetector.RecentEvidenceWindow;
+    public const int ScriptSwitchMinimumJapaneseScalars = 2;
+
     public static TranslationTargetSelection Select(
         LanguagePair pair,
         RealtimeTranslationOutputLanguage? currentTarget,
         int reverseEvidenceCount,
-        SpokenLanguageEvidence evidence)
+        SpokenLanguageEvidence evidence,
+        OppositeScriptRun? oppositeRun = null)
     {
         var candidate = CandidateTarget(pair, evidence, currentTarget is null);
         if (candidate is null)
@@ -27,9 +32,24 @@ public static class TranslationTargetSelector
             return new(currentTarget, 0);
         }
 
-        if (currentTarget is null || pair != LanguagePair.EnEs)
+        if (currentTarget is null)
         {
             return new(candidate, 0);
+        }
+
+        if (pair != LanguagePair.EnEs)
+        {
+            var shouldSwitch = oppositeRun is { } run
+                && evidence switch
+                {
+                    SpokenLanguageEvidence.English or SpokenLanguageEvidence.Spanish =>
+                        run.LatinWordCount >= ScriptSwitchMinimumLatinWords
+                        && run.LatinScalarCount >= ScriptSwitchMinimumLatinScalars,
+                    SpokenLanguageEvidence.Japanese =>
+                        run.JapaneseScalarCount >= ScriptSwitchMinimumJapaneseScalars,
+                    _ => false,
+                };
+            return new(shouldSwitch ? candidate : currentTarget, 0);
         }
 
         var nextCount = reverseEvidenceCount + 1;

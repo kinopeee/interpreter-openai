@@ -4,6 +4,11 @@
   "description": "言語ペアの source lane と target wire 値による音声ルーティング期待値。pair 省略時は ja-en。frame は識別用のラベルで、実バイト列は任意。translationSendFailure は直後の appendFrame の翻訳送信を失敗させる（原文送信は成功する）。3 連続失敗で transport error を 1 回 emit し翻訳ポンプを停止、セッション再接続を合図する。",
   "prerollFrameLimit": 40,
   "consecutiveTranslationFailureLimit": 3,
+  "scriptSwitchGate": {
+    "minimumLatinWords": 4,
+    "minimumLatinScalars": 16,
+    "minimumJapaneseScalars": 2
+  },
   "cases": [
     {
       "name": "before detection only the source connection receives audio",
@@ -434,7 +439,7 @@
       }
     }
   ],
-  "targetSelectionDescription": "target は話者言語ではなく出力言語。話者言語は pair.counterpart(target) で求める。",
+  "targetSelectionDescription": "target は話者言語ではなく出力言語。話者言語は pair.counterpart(target) で求める。初回選択は従来どおり即時、en-es の稼働中切替は逆方向 evidence 2 回、ja-* の稼働中切替は candidate 以降の opposite script run を使う。",
   "targetSelection": [
     {
       "name": "en-es initial spanish evidence selects english target",
@@ -506,21 +511,42 @@
       ]
     },
     {
-      "name": "ja-en one reverse evidence switches immediately",
+      "name": "ja-en one reverse evidence waits for the opposite run gate",
       "pair": "ja-en",
       "initialTarget": "en",
       "evidence": [
         { "evidence": "japanese", "expectedTarget": "en" },
-        { "evidence": "english", "expectedTarget": "ja" }
+        { "evidence": "english", "oppositeRun": { "latinWords": 3, "latinScalars": 20, "japaneseScalars": 0 }, "expectedTarget": "en" },
+        { "evidence": "english", "oppositeRun": { "latinWords": 4, "latinScalars": 21, "japaneseScalars": 0 }, "expectedTarget": "ja" }
       ]
     },
     {
-      "name": "ja-es one reverse evidence switches immediately",
+      "name": "ja-es one reverse evidence waits for the opposite run gate",
       "pair": "ja-es",
       "initialTarget": "es",
       "evidence": [
         { "evidence": "japanese", "expectedTarget": "es" },
-        { "evidence": "spanish", "expectedTarget": "ja" }
+        { "evidence": "spanish", "oppositeRun": { "latinWords": 3, "latinScalars": 20, "japaneseScalars": 0 }, "expectedTarget": "es" },
+        { "evidence": "spanish", "oppositeRun": { "latinWords": 4, "latinScalars": 21, "japaneseScalars": 0 }, "expectedTarget": "ja" }
+      ]
+    },
+    {
+      "name": "ja-en japanese evidence waits for two japanese scalars",
+      "pair": "ja-en",
+      "initialTarget": "ja",
+      "evidence": [
+        { "evidence": "english", "expectedTarget": "ja" },
+        { "evidence": "japanese", "oppositeRun": { "latinWords": 0, "latinScalars": 0, "japaneseScalars": 1 }, "expectedTarget": "ja" },
+        { "evidence": "japanese", "oppositeRun": { "latinWords": 0, "latinScalars": 0, "japaneseScalars": 2 }, "expectedTarget": "en" }
+      ]
+    },
+    {
+      "name": "ja-en english evidence without a candidate run does not flip",
+      "pair": "ja-en",
+      "initialTarget": "en",
+      "evidence": [
+        { "evidence": "english", "expectedTarget": "en" },
+        { "evidence": "english", "expectedTarget": "en" }
       ]
     },
     {
@@ -538,6 +564,13 @@
       ]
     },
     {
+      "name": "ja-en initial english evidence selects japanese target without a run",
+      "pair": "ja-en",
+      "evidence": [
+        { "evidence": "english", "expectedTarget": "ja" }
+      ]
+    },
+    {
       "name": "ja-en mid stream ambiguous latin does not flip",
       "pair": "ja-en",
       "initialTarget": "en",
@@ -552,6 +585,233 @@
       "evidence": [
         { "evidence": "none", "expectedTarget": "en" }
       ]
+    }
+  ],
+  "switchStability": [
+    {
+      "name": "ja-en product name does not round trip on main",
+      "pair": "ja-en",
+      "initialTarget": "en",
+      "splits": [
+        {
+          "deltas": ["あいうえおかきく Google Cloud Platform を使います"],
+          "expectedSwitchAtDelta": null,
+          "expectedSourceLengthAtSwitch": null
+        },
+        {
+          "deltas": ["あいうえおかきく ", "Google ", "Cloud ", "Platform ", "を使います"],
+          "expectedSwitchAtDelta": null,
+          "expectedSourceLengthAtSwitch": null
+        },
+        {
+          "deltas": ["あいうえおかきく G", "o", "o", "g", "l", "e ", "Cloud Platform ", "を使います"],
+          "expectedSwitchAtDelta": null,
+          "expectedSourceLengthAtSwitch": null
+        }
+      ],
+      "expectedSwitchCount": 0,
+      "expectedFinalTarget": "en",
+      "expectedSplitOffset": null
+    },
+    {
+      "name": "ja-es product name does not round trip on main",
+      "pair": "ja-es",
+      "initialTarget": "es",
+      "splits": [
+        {
+          "deltas": ["あいうえおかきく Visual Studio Code を使います"],
+          "expectedSwitchAtDelta": null,
+          "expectedSourceLengthAtSwitch": null
+        },
+        {
+          "deltas": ["あいうえおかきく ", "Visual ", "Studio ", "Code ", "を使います"],
+          "expectedSwitchAtDelta": null,
+          "expectedSourceLengthAtSwitch": null
+        },
+        {
+          "deltas": ["あいうえおかきく V", "is", "ual Studio ", "Code を使", "います"],
+          "expectedSwitchAtDelta": null,
+          "expectedSourceLengthAtSwitch": null
+        }
+      ],
+      "expectedSwitchCount": 0,
+      "expectedFinalTarget": "es",
+      "expectedSplitOffset": null
+    },
+    {
+      "name": "ja-en long English phrase confirms a real speaker change",
+      "pair": "ja-en",
+      "initialTarget": "en",
+      "splits": [
+        {
+          "deltas": ["あいうえおかきく Today it is sunny outside"],
+          "expectedSwitchAtDelta": 0,
+          "expectedSourceLengthAtSwitch": 34
+        },
+        {
+          "deltas": ["あいうえおかきく ", "Today ", "it ", "is ", "sunny ", "outside"],
+          "expectedSwitchAtDelta": 5,
+          "expectedSourceLengthAtSwitch": 34
+        },
+        {
+          "deltas": ["あいうえおかきく ", "Tod", "ay ", "it is ", "sun", "ny outside"],
+          "expectedSwitchAtDelta": 5,
+          "expectedSourceLengthAtSwitch": 34
+        }
+      ],
+      "expectedSwitchCount": 1,
+      "expectedFinalTarget": "ja",
+      "expectedSplitOffset": 8
+    },
+    {
+      "name": "ja-en short English reply stays ambiguous",
+      "pair": "ja-en",
+      "initialTarget": "en",
+      "splits": [
+        {
+          "deltas": ["あいうえおかきく Yes."],
+          "expectedSwitchAtDelta": null,
+          "expectedSourceLengthAtSwitch": null
+        },
+        {
+          "deltas": ["あいうえおかきく ", "Yes", "."],
+          "expectedSwitchAtDelta": null,
+          "expectedSourceLengthAtSwitch": null
+        },
+        {
+          "deltas": ["あいうえおかきく Y", "e", "s."],
+          "expectedSwitchAtDelta": null,
+          "expectedSourceLengthAtSwitch": null
+        }
+      ],
+      "expectedSwitchCount": 0,
+      "expectedFinalTarget": "en",
+      "expectedSplitOffset": null
+    },
+    {
+      "name": "ja-en short Japanese reply switches back to English",
+      "pair": "ja-en",
+      "initialTarget": "ja",
+      "splits": [
+        {
+          "deltas": ["Let's start the meeting. はい"],
+          "expectedSwitchAtDelta": 0,
+          "expectedSourceLengthAtSwitch": 27
+        },
+        {
+          "deltas": ["Let's start the meeting. ", "は", "い"],
+          "expectedSwitchAtDelta": 2,
+          "expectedSourceLengthAtSwitch": 27
+        },
+        {
+          "deltas": ["Let's start the meeting.", " ", "は", "い"],
+          "expectedSwitchAtDelta": 3,
+          "expectedSourceLengthAtSwitch": 27
+        }
+      ],
+      "expectedSwitchCount": 1,
+      "expectedFinalTarget": "en",
+      "expectedSplitOffset": 24
+    },
+    {
+      "name": "ja-en no punctuation still confirms a speaker change",
+      "pair": "ja-en",
+      "initialTarget": "en",
+      "splits": [
+        {
+          "deltas": ["あいうえおかきく today it is sunny outside and warm"],
+          "expectedSwitchAtDelta": 0,
+          "expectedSourceLengthAtSwitch": 43
+        },
+        {
+          "deltas": ["あいうえおかきく ", "today ", "it ", "is ", "sunny ", "outside ", "and ", "warm"],
+          "expectedSwitchAtDelta": 5,
+          "expectedSourceLengthAtSwitch": 35
+        },
+        {
+          "deltas": ["あいうえおかきく ", "today it is ", "sun", "ny ", "out", "side", " and warm"],
+          "expectedSwitchAtDelta": 4,
+          "expectedSourceLengthAtSwitch": 30
+        }
+      ],
+      "expectedSwitchCount": 1,
+      "expectedFinalTarget": "ja",
+      "expectedSplitOffset": 8
+    },
+    {
+      "name": "ja-en gate can confirm on the final delta before stop",
+      "pair": "ja-en",
+      "initialTarget": "en",
+      "splits": [
+        {
+          "deltas": ["あいうえおかきく today it is sunny outside"],
+          "expectedSwitchAtDelta": 0,
+          "expectedSourceLengthAtSwitch": 34
+        },
+        {
+          "deltas": ["あいうえおかきく today it is sunny", " outside"],
+          "expectedSwitchAtDelta": 1,
+          "expectedSourceLengthAtSwitch": 34
+        },
+        {
+          "deltas": ["あいうえおかきく today it is ", "sunny ", "outside"],
+          "expectedSwitchAtDelta": 2,
+          "expectedSourceLengthAtSwitch": 34
+        }
+      ],
+      "expectedSwitchCount": 1,
+      "expectedFinalTarget": "ja",
+      "expectedSplitOffset": 8
+    },
+    {
+      "name": "ja-es long Spanish phrase confirms a real speaker change",
+      "pair": "ja-es",
+      "initialTarget": "es",
+      "splits": [
+        {
+          "deltas": ["あいうえおかきく ¿Qué tal estás hoy amigo?"],
+          "expectedSwitchAtDelta": 0,
+          "expectedSourceLengthAtSwitch": 34
+        },
+        {
+          "deltas": ["あいうえおかきく ¿", "Qué ", "tal ", "estás ", "hoy ", "amigo?"],
+          "expectedSwitchAtDelta": 5,
+          "expectedSourceLengthAtSwitch": 34
+        },
+        {
+          "deltas": ["あいうえおかきく ¿Qué tal ", "estás hoy ", "amigo?"],
+          "expectedSwitchAtDelta": 2,
+          "expectedSourceLengthAtSwitch": 34
+        }
+      ],
+      "expectedSwitchCount": 1,
+      "expectedFinalTarget": "ja",
+      "expectedSplitOffset": 8
+    },
+    {
+      "name": "ja-en four-word Latin run inside Japanese is a known limit",
+      "pair": "ja-en",
+      "initialTarget": "en",
+      "splits": [
+        {
+          "deltas": ["これは", " machine learning model training", " です"],
+          "expectedSwitchAtDelta": 1,
+          "expectedSourceLengthAtSwitch": 35
+        },
+        {
+          "deltas": ["これは ", "machine ", "learning ", "model ", "training", " です"],
+          "expectedSwitchAtDelta": 4,
+          "expectedSourceLengthAtSwitch": 35
+        },
+        {
+          "deltas": ["これは ", "machine learning model trai", "ning", " で", "す"],
+          "expectedSwitchAtDelta": 1,
+          "expectedSourceLengthAtSwitch": 31
+        }
+      ],
+      "expectedSwitchCount": 2,
+      "expectedFinalTarget": "en",
+      "expectedSplitOffset": 3
     }
   ],
   "prerollWindow": {
