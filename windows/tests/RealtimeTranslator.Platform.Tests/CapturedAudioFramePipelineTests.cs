@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using NAudio.Wave;
 using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Platform.Audio;
@@ -287,7 +288,9 @@ public sealed class CapturedAudioFramePipelineTests
     [Fact]
     public void FrameChannelDropsOldestWhenTheConsumerLags()
     {
-        var channel = WasapiAudioCaptureService.CreateFrameChannel();
+        long droppedCount = 0;
+        var channel = WasapiAudioCaptureService.CreateFrameChannel(
+            _ => Interlocked.Increment(ref droppedCount));
         var capacity = WasapiAudioCaptureService.FrameChannelCapacity;
 
         for (var index = 0; index < capacity + 3; index++)
@@ -312,6 +315,7 @@ public sealed class CapturedAudioFramePipelineTests
         }
 
         Assert.Equal(capacity, remaining);
+        Assert.Equal(3, Volatile.Read(ref droppedCount));
     }
 
     // Given: tracker が先頭 frame を観測済みの 32 枚 bounded channel
@@ -320,7 +324,9 @@ public sealed class CapturedAudioFramePipelineTests
     [Fact]
     public void FrameChannelRetainsNewestFramesForLossTracking()
     {
-        var channel = WasapiAudioCaptureService.CreateFrameChannel();
+        long droppedCount = 0;
+        var channel = WasapiAudioCaptureService.CreateFrameChannel(
+            _ => Interlocked.Increment(ref droppedCount));
         var tracker = new AudioLossTracker();
 
         Assert.True(channel.Writer.TryWrite(new CapturedAudioFrame(
@@ -363,6 +369,7 @@ public sealed class CapturedAudioFramePipelineTests
         Assert.Equal(Enumerable.Range(9, 32), retained.Select(frame => (int)frame.Sequence));
         Assert.Equal(8, tracker.Metrics.DroppedFrames);
         Assert.Equal(800, tracker.Metrics.LostMilliseconds);
+        Assert.Equal(8, Volatile.Read(ref droppedCount));
     }
 
     // Given: 2,500ms 分の24kHz mono入力を空のcapture bufferへ投入する

@@ -178,17 +178,21 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
     public void Dispose() => StopAsync().GetAwaiter().GetResult();
 
     /// <summary>macOS の bufferingNewest(32) 相当。満杯時は oldest を捨てて最新を優先する。</summary>
-    internal static Channel<CapturedAudioFrame> CreateFrameChannel() =>
-        CreateFrameChannelCore();
+    internal static Channel<CapturedAudioFrame> CreateFrameChannel(
+        Action<CapturedAudioFrame>? onDropped = null) =>
+        CreateFrameChannelCore(onDropped ?? CreateLoggingDropCallback());
 
-    private static Channel<CapturedAudioFrame> CreateFrameChannelCore()
+    private static Action<CapturedAudioFrame> CreateLoggingDropCallback()
     {
         long droppedCount = 0;
-        return AudioFrameChannel.CreateBounded(
-            _ => AppLogger.Debug(
+        return _ => AppLogger.Debug(
                 LogCategory.Audio,
-                $"DBG_CAPTURE_QUEUE_DROP count={Interlocked.Increment(ref droppedCount)}"));
+                $"DBG_CAPTURE_QUEUE_DROP count={Interlocked.Increment(ref droppedCount)}");
     }
+
+    private static Channel<CapturedAudioFrame> CreateFrameChannelCore(
+        Action<CapturedAudioFrame> onDropped) =>
+        AudioFrameChannel.CreateBounded(onDropped);
 
     private static async Task PumpAsync(
         CapturedAudioFramePipeline pipeline,
