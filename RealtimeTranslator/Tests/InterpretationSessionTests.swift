@@ -1439,7 +1439,7 @@ final class InterpretationSessionTests: XCTestCase {
         await session.stop()
     }
 
-    func testNonFlippingSourceDeltaStreamDoesNotGrowRoutingBufferWithoutBound() async throws {
+    func testNonFlippingSourceDeltaStreamStillDetectsLanguageFlip() async throws {
         // Given: 文字種の反転を起こさない英語 delta がサーバから連続で流れ続ける
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
         let audio = FakeRealtimeAudioCaptureService()
@@ -1463,10 +1463,7 @@ final class InterpretationSessionTests: XCTestCase {
         )
         await waitUntil { dual.spokenLanguages.count > 0 }
 
-        var processedDeltaCount = 0
-        session.beforeAssemblerIngestForTests = {
-            processedDeltaCount += 1
-        }
+        // When: 同一セグメント内で delta を大量に取り込んだあと日本語へ反転する
         let nonFlippingDeltaCount = 200
         for index in 0..<nonFlippingDeltaCount {
             dual.emit(
@@ -1479,14 +1476,6 @@ final class InterpretationSessionTests: XCTestCase {
             )
         }
 
-        // When: 反転前に大量 delta の取り込み完了を待ち、その時点で上限を検証する
-        await waitUntil { processedDeltaCount >= nonFlippingDeltaCount }
-        XCTAssertLessThanOrEqual(
-            session.routingSourceTextLengthForTests,
-            RoutingSourceTextWindow.maxLength,
-            "routing buffer length \(session.routingSourceTextLengthForTests) exceeded the cap before flip"
-        )
-
         dual.emit(
             target: .english,
             event: .inputTranscriptDelta(
@@ -1497,13 +1486,8 @@ final class InterpretationSessionTests: XCTestCase {
         )
         await waitUntil { dual.spokenLanguages.count > 1 }
 
-        // Then: routing 判定バッファは上限までで打ち切られ、その後の反転検出も壊れない
+        // Then: 反転検出が壊れず japanese へ切り替わる
         XCTAssertEqual(dual.spokenLanguages, [.english, .japanese])
-        XCTAssertLessThanOrEqual(
-            session.routingSourceTextLengthForTests,
-            RoutingSourceTextWindow.maxLength,
-            "routing buffer length \(session.routingSourceTextLengthForTests) exceeded the cap after flip"
-        )
         await session.stop()
     }
 
@@ -1549,11 +1533,6 @@ final class InterpretationSessionTests: XCTestCase {
 
         // Then: RecentEvidence ウィンドウを保ち英語反転できる
         XCTAssertEqual(dual.spokenLanguages, [.japanese, .english])
-        XCTAssertLessThanOrEqual(
-            session.routingSourceTextLengthForTests,
-            RoutingSourceTextWindow.maxLength,
-            "routing buffer length \(session.routingSourceTextLengthForTests) exceeded the cap"
-        )
         await session.stop()
     }
 

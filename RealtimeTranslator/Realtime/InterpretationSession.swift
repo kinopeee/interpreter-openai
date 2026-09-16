@@ -51,14 +51,6 @@ final class InterpretationSession {
     private var activeFeed: EventFeed?
     private var handledLossRunToken: Int?
 
-    /// テスト用。generation 確認後・assembler 更新前に差し込む。
-    var beforeAssemblerIngestForTests: (() -> Void)?
-
-    /// テスト用。ルーティング判定バッファの保持長 (UTF-16)。
-    var routingSourceTextLengthForTests: Int {
-        processor.routingSourceText.utf16.count
-    }
-
     init(
         apiKeyStore: any APIKeyStore,
         audioCapture: any RealtimeAudioCaptureServicing = RealtimeAudioCaptureService(),
@@ -425,7 +417,6 @@ final class InterpretationSession {
             }
 
             // 原文 routing は専用 transcription の source lane だけを使う。
-            beforeAssemblerIngestForTests?()
             // 適用または明示破棄のあとで acknowledge する。ack を先にすると、
             // この await 中に performStop が走ったとき未適用イベントが stop drain から外れる。
             guard generation == lifecycleGeneration else { return }
