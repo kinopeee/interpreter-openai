@@ -104,7 +104,6 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         }
 
         var pipeline = new CapturedAudioFramePipeline(capture.WaveFormat);
-        pipeline.ResetDiscardCounter();
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         // Dispose 後の cts.Token 参照で ObjectDisposedException にならないよう、先に捕捉する。
         var pumpToken = cts.Token;

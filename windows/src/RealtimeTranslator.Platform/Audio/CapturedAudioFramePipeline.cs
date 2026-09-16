@@ -228,14 +228,6 @@ public sealed class CapturedAudioFramePipeline
         }
     }
 
-    public void ResetDiscardCounter()
-    {
-        lock (_sync)
-        {
-            _discardedMilliseconds = 0;
-        }
-    }
-
     private IReadOnlyList<byte[]> ReadFramesLocked(int sampleCount, bool requireFullInput = true)
     {
         if (requireFullInput && _buffered.BufferedBytes < BytesRequiredForOutputSamples(sampleCount))
