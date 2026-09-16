@@ -1801,14 +1801,10 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
             try await withTaskCancellationHandler {
                 try await withCheckedThrowingContinuation {
                     (continuation: CheckedContinuation<Void, Error>) in
-                    if Task.isCancelled {
-                        continuation.resume(throwing: CancellationError())
-                        return
-                    }
-                    startGate.throwingContinuation = continuation
+                    startGate.arm(continuation)
                 }
             } onCancel: {
-                startGate.resumeThrowing(CancellationError())
+                startGate.cancel()
             }
         }
         try Task.checkCancellation()
@@ -1991,9 +1987,9 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
 }
 
 final class CheckedContinuationBox: @unchecked Sendable {
-    var continuation: CheckedContinuation<Void, Never>?
-    var throwingContinuation: CheckedContinuation<Void, Error>?
-    /// onCancel は MainActor 外で呼ばれ得るため arm/cancel は lock で保護する。
+    private(set) var continuation: CheckedContinuation<Void, Never>?
+    private(set) var throwingContinuation: CheckedContinuation<Void, Error>?
+    /// onCancel は MainActor 外で呼ばれ得るため全状態アクセスを lock で保護する。
     private let lock = NSLock()
     private var isCancelled = false
 
@@ -2020,23 +2016,31 @@ final class CheckedContinuationBox: @unchecked Sendable {
     }
 
     func resume() {
-        if let throwingContinuation {
-            self.throwingContinuation = nil
-            throwingContinuation.resume()
+        lock.lock()
+        let throwing = throwingContinuation
+        throwingContinuation = nil
+        let plain = continuation
+        continuation = nil
+        lock.unlock()
+        if let throwing {
+            throwing.resume()
             return
         }
-        continuation?.resume()
-        continuation = nil
+        plain?.resume()
     }
 
     func resumeThrowing(_ error: Error) {
-        if let throwingContinuation {
-            self.throwingContinuation = nil
-            throwingContinuation.resume(throwing: error)
+        lock.lock()
+        let throwing = throwingContinuation
+        throwingContinuation = nil
+        let plain = continuation
+        continuation = nil
+        lock.unlock()
+        if let throwing {
+            throwing.resume(throwing: error)
             return
         }
-        continuation?.resume()
-        continuation = nil
+        plain?.resume()
     }
 }
 
