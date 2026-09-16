@@ -94,11 +94,6 @@
       "en": "While recording, microphone audio, source text, and translations are sent to OpenAI. An internet connection and API usage fees are required. Review OpenAI Data controls for how data is handled."
     },
     {
-      "key": "settings.apiKey",
-      "ja": "API キー",
-      "en": "API key"
-    },
-    {
       "key": "settings.save",
       "ja": "保存",
       "en": "Save"

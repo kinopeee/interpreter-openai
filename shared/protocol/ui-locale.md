@@ -189,7 +189,7 @@ CI（`shared-contracts`）へ `locales/ui.json` の schema 検査ステップを
 | `settings.translatedAudioValue` | 字幕のみ（再生なし） |
 | `settings.consentToggle` | マイク音声を OpenAI API へ送信することに同意する |
 | `settings.consentHelp` | 録音中はマイク音声・原文・訳文が… |
-| `settings.apiKey` / `settings.save` / `settings.delete` | API キー / 保存 / 削除 |
+| `settings.save` / `settings.delete` | 保存 / 削除 |
 | `settings.apiKeySaved.mac` / `settings.apiKeySaved.windows` | Keychainに保存済み / 資格情報マネージャーに保存済み |
 | `settings.apiKeyNotSaved` | 未保存 |
 | `settings.apiKeySaveOk.mac` / `.windows` | 保存しました系 |

@@ -5,7 +5,6 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace RealtimeTranslator.Core.Localization;
@@ -55,8 +54,6 @@ public static class UiLanguage
                 ? UiLocale.Ja
                 : UiLocale.En,
         };
-
-    public static string ToCatalogCode(this UiLocale locale) => locale == UiLocale.Ja ? JaWire : EnWire;
 }
 
 /// <summary>
@@ -66,10 +63,6 @@ public static class UiLanguage
 public sealed class UserCopy
 {
     public const string EmbeddedResourceName = "RealtimeTranslator.Core.locales.ui.json";
-
-    private static readonly Regex PlaceholderPattern = new(
-        @"\{([A-Za-z_][A-Za-z0-9_]*)\}",
-        RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly object Gate = new();
     private static UserCopy? _current;
@@ -185,49 +178,6 @@ public sealed class UserCopy
         return new UserCopy(locale, primary, tables.En, missingKeyLogger);
     }
 
-    public static IReadOnlyList<string> DuplicateKeys(string json)
-    {
-        ArgumentNullException.ThrowIfNull(json);
-
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var duplicates = new List<string>();
-        foreach (var item in Strings(json))
-        {
-            var key = RequiredText(item, "key");
-            if (!seen.Add(key))
-            {
-                duplicates.Add(key);
-            }
-        }
-
-        return duplicates;
-    }
-
-    public static IReadOnlyList<string> PlaceholderMismatches(string json)
-    {
-        ArgumentNullException.ThrowIfNull(json);
-
-        var mismatches = new List<string>();
-        foreach (var item in Strings(json))
-        {
-            var key = RequiredText(item, "key");
-            var ja = Names(RequiredText(item, "ja"));
-            var en = Names(RequiredText(item, "en"));
-            if (!ja.SetEquals(en))
-            {
-                mismatches.Add(key);
-            }
-        }
-
-        return mismatches;
-    }
-
-    public static HashSet<string> PlaceholderNames(string text)
-    {
-        ArgumentNullException.ThrowIfNull(text);
-        return Names(text);
-    }
-
     private static (Dictionary<string, string> Ja, Dictionary<string, string> En) ReadLocaleTables(string json)
     {
         var ja = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -242,7 +192,7 @@ public sealed class UserCopy
         return (ja, en);
     }
 
-    private static IEnumerable<JsonObject> Strings(string json)
+    internal static IEnumerable<JsonObject> Strings(string json)
     {
         JsonNode? root;
         try
@@ -268,7 +218,7 @@ public sealed class UserCopy
         }
     }
 
-    private static string RequiredText(JsonObject item, string name)
+    internal static string RequiredText(JsonObject item, string name)
     {
         if (item[name] is JsonValue value && value.TryGetValue<string>(out var text) && text.Length > 0)
         {
@@ -276,17 +226,6 @@ public sealed class UserCopy
         }
 
         throw new InvalidOperationException($"ui.json entry is missing {name}");
-    }
-
-    private static HashSet<string> Names(string text)
-    {
-        var names = new HashSet<string>(StringComparer.Ordinal);
-        foreach (Match match in PlaceholderPattern.Matches(text))
-        {
-            names.Add(match.Groups[1].Value);
-        }
-
-        return names;
     }
 
     private void LogMissing(string key)
