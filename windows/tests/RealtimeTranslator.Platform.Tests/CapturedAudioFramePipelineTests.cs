@@ -450,6 +450,145 @@ public sealed class CapturedAudioFramePipelineTests
         Assert.Equal(0, pipeline.DiscardedMilliseconds);
     }
 
+    // Given: 24kHz mono の capture buffer を容量ちょうどまで満たしている
+    // When: 小さい overflow と容量以上の入力を順に保持する
+    // Then: 破棄時間は両方の入力分を累積する
+    [Fact]
+    public void AccumulatesDiscardAcrossSmallOverflowAndLargePush()
+    {
+        var format = new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1);
+        var pipeline = new CapturedAudioFramePipeline(format);
+        var capacity = format.AverageBytesPerSecond * 2;
+        var smallOverflowBytes = format.AverageBytesPerSecond * 100 / 1_000;
+        var largePushBytes = format.AverageBytesPerSecond * 2_500 / 1_000;
+
+        pipeline.Push(new byte[capacity], capacity);
+
+        Assert.Equal(0, pipeline.DiscardedMilliseconds);
+
+        pipeline.Push(new byte[smallOverflowBytes], smallOverflowBytes);
+        pipeline.Push(new byte[largePushBytes], largePushBytes);
+
+        Assert.Equal(2_600, pipeline.DiscardedMilliseconds);
+    }
+
+    // Given: 2,500ms を投入して 500ms が破棄された 24kHz mono pipeline
+    // When: 1 回の tick で frame を読み出してから remainder を flush する
+    // Then: 実音声は20 frame、flush は空で、破棄時間は500msのままになる
+    [Fact]
+    public void ReadingFramesDoesNotChangeDiscardedMilliseconds()
+    {
+        var format = new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1);
+        var pipeline = new CapturedAudioFramePipeline(format);
+        var inputMilliseconds = 2_500;
+        var inputBytes = format.AverageBytesPerSecond * inputMilliseconds / 1_000;
+
+        pipeline.Push(new byte[inputBytes], inputBytes);
+
+        Assert.Equal(500, pipeline.DiscardedMilliseconds);
+
+        var frames = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
+        var remainder = pipeline.FlushRemainder();
+
+        Assert.Equal(20, frames.Count);
+        Assert.Empty(remainder);
+        Assert.Equal(500, pipeline.DiscardedMilliseconds);
+    }
+
+    // Given: 2,500ms を投入して500msが破棄された pipeline と loss tracker
+    // When: 破棄時間を持つ frame を連続して観測し、さらに2,000msを破棄する
+    // Then: 同じ破棄を二重計上せず、追加分だけを新しい loss event にする
+    [Fact]
+    public void TrackerCountsPipelineDiscardOnceAcrossFrames()
+    {
+        var format = new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1);
+        var pipeline = new CapturedAudioFramePipeline(format);
+        var tracker = new AudioLossTracker();
+        var inputMilliseconds = 2_500;
+        var inputBytes = format.AverageBytesPerSecond * inputMilliseconds / 1_000;
+
+        pipeline.Push(new byte[inputBytes], inputBytes);
+
+        for (var sequence = 0; sequence < 3; sequence++)
+        {
+            var frame = new CapturedAudioFrame(
+                1,
+                sequence,
+                new byte[Pcm16FramePacketizer.BytesPerFrame],
+                checked((int)pipeline.DiscardedMilliseconds),
+                sequence * 100);
+            tracker.Observe(
+                frame.Generation,
+                frame.Sequence,
+                frame.DiscardedMilliseconds,
+                0,
+                sequence * 100);
+        }
+
+        Assert.Equal(
+            new AudioLossMetrics(DroppedFrames: 0, LostMilliseconds: 500, LossEvents: 1, MaxQueueWaitMilliseconds: 0),
+            tracker.Metrics);
+
+        var additionalInputMilliseconds = 2_000;
+        var additionalInputBytes =
+            format.AverageBytesPerSecond * additionalInputMilliseconds / 1_000;
+        pipeline.Push(new byte[additionalInputBytes], additionalInputBytes);
+
+        var finalFrame = new CapturedAudioFrame(
+            1,
+            3,
+            new byte[Pcm16FramePacketizer.BytesPerFrame],
+            checked((int)pipeline.DiscardedMilliseconds),
+            300);
+        tracker.Observe(
+            finalFrame.Generation,
+            finalFrame.Sequence,
+            finalFrame.DiscardedMilliseconds,
+            0,
+            300);
+
+        Assert.Equal(
+            new AudioLossMetrics(DroppedFrames: 0, LostMilliseconds: 2_500, LossEvents: 2, MaxQueueWaitMilliseconds: 0),
+            tracker.Metrics);
+    }
+
+    // Given: frame channel に drop callback を設定している
+    // When: 容量を3つ超える frame を順番に書き込む
+    // Then: 先頭3つが順番に破棄され、reader には4つ目以降が残る
+    [Fact]
+    public void DropCallbackReceivesEvictedFrameMetadataInOrder()
+    {
+        var dropped = new List<CapturedAudioFrame>();
+        var channel = WasapiAudioCaptureService.CreateFrameChannel(dropped.Add);
+
+        for (var sequence = 0; sequence < WasapiAudioCaptureService.FrameChannelCapacity + 3; sequence++)
+        {
+            Assert.True(channel.Writer.TryWrite(new CapturedAudioFrame(
+                7,
+                sequence,
+                new byte[Pcm16FramePacketizer.BytesPerFrame],
+                0,
+                sequence)));
+        }
+
+        Assert.Equal(
+            new long[] { 0, 1, 2 },
+            dropped.ConvertAll(frame => frame.Sequence));
+        Assert.All(dropped, frame => Assert.Equal(7, frame.Generation));
+
+        var retained = new List<CapturedAudioFrame>();
+        while (channel.Reader.TryRead(out var frame))
+        {
+            retained.Add(frame);
+        }
+
+        Assert.Equal(WasapiAudioCaptureService.FrameChannelCapacity, retained.Count);
+        Assert.Equal(
+            Enumerable.Range(3, WasapiAudioCaptureService.FrameChannelCapacity)
+                .Select(sequence => (long)sequence),
+            retained.ConvertAll(frame => frame.Sequence));
+    }
+
     // Given: 小音量の入力
     // When: 連続して観測する
     // Then: 適応ゲインが契約の範囲内に収まる

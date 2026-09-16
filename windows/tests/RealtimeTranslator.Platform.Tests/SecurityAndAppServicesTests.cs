@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Tracing;
+using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.Localization;
 using RealtimeTranslator.Core.Security;
 using RealtimeTranslator.Platform.App;
+using RealtimeTranslator.Platform.Audio;
 using RealtimeTranslator.Platform.Logging;
 using RealtimeTranslator.Platform.Security;
 using Xunit;
@@ -254,6 +256,50 @@ public sealed class SecurityAndAppServicesTests
         }
     }
 
+    // Given: frame drop log を記録する sink を設定している
+    // When: 音声内容を含む frame を channel 容量より2つ多く書き込む
+    // Then: drop 数だけを記録し、音声内容をログへ出さない
+    [Fact]
+    public void FrameChannelDropLogCountsWithoutAudioContent()
+    {
+        var sink = new RecordingSink();
+        AppLogger.UseSink(sink);
+        try
+        {
+            var channel = WasapiAudioCaptureService.CreateFrameChannel();
+            var pcm16 = new byte[Pcm16FramePacketizer.BytesPerFrame];
+            Array.Fill(pcm16, (byte)0x41);
+
+            for (var sequence = 0;
+                 sequence < WasapiAudioCaptureService.FrameChannelCapacity + 2;
+                 sequence++)
+            {
+                Assert.True(channel.Writer.TryWrite(new CapturedAudioFrame(
+                    1,
+                    sequence,
+                    pcm16,
+                    0,
+                    sequence)));
+            }
+
+            Assert.Equal(2, sink.Lines.Count);
+            Assert.Equal("DBG_CAPTURE_QUEUE_DROP count=1", sink.Lines[0]);
+            Assert.Equal("DBG_CAPTURE_QUEUE_DROP count=2", sink.Lines[1]);
+            Assert.All(
+                sink.Entries,
+                entry =>
+                {
+                    Assert.Equal(LogCategory.Audio, entry.Category);
+                    Assert.Equal(EventLevel.Verbose, entry.Level);
+                });
+            Assert.DoesNotContain(sink.Lines, line => line.Contains("AAAA", StringComparison.Ordinal));
+        }
+        finally
+        {
+            AppLogger.UseSink(new TraceLogSink());
+        }
+    }
+
     private sealed class FakeHotkeyRegistrar(bool succeed) : IGlobalHotkeyRegistrar
     {
         public int UnregisterCount { get; private set; }
@@ -270,7 +316,12 @@ public sealed class SecurityAndAppServicesTests
     private sealed class RecordingSink : ILogSink
     {
         public List<string> Lines { get; } = [];
+        public List<(LogCategory Category, EventLevel Level)> Entries { get; } = [];
 
-        public void Write(LogCategory category, EventLevel level, string message) => Lines.Add(message);
+        public void Write(LogCategory category, EventLevel level, string message)
+        {
+            Lines.Add(message);
+            Entries.Add((category, level));
+        }
     }
 }
