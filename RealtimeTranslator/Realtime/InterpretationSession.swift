@@ -401,7 +401,7 @@ final class InterpretationSession {
                 atMilliseconds: atMilliseconds
             )
             if observation.didLose {
-                handleAudioLoss()
+                await handleAudioLoss()
                 #if DEBUG
                 AppLogger.session.notice(
                     "DBG_AUDIO_LOSS droppedFrames=\(observation.droppedFrames, privacy: .public) lostMs=\(observation.lostMilliseconds, privacy: .public) reconnect=\(observation.shouldReconnect, privacy: .public)"
@@ -656,10 +656,11 @@ final class InterpretationSession {
         await dualClient.resetAudioRouting()
     }
 
-    private func handleAudioLoss() {
+    private func handleAudioLoss() async {
         let invalidation = processor.markAudioLoss(now: Date())
         displayScheduler.discardPending()
         displayScheduler.renderNow(invalidation)
+        await dualClient.resetAudioRouting()
     }
 
     /// scheduler からの描画要求を aggregator・delegate へ反映する。

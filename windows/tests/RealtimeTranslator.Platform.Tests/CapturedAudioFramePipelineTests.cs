@@ -381,6 +381,25 @@ public sealed class CapturedAudioFramePipelineTests
         Assert.Equal(500, pipeline.DiscardedMilliseconds);
     }
 
+    // Given: 48kHz mono bufferを容量まで満たした状態
+    // When: 512バイトのoverflowを3回発生させる
+    // Then: 累積1536バイトを一度だけ換算した16msになる
+    [Fact]
+    public void RoundsCumulativeDiscardedBytesOnce()
+    {
+        var format = new WaveFormat(48_000, 16, 1);
+        var pipeline = new CapturedAudioFramePipeline(format);
+        var capacity = format.AverageBytesPerSecond * 2;
+
+        pipeline.Push(new byte[capacity], capacity);
+        for (var index = 0; index < 3; index++)
+        {
+            pipeline.Push(new byte[512], 512);
+        }
+
+        Assert.Equal(16, pipeline.DiscardedMilliseconds);
+    }
+
     // Given: 先頭500msと後続2,000msで値が異なる単一チャンク
     // When: 容量以上の入力を一度に保持する
     // Then: 最新2,000msだけが残り、先頭 frame は後続側の値になる

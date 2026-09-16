@@ -551,6 +551,7 @@ public sealed class InterpretationSession : IDisposable
             if (invalidation is { } lossUpdate)
             {
                 EmitSubtitleUpdate(lossUpdate);
+                await ResetAudioRoutingAfterAudioLossAsync().ConfigureAwait(false);
             }
 
             if (observation.ShouldReconnect)
@@ -764,6 +765,19 @@ public sealed class InterpretationSession : IDisposable
         try
         {
             await ResetAudioRoutingForNextSegmentCoreAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _routingGate.Release();
+        }
+    }
+
+    private async Task ResetAudioRoutingAfterAudioLossAsync()
+    {
+        await _routingGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
         }
         finally
         {

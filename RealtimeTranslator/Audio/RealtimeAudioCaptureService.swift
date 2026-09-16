@@ -61,13 +61,14 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     private static let targetSampleRate = 24_000.0
 
     private let audioEngine = AVAudioEngine()
-    private let discardedMilliseconds = OSAllocatedUnfairLock(initialState: 0)
+    private let discardedFrames = OSAllocatedUnfairLock(initialState: 0)
     private var frameQueue: RealtimeAudioFrameQueue
     private var captureContinuation: AsyncStream<CapturedAudioBuffer>.Continuation?
     private var feederTask: Task<Void, Never>?
     private var configurationObserver: (any NSObjectProtocol)?
     private var isTapInstalled = false
     private var lifecycleGeneration = 0
+    private var inputSampleRate = 0.0
     private(set) var frames: AsyncStream<CapturedAudioFrame>
     private(set) var terminationError: Error?
 
@@ -81,7 +82,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         lifecycleGeneration += 1
         let generation = lifecycleGeneration
         terminationError = nil
-        discardedMilliseconds.withLock { $0 = 0 }
+        discardedFrames.withLock { $0 = 0 }
         recreateFrameStream()
 
         let microphoneGranted = await requestMicrophonePermission()
@@ -95,6 +96,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             throw RealtimeAudioCaptureError.audioFormatUnavailable
         }
+        inputSampleRate = inputFormat.sampleRate
         #if DEBUG
         AppLogger.audio.notice(
             "DBG_CAPTURE_START rate=\(inputFormat.sampleRate, privacy: .public) channels=\(inputFormat.channelCount, privacy: .public)"
@@ -138,8 +140,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         let audioTap = AnalyzerAudioTap(
             continuation: captureContinuation,
             bufferPool: bufferPool,
-            discardedMilliseconds: discardedMilliseconds,
-            inputSampleRate: inputFormat.sampleRate
+            discardedFrames: discardedFrames
         )
         let tapBlock: @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void = { buffer, _ in
             audioTap.receive(buffer)
@@ -271,13 +272,21 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     }
 
     private func yieldFrame(_ frame: Data, generation: Int) -> Bool {
-        let discarded = discardedMilliseconds.withLock { $0 }
+        let sampleRate = inputSampleRate
+        let discarded = discardedFrames.withLock { frames in
+            Self.discardedMilliseconds(forFrames: frames, inputSampleRate: sampleRate)
+        }
         return frameQueue.enqueue(
             pcm16: frame,
             generation: generation,
             discardedMilliseconds: discarded,
             capturedAt: .now
         )
+    }
+
+    nonisolated static func discardedMilliseconds(forFrames frames: Int, inputSampleRate: Double) -> Int {
+        guard frames > 0, inputSampleRate > 0 else { return 0 }
+        return Int((Double(frames) * 1_000 / inputSampleRate).rounded())
     }
 
     private func reportFailure(_ error: Error, generation: Int) {

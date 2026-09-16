@@ -199,19 +199,16 @@ final class AnalyzerAudioConverter: @unchecked Sendable {
 final class AnalyzerAudioTap: @unchecked Sendable {
     private let continuation: AsyncStream<CapturedAudioBuffer>.Continuation
     private let bufferPool: CapturedAudioBufferPool
-    private let discardedMilliseconds: OSAllocatedUnfairLock<Int>
-    private let inputSampleRate: Double
+    private let discardedFrames: OSAllocatedUnfairLock<Int>
 
     init(
         continuation: AsyncStream<CapturedAudioBuffer>.Continuation,
         bufferPool: CapturedAudioBufferPool,
-        discardedMilliseconds: OSAllocatedUnfairLock<Int>,
-        inputSampleRate: Double
+        discardedFrames: OSAllocatedUnfairLock<Int>
     ) {
         self.continuation = continuation
         self.bufferPool = bufferPool
-        self.discardedMilliseconds = discardedMilliseconds
-        self.inputSampleRate = inputSampleRate
+        self.discardedFrames = discardedFrames
     }
 
     func receive(_ buffer: AVAudioPCMBuffer) {
@@ -220,13 +217,11 @@ final class AnalyzerAudioTap: @unchecked Sendable {
         case .enqueued:
             break
         case .dropped(let dropped):
-            let durationMilliseconds = Int(
-                (Double(dropped.buffer.frameLength) / inputSampleRate * 1_000).rounded()
-            )
-            discardedMilliseconds.withLock { $0 += durationMilliseconds }
+            let frameCount = Int(dropped.buffer.frameLength)
+            discardedFrames.withLock { $0 += frameCount }
             #if DEBUG
             AppLogger.audio.notice(
-                "DBG_CAPTURE_PRECONVERSION_DROP ms=\(durationMilliseconds, privacy: .public)"
+                "DBG_CAPTURE_PRECONVERSION_DROP frames=\(frameCount, privacy: .public)"
             )
             #endif
             dropped.release()

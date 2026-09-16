@@ -58,12 +58,13 @@ public sealed class CapturedAudioFramePipeline
         {
             lock (_sync)
             {
-                return _discardedMilliseconds;
+                return (_discardedBytes * 1000 + _sourceFormat.AverageBytesPerSecond / 2)
+                    / _sourceFormat.AverageBytesPerSecond;
             }
         }
     }
 
-    private long _discardedMilliseconds;
+    private long _discardedBytes;
 
     /// <summary>packetizer 端数または未変換のデバイスバイトが残っている。</summary>
     public bool HasUnsentAudio
@@ -97,7 +98,7 @@ public sealed class CapturedAudioFramePipeline
             if (count >= capacity)
             {
                 // 1 チャンクがバッファ全体以上なら、最新の capacity バイトだけ残す。
-                AddDiscardedMillisecondsLocked(
+                AddDiscardedBytesLocked(
                     (long)_buffered.BufferedBytes + count - capacity);
                 _buffered.ClearBuffer();
                 _buffered.AddSamples(deviceBytes, count - capacity, capacity);
@@ -276,18 +277,16 @@ public sealed class CapturedAudioFramePipeline
         }
 
         _ = _buffered.Read(_overflowDiscard, 0, byteCount);
-        AddDiscardedMillisecondsLocked(byteCount);
+        AddDiscardedBytesLocked(byteCount);
     }
 
-    private void AddDiscardedMillisecondsLocked(long byteCount)
+    private void AddDiscardedBytesLocked(long byteCount)
     {
         if (byteCount <= 0)
         {
             return;
         }
 
-        var milliseconds = (byteCount * 1000 + _sourceFormat.AverageBytesPerSecond / 2)
-            / _sourceFormat.AverageBytesPerSecond;
-        _discardedMilliseconds = checked(_discardedMilliseconds + milliseconds);
+        _discardedBytes = checked(_discardedBytes + byteCount);
     }
 }

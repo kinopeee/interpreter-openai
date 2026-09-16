@@ -61,6 +61,33 @@ final class InterpretationSessionAudioLossTests: XCTestCase {
         await session.stop()
     }
 
+    func testAudioLossResetsDualRoutingWithoutReconnect() async {
+        // Given: 再接続閾値未満の欠落を受け取るListening session
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: audio,
+            dualClient: dual
+        )
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let resetCountBeforeLoss = dual.resetAudioRoutingCallCount
+
+        // When: 800ms相当のsequence欠落を通知する
+        audio.emit(sequence: 0)
+        audio.emit(sequence: 9)
+        await waitUntil {
+            session.audioLossMetrics.lostMilliseconds == 800
+                && dual.resetAudioRoutingCallCount == resetCountBeforeLoss + 1
+        }
+
+        // Then: dual routingだけを一度リセットし、再接続しない
+        XCTAssertEqual(dual.resetAudioRoutingCallCount, resetCountBeforeLoss + 1)
+        XCTAssertEqual(dual.startCallCount, 1)
+        await session.stop()
+    }
+
     func testFinalizedSubtitleSurvivesAudioLoss() async {
         // Given: 先に確定した字幕を持つsession
         let audio = FakeRealtimeAudioCaptureService()

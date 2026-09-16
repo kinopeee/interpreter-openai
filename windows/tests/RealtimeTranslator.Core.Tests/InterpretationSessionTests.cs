@@ -3246,6 +3246,32 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: 再接続閾値未満の欠落を受け取る Listening session
+    // When: 800ms 相当の sequence 欠落を通知する
+    // Then: dual routing だけを一度リセットし、再接続しない
+    [Fact]
+    public async Task AudioLossResetsDualRoutingWithoutReconnect()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        using var session = NewSession(client, audio: audio);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        var resetCountBeforeLoss = client.ResetAudioRoutingCount;
+
+        audio.Write(new CapturedAudioFrame(1, 0, new byte[4_800], 0, 0));
+        audio.Write(new CapturedAudioFrame(1, 9, new byte[4_800], 0, 900));
+
+        await WaitUntilAsync(() => session.AudioLossMetrics.LostMilliseconds == 800);
+        await WaitUntilAsync(
+            () => client.ResetAudioRoutingCount == resetCountBeforeLoss + 1);
+
+        Assert.Equal(resetCountBeforeLoss + 1, client.ResetAudioRoutingCount);
+        Assert.Equal(1, client.StartCount);
+        await session.StopAsync();
+    }
+
     // Given: 同一窓内に32枚分の欠落を二度記録する Listening session
     // When: 二つ目の欠落 frame を処理する
     // Then: 既存の recoverable path で再接続し Listening に戻る
