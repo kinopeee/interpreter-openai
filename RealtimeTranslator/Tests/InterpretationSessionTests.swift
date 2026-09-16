@@ -1667,8 +1667,11 @@ final class InterpretationSessionTests: XCTestCase {
 
 @MainActor
 final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
-    private(set) var frames: AsyncStream<Data>
-    private var continuation: AsyncStream<Data>.Continuation?
+    private(set) var frames: AsyncStream<CapturedAudioFrame>
+    private var continuation: AsyncStream<CapturedAudioFrame>.Continuation?
+    private let queue: RealtimeAudioFrameQueue?
+    private var nextSequence = 0
+    private var generation = 1
     private(set) var startCallCount = 0
     private(set) var stopCallCount = 0
     private(set) var isRunning = false
@@ -1677,9 +1680,14 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     /// performStop が renderTask を消した直後に consumer へイベントを届ける。
     var onStop: (() -> Void)?
 
-    init() {
-        var continuation: AsyncStream<Data>.Continuation!
-        frames = AsyncStream { continuation = $0 }
+    init(queue: RealtimeAudioFrameQueue? = nil) {
+        self.queue = queue
+        var continuation: AsyncStream<CapturedAudioFrame>.Continuation!
+        if let queue {
+            frames = queue.frames
+        } else {
+            frames = AsyncStream { continuation = $0 }
+        }
         self.continuation = continuation
     }
 
@@ -1689,10 +1697,14 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         if let startError {
             throw startError
         }
-        continuation?.finish()
-        var next: AsyncStream<Data>.Continuation!
-        frames = AsyncStream { next = $0 }
-        continuation = next
+        if queue == nil {
+            continuation?.finish()
+            var next: AsyncStream<CapturedAudioFrame>.Continuation!
+            frames = AsyncStream { next = $0 }
+            continuation = next
+        }
+        nextSequence = 0
+        generation += 1
         isRunning = true
     }
 
@@ -1705,11 +1717,39 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     }
 
     func emit(_ frame: Data) {
-        _ = continuation?.yield(frame)
+        emit(sequence: nextSequence, generation: generation, pcm16: frame)
+        nextSequence += 1
+    }
+
+    func emit(
+        sequence: Int,
+        generation: Int? = nil,
+        discardedMs: Int = 0,
+        pcm16: Data = Data(count: PCM16FramePacketizer.bytesPerFrame)
+    ) {
+        if let queue {
+            _ = queue.enqueue(
+                pcm16: pcm16,
+                generation: generation ?? self.generation,
+                discardedMilliseconds: discardedMs,
+                capturedAt: .now
+            )
+        } else {
+            _ = continuation?.yield(
+                CapturedAudioFrame(
+                    generation: generation ?? self.generation,
+                    sequence: sequence,
+                    pcm16: pcm16,
+                    discardedMilliseconds: discardedMs,
+                    capturedAt: .now
+                )
+            )
+        }
     }
 
     func terminate(with error: Error) {
         terminationError = error
+        queue?.finish()
         continuation?.finish()
         continuation = nil
     }
@@ -1739,6 +1779,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     private(set) var selectedTargets: [RealtimeTranslationOutputLanguage] = []
     private(set) var resetAudioRoutingCallCount = 0
     private(set) var updateTranscriptionTuningCallCount = 0
+    private(set) var appendAudioFrameCallCount = 0
     private(set) var lastTuning: RealtimeSessionTuning?
     private(set) var lastLanguagePair: LanguagePair = .jaEn
     var startGate: CheckedContinuationBox?
@@ -1750,6 +1791,11 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     var closeGracefullyShouldFail = false
     var onCloseGracefully: (() -> Void)?
     private(set) var beginStopDrainCaptureCallCount = 0
+    var appendAudioFrameGate: CheckedContinuationBox?
+
+    var appendedFrameCount: Int {
+        state.withLock { $0.appendedFrames.count }
+    }
 
     var connectionEpoch: Int {
         get async {
@@ -1819,6 +1865,19 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     }
 
     func appendAudioFrame(_ pcm16LE: Data) async throws {
+        appendAudioFrameCallCount += 1
+        if let appendAudioFrameGate {
+            self.appendAudioFrameGate = nil
+            try Task.checkCancellation()
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    appendAudioFrameGate.continuation = continuation
+                }
+            } onCancel: {
+                appendAudioFrameGate.resume()
+            }
+            try Task.checkCancellation()
+        }
         state.withLock { state in
             state.appendedFrames.append(pcm16LE)
         }

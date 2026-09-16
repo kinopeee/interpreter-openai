@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import os
 import XCTest
 @testable import RealtimeTranslator
 
@@ -10,12 +11,12 @@ final class RealtimeAudioFrameYieldOutcomeTests: XCTestCase {
         )
         var iterator = stream.makeAsyncIterator()
         XCTAssertTrue(
-            RealtimeAudioFrameYieldOutcome.didAccept(continuation.yield(Data([1])))
+            !RealtimeAudioFrameYieldOutcome.isTerminated(continuation.yield(Data([1])))
         )
 
         // When: 2件目をyieldしてoldest dropが返る
         let secondResult = continuation.yield(Data([2]))
-        let accepted = RealtimeAudioFrameYieldOutcome.didAccept(secondResult)
+        let accepted = !RealtimeAudioFrameYieldOutcome.isTerminated(secondResult)
 
         // Then: 新規frameは受理済みなので継続扱い（pipelineOverloadedにしない）
         guard case .dropped(let dropped) = secondResult else {
@@ -38,7 +39,7 @@ final class RealtimeAudioFrameYieldOutcomeTests: XCTestCase {
         continuation.finish()
 
         // When: finish後にyieldする
-        let accepted = RealtimeAudioFrameYieldOutcome.didAccept(
+        let accepted = !RealtimeAudioFrameYieldOutcome.isTerminated(
             continuation.yield(Data([9]))
         )
 
@@ -76,7 +77,9 @@ final class AudioBufferOwnershipTests: XCTestCase {
         )
         let tap = AnalyzerAudioTap(
             continuation: continuation,
-            bufferPool: bufferPool
+            bufferPool: bufferPool,
+            discardedMilliseconds: OSAllocatedUnfairLock(initialState: 0),
+            inputSampleRate: format.sampleRate
         )
 
         // When: tapへ渡した直後に音声エンジン所有の元バッファを書き換える
@@ -135,7 +138,12 @@ final class AudioBufferOwnershipTests: XCTestCase {
                 capacity: 3
             )
         )
-        let tap = AnalyzerAudioTap(continuation: continuation, bufferPool: pool)
+        let tap = AnalyzerAudioTap(
+            continuation: continuation,
+            bufferPool: pool,
+            discardedMilliseconds: OSAllocatedUnfairLock(initialState: 0),
+            inputSampleRate: format.sampleRate
+        )
 
         // When: 1件を処理中に、streamへ新旧2bufferを連続投入する
         sourceData[0][0] = 1

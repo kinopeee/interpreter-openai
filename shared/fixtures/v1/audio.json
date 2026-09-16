@@ -158,5 +158,115 @@
         "expectedGain": 4.0
       }
     ]
+  },
+  "loss": {
+    "description": "送信前（変換前バッファ・送信キュー）の音声欠落の検知と扱い。連番の欠番は送信キューの drop、discardedMs は capture 側が数えた変換前バッファの破棄時間（世代内で累積、内容なし）。両者は別区間なので二重計上しない。",
+    "sendQueueFrameCapacity": 32,
+    "frameDurationMs": 100,
+    "reconnect": {
+      "lostMsThreshold": 6400,
+      "windowMs": 30000,
+      "rationale": "送信キュー 32 枚 = 3,200ms の単発 drop では再接続しない。stablePeriodMs（reconnect.json）と同じ 30 秒窓で欠落合計が容量 2 回分に達した場合だけ既存の ReconnectBudget を通す。"
+    },
+    "taintedSegmentWindowMs": 8000,
+    "afterLoss": {
+      "discardsUnconfirmedSubtitle": true,
+      "preservesFinalizedSubtitle": true,
+      "taintedSegmentIsNotFinalized": true,
+      "taintedSegmentIsNotRecorded": true,
+      "singleDropDoesNotReconnect": true,
+      "diagnosticsExcludeAudioAndText": true
+    },
+    "cases": [
+      {
+        "name": "contiguous frames",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 20, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 0, "queueWaitMs": 30, "atMs": 100 },
+          { "generation": 1, "sequence": 2, "discardedMs": 0, "queueWaitMs": 25, "atMs": 200 },
+          { "generation": 1, "sequence": 3, "discardedMs": 0, "queueWaitMs": 40, "atMs": 300 },
+          { "generation": 1, "sequence": 4, "discardedMs": 0, "queueWaitMs": 35, "atMs": 400 }
+        ],
+        "expected": { "droppedFrames": 0, "lostMs": 0, "lossEvents": 0, "maxQueueWaitMs": 40, "reconnectAt": null }
+      },
+      {
+        "name": "single send-queue drop stays below reconnect",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 10, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 0, "queueWaitMs": 10, "atMs": 100 },
+          { "generation": 1, "sequence": 2, "discardedMs": 0, "queueWaitMs": 10, "atMs": 200 },
+          { "generation": 1, "sequence": 35, "discardedMs": 0, "queueWaitMs": 10, "atMs": 3600 }
+        ],
+        "expected": { "droppedFrames": 32, "lostMs": 3200, "lossEvents": 1, "maxQueueWaitMs": 10, "reconnectAt": null }
+      },
+      {
+        "name": "pre-conversion discard only",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 0, "queueWaitMs": 0, "atMs": 100 },
+          { "generation": 1, "sequence": 2, "discardedMs": 500, "queueWaitMs": 0, "atMs": 700 }
+        ],
+        "expected": { "droppedFrames": 0, "lostMs": 500, "lossEvents": 1, "maxQueueWaitMs": 0, "reconnectAt": null }
+      },
+      {
+        "name": "both stages in one frame are counted once each",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 0, "queueWaitMs": 0, "atMs": 100 },
+          { "generation": 1, "sequence": 2, "discardedMs": 0, "queueWaitMs": 0, "atMs": 200 },
+          { "generation": 1, "sequence": 35, "discardedMs": 700, "queueWaitMs": 0, "atMs": 4300 }
+        ],
+        "expected": { "droppedFrames": 32, "lostMs": 3900, "lossEvents": 1, "maxQueueWaitMs": 0, "reconnectAt": null }
+      },
+      {
+        "name": "sustained loss inside window reconnects",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 33, "discardedMs": 0, "queueWaitMs": 0, "atMs": 3400 },
+          { "generation": 1, "sequence": 34, "discardedMs": 0, "queueWaitMs": 0, "atMs": 3500 },
+          { "generation": 1, "sequence": 67, "discardedMs": 0, "queueWaitMs": 0, "atMs": 6900 }
+        ],
+        "expected": { "droppedFrames": 64, "lostMs": 6400, "lossEvents": 2, "maxQueueWaitMs": 0, "reconnectAt": 6900 }
+      },
+      {
+        "name": "loss outside window does not accumulate",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 33, "discardedMs": 0, "queueWaitMs": 0, "atMs": 3400 },
+          { "generation": 1, "sequence": 34, "discardedMs": 0, "queueWaitMs": 0, "atMs": 3500 },
+          { "generation": 1, "sequence": 67, "discardedMs": 0, "queueWaitMs": 0, "atMs": 33501 }
+        ],
+        "expected": { "droppedFrames": 64, "lostMs": 6400, "lossEvents": 2, "maxQueueWaitMs": 0, "reconnectAt": null }
+      },
+      {
+        "name": "new capture generation resets sequence and discard baseline",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 0, "queueWaitMs": 0, "atMs": 100 },
+          { "generation": 1, "sequence": 2, "discardedMs": 0, "queueWaitMs": 0, "atMs": 200 },
+          { "generation": 2, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 300 },
+          { "generation": 2, "sequence": 1, "discardedMs": 0, "queueWaitMs": 0, "atMs": 400 }
+        ],
+        "expected": { "droppedFrames": 0, "lostMs": 0, "lossEvents": 0, "maxQueueWaitMs": 0, "reconnectAt": null }
+      },
+      {
+        "name": "discard before the first frame of a generation counts once",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 300, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 300, "queueWaitMs": 0, "atMs": 100 }
+        ],
+        "expected": { "droppedFrames": 0, "lostMs": 300, "lossEvents": 1, "maxQueueWaitMs": 0, "reconnectAt": null }
+      },
+      {
+        "name": "sequence gap after generation change counts within new generation only",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 0, "queueWaitMs": 0, "atMs": 100 },
+          { "generation": 2, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 200 },
+          { "generation": 2, "sequence": 5, "discardedMs": 0, "queueWaitMs": 0, "atMs": 700 }
+        ],
+        "expected": { "droppedFrames": 4, "lostMs": 400, "lossEvents": 1, "maxQueueWaitMs": 0, "reconnectAt": null }
+      }
+    ]
   }
 }
