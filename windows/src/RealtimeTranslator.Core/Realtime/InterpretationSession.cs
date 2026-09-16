@@ -581,6 +581,33 @@ public sealed class InterpretationSession : IDisposable
                 throw feed.DeliveryState.ToException();
             }
 
+            if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptFailed failed)
+            {
+                RealtimeServerErrorClassification classification =
+                    RealtimeServerErrorClassification.ClassifyTranscriptionFailure(
+                        failed.ErrorType,
+                        failed.Code);
+                RealtimeSubtitleUpdate? invalidation;
+                lock (_sync)
+                {
+                    invalidation = _processor.DiscardFailedSource(failed.ItemId, failed.EventId);
+                }
+
+                if (invalidation is { } failedUpdate)
+                {
+                    EmitSubtitleUpdate(failedUpdate);
+                    await ResetAudioRoutingForNextSegmentAsync().ConfigureAwait(false);
+                }
+
+                if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                {
+                    continue;
+                }
+
+                feed.DeliveryState.TryRecordTermination(classification);
+                throw feed.DeliveryState.ToException();
+            }
+
             BeforeAssemblerIngestForTests?.Invoke();
 
             RealtimeSubtitleProcessingResult? result = null;
@@ -873,6 +900,22 @@ public sealed class InterpretationSession : IDisposable
         {
             if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError)
             {
+                continue;
+            }
+
+            if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptFailed failed)
+            {
+                RealtimeSubtitleUpdate? invalidation;
+                lock (_sync)
+                {
+                    invalidation = _processor.DiscardFailedSource(failed.ItemId, failed.EventId);
+                }
+
+                if (invalidation is { } failedUpdate)
+                {
+                    EmitSubtitleUpdate(failedUpdate);
+                }
+
                 continue;
             }
 

@@ -20,7 +20,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
     private readonly RealtimeConnectionLifecycle _lifecycle;
 
     private bool _isReady;
-    private bool _didReceiveCompleted;
+    private bool _didReceiveCommitOutcome;
     private LanguagePair _pair = LanguagePair.JaEn;
 
     /// <summary>接続開始時の noise_reduction。live update では変更しない。</summary>
@@ -64,7 +64,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
             {
                 currentEpoch = _lifecycle.ResetForReconnect();
                 _isReady = false;
-                _didReceiveCompleted = false;
+                _didReceiveCommitOutcome = false;
                 _connectedNoiseReduction = tuning.NoiseReduction;
                 _pair = pair;
             }
@@ -189,7 +189,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
             }
 
             var completed = await _lifecycle.WaitForCloseSignalAsync(
-                () => _didReceiveCompleted,
+                () => _didReceiveCommitOutcome,
                 _closeTimeout,
                 bumpEpochOnCancel: true,
                 cancellationToken).ConfigureAwait(false);
@@ -306,7 +306,45 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 case RealtimeSourceTranscriptionServerEvent.TranscriptionCompleted:
                     lock (_lifecycle.Sync)
                     {
-                        _didReceiveCompleted = true;
+                        _didReceiveCommitOutcome = true;
+                    }
+
+                    break;
+
+                case RealtimeSourceTranscriptionServerEvent.TranscriptionFailed failed:
+                    lock (_lifecycle.Sync)
+                    {
+                        _didReceiveCommitOutcome = true;
+                    }
+
+                    if (failed.Classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                    {
+                        if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(
+                            RealtimeTranslationLane.Source,
+                            new RealtimeTranslationServerEvent.InputTranscriptFailed(
+                                failed.ItemId,
+                                failed.EventId,
+                                failed.Code,
+                                failed.ErrorType),
+                            currentEpoch)))
+                        {
+                            return;
+                        }
+
+                        break;
+                    }
+
+                    deliveryState.TryRecordTermination(failed.Classification);
+                    if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(
+                        RealtimeTranslationLane.Source,
+                        new RealtimeTranslationServerEvent.InputTranscriptFailed(
+                            failed.ItemId,
+                            failed.EventId,
+                            failed.Code,
+                            failed.ErrorType),
+                        currentEpoch)))
+                    {
+                        return;
                     }
 
                     break;

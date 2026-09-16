@@ -416,6 +416,23 @@ final class InterpretationSession {
                 throw feed.deliveryState.makeError()
             }
 
+            if case .inputTranscriptFailed(let itemID, let eventID, let code, let errorType) = streamEvent.event {
+                let classification = EventDeliveryState.classifyTranscriptionFailure(
+                    errorType: errorType,
+                    code: code
+                )
+                if let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID) {
+                    enqueueRender(invalidation)
+                    await resetAudioRoutingForNextSegment()
+                }
+                if classification.disposition == .keepAlive {
+                    await dualClient.acknowledgeConsumedStreamEvent(runToken: feed.runToken)
+                    continue
+                }
+                feed.deliveryState.tryRecordTermination(classification)
+                throw feed.deliveryState.makeError()
+            }
+
             // 原文 routing は専用 transcription の source lane だけを使う。
             // 適用または明示破棄のあとで acknowledge する。ack を先にすると、
             // この await 中に performStop が走ったとき未適用イベントが stop drain から外れる。
@@ -512,6 +529,12 @@ final class InterpretationSession {
         guard !feed.deliveryState.didLoseEvents else { return }
         for streamEvent in events {
             if case .error = streamEvent.event {
+                continue
+            }
+            if case .inputTranscriptFailed(let itemID, let eventID, _, _) = streamEvent.event {
+                if let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID) {
+                    displayScheduler.renderNow(invalidation)
+                }
                 continue
             }
             guard let result = processSubtitleEvent(streamEvent, now: Date(), isReplay: true) else {

@@ -33,6 +33,7 @@ internal sealed class RealtimeSubtitleProcessor
 
     private RealtimeTranslationOutputLanguage? _selectedTranslationTarget;
     private int _reverseEvidenceCount;
+    private readonly HashSet<string> _handledFailedSourceKeys = new(StringComparer.Ordinal);
 
     internal int CurrentSourceLength => _assembler.CurrentSourceLength;
 
@@ -47,6 +48,7 @@ internal sealed class RealtimeSubtitleProcessor
         ActiveLanguagePair = pair;
         _selectedTranslationTarget = null;
         _reverseEvidenceCount = 0;
+        _handledFailedSourceKeys.Clear();
     }
 
     internal void DeactivateLanguagePair()
@@ -85,6 +87,17 @@ internal sealed class RealtimeSubtitleProcessor
             IsInvalidation: true);
     }
 
+    internal RealtimeSubtitleUpdate? DiscardFailedSource(string? itemId, string? eventId)
+    {
+        var key = itemId ?? eventId;
+        if (key is not null && !_handledFailedSourceKeys.Add(key))
+        {
+            return null;
+        }
+
+        return DiscardUnconfirmed();
+    }
+
     internal RealtimeSubtitleUpdate? Tick(DateTimeOffset now) => _assembler.Tick(now);
 
     internal RealtimeSubtitleProcessingResult? Process(
@@ -92,6 +105,11 @@ internal sealed class RealtimeSubtitleProcessor
         DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(streamEvent);
+
+        if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptFailed)
+        {
+            return null;
+        }
 
         var deltaStart = _assembler.CurrentSourceLength;
         var sourceDelta = streamEvent.Event

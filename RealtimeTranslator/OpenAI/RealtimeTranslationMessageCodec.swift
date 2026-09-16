@@ -66,6 +66,14 @@ enum RealtimeTranslationMessageCodec {
                 eventID: dictionary["event_id"] as? String,
                 elapsedMs: intValue(dictionary["elapsed_ms"])
             )
+        case "conversation.item.input_audio_transcription.failed":
+            let errorObject = dictionary["error"] as? [String: Any]
+            return .inputTranscriptFailed(
+                itemID: dictionary["item_id"] as? String,
+                eventID: dictionary["event_id"] as? String,
+                code: errorObject?["code"] as? String,
+                errorType: errorObject?["type"] as? String
+            )
         case "session.output_transcript.delta":
             return .outputTranscriptDelta(
                 delta: dictionary["delta"] as? String ?? "",
