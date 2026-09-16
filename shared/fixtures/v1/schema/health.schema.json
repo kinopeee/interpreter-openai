@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v1/schema/health.schema.json",
+  "title": "Session health monitor fixtures",
+  "type": "object",
+  "required": ["version", "thresholds", "scenarios"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "thresholds": {
+      "type": "object",
+      "required": [
+        "captureStallMs",
+        "sendStallMs",
+        "receiveStallMs",
+        "sourceStallMs",
+        "translationStallMs",
+        "silenceMs",
+        "connectGraceMs",
+        "expiryNearMs",
+        "audioActivityPeakFloor"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "captureStallMs": { "type": "integer", "minimum": 1 },
+        "sendStallMs": { "type": "integer", "minimum": 1 },
+        "receiveStallMs": { "type": "integer", "minimum": 1 },
+        "sourceStallMs": { "type": "integer", "minimum": 1 },
+        "translationStallMs": { "type": "integer", "minimum": 1 },
+        "silenceMs": { "type": "integer", "minimum": 1 },
+        "connectGraceMs": { "type": "integer", "minimum": 0 },
+        "expiryNearMs": { "type": "integer", "minimum": 1 },
+        "audioActivityPeakFloor": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "steps"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/step" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "lane": { "enum": ["source", "en", "ja", "es"] },
+    "phase": {
+      "enum": ["idle", "catchingUp", "silence", "awaitingLanguageDetection", "active"]
+    },
+    "detectionKind": {
+      "enum": [
+        "captureStalled",
+        "sendStalled",
+        "receiveStalled",
+        "sourceStalled",
+        "translationStalled",
+        "expiryNear",
+        "expired"
+      ]
+    },
+    "step": {
+      "type": "object",
+      "required": ["at", "op"],
+      "properties": {
+        "at": { "type": "integer", "minimum": 0 },
+        "op": {
+          "enum": [
+            "begin",
+            "capture",
+            "send",
+            "receive",
+            "source",
+            "translation",
+            "select",
+            "expiry",
+            "evaluate"
+          ]
+        },
+        "generation": { "type": "integer", "minimum": 1 },
+        "epoch": { "type": "integer", "minimum": 0 },
+        "isRecovery": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "lane": { "oneOf": [{ "$ref": "#/$defs/lane" }, { "type": "null" }] },
+        "remainingMs": { "type": ["integer", "null"] },
+        "expect": {
+          "type": "object",
+          "required": ["phase", "detections"],
+          "additionalProperties": false,
+          "properties": {
+            "phase": { "$ref": "#/$defs/phase" },
+            "detections": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  { "$ref": "#/$defs/detectionKind" },
+                  {
+                    "type": "object",
+                    "required": ["kind"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": { "$ref": "#/$defs/detectionKind" },
+                      "lane": { "$ref": "#/$defs/lane" }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

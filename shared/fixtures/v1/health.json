@@ -1,0 +1,8052 @@
+{
+  "$schema": "./schema/health.schema.json",
+  "version": 1,
+  "description": "受信停止監視（診断のみ）の契約。thresholds は両実装の既定値、scenarios は単調時計上の SessionHealthMonitor の判定系列。at は ms の単調時刻で、壁時計は入力に含まれない。detections はその evaluate で新たに発火したもの（kind の定義順）。",
+  "thresholds": {
+    "captureStallMs": 3000,
+    "sendStallMs": 10000,
+    "receiveStallMs": 20000,
+    "sourceStallMs": 20000,
+    "translationStallMs": 15000,
+    "silenceMs": 5000,
+    "connectGraceMs": 10000,
+    "expiryNearMs": 120000,
+    "audioActivityPeakFloor": 0.005
+  },
+  "scenarios": [
+    {
+      "name": "normal active flow",
+      "steps": [
+        {
+          "at": 0,
+          "op": "begin",
+          "generation": 1,
+          "epoch": 1,
+          "isRecovery": false
+        },
+        {
+          "at": 300,
+          "op": "select",
+          "lane": "en"
+        },
+        {
+          "at": 1000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 2000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 3000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 4000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 5000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 6000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 7000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 8000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 9000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 10000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 11000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 12000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 13000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 14000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 15000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 16000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 17000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 18000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 19000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 20000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 21000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 22000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 23000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 24000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 25000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 26000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 27000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 28000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 29000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 30000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 31000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 32000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 33000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 34000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 35000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 36000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 37000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 38000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 39000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 40000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 41000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 42000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 43000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 44000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 45000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 46000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 47000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 48000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 49000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 50000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 51000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 52000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 53000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 54000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 55000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 56000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 57000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 58000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 59000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 60000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 1000,
+          "op": "send"
+        },
+        {
+          "at": 2000,
+          "op": "send"
+        },
+        {
+          "at": 3000,
+          "op": "send"
+        },
+        {
+          "at": 4000,
+          "op": "send"
+        },
+        {
+          "at": 5000,
+          "op": "send"
+        },
+        {
+          "at": 6000,
+          "op": "send"
+        },
+        {
+          "at": 7000,
+          "op": "send"
+        },
+        {
+          "at": 8000,
+          "op": "send"
+        },
+        {
+          "at": 9000,
+          "op": "send"
+        },
+        {
+          "at": 10000,
+          "op": "send"
+        },
+        {
+          "at": 11000,
+          "op": "send"
+        },
+        {
+          "at": 12000,
+          "op": "send"
+        },
+        {
+          "at": 13000,
+          "op": "send"
+        },
+        {
+          "at": 14000,
+          "op": "send"
+        },
+        {
+          "at": 15000,
+          "op": "send"
+        },
+        {
+          "at": 16000,
+          "op": "send"
+        },
+        {
+          "at": 17000,
+          "op": "send"
+        },
+        {
+          "at": 18000,
+          "op": "send"
+        },
+        {
+          "at": 19000,
+          "op": "send"
+        },
+        {
+          "at": 20000,
+          "op": "send"
+        },
+        {
+          "at": 21000,
+          "op": "send"
+        },
+        {
+          "at": 22000,
+          "op": "send"
+        },
+        {
+          "at": 23000,
+          "op": "send"
+        },
+        {
+          "at": 24000,
+          "op": "send"
+        },
+        {
+          "at": 25000,
+          "op": "send"
+        },
+        {
+          "at": 26000,
+          "op": "send"
+        },
+        {
+          "at": 27000,
+          "op": "send"
+        },
+        {
+          "at": 28000,
+          "op": "send"
+        },
+        {
+          "at": 29000,
+          "op": "send"
+        },
+        {
+          "at": 30000,
+          "op": "send"
+        },
+        {
+          "at": 31000,
+          "op": "send"
+        },
+        {
+          "at": 32000,
+          "op": "send"
+        },
+        {
+          "at": 33000,
+          "op": "send"
+        },
+        {
+          "at": 34000,
+          "op": "send"
+        },
+        {
+          "at": 35000,
+          "op": "send"
+        },
+        {
+          "at": 36000,
+          "op": "send"
+        },
+        {
+          "at": 37000,
+          "op": "send"
+        },
+        {
+          "at": 38000,
+          "op": "send"
+        },
+        {
+          "at": 39000,
+          "op": "send"
+        },
+        {
+          "at": 40000,
+          "op": "send"
+        },
+        {
+          "at": 41000,
+          "op": "send"
+        },
+        {
+          "at": 42000,
+          "op": "send"
+        },
+        {
+          "at": 43000,
+          "op": "send"
+        },
+        {
+          "at": 44000,
+          "op": "send"
+        },
+        {
+          "at": 45000,
+          "op": "send"
+        },
+        {
+          "at": 46000,
+          "op": "send"
+        },
+        {
+          "at": 47000,
+          "op": "send"
+        },
+        {
+          "at": 48000,
+          "op": "send"
+        },
+        {
+          "at": 49000,
+          "op": "send"
+        },
+        {
+          "at": 50000,
+          "op": "send"
+        },
+        {
+          "at": 51000,
+          "op": "send"
+        },
+        {
+          "at": 52000,
+          "op": "send"
+        },
+        {
+          "at": 53000,
+          "op": "send"
+        },
+        {
+          "at": 54000,
+          "op": "send"
+        },
+        {
+          "at": 55000,
+          "op": "send"
+        },
+        {
+          "at": 56000,
+          "op": "send"
+        },
+        {
+          "at": 57000,
+          "op": "send"
+        },
+        {
+          "at": 58000,
+          "op": "send"
+        },
+        {
+          "at": 59000,
+          "op": "send"
+        },
+        {
+          "at": 60000,
+          "op": "send"
+        },
+        {
+          "at": 1000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 2000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 3000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 4000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 5000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 6000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 7000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 8000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 9000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 10000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 11000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 12000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 13000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 14000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 15000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 16000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 17000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 18000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 19000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 20000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 21000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 22000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 23000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 24000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 25000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 26000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 27000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 28000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 29000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 30000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 31000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 32000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 33000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 34000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 35000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 36000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 37000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 38000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 39000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 40000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 41000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 42000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 43000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 44000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 45000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 46000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 47000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 48000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 49000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 50000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 51000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 52000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 53000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 54000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 55000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 56000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 57000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 58000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 59000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 60000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 1000,
+          "op": "source"
+        },
+        {
+          "at": 2000,
+          "op": "source"
+        },
+        {
+          "at": 3000,
+          "op": "source"
+        },
+        {
+          "at": 4000,
+          "op": "source"
+        },
+        {
+          "at": 5000,
+          "op": "source"
+        },
+        {
+          "at": 6000,
+          "op": "source"
+        },
+        {
+          "at": 7000,
+          "op": "source"
+        },
+        {
+          "at": 8000,
+          "op": "source"
+        },
+        {
+          "at": 9000,
+          "op": "source"
+        },
+        {
+          "at": 10000,
+          "op": "source"
+        },
+        {
+          "at": 11000,
+          "op": "source"
+        },
+        {
+          "at": 12000,
+          "op": "source"
+        },
+        {
+          "at": 13000,
+          "op": "source"
+        },
+        {
+          "at": 14000,
+          "op": "source"
+        },
+        {
+          "at": 15000,
+          "op": "source"
+        },
+        {
+          "at": 16000,
+          "op": "source"
+        },
+        {
+          "at": 17000,
+          "op": "source"
+        },
+        {
+          "at": 18000,
+          "op": "source"
+        },
+        {
+          "at": 19000,
+          "op": "source"
+        },
+        {
+          "at": 20000,
+          "op": "source"
+        },
+        {
+          "at": 21000,
+          "op": "source"
+        },
+        {
+          "at": 22000,
+          "op": "source"
+        },
+        {
+          "at": 23000,
+          "op": "source"
+        },
+        {
+          "at": 24000,
+          "op": "source"
+        },
+        {
+          "at": 25000,
+          "op": "source"
+        },
+        {
+          "at": 26000,
+          "op": "source"
+        },
+        {
+          "at": 27000,
+          "op": "source"
+        },
+        {
+          "at": 28000,
+          "op": "source"
+        },
+        {
+          "at": 29000,
+          "op": "source"
+        },
+        {
+          "at": 30000,
+          "op": "source"
+        },
+        {
+          "at": 31000,
+          "op": "source"
+        },
+        {
+          "at": 32000,
+          "op": "source"
+        },
+        {
+          "at": 33000,
+          "op": "source"
+        },
+        {
+          "at": 34000,
+          "op": "source"
+        },
+        {
+          "at": 35000,
+          "op": "source"
+        },
+        {
+          "at": 36000,
+          "op": "source"
+        },
+        {
+          "at": 37000,
+          "op": "source"
+        },
+        {
+          "at": 38000,
+          "op": "source"
+        },
+        {
+          "at": 39000,
+          "op": "source"
+        },
+        {
+          "at": 40000,
+          "op": "source"
+        },
+        {
+          "at": 41000,
+          "op": "source"
+        },
+        {
+          "at": 42000,
+          "op": "source"
+        },
+        {
+          "at": 43000,
+          "op": "source"
+        },
+        {
+          "at": 44000,
+          "op": "source"
+        },
+        {
+          "at": 45000,
+          "op": "source"
+        },
+        {
+          "at": 46000,
+          "op": "source"
+        },
+        {
+          "at": 47000,
+          "op": "source"
+        },
+        {
+          "at": 48000,
+          "op": "source"
+        },
+        {
+          "at": 49000,
+          "op": "source"
+        },
+        {
+          "at": 50000,
+          "op": "source"
+        },
+        {
+          "at": 51000,
+          "op": "source"
+        },
+        {
+          "at": 52000,
+          "op": "source"
+        },
+        {
+          "at": 53000,
+          "op": "source"
+        },
+        {
+          "at": 54000,
+          "op": "source"
+        },
+        {
+          "at": 55000,
+          "op": "source"
+        },
+        {
+          "at": 56000,
+          "op": "source"
+        },
+        {
+          "at": 57000,
+          "op": "source"
+        },
+        {
+          "at": 58000,
+          "op": "source"
+        },
+        {
+          "at": 59000,
+          "op": "source"
+        },
+        {
+          "at": 60000,
+          "op": "source"
+        },
+        {
+          "at": 1500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 3000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 4500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 6000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 7500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 9000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 10500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 12000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 13500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 15000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 16500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 18000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 19500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 21000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 22500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 24000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 25500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 27000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 28500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 30000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 31500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 33000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 34500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 36000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 37500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 39000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 40500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 42000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 43500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 45000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 46500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 48000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 49500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 51000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 52500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 54000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 55500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 57000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 58500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 60000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 60000,
+          "op": "evaluate",
+          "expect": {
+            "phase": "active",
+            "detections": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "receiveStalled after grace",
+      "steps": [
+        {
+          "at": 0,
+          "op": "begin",
+          "generation": 1,
+          "epoch": 1,
+          "isRecovery": false
+        },
+        {
+          "at": 1000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 2000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 3000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 4000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 5000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 6000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 7000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 8000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 9000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 10000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 11000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 12000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 13000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 14000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 15000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 16000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 17000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 18000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 19000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 20000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 21000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 22000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 23000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 24000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 25000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 26000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 27000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 28000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 29000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 30000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 31000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 32000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 33000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 34000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 35000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 36000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 37000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 38000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 39000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 40000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 1000,
+          "op": "send"
+        },
+        {
+          "at": 2000,
+          "op": "send"
+        },
+        {
+          "at": 3000,
+          "op": "send"
+        },
+        {
+          "at": 4000,
+          "op": "send"
+        },
+        {
+          "at": 5000,
+          "op": "send"
+        },
+        {
+          "at": 6000,
+          "op": "send"
+        },
+        {
+          "at": 7000,
+          "op": "send"
+        },
+        {
+          "at": 8000,
+          "op": "send"
+        },
+        {
+          "at": 9000,
+          "op": "send"
+        },
+        {
+          "at": 10000,
+          "op": "send"
+        },
+        {
+          "at": 11000,
+          "op": "send"
+        },
+        {
+          "at": 12000,
+          "op": "send"
+        },
+        {
+          "at": 13000,
+          "op": "send"
+        },
+        {
+          "at": 14000,
+          "op": "send"
+        },
+        {
+          "at": 15000,
+          "op": "send"
+        },
+        {
+          "at": 16000,
+          "op": "send"
+        },
+        {
+          "at": 17000,
+          "op": "send"
+        },
+        {
+          "at": 18000,
+          "op": "send"
+        },
+        {
+          "at": 19000,
+          "op": "send"
+        },
+        {
+          "at": 20000,
+          "op": "send"
+        },
+        {
+          "at": 21000,
+          "op": "send"
+        },
+        {
+          "at": 22000,
+          "op": "send"
+        },
+        {
+          "at": 23000,
+          "op": "send"
+        },
+        {
+          "at": 24000,
+          "op": "send"
+        },
+        {
+          "at": 25000,
+          "op": "send"
+        },
+        {
+          "at": 26000,
+          "op": "send"
+        },
+        {
+          "at": 27000,
+          "op": "send"
+        },
+        {
+          "at": 28000,
+          "op": "send"
+        },
+        {
+          "at": 29000,
+          "op": "send"
+        },
+        {
+          "at": 30000,
+          "op": "send"
+        },
+        {
+          "at": 31000,
+          "op": "send"
+        },
+        {
+          "at": 32000,
+          "op": "send"
+        },
+        {
+          "at": 33000,
+          "op": "send"
+        },
+        {
+          "at": 34000,
+          "op": "send"
+        },
+        {
+          "at": 35000,
+          "op": "send"
+        },
+        {
+          "at": 36000,
+          "op": "send"
+        },
+        {
+          "at": 37000,
+          "op": "send"
+        },
+        {
+          "at": 38000,
+          "op": "send"
+        },
+        {
+          "at": 39000,
+          "op": "send"
+        },
+        {
+          "at": 40000,
+          "op": "send"
+        },
+        {
+          "at": 29900,
+          "op": "evaluate",
+          "expect": {
+            "phase": "awaitingLanguageDetection",
+            "detections": []
+          }
+        },
+        {
+          "at": 30100,
+          "op": "evaluate",
+          "expect": {
+            "phase": "awaitingLanguageDetection",
+            "detections": [
+              "receiveStalled"
+            ]
+          }
+        },
+        {
+          "at": 40000,
+          "op": "evaluate",
+          "expect": {
+            "phase": "awaitingLanguageDetection",
+            "detections": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "sourceStalled while transport alive",
+      "steps": [
+        {
+          "at": 0,
+          "op": "begin",
+          "generation": 1,
+          "epoch": 1,
+          "isRecovery": false
+        },
+        {
+          "at": 300,
+          "op": "select",
+          "lane": "en"
+        },
+        {
+          "at": 1000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 2000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 3000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 4000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 5000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 6000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 7000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 8000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 9000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 10000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 11000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 12000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 13000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 14000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 15000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 16000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 17000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 18000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 19000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 20000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 21000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 22000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 23000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 24000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 25000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 26000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 27000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 28000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 29000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 30000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 31000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 32000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 33000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 34000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 35000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 36000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 37000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 38000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 39000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 40000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 1000,
+          "op": "send"
+        },
+        {
+          "at": 2000,
+          "op": "send"
+        },
+        {
+          "at": 3000,
+          "op": "send"
+        },
+        {
+          "at": 4000,
+          "op": "send"
+        },
+        {
+          "at": 5000,
+          "op": "send"
+        },
+        {
+          "at": 6000,
+          "op": "send"
+        },
+        {
+          "at": 7000,
+          "op": "send"
+        },
+        {
+          "at": 8000,
+          "op": "send"
+        },
+        {
+          "at": 9000,
+          "op": "send"
+        },
+        {
+          "at": 10000,
+          "op": "send"
+        },
+        {
+          "at": 11000,
+          "op": "send"
+        },
+        {
+          "at": 12000,
+          "op": "send"
+        },
+        {
+          "at": 13000,
+          "op": "send"
+        },
+        {
+          "at": 14000,
+          "op": "send"
+        },
+        {
+          "at": 15000,
+          "op": "send"
+        },
+        {
+          "at": 16000,
+          "op": "send"
+        },
+        {
+          "at": 17000,
+          "op": "send"
+        },
+        {
+          "at": 18000,
+          "op": "send"
+        },
+        {
+          "at": 19000,
+          "op": "send"
+        },
+        {
+          "at": 20000,
+          "op": "send"
+        },
+        {
+          "at": 21000,
+          "op": "send"
+        },
+        {
+          "at": 22000,
+          "op": "send"
+        },
+        {
+          "at": 23000,
+          "op": "send"
+        },
+        {
+          "at": 24000,
+          "op": "send"
+        },
+        {
+          "at": 25000,
+          "op": "send"
+        },
+        {
+          "at": 26000,
+          "op": "send"
+        },
+        {
+          "at": 27000,
+          "op": "send"
+        },
+        {
+          "at": 28000,
+          "op": "send"
+        },
+        {
+          "at": 29000,
+          "op": "send"
+        },
+        {
+          "at": 30000,
+          "op": "send"
+        },
+        {
+          "at": 31000,
+          "op": "send"
+        },
+        {
+          "at": 32000,
+          "op": "send"
+        },
+        {
+          "at": 33000,
+          "op": "send"
+        },
+        {
+          "at": 34000,
+          "op": "send"
+        },
+        {
+          "at": 35000,
+          "op": "send"
+        },
+        {
+          "at": 36000,
+          "op": "send"
+        },
+        {
+          "at": 37000,
+          "op": "send"
+        },
+        {
+          "at": 38000,
+          "op": "send"
+        },
+        {
+          "at": 39000,
+          "op": "send"
+        },
+        {
+          "at": 40000,
+          "op": "send"
+        },
+        {
+          "at": 1000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 2000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 3000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 4000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 5000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 6000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 7000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 8000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 9000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 10000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 11000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 12000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 13000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 14000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 15000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 16000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 17000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 18000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 19000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 20000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 21000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 22000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 23000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 24000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 25000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 26000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 27000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 28000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 29000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 30000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 31000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 32000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 33000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 34000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 35000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 36000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 37000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 38000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 39000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 40000,
+          "op": "receive",
+          "lane": "en"
+        },
+        {
+          "at": 29900,
+          "op": "evaluate",
+          "expect": {
+            "phase": "active",
+            "detections": []
+          }
+        },
+        {
+          "at": 30100,
+          "op": "evaluate",
+          "expect": {
+            "phase": "active",
+            "detections": [
+              "sourceStalled"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "translationStalled after source progress stops",
+      "steps": [
+        {
+          "at": 0,
+          "op": "begin",
+          "generation": 1,
+          "epoch": 1,
+          "isRecovery": false
+        },
+        {
+          "at": 300,
+          "op": "select",
+          "lane": "en"
+        },
+        {
+          "at": 1000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 2000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 3000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 4000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 5000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 6000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 7000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 8000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 9000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 10000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 11000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 12000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 13000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 14000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 15000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 16000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 17000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 18000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 19000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 20000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 21000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 22000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 23000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 24000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 25000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 26000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 27000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 28000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 29000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 30000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 31000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 32000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 33000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 34000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 35000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 36000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 37000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 38000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 39000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 40000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 41000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 42000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 43000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 44000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 45000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 46000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 47000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 48000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 49000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 50000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 51000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 52000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 53000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 54000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 55000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 56000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 57000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 58000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 59000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 60000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 1000,
+          "op": "send"
+        },
+        {
+          "at": 2000,
+          "op": "send"
+        },
+        {
+          "at": 3000,
+          "op": "send"
+        },
+        {
+          "at": 4000,
+          "op": "send"
+        },
+        {
+          "at": 5000,
+          "op": "send"
+        },
+        {
+          "at": 6000,
+          "op": "send"
+        },
+        {
+          "at": 7000,
+          "op": "send"
+        },
+        {
+          "at": 8000,
+          "op": "send"
+        },
+        {
+          "at": 9000,
+          "op": "send"
+        },
+        {
+          "at": 10000,
+          "op": "send"
+        },
+        {
+          "at": 11000,
+          "op": "send"
+        },
+        {
+          "at": 12000,
+          "op": "send"
+        },
+        {
+          "at": 13000,
+          "op": "send"
+        },
+        {
+          "at": 14000,
+          "op": "send"
+        },
+        {
+          "at": 15000,
+          "op": "send"
+        },
+        {
+          "at": 16000,
+          "op": "send"
+        },
+        {
+          "at": 17000,
+          "op": "send"
+        },
+        {
+          "at": 18000,
+          "op": "send"
+        },
+        {
+          "at": 19000,
+          "op": "send"
+        },
+        {
+          "at": 20000,
+          "op": "send"
+        },
+        {
+          "at": 21000,
+          "op": "send"
+        },
+        {
+          "at": 22000,
+          "op": "send"
+        },
+        {
+          "at": 23000,
+          "op": "send"
+        },
+        {
+          "at": 24000,
+          "op": "send"
+        },
+        {
+          "at": 25000,
+          "op": "send"
+        },
+        {
+          "at": 26000,
+          "op": "send"
+        },
+        {
+          "at": 27000,
+          "op": "send"
+        },
+        {
+          "at": 28000,
+          "op": "send"
+        },
+        {
+          "at": 29000,
+          "op": "send"
+        },
+        {
+          "at": 30000,
+          "op": "send"
+        },
+        {
+          "at": 31000,
+          "op": "send"
+        },
+        {
+          "at": 32000,
+          "op": "send"
+        },
+        {
+          "at": 33000,
+          "op": "send"
+        },
+        {
+          "at": 34000,
+          "op": "send"
+        },
+        {
+          "at": 35000,
+          "op": "send"
+        },
+        {
+          "at": 36000,
+          "op": "send"
+        },
+        {
+          "at": 37000,
+          "op": "send"
+        },
+        {
+          "at": 38000,
+          "op": "send"
+        },
+        {
+          "at": 39000,
+          "op": "send"
+        },
+        {
+          "at": 40000,
+          "op": "send"
+        },
+        {
+          "at": 41000,
+          "op": "send"
+        },
+        {
+          "at": 42000,
+          "op": "send"
+        },
+        {
+          "at": 43000,
+          "op": "send"
+        },
+        {
+          "at": 44000,
+          "op": "send"
+        },
+        {
+          "at": 45000,
+          "op": "send"
+        },
+        {
+          "at": 46000,
+          "op": "send"
+        },
+        {
+          "at": 47000,
+          "op": "send"
+        },
+        {
+          "at": 48000,
+          "op": "send"
+        },
+        {
+          "at": 49000,
+          "op": "send"
+        },
+        {
+          "at": 50000,
+          "op": "send"
+        },
+        {
+          "at": 51000,
+          "op": "send"
+        },
+        {
+          "at": 52000,
+          "op": "send"
+        },
+        {
+          "at": 53000,
+          "op": "send"
+        },
+        {
+          "at": 54000,
+          "op": "send"
+        },
+        {
+          "at": 55000,
+          "op": "send"
+        },
+        {
+          "at": 56000,
+          "op": "send"
+        },
+        {
+          "at": 57000,
+          "op": "send"
+        },
+        {
+          "at": 58000,
+          "op": "send"
+        },
+        {
+          "at": 59000,
+          "op": "send"
+        },
+        {
+          "at": 60000,
+          "op": "send"
+        },
+        {
+          "at": 1000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 2000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 3000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 4000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 5000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 6000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 7000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 8000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 9000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 10000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 11000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 12000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 13000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 14000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 15000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 16000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 17000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 18000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 19000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 20000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 21000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 22000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 23000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 24000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 25000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 26000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 27000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 28000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 29000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 30000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 31000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 32000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 33000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 34000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 35000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 36000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 37000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 38000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 39000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 40000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 41000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 42000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 43000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 44000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 45000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 46000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 47000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 48000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 49000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 50000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 51000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 52000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 53000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 54000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 55000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 56000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 57000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 58000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 59000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 60000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 1000,
+          "op": "source"
+        },
+        {
+          "at": 2000,
+          "op": "source"
+        },
+        {
+          "at": 3000,
+          "op": "source"
+        },
+        {
+          "at": 4000,
+          "op": "source"
+        },
+        {
+          "at": 5000,
+          "op": "source"
+        },
+        {
+          "at": 19900,
+          "op": "evaluate",
+          "expect": {
+            "phase": "silence",
+            "detections": []
+          }
+        },
+        {
+          "at": 20100,
+          "op": "evaluate",
+          "expect": {
+            "phase": "silence",
+            "detections": [
+              "translationStalled"
+            ]
+          }
+        },
+        {
+          "at": 40000,
+          "op": "evaluate",
+          "expect": {
+            "phase": "silence",
+            "detections": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "translation progress suppresses stall",
+      "steps": [
+        {
+          "at": 0,
+          "op": "begin",
+          "generation": 1,
+          "epoch": 1,
+          "isRecovery": false
+        },
+        {
+          "at": 300,
+          "op": "select",
+          "lane": "en"
+        },
+        {
+          "at": 1000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 2000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 3000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 4000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 5000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 6000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 7000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 8000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 9000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 10000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 11000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 12000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 13000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 14000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 15000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 16000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 17000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 18000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 19000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 20000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 21000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 22000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 23000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 24000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 25000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 26000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 27000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 28000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 29000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 30000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 1000,
+          "op": "send"
+        },
+        {
+          "at": 2000,
+          "op": "send"
+        },
+        {
+          "at": 3000,
+          "op": "send"
+        },
+        {
+          "at": 4000,
+          "op": "send"
+        },
+        {
+          "at": 5000,
+          "op": "send"
+        },
+        {
+          "at": 6000,
+          "op": "send"
+        },
+        {
+          "at": 7000,
+          "op": "send"
+        },
+        {
+          "at": 8000,
+          "op": "send"
+        },
+        {
+          "at": 9000,
+          "op": "send"
+        },
+        {
+          "at": 10000,
+          "op": "send"
+        },
+        {
+          "at": 11000,
+          "op": "send"
+        },
+        {
+          "at": 12000,
+          "op": "send"
+        },
+        {
+          "at": 13000,
+          "op": "send"
+        },
+        {
+          "at": 14000,
+          "op": "send"
+        },
+        {
+          "at": 15000,
+          "op": "send"
+        },
+        {
+          "at": 16000,
+          "op": "send"
+        },
+        {
+          "at": 17000,
+          "op": "send"
+        },
+        {
+          "at": 18000,
+          "op": "send"
+        },
+        {
+          "at": 19000,
+          "op": "send"
+        },
+        {
+          "at": 20000,
+          "op": "send"
+        },
+        {
+          "at": 21000,
+          "op": "send"
+        },
+        {
+          "at": 22000,
+          "op": "send"
+        },
+        {
+          "at": 23000,
+          "op": "send"
+        },
+        {
+          "at": 24000,
+          "op": "send"
+        },
+        {
+          "at": 25000,
+          "op": "send"
+        },
+        {
+          "at": 26000,
+          "op": "send"
+        },
+        {
+          "at": 27000,
+          "op": "send"
+        },
+        {
+          "at": 28000,
+          "op": "send"
+        },
+        {
+          "at": 29000,
+          "op": "send"
+        },
+        {
+          "at": 30000,
+          "op": "send"
+        },
+        {
+          "at": 1000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 2000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 3000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 4000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 5000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 6000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 7000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 8000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 9000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 10000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 11000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 12000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 13000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 14000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 15000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 16000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 17000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 18000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 19000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 20000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 21000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 22000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 23000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 24000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 25000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 26000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 27000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 28000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 29000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 30000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 1000,
+          "op": "source"
+        },
+        {
+          "at": 2000,
+          "op": "source"
+        },
+        {
+          "at": 3000,
+          "op": "source"
+        },
+        {
+          "at": 4000,
+          "op": "source"
+        },
+        {
+          "at": 5000,
+          "op": "source"
+        },
+        {
+          "at": 3000,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 30000,
+          "op": "evaluate",
+          "expect": {
+            "phase": "silence",
+            "detections": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "long silence without audio activity",
+      "steps": [
+        {
+          "at": 0,
+          "op": "begin",
+          "generation": 1,
+          "epoch": 1,
+          "isRecovery": false
+        },
+        {
+          "at": 1000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 2000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 3000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 4000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 5000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 6000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 7000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 8000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 9000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 10000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 11000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 12000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 13000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 14000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 15000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 16000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 17000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 18000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 19000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 20000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 21000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 22000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 23000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 24000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 25000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 26000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 27000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 28000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 29000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 30000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 31000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 32000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 33000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 34000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 35000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 36000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 37000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 38000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 39000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 40000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 41000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 42000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 43000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 44000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 45000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 46000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 47000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 48000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 49000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 50000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 51000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 52000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 53000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 54000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 55000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 56000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 57000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 58000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 59000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 60000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 61000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 62000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 63000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 64000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 65000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 66000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 67000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 68000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 69000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 70000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 71000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 72000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 73000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 74000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 75000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 76000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 77000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 78000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 79000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 80000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 81000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 82000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 83000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 84000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 85000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 86000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 87000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 88000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 89000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 90000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 91000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 92000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 93000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 94000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 95000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 96000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 97000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 98000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 99000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 100000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 101000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 102000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 103000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 104000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 105000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 106000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 107000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 108000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 109000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 110000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 111000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 112000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 113000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 114000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 115000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 116000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 117000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 118000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 119000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 120000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 1000,
+          "op": "send"
+        },
+        {
+          "at": 2000,
+          "op": "send"
+        },
+        {
+          "at": 3000,
+          "op": "send"
+        },
+        {
+          "at": 4000,
+          "op": "send"
+        },
+        {
+          "at": 5000,
+          "op": "send"
+        },
+        {
+          "at": 6000,
+          "op": "send"
+        },
+        {
+          "at": 7000,
+          "op": "send"
+        },
+        {
+          "at": 8000,
+          "op": "send"
+        },
+        {
+          "at": 9000,
+          "op": "send"
+        },
+        {
+          "at": 10000,
+          "op": "send"
+        },
+        {
+          "at": 11000,
+          "op": "send"
+        },
+        {
+          "at": 12000,
+          "op": "send"
+        },
+        {
+          "at": 13000,
+          "op": "send"
+        },
+        {
+          "at": 14000,
+          "op": "send"
+        },
+        {
+          "at": 15000,
+          "op": "send"
+        },
+        {
+          "at": 16000,
+          "op": "send"
+        },
+        {
+          "at": 17000,
+          "op": "send"
+        },
+        {
+          "at": 18000,
+          "op": "send"
+        },
+        {
+          "at": 19000,
+          "op": "send"
+        },
+        {
+          "at": 20000,
+          "op": "send"
+        },
+        {
+          "at": 21000,
+          "op": "send"
+        },
+        {
+          "at": 22000,
+          "op": "send"
+        },
+        {
+          "at": 23000,
+          "op": "send"
+        },
+        {
+          "at": 24000,
+          "op": "send"
+        },
+        {
+          "at": 25000,
+          "op": "send"
+        },
+        {
+          "at": 26000,
+          "op": "send"
+        },
+        {
+          "at": 27000,
+          "op": "send"
+        },
+        {
+          "at": 28000,
+          "op": "send"
+        },
+        {
+          "at": 29000,
+          "op": "send"
+        },
+        {
+          "at": 30000,
+          "op": "send"
+        },
+        {
+          "at": 31000,
+          "op": "send"
+        },
+        {
+          "at": 32000,
+          "op": "send"
+        },
+        {
+          "at": 33000,
+          "op": "send"
+        },
+        {
+          "at": 34000,
+          "op": "send"
+        },
+        {
+          "at": 35000,
+          "op": "send"
+        },
+        {
+          "at": 36000,
+          "op": "send"
+        },
+        {
+          "at": 37000,
+          "op": "send"
+        },
+        {
+          "at": 38000,
+          "op": "send"
+        },
+        {
+          "at": 39000,
+          "op": "send"
+        },
+        {
+          "at": 40000,
+          "op": "send"
+        },
+        {
+          "at": 41000,
+          "op": "send"
+        },
+        {
+          "at": 42000,
+          "op": "send"
+        },
+        {
+          "at": 43000,
+          "op": "send"
+        },
+        {
+          "at": 44000,
+          "op": "send"
+        },
+        {
+          "at": 45000,
+          "op": "send"
+        },
+        {
+          "at": 46000,
+          "op": "send"
+        },
+        {
+          "at": 47000,
+          "op": "send"
+        },
+        {
+          "at": 48000,
+          "op": "send"
+        },
+        {
+          "at": 49000,
+          "op": "send"
+        },
+        {
+          "at": 50000,
+          "op": "send"
+        },
+        {
+          "at": 51000,
+          "op": "send"
+        },
+        {
+          "at": 52000,
+          "op": "send"
+        },
+        {
+          "at": 53000,
+          "op": "send"
+        },
+        {
+          "at": 54000,
+          "op": "send"
+        },
+        {
+          "at": 55000,
+          "op": "send"
+        },
+        {
+          "at": 56000,
+          "op": "send"
+        },
+        {
+          "at": 57000,
+          "op": "send"
+        },
+        {
+          "at": 58000,
+          "op": "send"
+        },
+        {
+          "at": 59000,
+          "op": "send"
+        },
+        {
+          "at": 60000,
+          "op": "send"
+        },
+        {
+          "at": 61000,
+          "op": "send"
+        },
+        {
+          "at": 62000,
+          "op": "send"
+        },
+        {
+          "at": 63000,
+          "op": "send"
+        },
+        {
+          "at": 64000,
+          "op": "send"
+        },
+        {
+          "at": 65000,
+          "op": "send"
+        },
+        {
+          "at": 66000,
+          "op": "send"
+        },
+        {
+          "at": 67000,
+          "op": "send"
+        },
+        {
+          "at": 68000,
+          "op": "send"
+        },
+        {
+          "at": 69000,
+          "op": "send"
+        },
+        {
+          "at": 70000,
+          "op": "send"
+        },
+        {
+          "at": 71000,
+          "op": "send"
+        },
+        {
+          "at": 72000,
+          "op": "send"
+        },
+        {
+          "at": 73000,
+          "op": "send"
+        },
+        {
+          "at": 74000,
+          "op": "send"
+        },
+        {
+          "at": 75000,
+          "op": "send"
+        },
+        {
+          "at": 76000,
+          "op": "send"
+        },
+        {
+          "at": 77000,
+          "op": "send"
+        },
+        {
+          "at": 78000,
+          "op": "send"
+        },
+        {
+          "at": 79000,
+          "op": "send"
+        },
+        {
+          "at": 80000,
+          "op": "send"
+        },
+        {
+          "at": 81000,
+          "op": "send"
+        },
+        {
+          "at": 82000,
+          "op": "send"
+        },
+        {
+          "at": 83000,
+          "op": "send"
+        },
+        {
+          "at": 84000,
+          "op": "send"
+        },
+        {
+          "at": 85000,
+          "op": "send"
+        },
+        {
+          "at": 86000,
+          "op": "send"
+        },
+        {
+          "at": 87000,
+          "op": "send"
+        },
+        {
+          "at": 88000,
+          "op": "send"
+        },
+        {
+          "at": 89000,
+          "op": "send"
+        },
+        {
+          "at": 90000,
+          "op": "send"
+        },
+        {
+          "at": 91000,
+          "op": "send"
+        },
+        {
+          "at": 92000,
+          "op": "send"
+        },
+        {
+          "at": 93000,
+          "op": "send"
+        },
+        {
+          "at": 94000,
+          "op": "send"
+        },
+        {
+          "at": 95000,
+          "op": "send"
+        },
+        {
+          "at": 96000,
+          "op": "send"
+        },
+        {
+          "at": 97000,
+          "op": "send"
+        },
+        {
+          "at": 98000,
+          "op": "send"
+        },
+        {
+          "at": 99000,
+          "op": "send"
+        },
+        {
+          "at": 100000,
+          "op": "send"
+        },
+        {
+          "at": 101000,
+          "op": "send"
+        },
+        {
+          "at": 102000,
+          "op": "send"
+        },
+        {
+          "at": 103000,
+          "op": "send"
+        },
+        {
+          "at": 104000,
+          "op": "send"
+        },
+        {
+          "at": 105000,
+          "op": "send"
+        },
+        {
+          "at": 106000,
+          "op": "send"
+        },
+        {
+          "at": 107000,
+          "op": "send"
+        },
+        {
+          "at": 108000,
+          "op": "send"
+        },
+        {
+          "at": 109000,
+          "op": "send"
+        },
+        {
+          "at": 110000,
+          "op": "send"
+        },
+        {
+          "at": 111000,
+          "op": "send"
+        },
+        {
+          "at": 112000,
+          "op": "send"
+        },
+        {
+          "at": 113000,
+          "op": "send"
+        },
+        {
+          "at": 114000,
+          "op": "send"
+        },
+        {
+          "at": 115000,
+          "op": "send"
+        },
+        {
+          "at": 116000,
+          "op": "send"
+        },
+        {
+          "at": 117000,
+          "op": "send"
+        },
+        {
+          "at": 118000,
+          "op": "send"
+        },
+        {
+          "at": 119000,
+          "op": "send"
+        },
+        {
+          "at": 120000,
+          "op": "send"
+        },
+        {
+          "at": 60000,
+          "op": "evaluate",
+          "expect": {
+            "phase": "silence",
+            "detections": []
+          }
+        },
+        {
+          "at": 120000,
+          "op": "evaluate",
+          "expect": {
+            "phase": "silence",
+            "detections": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "unselected lane never stalls translation",
+      "steps": [
+        {
+          "at": 0,
+          "op": "begin",
+          "generation": 1,
+          "epoch": 1,
+          "isRecovery": false
+        },
+        {
+          "at": 300,
+          "op": "select",
+          "lane": null
+        },
+        {
+          "at": 1000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 2000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 3000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 4000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 5000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 6000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 7000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 8000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 9000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 10000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 11000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 12000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 13000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 14000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 15000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 16000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 17000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 18000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 19000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 20000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 21000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 22000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 23000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 24000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 25000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 26000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 27000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 28000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 29000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 30000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 31000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 32000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 33000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 34000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 35000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 36000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 37000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 38000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 39000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 40000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 41000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 42000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 43000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 44000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 45000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 46000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 47000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 48000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 49000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 50000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 51000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 52000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 53000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 54000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 55000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 56000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 57000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 58000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 59000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 60000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 1000,
+          "op": "send"
+        },
+        {
+          "at": 2000,
+          "op": "send"
+        },
+        {
+          "at": 3000,
+          "op": "send"
+        },
+        {
+          "at": 4000,
+          "op": "send"
+        },
+        {
+          "at": 5000,
+          "op": "send"
+        },
+        {
+          "at": 6000,
+          "op": "send"
+        },
+        {
+          "at": 7000,
+          "op": "send"
+        },
+        {
+          "at": 8000,
+          "op": "send"
+        },
+        {
+          "at": 9000,
+          "op": "send"
+        },
+        {
+          "at": 10000,
+          "op": "send"
+        },
+        {
+          "at": 11000,
+          "op": "send"
+        },
+        {
+          "at": 12000,
+          "op": "send"
+        },
+        {
+          "at": 13000,
+          "op": "send"
+        },
+        {
+          "at": 14000,
+          "op": "send"
+        },
+        {
+          "at": 15000,
+          "op": "send"
+        },
+        {
+          "at": 16000,
+          "op": "send"
+        },
+        {
+          "at": 17000,
+          "op": "send"
+        },
+        {
+          "at": 18000,
+          "op": "send"
+        },
+        {
+          "at": 19000,
+          "op": "send"
+        },
+        {
+          "at": 20000,
+          "op": "send"
+        },
+        {
+          "at": 21000,
+          "op": "send"
+        },
+        {
+          "at": 22000,
+          "op": "send"
+        },
+        {
+          "at": 23000,
+          "op": "send"
+        },
+        {
+          "at": 24000,
+          "op": "send"
+        },
+        {
+          "at": 25000,
+          "op": "send"
+        },
+        {
+          "at": 26000,
+          "op": "send"
+        },
+        {
+          "at": 27000,
+          "op": "send"
+        },
+        {
+          "at": 28000,
+          "op": "send"
+        },
+        {
+          "at": 29000,
+          "op": "send"
+        },
+        {
+          "at": 30000,
+          "op": "send"
+        },
+        {
+          "at": 31000,
+          "op": "send"
+        },
+        {
+          "at": 32000,
+          "op": "send"
+        },
+        {
+          "at": 33000,
+          "op": "send"
+        },
+        {
+          "at": 34000,
+          "op": "send"
+        },
+        {
+          "at": 35000,
+          "op": "send"
+        },
+        {
+          "at": 36000,
+          "op": "send"
+        },
+        {
+          "at": 37000,
+          "op": "send"
+        },
+        {
+          "at": 38000,
+          "op": "send"
+        },
+        {
+          "at": 39000,
+          "op": "send"
+        },
+        {
+          "at": 40000,
+          "op": "send"
+        },
+        {
+          "at": 41000,
+          "op": "send"
+        },
+        {
+          "at": 42000,
+          "op": "send"
+        },
+        {
+          "at": 43000,
+          "op": "send"
+        },
+        {
+          "at": 44000,
+          "op": "send"
+        },
+        {
+          "at": 45000,
+          "op": "send"
+        },
+        {
+          "at": 46000,
+          "op": "send"
+        },
+        {
+          "at": 47000,
+          "op": "send"
+        },
+        {
+          "at": 48000,
+          "op": "send"
+        },
+        {
+          "at": 49000,
+          "op": "send"
+        },
+        {
+          "at": 50000,
+          "op": "send"
+        },
+        {
+          "at": 51000,
+          "op": "send"
+        },
+        {
+          "at": 52000,
+          "op": "send"
+        },
+        {
+          "at": 53000,
+          "op": "send"
+        },
+        {
+          "at": 54000,
+          "op": "send"
+        },
+        {
+          "at": 55000,
+          "op": "send"
+        },
+        {
+          "at": 56000,
+          "op": "send"
+        },
+        {
+          "at": 57000,
+          "op": "send"
+        },
+        {
+          "at": 58000,
+          "op": "send"
+        },
+        {
+          "at": 59000,
+          "op": "send"
+        },
+        {
+          "at": 60000,
+          "op": "send"
+        },
+        {
+          "at": 1000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 2000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 3000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 4000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 5000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 6000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 7000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 8000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 9000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 10000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 11000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 12000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 13000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 14000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 15000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 16000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 17000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 18000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 19000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 20000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 21000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 22000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 23000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 24000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 25000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 26000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 27000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 28000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 29000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 30000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 31000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 32000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 33000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 34000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 35000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 36000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 37000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 38000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 39000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 40000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 41000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 42000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 43000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 44000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 45000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 46000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 47000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 48000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 49000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 50000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 51000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 52000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 53000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 54000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 55000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 56000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 57000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 58000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 59000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 60000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 1000,
+          "op": "source"
+        },
+        {
+          "at": 2000,
+          "op": "source"
+        },
+        {
+          "at": 3000,
+          "op": "source"
+        },
+        {
+          "at": 4000,
+          "op": "source"
+        },
+        {
+          "at": 5000,
+          "op": "source"
+        },
+        {
+          "at": 6000,
+          "op": "source"
+        },
+        {
+          "at": 7000,
+          "op": "source"
+        },
+        {
+          "at": 8000,
+          "op": "source"
+        },
+        {
+          "at": 9000,
+          "op": "source"
+        },
+        {
+          "at": 10000,
+          "op": "source"
+        },
+        {
+          "at": 11000,
+          "op": "source"
+        },
+        {
+          "at": 12000,
+          "op": "source"
+        },
+        {
+          "at": 13000,
+          "op": "source"
+        },
+        {
+          "at": 14000,
+          "op": "source"
+        },
+        {
+          "at": 15000,
+          "op": "source"
+        },
+        {
+          "at": 16000,
+          "op": "source"
+        },
+        {
+          "at": 17000,
+          "op": "source"
+        },
+        {
+          "at": 18000,
+          "op": "source"
+        },
+        {
+          "at": 19000,
+          "op": "source"
+        },
+        {
+          "at": 20000,
+          "op": "source"
+        },
+        {
+          "at": 21000,
+          "op": "source"
+        },
+        {
+          "at": 22000,
+          "op": "source"
+        },
+        {
+          "at": 23000,
+          "op": "source"
+        },
+        {
+          "at": 24000,
+          "op": "source"
+        },
+        {
+          "at": 25000,
+          "op": "source"
+        },
+        {
+          "at": 26000,
+          "op": "source"
+        },
+        {
+          "at": 27000,
+          "op": "source"
+        },
+        {
+          "at": 28000,
+          "op": "source"
+        },
+        {
+          "at": 29000,
+          "op": "source"
+        },
+        {
+          "at": 30000,
+          "op": "source"
+        },
+        {
+          "at": 31000,
+          "op": "source"
+        },
+        {
+          "at": 32000,
+          "op": "source"
+        },
+        {
+          "at": 33000,
+          "op": "source"
+        },
+        {
+          "at": 34000,
+          "op": "source"
+        },
+        {
+          "at": 35000,
+          "op": "source"
+        },
+        {
+          "at": 36000,
+          "op": "source"
+        },
+        {
+          "at": 37000,
+          "op": "source"
+        },
+        {
+          "at": 38000,
+          "op": "source"
+        },
+        {
+          "at": 39000,
+          "op": "source"
+        },
+        {
+          "at": 40000,
+          "op": "source"
+        },
+        {
+          "at": 41000,
+          "op": "source"
+        },
+        {
+          "at": 42000,
+          "op": "source"
+        },
+        {
+          "at": 43000,
+          "op": "source"
+        },
+        {
+          "at": 44000,
+          "op": "source"
+        },
+        {
+          "at": 45000,
+          "op": "source"
+        },
+        {
+          "at": 46000,
+          "op": "source"
+        },
+        {
+          "at": 47000,
+          "op": "source"
+        },
+        {
+          "at": 48000,
+          "op": "source"
+        },
+        {
+          "at": 49000,
+          "op": "source"
+        },
+        {
+          "at": 50000,
+          "op": "source"
+        },
+        {
+          "at": 51000,
+          "op": "source"
+        },
+        {
+          "at": 52000,
+          "op": "source"
+        },
+        {
+          "at": 53000,
+          "op": "source"
+        },
+        {
+          "at": 54000,
+          "op": "source"
+        },
+        {
+          "at": 55000,
+          "op": "source"
+        },
+        {
+          "at": 56000,
+          "op": "source"
+        },
+        {
+          "at": 57000,
+          "op": "source"
+        },
+        {
+          "at": 58000,
+          "op": "source"
+        },
+        {
+          "at": 59000,
+          "op": "source"
+        },
+        {
+          "at": 60000,
+          "op": "source"
+        },
+        {
+          "at": 60000,
+          "op": "evaluate",
+          "expect": {
+            "phase": "awaitingLanguageDetection",
+            "detections": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "catch-up grace on recovery",
+      "steps": [
+        {
+          "at": 0,
+          "op": "begin",
+          "generation": 2,
+          "epoch": 7,
+          "isRecovery": true
+        },
+        {
+          "at": 300,
+          "op": "select",
+          "lane": "en"
+        },
+        {
+          "at": 1000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 2000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 3000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 4000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 5000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 6000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 7000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 8000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 9000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 10000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 11000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 12000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 13000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 14000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 15000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 16000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 17000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 18000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 19000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 20000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 21000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 22000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 23000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 24000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 25000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 26000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 27000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 28000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 29000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 30000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 31000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 32000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 33000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 34000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 35000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 36000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 37000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 38000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 39000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 40000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 1000,
+          "op": "send"
+        },
+        {
+          "at": 2000,
+          "op": "send"
+        },
+        {
+          "at": 3000,
+          "op": "send"
+        },
+        {
+          "at": 4000,
+          "op": "send"
+        },
+        {
+          "at": 5000,
+          "op": "send"
+        },
+        {
+          "at": 6000,
+          "op": "send"
+        },
+        {
+          "at": 7000,
+          "op": "send"
+        },
+        {
+          "at": 8000,
+          "op": "send"
+        },
+        {
+          "at": 9000,
+          "op": "send"
+        },
+        {
+          "at": 10000,
+          "op": "send"
+        },
+        {
+          "at": 11000,
+          "op": "send"
+        },
+        {
+          "at": 12000,
+          "op": "send"
+        },
+        {
+          "at": 13000,
+          "op": "send"
+        },
+        {
+          "at": 14000,
+          "op": "send"
+        },
+        {
+          "at": 15000,
+          "op": "send"
+        },
+        {
+          "at": 16000,
+          "op": "send"
+        },
+        {
+          "at": 17000,
+          "op": "send"
+        },
+        {
+          "at": 18000,
+          "op": "send"
+        },
+        {
+          "at": 19000,
+          "op": "send"
+        },
+        {
+          "at": 20000,
+          "op": "send"
+        },
+        {
+          "at": 21000,
+          "op": "send"
+        },
+        {
+          "at": 22000,
+          "op": "send"
+        },
+        {
+          "at": 23000,
+          "op": "send"
+        },
+        {
+          "at": 24000,
+          "op": "send"
+        },
+        {
+          "at": 25000,
+          "op": "send"
+        },
+        {
+          "at": 26000,
+          "op": "send"
+        },
+        {
+          "at": 27000,
+          "op": "send"
+        },
+        {
+          "at": 28000,
+          "op": "send"
+        },
+        {
+          "at": 29000,
+          "op": "send"
+        },
+        {
+          "at": 30000,
+          "op": "send"
+        },
+        {
+          "at": 31000,
+          "op": "send"
+        },
+        {
+          "at": 32000,
+          "op": "send"
+        },
+        {
+          "at": 33000,
+          "op": "send"
+        },
+        {
+          "at": 34000,
+          "op": "send"
+        },
+        {
+          "at": 35000,
+          "op": "send"
+        },
+        {
+          "at": 36000,
+          "op": "send"
+        },
+        {
+          "at": 37000,
+          "op": "send"
+        },
+        {
+          "at": 38000,
+          "op": "send"
+        },
+        {
+          "at": 39000,
+          "op": "send"
+        },
+        {
+          "at": 40000,
+          "op": "send"
+        },
+        {
+          "at": 9900,
+          "op": "evaluate",
+          "expect": {
+            "phase": "catchingUp",
+            "detections": []
+          }
+        },
+        {
+          "at": 10100,
+          "op": "evaluate",
+          "expect": {
+            "phase": "active",
+            "detections": []
+          }
+        },
+        {
+          "at": 20000,
+          "op": "evaluate",
+          "expect": {
+            "phase": "active",
+            "detections": []
+          }
+        },
+        {
+          "at": 30100,
+          "op": "evaluate",
+          "expect": {
+            "phase": "active",
+            "detections": [
+              "receiveStalled"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "captureStalled without grace",
+      "steps": [
+        {
+          "at": 0,
+          "op": "begin",
+          "generation": 1,
+          "epoch": 1,
+          "isRecovery": false
+        },
+        {
+          "at": 100,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 100,
+          "op": "send"
+        },
+        {
+          "at": 2900,
+          "op": "evaluate",
+          "expect": {
+            "phase": "awaitingLanguageDetection",
+            "detections": []
+          }
+        },
+        {
+          "at": 3200,
+          "op": "evaluate",
+          "expect": {
+            "phase": "awaitingLanguageDetection",
+            "detections": [
+              "captureStalled"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "sendStalled when frames stop leaving",
+      "steps": [
+        {
+          "at": 0,
+          "op": "begin",
+          "generation": 1,
+          "epoch": 1,
+          "isRecovery": false
+        },
+        {
+          "at": 1000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 2000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 3000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 4000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 5000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 6000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 7000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 8000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 9000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 10000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 11000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 12000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 13000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 14000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 15000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 16000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 17000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 18000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 19000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 20000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 1000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 2000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 3000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 4000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 5000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 6000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 7000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 8000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 9000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 10000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 11000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 12000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 13000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 14000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 15000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 16000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 17000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 18000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 19000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 20000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 1000,
+          "op": "source"
+        },
+        {
+          "at": 2000,
+          "op": "source"
+        },
+        {
+          "at": 3000,
+          "op": "source"
+        },
+        {
+          "at": 4000,
+          "op": "source"
+        },
+        {
+          "at": 5000,
+          "op": "source"
+        },
+        {
+          "at": 6000,
+          "op": "source"
+        },
+        {
+          "at": 7000,
+          "op": "source"
+        },
+        {
+          "at": 8000,
+          "op": "source"
+        },
+        {
+          "at": 9000,
+          "op": "source"
+        },
+        {
+          "at": 10000,
+          "op": "source"
+        },
+        {
+          "at": 11000,
+          "op": "source"
+        },
+        {
+          "at": 12000,
+          "op": "source"
+        },
+        {
+          "at": 13000,
+          "op": "source"
+        },
+        {
+          "at": 14000,
+          "op": "source"
+        },
+        {
+          "at": 15000,
+          "op": "source"
+        },
+        {
+          "at": 16000,
+          "op": "source"
+        },
+        {
+          "at": 17000,
+          "op": "source"
+        },
+        {
+          "at": 18000,
+          "op": "source"
+        },
+        {
+          "at": 19000,
+          "op": "source"
+        },
+        {
+          "at": 20000,
+          "op": "source"
+        },
+        {
+          "at": 9900,
+          "op": "evaluate",
+          "expect": {
+            "phase": "awaitingLanguageDetection",
+            "detections": []
+          }
+        },
+        {
+          "at": 10100,
+          "op": "evaluate",
+          "expect": {
+            "phase": "awaitingLanguageDetection",
+            "detections": [
+              "sendStalled"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "session expiry near and expired",
+      "steps": [
+        {
+          "at": 0,
+          "op": "begin",
+          "generation": 1,
+          "epoch": 1,
+          "isRecovery": false
+        },
+        {
+          "at": 0,
+          "op": "expiry",
+          "lane": "en",
+          "remainingMs": 130000
+        },
+        {
+          "at": 0,
+          "op": "expiry",
+          "lane": "source",
+          "remainingMs": null
+        },
+        {
+          "at": 300,
+          "op": "select",
+          "lane": "en"
+        },
+        {
+          "at": 1000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 3000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 5000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 7000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 9000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 11000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 13000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 15000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 17000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 19000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 21000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 23000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 25000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 27000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 29000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 31000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 33000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 35000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 37000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 39000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 41000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 43000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 45000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 47000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 49000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 51000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 53000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 55000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 57000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 59000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 61000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 63000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 65000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 67000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 69000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 71000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 73000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 75000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 77000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 79000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 81000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 83000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 85000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 87000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 89000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 91000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 93000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 95000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 97000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 99000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 101000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 103000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 105000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 107000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 109000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 111000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 113000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 115000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 117000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 119000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 121000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 123000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 125000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 127000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 129000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 131000,
+          "op": "capture",
+          "active": false
+        },
+        {
+          "at": 1000,
+          "op": "send"
+        },
+        {
+          "at": 3000,
+          "op": "send"
+        },
+        {
+          "at": 5000,
+          "op": "send"
+        },
+        {
+          "at": 7000,
+          "op": "send"
+        },
+        {
+          "at": 9000,
+          "op": "send"
+        },
+        {
+          "at": 11000,
+          "op": "send"
+        },
+        {
+          "at": 13000,
+          "op": "send"
+        },
+        {
+          "at": 15000,
+          "op": "send"
+        },
+        {
+          "at": 17000,
+          "op": "send"
+        },
+        {
+          "at": 19000,
+          "op": "send"
+        },
+        {
+          "at": 21000,
+          "op": "send"
+        },
+        {
+          "at": 23000,
+          "op": "send"
+        },
+        {
+          "at": 25000,
+          "op": "send"
+        },
+        {
+          "at": 27000,
+          "op": "send"
+        },
+        {
+          "at": 29000,
+          "op": "send"
+        },
+        {
+          "at": 31000,
+          "op": "send"
+        },
+        {
+          "at": 33000,
+          "op": "send"
+        },
+        {
+          "at": 35000,
+          "op": "send"
+        },
+        {
+          "at": 37000,
+          "op": "send"
+        },
+        {
+          "at": 39000,
+          "op": "send"
+        },
+        {
+          "at": 41000,
+          "op": "send"
+        },
+        {
+          "at": 43000,
+          "op": "send"
+        },
+        {
+          "at": 45000,
+          "op": "send"
+        },
+        {
+          "at": 47000,
+          "op": "send"
+        },
+        {
+          "at": 49000,
+          "op": "send"
+        },
+        {
+          "at": 51000,
+          "op": "send"
+        },
+        {
+          "at": 53000,
+          "op": "send"
+        },
+        {
+          "at": 55000,
+          "op": "send"
+        },
+        {
+          "at": 57000,
+          "op": "send"
+        },
+        {
+          "at": 59000,
+          "op": "send"
+        },
+        {
+          "at": 61000,
+          "op": "send"
+        },
+        {
+          "at": 63000,
+          "op": "send"
+        },
+        {
+          "at": 65000,
+          "op": "send"
+        },
+        {
+          "at": 67000,
+          "op": "send"
+        },
+        {
+          "at": 69000,
+          "op": "send"
+        },
+        {
+          "at": 71000,
+          "op": "send"
+        },
+        {
+          "at": 73000,
+          "op": "send"
+        },
+        {
+          "at": 75000,
+          "op": "send"
+        },
+        {
+          "at": 77000,
+          "op": "send"
+        },
+        {
+          "at": 79000,
+          "op": "send"
+        },
+        {
+          "at": 81000,
+          "op": "send"
+        },
+        {
+          "at": 83000,
+          "op": "send"
+        },
+        {
+          "at": 85000,
+          "op": "send"
+        },
+        {
+          "at": 87000,
+          "op": "send"
+        },
+        {
+          "at": 89000,
+          "op": "send"
+        },
+        {
+          "at": 91000,
+          "op": "send"
+        },
+        {
+          "at": 93000,
+          "op": "send"
+        },
+        {
+          "at": 95000,
+          "op": "send"
+        },
+        {
+          "at": 97000,
+          "op": "send"
+        },
+        {
+          "at": 99000,
+          "op": "send"
+        },
+        {
+          "at": 101000,
+          "op": "send"
+        },
+        {
+          "at": 103000,
+          "op": "send"
+        },
+        {
+          "at": 105000,
+          "op": "send"
+        },
+        {
+          "at": 107000,
+          "op": "send"
+        },
+        {
+          "at": 109000,
+          "op": "send"
+        },
+        {
+          "at": 111000,
+          "op": "send"
+        },
+        {
+          "at": 113000,
+          "op": "send"
+        },
+        {
+          "at": 115000,
+          "op": "send"
+        },
+        {
+          "at": 117000,
+          "op": "send"
+        },
+        {
+          "at": 119000,
+          "op": "send"
+        },
+        {
+          "at": 121000,
+          "op": "send"
+        },
+        {
+          "at": 123000,
+          "op": "send"
+        },
+        {
+          "at": 125000,
+          "op": "send"
+        },
+        {
+          "at": 127000,
+          "op": "send"
+        },
+        {
+          "at": 129000,
+          "op": "send"
+        },
+        {
+          "at": 131000,
+          "op": "send"
+        },
+        {
+          "at": 9000,
+          "op": "evaluate",
+          "expect": {
+            "phase": "silence",
+            "detections": []
+          }
+        },
+        {
+          "at": 10100,
+          "op": "evaluate",
+          "expect": {
+            "phase": "silence",
+            "detections": [
+              {
+                "kind": "expiryNear",
+                "lane": "en"
+              }
+            ]
+          }
+        },
+        {
+          "at": 130100,
+          "op": "evaluate",
+          "expect": {
+            "phase": "silence",
+            "detections": [
+              {
+                "kind": "expired",
+                "lane": "en"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "detections refire after generation restart",
+      "steps": [
+        {
+          "at": 0,
+          "op": "begin",
+          "generation": 1,
+          "epoch": 1,
+          "isRecovery": false
+        },
+        {
+          "at": 1000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 2000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 3000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 4000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 5000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 6000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 7000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 8000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 9000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 10000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 11000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 12000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 13000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 14000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 15000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 16000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 17000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 18000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 19000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 20000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 21000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 22000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 23000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 24000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 25000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 26000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 27000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 28000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 29000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 30000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 1000,
+          "op": "send"
+        },
+        {
+          "at": 2000,
+          "op": "send"
+        },
+        {
+          "at": 3000,
+          "op": "send"
+        },
+        {
+          "at": 4000,
+          "op": "send"
+        },
+        {
+          "at": 5000,
+          "op": "send"
+        },
+        {
+          "at": 6000,
+          "op": "send"
+        },
+        {
+          "at": 7000,
+          "op": "send"
+        },
+        {
+          "at": 8000,
+          "op": "send"
+        },
+        {
+          "at": 9000,
+          "op": "send"
+        },
+        {
+          "at": 10000,
+          "op": "send"
+        },
+        {
+          "at": 11000,
+          "op": "send"
+        },
+        {
+          "at": 12000,
+          "op": "send"
+        },
+        {
+          "at": 13000,
+          "op": "send"
+        },
+        {
+          "at": 14000,
+          "op": "send"
+        },
+        {
+          "at": 15000,
+          "op": "send"
+        },
+        {
+          "at": 16000,
+          "op": "send"
+        },
+        {
+          "at": 17000,
+          "op": "send"
+        },
+        {
+          "at": 18000,
+          "op": "send"
+        },
+        {
+          "at": 19000,
+          "op": "send"
+        },
+        {
+          "at": 20000,
+          "op": "send"
+        },
+        {
+          "at": 21000,
+          "op": "send"
+        },
+        {
+          "at": 22000,
+          "op": "send"
+        },
+        {
+          "at": 23000,
+          "op": "send"
+        },
+        {
+          "at": 24000,
+          "op": "send"
+        },
+        {
+          "at": 25000,
+          "op": "send"
+        },
+        {
+          "at": 26000,
+          "op": "send"
+        },
+        {
+          "at": 27000,
+          "op": "send"
+        },
+        {
+          "at": 28000,
+          "op": "send"
+        },
+        {
+          "at": 29000,
+          "op": "send"
+        },
+        {
+          "at": 30000,
+          "op": "send"
+        },
+        {
+          "at": 30100,
+          "op": "evaluate",
+          "expect": {
+            "phase": "awaitingLanguageDetection",
+            "detections": [
+              "receiveStalled"
+            ]
+          }
+        },
+        {
+          "at": 40000,
+          "op": "begin",
+          "generation": 2,
+          "epoch": 8,
+          "isRecovery": true
+        },
+        {
+          "at": 41000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 42000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 43000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 44000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 45000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 46000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 47000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 48000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 49000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 50000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 51000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 52000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 53000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 54000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 55000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 56000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 57000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 58000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 59000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 60000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 61000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 62000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 63000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 64000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 65000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 66000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 67000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 68000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 69000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 70000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 71000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 41000,
+          "op": "send"
+        },
+        {
+          "at": 42000,
+          "op": "send"
+        },
+        {
+          "at": 43000,
+          "op": "send"
+        },
+        {
+          "at": 44000,
+          "op": "send"
+        },
+        {
+          "at": 45000,
+          "op": "send"
+        },
+        {
+          "at": 46000,
+          "op": "send"
+        },
+        {
+          "at": 47000,
+          "op": "send"
+        },
+        {
+          "at": 48000,
+          "op": "send"
+        },
+        {
+          "at": 49000,
+          "op": "send"
+        },
+        {
+          "at": 50000,
+          "op": "send"
+        },
+        {
+          "at": 51000,
+          "op": "send"
+        },
+        {
+          "at": 52000,
+          "op": "send"
+        },
+        {
+          "at": 53000,
+          "op": "send"
+        },
+        {
+          "at": 54000,
+          "op": "send"
+        },
+        {
+          "at": 55000,
+          "op": "send"
+        },
+        {
+          "at": 56000,
+          "op": "send"
+        },
+        {
+          "at": 57000,
+          "op": "send"
+        },
+        {
+          "at": 58000,
+          "op": "send"
+        },
+        {
+          "at": 59000,
+          "op": "send"
+        },
+        {
+          "at": 60000,
+          "op": "send"
+        },
+        {
+          "at": 61000,
+          "op": "send"
+        },
+        {
+          "at": 62000,
+          "op": "send"
+        },
+        {
+          "at": 63000,
+          "op": "send"
+        },
+        {
+          "at": 64000,
+          "op": "send"
+        },
+        {
+          "at": 65000,
+          "op": "send"
+        },
+        {
+          "at": 66000,
+          "op": "send"
+        },
+        {
+          "at": 67000,
+          "op": "send"
+        },
+        {
+          "at": 68000,
+          "op": "send"
+        },
+        {
+          "at": 69000,
+          "op": "send"
+        },
+        {
+          "at": 70000,
+          "op": "send"
+        },
+        {
+          "at": 71000,
+          "op": "send"
+        },
+        {
+          "at": 69900,
+          "op": "evaluate",
+          "expect": {
+            "phase": "awaitingLanguageDetection",
+            "detections": []
+          }
+        },
+        {
+          "at": 70100,
+          "op": "evaluate",
+          "expect": {
+            "phase": "awaitingLanguageDetection",
+            "detections": [
+              "receiveStalled"
+            ]
+          }
+        },
+        {
+          "at": 80000,
+          "op": "evaluate",
+          "expect": {
+            "phase": "awaitingLanguageDetection",
+            "detections": []
+          }
+        },
+        {
+          "at": 72000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 72000,
+          "op": "send"
+        },
+        {
+          "at": 73000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 73000,
+          "op": "send"
+        },
+        {
+          "at": 74000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 74000,
+          "op": "send"
+        },
+        {
+          "at": 75000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 75000,
+          "op": "send"
+        },
+        {
+          "at": 76000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 76000,
+          "op": "send"
+        },
+        {
+          "at": 77000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 77000,
+          "op": "send"
+        },
+        {
+          "at": 78000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 78000,
+          "op": "send"
+        },
+        {
+          "at": 79000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 79000,
+          "op": "send"
+        },
+        {
+          "at": 80000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 80000,
+          "op": "send"
+        }
+      ]
+    },
+    {
+      "name": "wall clock is not an input",
+      "steps": [
+        {
+          "at": 0,
+          "op": "begin",
+          "generation": 1,
+          "epoch": 1,
+          "isRecovery": false
+        },
+        {
+          "at": 300,
+          "op": "select",
+          "lane": "en"
+        },
+        {
+          "at": 1000,
+          "op": "capture",
+          "active": true
+        },
+        {
+          "at": 1000,
+          "op": "send"
+        },
+        {
+          "at": 1000,
+          "op": "receive",
+          "lane": "source"
+        },
+        {
+          "at": 1000,
+          "op": "source"
+        },
+        {
+          "at": 1500,
+          "op": "translation",
+          "lane": "en"
+        },
+        {
+          "at": 2000,
+          "op": "evaluate",
+          "expect": {
+            "phase": "active",
+            "detections": []
+          }
+        }
+      ]
+    }
+  ]
+}

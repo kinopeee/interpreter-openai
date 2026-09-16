@@ -121,8 +121,15 @@ final class AppCoordinator: NSObject {
         Task { await interpretationSession.start() }
     }
 
+    /// DEBUG status file の3行目に出す最新の health 検知（kind/gen/lane のみ）。
+    private var latestHealthStatus: String?
+
     private func writeStatusFile(_ status: String) {
-        AppStatusFile.write(status, state: translationState.rawValue)
+        AppStatusFile.write(
+            status,
+            state: translationState.rawValue,
+            health: latestHealthStatus
+        )
     }
 
     func toggleSubtitlePositionEditing() {
@@ -385,6 +392,14 @@ extension AppCoordinator: InterpretationSessionDelegate {
             fontSize: settings.fontSize,
             translationState: translationState
         )
+    }
+
+    func interpretationSession(
+        _: InterpretationSession,
+        didEmitHealthDetection detection: SessionHealthDetection
+    ) {
+        latestHealthStatus = detection.statusLineFragment
+        writeStatusFile(translationState.rawValue)
     }
 
     func interpretationSession(

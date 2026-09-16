@@ -1676,6 +1676,8 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     var startError: Error?
     /// performStop が renderTask を消した直後に consumer へイベントを届ける。
     var onStop: (() -> Void)?
+    /// start 完了直前で待つゲート（handshake 後・listening 前の差し込み用）。
+    var startGate: CheckedContinuationBox?
 
     init() {
         var continuation: AsyncStream<Data>.Continuation!
@@ -1688,6 +1690,16 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         terminationError = nil
         if let startError {
             throw startError
+        }
+        if let startGate {
+            try await withCheckedThrowingContinuation {
+                (cont: CheckedContinuation<Void, Error>) in
+                if Task.isCancelled {
+                    cont.resume(throwing: CancellationError())
+                    return
+                }
+                startGate.throwingContinuation = cont
+            }
         }
         continuation?.finish()
         var next: AsyncStream<Data>.Continuation!
@@ -1818,6 +1830,10 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
     }
 
+    var appendedFrameCount: Int {
+        state.withLock(\.appendedFrames.count)
+    }
+
     func appendAudioFrame(_ pcm16LE: Data) async throws {
         state.withLock { state in
             state.appendedFrames.append(pcm16LE)
@@ -1841,6 +1857,8 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
                 stage: .source,
                 capacity: RealtimeSourceTranscriptionConnection.eventBufferLimit
             )
+            // 実接続では decode 済みイベントごとに受信数を数える。fake も同じ面を再現する。
+            state.deliveryState.recordReceive(lane: .source)
             _ = yielder.deliver(
                 RealtimeTranslationStreamEvent(
                     lane: .source,
@@ -1877,6 +1895,16 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
                 continuation.finish()
                 state.eventContinuation = nil
             }
+        }
+    }
+
+    /// handshake が届いたことにして session.expires_at を記録する。
+    func setSessionExpiry(_ expiresAtUnixSeconds: Int?, lane: RealtimeTranslationLane) {
+        state.withLock { state in
+            state.deliveryState.recordSessionExpiry(
+                lane: lane,
+                expiresAtUnixSeconds: expiresAtUnixSeconds
+            )
         }
     }
 
@@ -1938,6 +1966,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
                 stage: .merge,
                 capacity: DualRealtimeTranslationClient.mergedEventBufferLimit
             )
+            state.deliveryState.recordReceive(lane: .translation(target))
             _ = yielder.deliver(
                 RealtimeTranslationStreamEvent(
                     target: target,
@@ -1988,6 +2017,14 @@ final class InterpretationSessionDelegateSpy: InterpretationSessionDelegate {
     private(set) var snapshots: [SubtitleSnapshot] = []
     private(set) var latestSnapshot: SubtitleSnapshot?
     private(set) var finalizedSnapshots: [LiveSubtitle] = []
+    private(set) var healthDetections: [SessionHealthDetection] = []
+
+    func interpretationSession(
+        _: InterpretationSession,
+        didEmitHealthDetection detection: SessionHealthDetection
+    ) {
+        healthDetections.append(detection)
+    }
 
     func interpretationSession(
         _ session: InterpretationSession,

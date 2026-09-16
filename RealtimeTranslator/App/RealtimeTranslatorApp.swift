@@ -30,9 +30,13 @@ enum RealtimeTranslatorMain {
 enum AppStatusFile {
     static let path = "/tmp/realtimetranslator.status"
 
-    static func write(_ status: String, state: String = "") {
+    static func write(_ status: String, state: String = "", health: String? = nil) {
         #if DEBUG
-        let body = state.isEmpty ? "\(status)\n" : "\(status)\n\(state)\n"
+        var body = state.isEmpty ? "\(status)\n" : "\(status)\n\(state)\n"
+        // 受信停止監視の診断行（kind/gen/lane のみ、content は含まない）。
+        if let health {
+            body += "health=\(health)\n"
+        }
         try? body.write(toFile: path, atomically: true, encoding: .utf8)
         #endif
     }

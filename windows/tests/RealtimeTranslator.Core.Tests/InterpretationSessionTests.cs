@@ -3206,6 +3206,228 @@ public sealed class InterpretationSessionTests
         Assert.Equal(TranslationState.Idle, session.State);
     }
 
+    // Given: 接続直後だけイベントが届き、その後受信が止まる
+    // When: 単調時計を受信停止閾値まで進める
+    // Then: receiveStalled が一度だけ HealthDetected へ通知される
+    [Fact]
+    public async Task ReceiveStalledFiresOnce()
+    {
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture();
+        var client = new FakeDualClient();
+        using var session = NewSession(client, audio: audio, timeProvider: clock);
+        var detections = new List<SessionHealthDetection>();
+        session.HealthDetected += (_, detection) => detections.Add(detection);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var activeFrame = new byte[4800];
+        activeFrame[0] = 0xFF;
+        activeFrame[1] = 0x7F;
+        client.PublishSourceDelta("こんにちは");
+        // ticker が受信を記録してから frame を送る（marker は直前受信以後の活動）。
+        await Task.Delay(100);
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+
+        // 活動を保ったまま時計を進める（capture/send の停滞を避ける）。
+        clock.Advance(TimeSpan.FromMilliseconds(15_000));
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+        clock.Advance(TimeSpan.FromMilliseconds(13_000));
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+        clock.Advance(TimeSpan.FromMilliseconds(2_100));
+
+        await WaitUntilAsync(
+            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
+
+        clock.Advance(TimeSpan.FromMilliseconds(31_000));
+        await Task.Delay(200);
+
+        Assert.Equal(
+            1,
+            detections.Count(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
+        await session.StopAsync();
+    }
+
+    // Given: 選択 lane へ翻訳 delta が来ず、原文の進捗だけが続く
+    // When: 原文進捗の停止が translationStall を超える
+    // Then: translationStalled が選択 lane 付きで通知される
+    [Fact]
+    public async Task SourceOnlyProgressEmitsTranslationStalled()
+    {
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture();
+        var client = new FakeDualClient();
+        using var session = NewSession(client, audio: audio, timeProvider: clock);
+        var detections = new List<SessionHealthDetection>();
+        session.HealthDetected += (_, detection) => detections.Add(detection);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        // 日本語の原文で en lane を選択させる。
+        client.PublishSourceDelta("これは日本語のテストです");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 1);
+
+        var activeFrame = new byte[4800];
+        activeFrame[0] = 0xFF;
+        activeFrame[1] = 0x7F;
+        clock.Advance(TimeSpan.FromMilliseconds(2_000));
+        client.PublishSourceDelta("まだ話しています");
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+
+        clock.Advance(TimeSpan.FromMilliseconds(13_000));
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+        clock.Advance(TimeSpan.FromMilliseconds(2_500));
+
+        await WaitUntilAsync(
+            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.TranslationStalled));
+        var detection = detections.First(d => d.Kind == SessionHealthDetectionKind.TranslationStalled);
+        Assert.Equal(
+            RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
+            detection.Lane);
+        await session.StopAsync();
+    }
+
+    // Given: 選択 lane がなく、未選択 lane の翻訳 delta だけが届く
+    // When: 時計を進めて evaluate する
+    // Then: 検知は発火せず snapshot の selectedLane は null のまま
+    [Fact]
+    public async Task UnselectedLaneProgressEmitsNothing()
+    {
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture();
+        var client = new FakeDualClient();
+        using var session = NewSession(client, audio: audio, timeProvider: clock);
+        var detections = new List<SessionHealthDetection>();
+        session.HealthDetected += (_, detection) => detections.Add(detection);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var activeFrame = new byte[4800];
+        activeFrame[0] = 0xFF;
+        activeFrame[1] = 0x7F;
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+
+        // 未選択の en lane に delta だけ届く（routing 判定前の echo 相当）。
+        clock.Advance(TimeSpan.FromMilliseconds(15_000));
+        audio.Emit(activeFrame);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "unselected");
+        await Task.Delay(100);
+
+        clock.Advance(TimeSpan.FromMilliseconds(1_000));
+        await Task.Delay(200);
+
+        Assert.Empty(detections);
+        Assert.Null(session.LatestHealthSnapshot?.SelectedLane);
+        await session.StopAsync();
+    }
+
+    // Given: session.expires_at 受信後に壁時計が +1 時間ずれる
+    // When: 単調時計を expiryNear / expired の期限まで進める
+    // Then: 検知時刻と remaining は壁時計の影響を受けない
+    [Fact]
+    public async Task WallClockShiftDoesNotAffectExpiry()
+    {
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture { StartGate = new TaskCompletionSource() };
+        var client = new FakeDualClient();
+        using var session = NewSession(client, audio: audio, timeProvider: clock);
+        var detections = new List<SessionHealthDetection>();
+        session.HealthDetected += (_, detection) => detections.Add(detection);
+
+        await session.StartAsync();
+        // audio StartAsync のゲートは handshake 完了後・listening 直前に来る。
+        await WaitUntilAsync(() => audio.StartCallCount == 1);
+        client.SetSessionExpiry(
+            clock.GetUtcNow().ToUnixTimeSeconds() + 130,
+            RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English));
+        audio.StartGate.TrySetResult();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var activeFrame = new byte[4800];
+        activeFrame[0] = 0xFF;
+        activeFrame[1] = 0x7F;
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+
+        // NTP 補正相当の壁時計ジャンプを挟む。
+        clock.AdvanceWallClockOnly(TimeSpan.FromHours(1));
+        clock.Advance(TimeSpan.FromMilliseconds(10_100));
+
+        await WaitUntilAsync(
+            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.ExpiryNear));
+        var near = detections.First(d => d.Kind == SessionHealthDetectionKind.ExpiryNear);
+        Assert.Equal(
+            RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
+            near.Lane);
+        Assert.Equal(TimeSpan.FromMilliseconds(10_100), near.Elapsed);
+        // remaining は接続時に確定した期限への残りで、壁時計のずれを含まない。
+        Assert.Equal(TimeSpan.FromMilliseconds(119_900), near.Remaining);
+
+        clock.Advance(TimeSpan.FromMilliseconds(120_000));
+        await WaitUntilAsync(
+            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.Expired));
+        await session.StopAsync();
+    }
+
+    // Given: APIキー・原文・訳文・サーバー文言に相当する秘密文字列を仕込む
+    // When: 検知・snapshot・終了診断の文字列表現を集める
+    // Then: いずれの文字列にも秘密文字列が含まれない
+    [Fact]
+    public async Task DiagnosticsContainNoSecrets()
+    {
+        var markers = new[] { "sk-test-secret-999", "秘密の原文", "secret translation", "raw server text" };
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture();
+        var client = new FakeDualClient();
+        using var session = NewSession(client, apiKey: "sk-test-secret-999", audio: audio, timeProvider: clock);
+        var detections = new List<SessionHealthDetection>();
+        session.HealthDetected += (_, detection) => detections.Add(detection);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var activeFrame = new byte[4800];
+        activeFrame[0] = 0xFF;
+        activeFrame[1] = 0x7F;
+        audio.Emit(activeFrame);
+        client.PublishSourceDelta("秘密の原文");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "secret translation");
+        client.PublishServerError("raw server text", "server_error");
+        await Task.Delay(200);
+
+        // 診断文字列をすべて集める（検知の ToString / snapshot / 終了診断）。
+        var diagnostics = detections.Select(d => d.ToString()).ToList();
+        if (session.LatestHealthSnapshot is { } snapshot)
+        {
+            diagnostics.Add(snapshot.ToString());
+        }
+
+        var monitor = new SessionHealthMonitor();
+        monitor.BeginGeneration(1, 1, false, TimeSpan.Zero);
+        diagnostics.Add(
+            monitor.RecordTermination(SessionTerminationKind.FatalServerError, TimeSpan.FromSeconds(5))
+                .ToString());
+
+        foreach (var diagnostic in diagnostics)
+        {
+            foreach (var marker in markers)
+            {
+                Assert.DoesNotContain(marker, diagnostic, StringComparison.Ordinal);
+            }
+        }
+
+        await session.StopAsync();
+    }
+
     private static InterpretationSession NewSession(
         FakeDualClient client,
         string? apiKey = "sk-test",
@@ -3343,6 +3565,15 @@ public sealed class InterpretationSessionTests
             lock (_sync)
             {
                 _frames.Writer.TryComplete();
+            }
+        }
+
+        /// <summary>frame を consumer へ届ける（受信停止監視の frame 供給用）。</summary>
+        public void Emit(ReadOnlyMemory<byte> frame)
+        {
+            lock (_sync)
+            {
+                _frames.Writer.TryWrite(frame);
             }
         }
     }
@@ -3636,6 +3867,15 @@ public sealed class InterpretationSessionTests
             int? epoch = null)
             => PublishLane(RealtimeTranslationLane.Translation(target), serverEvent, epoch);
 
+        /// <summary>handshake が届いたことにして session.expires_at を記録する。</summary>
+        public void SetSessionExpiry(long? expiresAtUnixSeconds, RealtimeTranslationLane lane)
+        {
+            lock (_sync)
+            {
+                DeliveryState.RecordSessionExpiry(lane, expiresAtUnixSeconds);
+            }
+        }
+
         private void PublishLane(
             RealtimeTranslationLane lane,
             RealtimeTranslationServerEvent serverEvent,
@@ -3643,6 +3883,8 @@ public sealed class InterpretationSessionTests
         {
             lock (_sync)
             {
+                // 実接続では decode 済みメッセージごとに受信数を数える。fake も同じ面を再現する。
+                DeliveryState.RecordReceive(lane);
                 _events.Writer.TryWrite(
                     new RealtimeTranslationStreamEvent(lane, serverEvent, epoch ?? _epoch));
             }
