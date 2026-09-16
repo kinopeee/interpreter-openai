@@ -228,7 +228,7 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         english.SendDelay = TimeSpan.FromSeconds(30);
         await dual.AppendAudioFrameAsync(Frame(0x31));
 
-        var inFlightOnly = DualRealtimeTranslationClient.ResolveTranslationDrainTimeout(
+        var inFlightOnly = DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(
             baseTimeout,
             pendingFrameCount: 1);
         await WaitUntilAsync(() => dual.CloseDrainTimeoutForTests == inFlightOnly);
@@ -237,7 +237,7 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         await dual.AppendAudioFrameAsync(Frame(0x33));
 
         Assert.Equal(
-            DualRealtimeTranslationClient.ResolveTranslationDrainTimeout(baseTimeout, pendingFrameCount: 3),
+            DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount: 3),
             dual.CloseDrainTimeoutForTests);
         await dual.ForceCloseAsync();
     }
