@@ -121,9 +121,8 @@ actor RealtimeSourceTranscriptionConnection {
         isReady = false
         // 録音中の failed / completed を、この commit の結果として使わない。
         didReceiveCommitOutcome = false
-        isAwaitingCommitOutcome = false
-        try await sendJSON(["type": "input_audio_buffer.commit"])
         isAwaitingCommitOutcome = true
+        try await sendJSON(["type": "input_audio_buffer.commit"])
 
         let deadline = ContinuousClock.now + .nanoseconds(Int64(closeTimeoutNanoseconds))
         while ContinuousClock.now < deadline {

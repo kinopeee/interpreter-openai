@@ -442,6 +442,65 @@ public sealed class InterpretationSessionReceiveOverflowTests
         await session.StopAsync();
     }
 
+    // Given: failed を受信した時点では字幕内容がない session
+    // When: 同じ item の failed 後に字幕ペアを受信し、もう一度 failed を受信する
+    // Then: 後続の failed で未確定字幕を無効化する
+    [Fact]
+    public async Task TranscriptionFailureBeforeContentCanInvalidateLaterContent()
+    {
+        var client = new FakeOverflowDualClient();
+        using var session = CreateSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+
+        // When: 内容がない状態で failed を受信する
+        client.PublishSourceFailure("late-item", null, "unknown", null);
+        await Task.Delay(100);
+        lock (updates)
+        {
+            Assert.Empty(updates);
+        }
+
+        client.PublishSourceDelta("後続字幕");
+        client.PublishTranslationDelta("Later subtitle");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update =>
+                    update.SourceText == "後続字幕"
+                    && update.TranslatedText == "Later subtitle");
+            }
+        });
+
+        // Then: 同じ item の failed を再受信すると無効化する
+        client.PublishSourceFailure("late-item", "second-event", "unknown", null);
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update => update.IsInvalidation);
+            }
+        });
+
+        lock (updates)
+        {
+            Assert.Single(updates, update => update.IsInvalidation);
+        }
+
+        await session.StopAsync();
+    }
+
     // Given: Listening 中に新しい epoch の未確定字幕を表示している
     // When: 古い epoch の transcription failed を受信する
     // Then: 無効化せず現在の字幕を保持する

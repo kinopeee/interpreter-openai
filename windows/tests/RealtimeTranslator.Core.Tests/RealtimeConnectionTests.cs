@@ -616,6 +616,37 @@ public sealed class RealtimeConnectionTests
         await connection.ForceCloseAsync();
     }
 
+    // Given: commit 送信中に completed を即時受信する原文接続
+    // When: graceful close する
+    // Then: commit 中の completed で close が完了する
+    [Fact]
+    public async Task SourceConnectionClosesWhenCompletedArrivesDuringCommitSend()
+    {
+        var transport = new FakeRealtimeServerTransport
+        {
+            AutoCloseResponses = true,
+            AfterSendAsync = async type =>
+            {
+                if (type == "input_audio_buffer.commit")
+                {
+                    await Task.Yield();
+                }
+            }
+        };
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            closeTimeout: TimeSpan.FromMilliseconds(500));
+        await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        var started = Stopwatch.StartNew();
+        await connection.CloseGracefullyAsync();
+        started.Stop();
+
+        Assert.True(started.Elapsed < TimeSpan.FromMilliseconds(500));
+        await connection.ForceCloseAsync();
+    }
+
     // Given: failed payload が error.message に秘密情報を含む ready な接続
     // When: source event を受信する
     // Then: message を保持せず item / event / code / type だけを返す

@@ -31,6 +31,15 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
     }
     /// graceful close 用の完了イベントを自動応答する。
     var autoCloseResponses = false
+    var afterSendHook: (@Sendable (String?) async -> Void)?
+
+    func setImmediateCloseResponses(_ value: Bool) {
+        autoCloseResponses = value
+    }
+
+    func setAfterSendHook(_ hook: (@Sendable (String?) async -> Void)?) {
+        afterSendHook = hook
+    }
 
     var heldAudioAppendCount: Int {
         heldAudioAppends.count
@@ -125,6 +134,9 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
                     "type": "conversation.item.input_audio_transcription.completed",
                 ])
             }
+        }
+        if let afterSendHook {
+            await afterSendHook(type)
         }
     }
 

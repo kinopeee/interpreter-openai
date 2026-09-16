@@ -50,6 +50,8 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
 
     public TimeSpan SendDelay { get; set; }
 
+    public Func<string?, Task>? AfterSendAsync { get; set; }
+
     public bool HoldAudioAppends { get; set; }
 
     public int HeldAudioAppendCount
@@ -216,6 +218,11 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
                 EnqueueJson(
                     """{"type":"conversation.item.input_audio_transcription.completed"}""");
             }
+        }
+
+        if (AfterSendAsync is { } afterSend)
+        {
+            await afterSend(type).ConfigureAwait(false);
         }
     }
 

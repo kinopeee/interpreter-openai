@@ -251,6 +251,47 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         await session.stop()
     }
 
+    // Given: failed を受信した時点では字幕内容がない session
+    // When: 同じ item の failed 後に字幕ペアを受信し、もう一度 failed を受信する
+    // Then: 後続の failed で未確定字幕を無効化する
+    func testTranscriptionFailureBeforeContentCanInvalidateLaterContent() async {
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+
+        await session.start()
+        await waitForCondition { session.state == .listening }
+        let invalidationsBeforeEmptyFailure = delegate.snapshots.filter(\.isInvalidation).count
+
+        // When: 内容がない状態で failed を受信する
+        dual.publishSourceFailure(itemID: "late-item", eventID: nil, code: "unknown", errorType: nil)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(
+            delegate.snapshots.filter(\.isInvalidation).count,
+            invalidationsBeforeEmptyFailure
+        )
+
+        dual.emit(target: .english, event: .inputTranscriptDelta(delta: "後続字幕", eventID: nil, elapsedMs: 10))
+        dual.emit(target: .english, event: .outputTranscriptDelta(delta: "Later subtitle", eventID: nil, elapsedMs: 20))
+        await waitForCondition {
+            delegate.latestSnapshot?.current.sourceText == "後続字幕"
+                && delegate.latestSnapshot?.current.translatedText == "Later subtitle"
+        }
+
+        // Then: 同じ item の failed を再受信すると無効化する
+        dual.publishSourceFailure(itemID: "late-item", eventID: "second-event", code: "unknown", errorType: nil)
+        await waitForCondition { delegate.snapshots.last?.isInvalidation == true }
+
+        XCTAssertEqual(delegate.snapshots.filter(\.isInvalidation).count, 1)
+        await session.stop()
+    }
+
     // Given: 再接続後に新しい epoch で未確定字幕を表示している session
     // When: 古い epoch の transcription failed を受信する
     // Then: 無効化せず Listening のまま現在の字幕を保持する

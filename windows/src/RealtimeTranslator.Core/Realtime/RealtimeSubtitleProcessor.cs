@@ -90,7 +90,7 @@ internal sealed class RealtimeSubtitleProcessor
     internal RealtimeSubtitleUpdate? DiscardFailedSource(string? itemId, string? eventId)
     {
         var key = itemId ?? eventId;
-        if (key is not null && !_handledFailedSourceKeys.Add(key))
+        if (key is not null && _handledFailedSourceKeys.Contains(key))
         {
             return null;
         }
@@ -98,6 +98,11 @@ internal sealed class RealtimeSubtitleProcessor
         if (!_assembler.HasUnconfirmedContent)
         {
             return null;
+        }
+
+        if (key is not null)
+        {
+            _handledFailedSourceKeys.Add(key);
         }
 
         return DiscardUnconfirmed();

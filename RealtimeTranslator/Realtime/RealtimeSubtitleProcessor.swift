@@ -71,10 +71,13 @@ struct RealtimeSubtitleProcessor: Sendable {
 
     mutating func discardFailedSource(itemID: String?, eventID: String?) -> RealtimeSubtitleUpdate? {
         let key = itemID ?? eventID
-        if let key, !handledFailedSourceKeys.insert(key).inserted {
+        if let key, handledFailedSourceKeys.contains(key) {
             return nil
         }
         guard assembler.hasUnconfirmedContent else { return nil }
+        if let key {
+            handledFailedSourceKeys.insert(key)
+        }
         return discardUnconfirmed()
     }
 

@@ -173,7 +173,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 _isReady = false;
                 // 録音中の failed / completed を、この commit の結果として使わない。
                 _didReceiveCommitOutcome = false;
-                _isAwaitingCommitOutcome = false;
+                _isAwaitingCommitOutcome = true;
             }
 
             if (!wasReady)
@@ -192,11 +192,6 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 #pragma warning restore CA1031
             {
                 // 相手が既に落ちている場合も completed 待ちへ進む。
-            }
-
-            lock (_lifecycle.Sync)
-            {
-                _isAwaitingCommitOutcome = true;
             }
 
             var completed = await _lifecycle.WaitForCloseSignalAsync(

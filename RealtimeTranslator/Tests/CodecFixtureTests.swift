@@ -306,6 +306,32 @@ final class CodecFixtureTests: XCTestCase {
         await connection.forceClose()
     }
 
+    func testTranscriptionCloseHandlesCompletedDeliveredDuringCommitSend() async throws {
+        // Given: commit送信中にcompletedを即時受信する原文接続
+        let transport = FakeRealtimeWebSocketTransport()
+        await transport.setImmediateCloseResponses(true)
+        await transport.setAfterSendHook { type in
+            guard type == "input_audio_buffer.commit" else { return }
+            await Task.yield()
+        }
+        let connection = RealtimeSourceTranscriptionConnection(
+            transport: transport,
+            safetyIdentifier: "test-safety",
+            handshakeTimeoutNanoseconds: 1_000_000_000,
+            closeTimeoutNanoseconds: 500_000_000
+        )
+        try await startTranscription(connection, transport: transport)
+
+        // When: graceful closeを開始する
+        let started = ContinuousClock.now
+        try await connection.closeGracefully()
+        let elapsed = ContinuousClock.now - started
+
+        // Then: commit中のcompletedでcloseが完了する
+        XCTAssertLessThan(elapsed, .milliseconds(500))
+        await connection.forceClose()
+    }
+
     // Given: 録音中に failed を受信済みの原文接続
     // When: commit 後に completed / failed が来ない
     // Then: 録音中の failed を commit 結果にせず CloseTimeout になる
