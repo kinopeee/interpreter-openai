@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Channels;
@@ -441,13 +442,320 @@ public sealed class InterpretationSessionReceiveOverflowTests
         await session.StopAsync();
     }
 
-    private static InterpretationSession CreateSession(FakeOverflowDualClient client) =>
+    // Given: Listening 中に新しい epoch の未確定字幕を表示している
+    // When: 古い epoch の transcription failed を受信する
+    // Then: 無効化せず現在の字幕を保持する
+    [Fact]
+    public async Task StaleEpochTranscriptionFailureDoesNotInvalidateCurrentSubtitle()
+    {
+        // Given: 再接続後に現在 epoch の字幕を表示する
+        var client = new FakeOverflowDualClient();
+        using var session = CreateSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        var oldEpoch = client.ConnectionEpoch;
+        client.PublishServerError(
+            DualRealtimeTranslationClient.TransportErrorMessage,
+            DualRealtimeTranslationClient.TransportErrorCode);
+        await client.SecondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        client.PublishSourceDelta("現在の字幕");
+        client.PublishTranslationDelta("Current subtitle");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update =>
+                    update.SourceText == "現在の字幕"
+                    && update.TranslatedText == "Current subtitle");
+            }
+        });
+        var invalidationsBefore = updates.Count(update => update.IsInvalidation);
+
+        // When: 古い epoch の failed を投入する
+        client.PublishSourceFailure(
+            "stale-item",
+            "stale-event",
+            "audio_unintelligible",
+            null,
+            oldEpoch);
+        await Task.Delay(100);
+
+        // Then: 現在の字幕と Listening 状態を保つ
+        Assert.Equal(TranslationState.Listening, session.State);
+        Assert.Equal(2, client.StartCount);
+        lock (updates)
+        {
+            Assert.Equal(invalidationsBefore, updates.Count(update => update.IsInvalidation));
+            Assert.Contains(
+                updates,
+                update => update.SourceText == "現在の字幕"
+                    && update.TranslatedText == "Current subtitle");
+        }
+
+        await session.StopAsync();
+    }
+
+    // Given: Listening 中に未確定の字幕ペアを表示している
+    // When: recover 分類の transcription failed を受信する
+    // Then: 無効化して再接続し、未確定ペアを確定しない
+    [Fact]
+    public async Task RecoverTranscriptionFailureReconnectsWithoutFinalizingPendingPair()
+    {
+        // Given: 未確定の原文と訳文を表示する
+        var client = new FakeOverflowDualClient();
+        using var session = CreateSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        var invalidated = NewGate();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+
+            if (update.IsInvalidation)
+            {
+                invalidated.TrySetResult();
+            }
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        client.PublishSourceDelta("失敗する字幕");
+        client.PublishTranslationDelta("Recover subtitle");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update =>
+                    update.SourceText == "失敗する字幕"
+                    && update.TranslatedText == "Recover subtitle");
+            }
+        });
+
+        // When: recover 対象の failed を投入する
+        client.PublishSourceFailure("recover-item", null, null, "server_error");
+
+        // Then: 無効化後に再接続し、未確定ペアを確定しない
+        await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await client.SecondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        lock (updates)
+        {
+            Assert.DoesNotContain(
+                updates,
+                update => update.ShouldFinalize
+                    && (update.SourceText == "失敗する字幕"
+                        || update.TranslatedText == "Recover subtitle"));
+        }
+
+        await session.StopAsync();
+    }
+
+    // Given: idle finalize で確定済みの字幕ペアを保持している
+    // When: transcription failed を受信する
+    // Then: 確定済み字幕と通知数を保持する
+    [Fact]
+    public async Task TranscriptionFailurePreservesFinalizedSubtitle()
+    {
+        // Given: 短い idle tick 間隔で完全ペアを表示する
+        var client = new FakeOverflowDualClient();
+        using var session = CreateSession(client, TimeSpan.FromMilliseconds(15));
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        client.PublishSourceDelta("確定済み字幕");
+        client.PublishTranslationDelta("Finalized subtitle");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update =>
+                    update.ShouldFinalize
+                    && update.SourceText == "確定済み字幕"
+                    && update.TranslatedText == "Finalized subtitle");
+            }
+        });
+        var finalizedCount = updates.Count(update =>
+            update.ShouldFinalize
+            && update.SourceText == "確定済み字幕"
+            && update.TranslatedText == "Finalized subtitle");
+
+        // When: 確定済み字幕に紐づく failed を投入する
+        client.PublishSourceFailure("finalized-item", null, "audio_unintelligible", null);
+        await Task.Delay(100);
+
+        // Then: 確定済み字幕の通知数と内容を保持する
+        lock (updates)
+        {
+            Assert.Equal(
+                finalizedCount,
+                updates.Count(update =>
+                    update.ShouldFinalize
+                    && update.SourceText == "確定済み字幕"
+                    && update.TranslatedText == "Finalized subtitle"));
+        }
+
+        await session.StopAsync();
+    }
+
+    // Given: 停止前に未確定の字幕ペアを表示している
+    // When: stop drain 中に transcription failed を受信する
+    // Then: 停止を完了し、未確定ペアを確定しない
+    [Fact]
+    public async Task StopDrainTranscriptionFailureDoesNotFinalizePendingPair()
+    {
+        // Given: 未確定の原文と訳文を表示する
+        var client = new FakeOverflowDualClient();
+        using var session = CreateSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        client.PublishSourceDelta("停止中の字幕");
+        client.PublishTranslationDelta("Stopping subtitle");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update =>
+                    update.SourceText == "停止中の字幕"
+                    && update.TranslatedText == "Stopping subtitle");
+            }
+        });
+        client.CloseGracefullyEvents =
+        [
+            new RealtimeTranslationStreamEvent(
+                RealtimeTranslationLane.Source,
+                new RealtimeTranslationServerEvent.InputTranscriptFailed(
+                    "stop-item",
+                    "stop-event",
+                    "audio_unintelligible",
+                    null),
+                client.ConnectionEpoch)
+        ];
+
+        // When: 停止する
+        await session.StopAsync();
+
+        // Then: stop は完了し、未確定ペアを確定しない
+        Assert.Equal(TranslationState.Idle, session.State);
+        lock (updates)
+        {
+            Assert.DoesNotContain(
+                updates,
+                update => update.ShouldFinalize
+                    && (update.SourceText == "停止中の字幕"
+                        || update.TranslatedText == "Stopping subtitle"));
+        }
+    }
+
+    // Given: failed により秘密情報を含む未確定字幕を無効化する
+    // When: session が keepAlive の failed を処理する
+    // Then: MessageEncountered と無効化後の字幕へ秘密情報を出さない
+    [Fact]
+    public async Task TranscriptionFailureDoesNotExposeMessage()
+    {
+        // Given: 秘密情報を含む原文ペアを表示する
+        var client = new FakeOverflowDualClient();
+        using var session = CreateSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        var invalidated = NewGate();
+        var messages = new List<string>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+
+            if (update.IsInvalidation)
+            {
+                invalidated.TrySetResult();
+            }
+        };
+        session.MessageEncountered += (_, message) =>
+        {
+            lock (messages)
+            {
+                messages.Add(message);
+            }
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        client.PublishSourceDelta("こんにちは sk-leak-1234");
+        client.PublishTranslationDelta("Secret subtitle");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update => update.SourceText.Contains("sk-leak-1234"));
+            }
+        });
+
+        // When: keepAlive の failed を投入する
+        client.PublishSourceFailure("privacy-item", "privacy-event", "audio_unintelligible", null);
+
+        // Then: 秘密情報を通知せず、無効化後の字幕にも残さない
+        await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        lock (messages)
+        {
+            Assert.Empty(messages);
+        }
+
+        lock (updates)
+        {
+            var invalidationIndex = updates.FindIndex(update => update.IsInvalidation);
+            Assert.True(invalidationIndex >= 0);
+            Assert.DoesNotContain(
+                updates.Skip(invalidationIndex),
+                update => update.SourceText.Contains("sk-")
+                    || update.TranslatedText.Contains("sk-"));
+        }
+
+        await session.StopAsync();
+    }
+
+    private static InterpretationSession CreateSession(
+        FakeOverflowDualClient client,
+        TimeSpan? tickInterval = null) =>
         new(
             new FakeApiKeyStore(),
             new FakeAudioCapture(),
             client,
             initialReconnectDelay: TimeSpan.FromMilliseconds(1),
-            tickInterval: TimeSpan.FromHours(1));
+            tickInterval: tickInterval ?? TimeSpan.FromHours(1));
 
     private static TaskCompletionSource NewGate() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -598,6 +906,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
 
         public Func<Task>? OnCloseGracefully { get; set; }
 
+        public IReadOnlyList<RealtimeTranslationStreamEvent> CloseGracefullyEvents { get; set; } = [];
+
         public Task StartAsync(
             string apiKey,
             RealtimeSessionTuning tuning,
@@ -647,6 +957,15 @@ public sealed class InterpretationSessionReceiveOverflowTests
                 await hook().ConfigureAwait(false);
             }
 
+            lock (_sync)
+            {
+                foreach (var streamEvent in CloseGracefullyEvents)
+                {
+                    _events.Writer.TryWrite(streamEvent);
+                }
+
+                CloseGracefullyEvents = [];
+            }
             Complete();
         }
 

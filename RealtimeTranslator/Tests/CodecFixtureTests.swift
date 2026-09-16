@@ -42,14 +42,6 @@ final class CodecFixtureTests: XCTestCase {
                     return XCTFail("expected inputTranscriptDelta")
                 }
                 assertDelta(expected, delta: delta, eventID: eventID, elapsedMs: elapsedMs)
-            case "transcriptionFailed":
-                guard case .inputTranscriptFailed(let itemID, let eventID, let code, let errorType) = actual else {
-                    return XCTFail("expected inputTranscriptFailed")
-                }
-                XCTAssertEqual(SharedFixtures.optionalText(expected["itemId"]), itemID)
-                XCTAssertEqual(SharedFixtures.optionalText(expected["eventId"]), eventID)
-                XCTAssertEqual(SharedFixtures.optionalText(expected["code"]), code)
-                XCTAssertEqual(SharedFixtures.optionalText(expected["errorType"]), errorType)
             case "outputTranscriptDelta":
                 guard case .outputTranscriptDelta(let delta, let eventID, let elapsedMs) = actual else {
                     return XCTFail("expected outputTranscriptDelta")
@@ -222,13 +214,20 @@ final class CodecFixtureTests: XCTestCase {
             case "transcriptionFailed":
                 // Given: commit 待ち中に失敗通知が届く
                 // When: close drain を完了する
-                // Then: failed でも completed と同様に close が成功する
+                // Then: failed でも completed と同様に 500ms 未満で close が成功する
                 let closeTask = Task {
                     try await connection.closeGracefully()
                 }
                 try await waitUntilSentContains(transport, type: "input_audio_buffer.commit")
+                let started = ContinuousClock.now
                 await transport.enqueueInbound(inbound)
                 try await closeTask.value
+                let elapsed = ContinuousClock.now - started
+                XCTAssertLessThan(
+                    elapsed,
+                    .milliseconds(500),
+                    "failed close drain exceeded timeout for \(name)"
+                )
                 let event = try await waitForEvent(box)
                 guard case .inputTranscriptFailed(let itemID, let eventID, let code, let errorType) = event.event
                 else {
@@ -261,6 +260,49 @@ final class CodecFixtureTests: XCTestCase {
             collector.cancel()
             await connection.forceClose()
         }
+    }
+
+    // Given: 秘密情報を含む failed payload を source connection へ投入する
+    // When: source event を受信する
+    // Then: event model に message を保持せず許可された値だけを返す
+    func testTranscriptionFailurePayloadDoesNotRetainMessage() async throws {
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeSourceTranscriptionConnection(
+            transport: transport,
+            safetyIdentifier: "test-safety",
+            handshakeTimeoutNanoseconds: 1_000_000_000,
+            closeTimeoutNanoseconds: 500_000_000
+        )
+        try await startTranscription(connection, transport: transport)
+        let stream = await connection.events
+        let box = EventBox()
+        let collector = Task {
+            for await event in stream {
+                await box.append(event)
+            }
+        }
+        try await transport.enqueueJSON([
+            "type": "conversation.item.input_audio_transcription.failed",
+            "item_id": "privacy-item",
+            "event_id": "privacy-event",
+            "error": [
+                "code": "audio_unintelligible",
+                "message": "こんにちは sk-leak-1234"
+            ]
+        ])
+
+        let event = try await waitForEvent(box)
+        XCTAssertEqual(
+            event.event,
+            .inputTranscriptFailed(
+                itemID: "privacy-item",
+                eventID: "privacy-event",
+                code: "audio_unintelligible",
+                errorType: nil
+            )
+        )
+        collector.cancel()
+        await connection.forceClose()
     }
 
     private func assertDelta(
