@@ -195,9 +195,9 @@ public sealed class InterpretationSessionRoutingGateTests
     private sealed class FakeAudioCapture : IRealtimeAudioCapture
     {
         private readonly object _sync = new();
-        private Channel<ReadOnlyMemory<byte>> _frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+        private Channel<CapturedAudioFrame> _frames = Channel.CreateUnbounded<CapturedAudioFrame>();
 
-        public ChannelReader<ReadOnlyMemory<byte>> Frames
+        public ChannelReader<CapturedAudioFrame> Frames
         {
             get
             {
@@ -214,7 +214,7 @@ public sealed class InterpretationSessionRoutingGateTests
             {
                 if (_frames.Reader.Completion.IsCompleted)
                 {
-                    _frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+                    _frames = Channel.CreateUnbounded<CapturedAudioFrame>();
                 }
             }
 
