@@ -8,6 +8,11 @@ using RealtimeTranslator.Core.Audio;
 
 namespace RealtimeTranslator.Core.Realtime;
 
+public readonly record struct OppositeScriptRun(
+    int LatinWordCount,
+    int LatinScalarCount,
+    int JapaneseScalarCount);
+
 public sealed class SourceBoundaryTracker
 {
     public int? CandidateOffset { get; private set; }
@@ -44,6 +49,37 @@ public sealed class SourceBoundaryTracker
         {
             ObserveScriptPair(segmentSource, start, currentLanguage);
         }
+    }
+
+    public OppositeScriptRun? OppositeScriptRun(string segmentSource)
+    {
+        ArgumentNullException.ThrowIfNull(segmentSource);
+        if (CandidateOffset is not { } candidateOffset)
+        {
+            return null;
+        }
+
+        var offset = Math.Clamp(candidateOffset, 0, segmentSource.Length);
+        var run = segmentSource[offset..];
+        var latinScalarCount = 0;
+        var japaneseScalarCount = 0;
+        foreach (var rune in run.EnumerateRunes())
+        {
+            if (IsJapanese(rune))
+            {
+                japaneseScalarCount += 1;
+            }
+
+            if (SpokenLanguageDetector.IsLatinWordScalar(rune))
+            {
+                latinScalarCount += 1;
+            }
+        }
+
+        return new OppositeScriptRun(
+            SpokenLanguageDetector.WordSpans(run).Count,
+            latinScalarCount,
+            japaneseScalarCount);
     }
 
     private void ObserveScriptPair(

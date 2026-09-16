@@ -169,35 +169,40 @@ final class SubtitleFixtureTests: XCTestCase {
                 source += delta
                 routing = RoutingSourceTextWindow.trim(routing + delta, pair: pair)
                 let evidence = SpokenLanguageDetector.recentEvidence(in: routing, pair: pair)
-                let selection = TranslationTargetSelector.select(
-                    pair: pair,
-                    currentTarget: currentTarget,
-                    reverseEvidenceCount: reverseEvidenceCount,
-                    evidence: evidence
-                )
-                reverseEvidenceCount = selection.reverseEvidenceCount
-
-                if selection.target == currentTarget {
+                var oppositeRun: OppositeScriptRun?
+                if pair != .enEs {
                     tracker.observe(
                         segmentSource: source,
                         deltaStart: deltaStart,
                         segmentGeneration: 0,
                         pair: pair,
                         currentLanguage: currentLanguage,
-                        reverseEvidenceCount: reverseEvidenceCount
+                        reverseEvidenceCount: 0
                     )
-                    candidates.append(tracker.candidateOffset)
-                } else {
-                    if pair != .enEs {
+                    oppositeRun = tracker.oppositeScriptRun(in: source)
+                }
+                let selection = TranslationTargetSelector.select(
+                    pair: pair,
+                    currentTarget: currentTarget,
+                    reverseEvidenceCount: reverseEvidenceCount,
+                    evidence: evidence,
+                    oppositeRun: oppositeRun
+                )
+                reverseEvidenceCount = selection.reverseEvidenceCount
+
+                if selection.target == currentTarget {
+                    if pair == .enEs {
                         tracker.observe(
                             segmentSource: source,
                             deltaStart: deltaStart,
                             segmentGeneration: 0,
                             pair: pair,
                             currentLanguage: currentLanguage,
-                            reverseEvidenceCount: 0
+                            reverseEvidenceCount: reverseEvidenceCount
                         )
                     }
+                    candidates.append(tracker.candidateOffset)
+                } else {
                     candidates.append(tracker.candidateOffset ?? deltaStart)
                     switchDelta = index
                     break

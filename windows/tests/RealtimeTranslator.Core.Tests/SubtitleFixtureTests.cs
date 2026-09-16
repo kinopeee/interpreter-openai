@@ -92,14 +92,8 @@ public sealed class SubtitleFixtureTests
                 source += delta;
                 routing = RoutingSourceTextWindow.Trim(routing + delta, pair);
                 var evidence = SpokenLanguageDetector.RecentEvidence(routing, pair);
-                var selection = TranslationTargetSelector.Select(
-                    pair,
-                    currentTarget,
-                    reverseEvidenceCount,
-                    evidence);
-                reverseEvidenceCount = selection.ReverseEvidenceCount;
-
-                if (selection.Target == currentTarget)
+                OppositeScriptRun? oppositeRun = null;
+                if (pair != LanguagePair.EnEs)
                 {
                     tracker.Observe(
                         source,
@@ -107,12 +101,20 @@ public sealed class SubtitleFixtureTests
                         0,
                         pair,
                         currentLanguage,
-                        reverseEvidenceCount);
-                    candidates.Add(tracker.CandidateOffset);
+                        0);
+                    oppositeRun = tracker.OppositeScriptRun(source);
                 }
-                else
+                var selection = TranslationTargetSelector.Select(
+                    pair,
+                    currentTarget,
+                    reverseEvidenceCount,
+                    evidence,
+                    oppositeRun);
+                reverseEvidenceCount = selection.ReverseEvidenceCount;
+
+                if (selection.Target == currentTarget)
                 {
-                    if (pair != LanguagePair.EnEs)
+                    if (pair == LanguagePair.EnEs)
                     {
                         tracker.Observe(
                             source,
@@ -120,9 +122,12 @@ public sealed class SubtitleFixtureTests
                             0,
                             pair,
                             currentLanguage,
-                            0);
+                            reverseEvidenceCount);
                     }
-
+                    candidates.Add(tracker.CandidateOffset);
+                }
+                else
+                {
                     candidates.Add(tracker.CandidateOffset ?? deltaStart);
                     switchDelta = index;
                     break;

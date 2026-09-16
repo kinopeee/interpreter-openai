@@ -1,5 +1,11 @@
 import Foundation
 
+struct OppositeScriptRun: Equatable, Sendable {
+    let latinWordCount: Int
+    let latinScalarCount: Int
+    let japaneseScalarCount: Int
+}
+
 struct SourceBoundaryTracker: Sendable {
     private(set) var candidateOffset: Int?
     private var observedSegmentGeneration: Int?
@@ -38,6 +44,28 @@ struct SourceBoundaryTracker: Sendable {
                 currentLanguage: currentLanguage
             )
         }
+    }
+
+    func oppositeScriptRun(in segmentSource: String) -> OppositeScriptRun? {
+        guard let candidateOffset else { return nil }
+        let sourceLength = segmentSource.utf16.count
+        let offset = min(max(candidateOffset, 0), sourceLength)
+        let run = String(segmentSource.utf16Slice(offset..<sourceLength))
+        var latinScalarCount = 0
+        var japaneseScalarCount = 0
+        for scalar in run.unicodeScalars {
+            if Self.isJapanese(scalar) {
+                japaneseScalarCount += 1
+            }
+            if SpokenLanguageDetector.isLatinWordScalar(scalar) {
+                latinScalarCount += 1
+            }
+        }
+        return OppositeScriptRun(
+            latinWordCount: SpokenLanguageDetector.wordSpans(in: run).count,
+            latinScalarCount: latinScalarCount,
+            japaneseScalarCount: japaneseScalarCount
+        )
     }
 
     private mutating func observeScriptPair(

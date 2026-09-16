@@ -6,11 +6,16 @@ struct TranslationTargetSelection: Equatable, Sendable {
 }
 
 enum TranslationTargetSelector {
+    static let scriptSwitchMinimumLatinWords = 4
+    static let scriptSwitchMinimumLatinScalars = SpokenLanguageDetector.recentEvidenceWindow
+    static let scriptSwitchMinimumJapaneseScalars = 2
+
     static func select(
         pair: LanguagePair,
         currentTarget: RealtimeTranslationOutputLanguage?,
         reverseEvidenceCount: Int,
-        evidence: SpokenLanguageEvidence
+        evidence: SpokenLanguageEvidence,
+        oppositeRun: OppositeScriptRun? = nil
     ) -> TranslationTargetSelection {
         let initial = currentTarget == nil
         guard let candidate = candidateTarget(pair: pair, evidence: evidence, isInitial: initial)
@@ -29,7 +34,23 @@ enum TranslationTargetSelector {
         }
 
         if pair != .enEs {
-            return TranslationTargetSelection(target: candidate, reverseEvidenceCount: 0)
+            guard let oppositeRun else {
+                return TranslationTargetSelection(target: currentTarget, reverseEvidenceCount: 0)
+            }
+            let shouldSwitch: Bool
+            switch evidence {
+            case .english, .spanish:
+                shouldSwitch = oppositeRun.latinWordCount >= scriptSwitchMinimumLatinWords
+                    && oppositeRun.latinScalarCount >= scriptSwitchMinimumLatinScalars
+            case .japanese:
+                shouldSwitch = oppositeRun.japaneseScalarCount >= scriptSwitchMinimumJapaneseScalars
+            case .ambiguousLatin, .none:
+                shouldSwitch = false
+            }
+            return TranslationTargetSelection(
+                target: shouldSwitch ? candidate : currentTarget,
+                reverseEvidenceCount: 0
+            )
         }
 
         let nextCount = reverseEvidenceCount + 1

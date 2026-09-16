@@ -864,9 +864,9 @@ public sealed class InterpretationSessionTests
         });
         var resetsAfterJapanese = client.ResetAudioRoutingCount;
 
-        // When: 1 delta で末尾窓から日本語を追い出し、スペイン語へ反転する
+        // When: 1 delta で末尾窓から日本語を追い出し、4語のスペイン語へ反転する
         // （padding を先に ingest すると finalize 原文へ混ざる）
-        client.PublishSourceDelta("................ mundo ahora");
+        client.PublishSourceDelta("................ mundo ahora mismo amigo");
         await WaitUntilAsync(() => client.SelectedTargets.Count == 2);
 
         // Then: 言語切替で再ルーティングし、前セグメントが確定する
@@ -1210,7 +1210,7 @@ public sealed class InterpretationSessionTests
         });
         var resetsAfterJapanese = client.ResetAudioRoutingCount;
 
-        client.PublishSourceDelta("................ mundo ahora");
+        client.PublishSourceDelta("................ mundo ahora mismo amigo");
         await WaitUntilAsync(() => client.SelectedTargets.Count == 2);
         await WaitUntilAsync(() =>
         {
@@ -1437,10 +1437,10 @@ public sealed class InterpretationSessionTests
         Assert.Equal(RealtimeTranslationOutputLanguage.Spanish, client.SelectedTargets[0]);
         Assert.Equal(SpokenLanguage.Japanese, client.SpokenLanguages[0]);
 
-        // 末尾 16 scalar から日本語を追い出し、ラテン 2 語以上で spanish を確定する。
+        // 末尾 16 scalar から日本語を追い出し、ラテン 4 語以上で spanish を確定する。
         client.PublishSourceDelta("................");
         await Task.Delay(40);
-        client.PublishSourceDelta(" mundo ahora");
+        client.PublishSourceDelta(" mundo ahora mismo amigo");
         await WaitUntilAsync(() => client.SelectedTargets.Count == 2);
         Assert.Equal(
             [RealtimeTranslationOutputLanguage.Spanish, RealtimeTranslationOutputLanguage.Japanese],
