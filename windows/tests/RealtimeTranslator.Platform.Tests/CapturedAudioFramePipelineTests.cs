@@ -314,9 +314,9 @@ public sealed class CapturedAudioFramePipelineTests
         Assert.Equal(capacity, remaining);
     }
 
-    // Given: 最初の frame を処理した後、bounded frame channel へ残り39件を投入する
-    // When: 読み手が遅れてから channel を読み出す
-    // Then: 最新32件を保持し、tracker は8枚 / 800msの欠落を検知する
+    // Given: tracker が先頭 frame を観測済みの 32 枚 bounded channel
+    // When: 読み手が遅れている間に 40 枚を追加する
+    // Then: 最新32件を保持し、連番欠番から 8 枚 / 800ms の欠落を検知する
     [Fact]
     public void FrameChannelRetainsNewestFramesForLossTracking()
     {
@@ -337,7 +337,7 @@ public sealed class CapturedAudioFramePipelineTests
             0,
             0);
 
-        for (var sequence = 1; sequence < 40; sequence++)
+        for (var sequence = 1; sequence <= 40; sequence++)
         {
             Assert.True(channel.Writer.TryWrite(new CapturedAudioFrame(
                 1,
@@ -360,7 +360,7 @@ public sealed class CapturedAudioFramePipelineTests
         }
 
         Assert.Equal(32, retained.Count);
-        Assert.Equal(Enumerable.Range(8, 32), retained.Select(frame => (int)frame.Sequence));
+        Assert.Equal(Enumerable.Range(9, 32), retained.Select(frame => (int)frame.Sequence));
         Assert.Equal(8, tracker.Metrics.DroppedFrames);
         Assert.Equal(800, tracker.Metrics.LostMilliseconds);
     }
