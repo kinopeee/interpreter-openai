@@ -53,7 +53,7 @@ public sealed class AudioLossTracker
     {
         var isFirstFrame = _lastGeneration != generation;
         var droppedFrames = isFirstFrame
-            ? 0
+            ? (int)Math.Max(0, sequence)
             : (int)Math.Max(0, sequence - (_lastSequence + 1));
         var discardedDelta = isFirstFrame
             ? Math.Max(0, discardedMilliseconds)

@@ -51,6 +51,8 @@ final class InterpretationSessionAudioLossTests: XCTestCase {
 
         // Then: 欠落は記録されるが再接続せず、未確定字幕は確定一覧に残らない
         XCTAssertEqual(dual.startCallCount, 1)
+        await waitUntil { delegate.latestSnapshot?.current.isEmpty == true }
+        XCTAssertTrue(delegate.latestSnapshot?.current.isEmpty == true)
         XCTAssertFalse(
             delegate.finalizedSnapshots.contains {
                 $0.sourceText == "こんにちは" && $0.translatedText == "Hello"

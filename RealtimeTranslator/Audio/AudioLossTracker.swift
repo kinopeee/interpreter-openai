@@ -50,7 +50,7 @@ struct AudioLossTracker: Sendable {
         }
 
         let droppedFrames = isFirstFrame
-            ? 0
+            ? max(0, sequence)
             : max(0, sequence - (lastSequence + 1))
         let discardedDelta = max(0, discardedMilliseconds - lastDiscardedMilliseconds)
         let lostMilliseconds = droppedFrames * policy.frameDurationMilliseconds + discardedDelta

@@ -359,8 +359,7 @@ public sealed class RealtimeSubtitleAssembler
             // 未確定の境界候補（文末の製品名など）は、切替未確定のまま idle した完全ペアを止めない。
             if (_currentSegmentTainted)
             {
-                AbandonStaleSegment(now);
-                return null;
+                return AbandonStaleSegment(now);
             }
 
             return FinalizeCurrent(elapsedHint: null, now);
@@ -374,6 +373,11 @@ public sealed class RealtimeSubtitleAssembler
         if (CurrentTranslation.Length > 0)
         {
             // 旧訳文は確定しないが、次発話の原文が同一セグメントへ連結しないよう境界だけ進める。
+            if (_currentSegmentTainted)
+            {
+                return AbandonStaleSegment(now);
+            }
+
             AbandonStaleSegment(now);
         }
 
@@ -420,13 +424,20 @@ public sealed class RealtimeSubtitleAssembler
             _segmentGeneration);
     }
 
-    private void AbandonStaleSegment(DateTimeOffset now)
+    private RealtimeSubtitleUpdate AbandonStaleSegment(DateTimeOffset now)
     {
         ApplyFinalizedCutoffs();
         ClearSegmentBuffers(advancingGeneration: true);
         _awaitingSourceAfterFinalize = true;
         _currentSegmentTainted = false;
         _lastActivityAt = now;
+        return new RealtimeSubtitleUpdate(
+            string.Empty,
+            string.Empty,
+            IsTranslationCurrent: false,
+            ShouldFinalize: false,
+            _segmentGeneration,
+            IsInvalidation: true);
     }
 
     private void ApplyFinalizedCutoffs()

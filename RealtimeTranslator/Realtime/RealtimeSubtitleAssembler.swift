@@ -373,8 +373,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         if !translation.isEmpty, translationIsCurrent {
             // 未確定の境界候補（文末の製品名など）は、切替未確定のまま idle した完全ペアを止めない。
             if currentSegmentTainted {
-                abandonStaleSegment(now: now)
-                return nil
+                return abandonStaleSegment(now: now)
             }
             return finalizeCurrent(elapsedHint: nil, now: now)
         }
@@ -383,7 +382,10 @@ struct RealtimeSubtitleAssembler: Sendable {
         }
         if !translation.isEmpty {
             // 旧訳文は確定しないが、次発話の原文が同一セグメントへ連結しないよう境界だけ進める。
-            abandonStaleSegment(now: now)
+            if currentSegmentTainted {
+                return abandonStaleSegment(now: now)
+            }
+            _ = abandonStaleSegment(now: now)
         }
         return nil
     }
@@ -426,12 +428,20 @@ struct RealtimeSubtitleAssembler: Sendable {
         )
     }
 
-    private mutating func abandonStaleSegment(now: Date) {
+    private mutating func abandonStaleSegment(now: Date) -> RealtimeSubtitleUpdate {
         applyFinalizedCutoffs()
         clearSegmentBuffers(advancingGeneration: true)
         awaitingSourceAfterFinalize = true
         currentSegmentTainted = false
         lastActivityAt = now
+        return RealtimeSubtitleUpdate(
+            sourceText: "",
+            translatedText: "",
+            isTranslationCurrent: false,
+            shouldFinalize: false,
+            segmentGeneration: segmentGeneration,
+            isInvalidation: true
+        )
     }
 
     private mutating func applyFinalizedCutoffs() {

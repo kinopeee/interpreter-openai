@@ -266,6 +266,13 @@
           { "generation": 2, "sequence": 5, "discardedMs": 0, "queueWaitMs": 0, "atMs": 700 }
         ],
         "expected": { "droppedFrames": 4, "lostMs": 400, "lossEvents": 1, "maxQueueWaitMs": 0, "reconnectAt": null }
+      },
+      {
+        "name": "dropped prefix before the first observed frame",
+        "frames": [
+          { "generation": 1, "sequence": 8, "discardedMs": 0, "queueWaitMs": 0, "atMs": 800 }
+        ],
+        "expected": { "droppedFrames": 8, "lostMs": 800, "lossEvents": 1, "maxQueueWaitMs": 0, "reconnectAt": null }
       }
     ]
   }

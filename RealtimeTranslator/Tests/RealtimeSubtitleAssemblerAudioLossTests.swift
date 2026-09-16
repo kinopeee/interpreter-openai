@@ -15,8 +15,9 @@ final class RealtimeSubtitleAssemblerAudioLossTests: XCTestCase {
         // When: idle finalize を越えて評価する
         let update = assembler.tick(now: origin.addingTimeInterval(10))
 
-        // Then: 確定せず、汚染バッファが破棄される
-        XCTAssertNil(update)
+        // Then: 確定せず、無効化更新で汚染バッファが破棄される
+        XCTAssertEqual(update?.isInvalidation, true)
+        XCTAssertEqual(update?.shouldFinalize, false)
         XCTAssertEqual(assembler.currentSourceText, "")
         XCTAssertFalse(assembler.isCurrentSegmentTainted)
     }
@@ -100,8 +101,9 @@ final class RealtimeSubtitleAssemblerAudioLossTests: XCTestCase {
         )
         let update = assembler.tick(now: origin.addingTimeInterval(12))
 
-        // Then: 汚染 suffix は確定せず破棄される
-        XCTAssertNil(update)
+        // Then: 汚染 suffix は確定せず無効化される
+        XCTAssertEqual(update?.isInvalidation, true)
+        XCTAssertEqual(update?.shouldFinalize, false)
         XCTAssertEqual(assembler.currentSourceText, "")
         XCTAssertFalse(assembler.isCurrentSegmentTainted)
     }

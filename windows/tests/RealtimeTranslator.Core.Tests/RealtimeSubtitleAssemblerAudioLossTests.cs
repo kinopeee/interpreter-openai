@@ -12,7 +12,7 @@ public sealed class RealtimeSubtitleAssemblerAudioLossTests
 
     // Given: 音声欠落を検知して汚染窓を開始する
     // When: 原文と訳文を受け取り、idle finalize を評価する
-    // Then: 確定せず、汚染セグメントのバッファを破棄する
+    // Then: 確定せず、無効化更新で汚染セグメントのバッファを破棄する
     [Fact]
     public void TaintedSegmentIsAbandonedInsteadOfFinalized()
     {
@@ -23,7 +23,9 @@ public sealed class RealtimeSubtitleAssemblerAudioLossTests
 
         var update = assembler.Tick(Origin.AddSeconds(9));
 
-        Assert.Null(update);
+        Assert.NotNull(update);
+        Assert.True(update.Value.IsInvalidation);
+        Assert.False(update.Value.ShouldFinalize);
         Assert.Equal(string.Empty, assembler.CurrentSourceText);
         Assert.False(assembler.IsCurrentSegmentTainted);
     }
@@ -86,7 +88,7 @@ public sealed class RealtimeSubtitleAssemblerAudioLossTests
 
     // Given: 汚染された原文の途中に言語切替境界がある
     // When: suffix を残したあと新しい訳文を受け取り idle finalize する
-    // Then: 汚染 suffix は確定せず破棄される
+    // Then: 汚染 suffix は確定せず無効化される
     [Fact]
     public void TaintedLanguageSwitchKeepsSuffixFromFinalizing()
     {
@@ -110,7 +112,9 @@ public sealed class RealtimeSubtitleAssemblerAudioLossTests
             Origin.AddSeconds(1));
         var update = assembler.Tick(Origin.AddSeconds(10));
 
-        Assert.Null(update);
+        Assert.NotNull(update);
+        Assert.True(update.Value.IsInvalidation);
+        Assert.False(update.Value.ShouldFinalize);
         Assert.Equal(string.Empty, assembler.CurrentSourceText);
         Assert.False(assembler.IsCurrentSegmentTainted);
     }
