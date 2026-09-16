@@ -157,7 +157,7 @@ handshake 中の `error` も同じ分類で扱い、keepAlive は読み飛ばし
 
 ## セッション期限（expires_at）
 
-`session.created` の `session.expires_at`（unix 秒）を codec が保持する。有効な値は JSON の数値かつ整数で 0 以上に限る。欠落・null・文字列・真偽値・負数・小数・非有限値はすべて「不明」として nil/null を記録し、codec エラーにはしない。
+`session.created` の `session.expires_at`（unix 秒）を codec が保持する。有効な値は JSON の数値かつ整数で 0 … Int64.max に限る（整数のみ。浮動小数点表現で届いた値は 2^53 以下かつ整数のものだけを受け付ける）。欠落・null・文字列・真偽値・負数・小数・非有限値はすべて「不明」として nil/null を記録し、codec エラーにはしない。
 
 期限までの残り時間 `remaining = expires_at − 壁時計` はセッションが Listening に入った時点で一度だけ算出し、以後は単調時計で追う。壁時計の途中補正（NTP 等）は検知時刻にも残りにも影響しない。
 

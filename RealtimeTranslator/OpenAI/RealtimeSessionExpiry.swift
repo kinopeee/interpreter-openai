@@ -19,15 +19,29 @@ enum RealtimeSessionExpiry {
         guard CFGetTypeID(number) != CFBooleanGetTypeID() else {
             return nil
         }
-        let value = number.doubleValue
-        guard value.isFinite,
-              value >= 0,
-              value <= 9_007_199_254_740_992,
-              value.truncatingRemainder(dividingBy: 1) == 0
-        else {
+        // 整数表現は Int64 範囲をそのまま受け入れ（C# 側の long と同じ範囲）、
+        // 浮動小数点表現は有限・整数・0 以上・2^53 以下に限る。
+        switch String(cString: number.objCType) {
+        case "c", "s", "i", "l", "q", "C", "S", "I", "L":
+            let value = number.int64Value
+            return value >= 0 ? Int(value) : nil
+        case "Q":
+            let value = number.uint64Value
+            guard value <= UInt64(Int64.max) else { return nil }
+            return Int(value)
+        case "f", "d":
+            let value = number.doubleValue
+            guard value.isFinite,
+                  value >= 0,
+                  value <= 9_007_199_254_740_992,
+                  value.truncatingRemainder(dividingBy: 1) == 0
+            else {
+                return nil
+            }
+            return Int(value)
+        default:
             return nil
         }
-        return number.intValue
     }
 
     /// `expires_at − 壁時計` を残り時間へ変換する。

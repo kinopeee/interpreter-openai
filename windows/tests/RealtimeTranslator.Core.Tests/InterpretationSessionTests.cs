@@ -3513,6 +3513,51 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: API キー未設定のセッション
+    // When: StartAsync が Error へ終わる
+    // Then: RequireApiKey 失敗も attempt 診断として epoch=1・MissingApiKey で記録される
+    [Fact]
+    public async Task MissingApiKeyEmitsAttemptTermination()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(
+            client,
+            apiKey: null,
+            timeProvider: new MonotonicClock());
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(1, diagnostic.Epoch);
+        Assert.Equal(SessionTerminationKind.MissingApiKey, diagnostic.Kind);
+        await session.StopAsync();
+    }
+
+    // Given: Listening 中の接続（epoch 1）
+    // When: recoverable transport failure が届き再接続が走る
+    // Then: 終了診断が RecoverableTransportFailure・epoch=1 で記録され、再接続は通常どおり進む
+    [Fact]
+    public async Task RecoverableFailureRecordsTerminationBeforeReconnect()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, timeProvider: new MonotonicClock());
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishTransportError();
+        await WaitUntilAsync(
+            () => client.StartCount >= 2 && session.State == TranslationState.Listening);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(SessionTerminationKind.RecoverableTransportFailure, diagnostic.Kind);
+        Assert.Equal(1, diagnostic.Epoch);
+        await session.StopAsync();
+    }
+
     // Given: 受信が一度もないセッション
     // When: 接続直後の tick 群を回す
     // Then: count=0 を受信と誤認せず SinceReceive は null のまま

@@ -330,4 +330,30 @@ final class SessionHealthIntegrationTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(diagnostic?.connectionDuration ?? .zero, .zero)
         await session.stop()
     }
+
+    // Given: Listening 中の接続（epoch 1）
+    // When: recoverable transport failure が届き再接続が走る
+    // Then: 終了診断が recoverableTransportFailure・epoch=1 で記録され、再接続は通常どおり進む
+    func testRecoverableFailureRecordsTerminationBeforeReconnect() async {
+        let clock = FakeHealthClock()
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = makeSession(clock: clock, audio: audio, dual: dual)
+
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        dual.emit(
+            target: .english,
+            event: .error(message: "socket closed", code: "transport", errorType: nil)
+        )
+        await waitUntil {
+            session.state == .listening && dual.startCallCount >= 2
+        }
+
+        let diagnostic = session.latestHealthTermination
+        XCTAssertEqual(diagnostic?.kind, .recoverableTransportFailure)
+        XCTAssertEqual(diagnostic?.epoch, 1)
+        await session.stop()
+    }
 }

@@ -172,23 +172,27 @@ final class InterpretationSession {
     private func runSessionLoop(generation: Int) async {
         while generation == lifecycleGeneration {
             var reconnectDetail: String?
+            var recoverableError: Error?
             do {
                 try await connectAndStream(generation: generation)
                 return
             } catch is CancellationError {
                 return
             } catch let error as RealtimeTranslationError where error.isRecoverable {
-                // recoverable: fall through to reconnect
+                // recoverable: 終了診断を記録して再接続へ進む
+                recoverableError = error
                 if case .recoverableTransportFailure(let detail) = error {
                     reconnectDetail = detail
                 }
             } catch let error as URLError where Self.isTransientURLError(error) {
                 // 一時的な URLSession 切断のみ再接続
-            } catch is URLSessionWebSocketTransportError {
+                recoverableError = error
+            } catch let error as URLSessionWebSocketTransportError {
                 // transport 境界の未接続など: fall through to reconnect
+                recoverableError = error
             } catch let error as NSError where Self.isTransientPOSIXError(error) {
                 // URLError に bridge されない POSIX 切断
-                _ = error
+                recoverableError = error
             } catch let error as RealtimeTranslationError {
                 guard generation == lifecycleGeneration else { return }
                 recordHealthTermination(error)
@@ -202,9 +206,10 @@ final class InterpretationSession {
                 case .inputDeviceChanged:
                     // マイク切断/切替は再接続。バナーに理由を残す。
                     reconnectDetail = error.localizedDescription
+                    recoverableError = error
                 case .pipelineOverloaded:
                     // フレーム経路の背圧は再接続で立て直す
-                    break
+                    recoverableError = error
                 default:
                     guard generation == lifecycleGeneration else { return }
                     recordHealthTermination(kind: .other)
@@ -247,6 +252,10 @@ final class InterpretationSession {
                 aggregator.setStatusBanner(reconnectingBanner(detail: nil))
             }
             publishSubtitles()
+            // recoverable 失敗も終了診断として記録する（診断のみ、挙動は変えない）。
+            if let recoverableError {
+                recordHealthTermination(recoverableError)
+            }
             await tearDownStreaming(keepSubtitles: true)
 
             // 停止（cancel）で待ちを即座に打ち切る。ループ先頭の世代確認で再接続を始めない。

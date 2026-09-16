@@ -407,10 +407,12 @@ public sealed class InterpretationSession : IDisposable
                 return;
             }
 #pragma warning disable CA1031 // 想定外の失敗でも session task を落とさず再接続へ倒す。
-            catch (Exception)
+            catch (Exception error)
 #pragma warning restore CA1031
             {
-                // recoverable transport failure / 音声デバイス失敗。下の再接続へ進む。
+                // recoverable transport failure / 音声デバイス失敗。終了診断を記録して
+                // 下の再接続へ進む（検知に対して再接続・lane 変更は行わない）。
+                RecordHealthTermination(SessionTerminationKindMapping.FromException(error));
             }
 
             if (!IsCurrentGeneration(generation) || cancellationToken.IsCancellationRequested)
@@ -452,14 +454,15 @@ public sealed class InterpretationSession : IDisposable
 
     private async Task ConnectAndStreamAsync(int generation, CancellationToken cancellationToken)
     {
-        var apiKey = RequireApiKey();
         lock (_sync)
         {
+            // RequireApiKey 失敗（missing key）も試行の終了診断へ乗せるため先に記録する。
             _connectionCountInGeneration += 1;
             _healthAttemptStart = HealthNow();
             _healthAttemptEpoch = _connectionCountInGeneration;
         }
 
+        var apiKey = RequireApiKey();
         SetState(TranslationState.Connecting);
 
         LanguagePair languagePair;

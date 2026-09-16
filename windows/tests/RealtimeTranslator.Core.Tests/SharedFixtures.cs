@@ -61,6 +61,8 @@ public static class SharedFixtures
 
     public static int? OptionalNumber(JsonNode? node) => node?.GetValue<int>();
 
+    public static long? OptionalLong(JsonNode? node) => node?.GetValue<long>();
+
     public static double Real(JsonNode? node) =>
         node?.GetValue<double>() ?? throw new InvalidOperationException("expected a number");
 

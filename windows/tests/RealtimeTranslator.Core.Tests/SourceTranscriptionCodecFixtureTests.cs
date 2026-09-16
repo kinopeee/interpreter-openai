@@ -58,7 +58,7 @@ public sealed class SourceTranscriptionCodecFixtureTests
             {
                 var typed = Assert.IsType<RealtimeSourceTranscriptionServerEvent.SessionCreated>(actual);
                 Assert.Equal(
-                    (long?)SharedFixtures.OptionalNumber(expected["expiresAt"]),
+                    SharedFixtures.OptionalLong(expected["expiresAt"]),
                     typed.ExpiresAtUnixSeconds);
                 break;
             }

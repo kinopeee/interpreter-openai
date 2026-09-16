@@ -57,7 +57,7 @@ public sealed class CodecFixtureTests
                 // expiresAt が expected にあればその値、無ければ null を要求する。
                 var typed = Assert.IsType<RealtimeTranslationServerEvent.SessionCreated>(actual);
                 Assert.Equal(
-                    (long?)SharedFixtures.OptionalNumber(expected["expiresAt"]),
+                    SharedFixtures.OptionalLong(expected["expiresAt"]),
                     typed.ExpiresAtUnixSeconds);
                 break;
             }
