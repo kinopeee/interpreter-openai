@@ -137,6 +137,65 @@ final class RealtimeSubtitleProcessorTests: XCTestCase {
         XCTAssertEqual(processor.routingSourceText, "こんにちは")
     }
 
+    // Given: 文字種の反転を起こさない英語 delta が連続で流れ続ける
+    // When: 同一セグメント内で delta を大量に取り込んだあと日本語へ反転する
+    // Then: routing 判定バッファは上限までで打ち切られ、その後の反転検出も壊れない
+    func testNonFlippingSourceDeltaStreamDoesNotGrowRoutingBufferWithoutBound() {
+        var processor = makeProcessor()
+
+        let first = processor.process(source("we keep talking in english ", "s0", 1), now: origin)
+        XCTAssertEqual(first?.routingAction, .select(.japanese))
+
+        let nonFlippingDeltaCount = 200
+        for index in 0..<nonFlippingDeltaCount {
+            _ = processor.process(
+                source("and we never flip the script ", "s\(index + 1)", index + 2),
+                now: origin
+            )
+        }
+
+        XCTAssertLessThanOrEqual(
+            processor.routingSourceText.utf16.count,
+            RoutingSourceTextWindow.maxLength,
+            "routing buffer length \(processor.routingSourceText.utf16.count) exceeded the cap before flip"
+        )
+
+        let result = processor.process(
+            source("ここで日本語へ反転します", "flip", 999),
+            now: origin
+        )
+
+        XCTAssertEqual(result?.routingAction, .switch(.english))
+        XCTAssertLessThanOrEqual(
+            processor.routingSourceText.utf16.count,
+            RoutingSourceTextWindow.maxLength,
+            "routing buffer length \(processor.routingSourceText.utf16.count) exceeded the cap after flip"
+        )
+    }
+
+    // Given: 日本語セグメントのあと、長い空白 run で隔てられた複数語の英語 delta
+    // When: UTF-16 文字数キャップだけだと末尾 1 語しか残らない入力を取り込む
+    // Then: RecentEvidence ウィンドウを保ち英語反転し、バッファは上限以内に収まる
+    func testWideWhitespaceBetweenLatinWordsStillFlipsJapaneseToEnglish() {
+        var processor = makeProcessor()
+
+        let first = processor.process(source("これはテストです", "s1", 1), now: origin)
+        XCTAssertEqual(first?.routingAction, .select(.english))
+
+        let gap = String(repeating: " ", count: RoutingSourceTextWindow.maxLength + 32)
+        let result = processor.process(
+            source("aa bb cc dd ee ff gg" + gap + " hh", "s2", 2),
+            now: origin
+        )
+
+        XCTAssertEqual(result?.routingAction, .switch(.japanese))
+        XCTAssertLessThanOrEqual(
+            processor.routingSourceText.utf16.count,
+            RoutingSourceTextWindow.maxLength,
+            "routing buffer length \(processor.routingSourceText.utf16.count) exceeded the cap"
+        )
+    }
+
     private func makeProcessor() -> RealtimeSubtitleProcessor {
         var processor = RealtimeSubtitleProcessor()
         processor.beginEpoch(1, pair: .jaEn)

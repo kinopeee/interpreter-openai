@@ -71,30 +71,6 @@ public sealed class InterpretationSession : IDisposable
 
     internal Action? BeforeRoutingResetForTests { get; set; }
 
-    /// <summary>テスト用。ルーティング判定バッファの保持長。</summary>
-    internal int RoutingSourceTextLengthForTests
-    {
-        get
-        {
-            lock (_sync)
-            {
-                return _processor.RoutingSourceText.Length;
-            }
-        }
-    }
-
-    /// <summary>テスト用。言語切替後にバッファが反転 delta だけへ戻ったかを確認する。</summary>
-    internal string RoutingSourceTextForTests
-    {
-        get
-        {
-            lock (_sync)
-            {
-                return _processor.RoutingSourceText;
-            }
-        }
-    }
-
     public InterpretationSession(
         IApiKeyStore apiKeyStore,
         IRealtimeAudioCapture audioCapture,

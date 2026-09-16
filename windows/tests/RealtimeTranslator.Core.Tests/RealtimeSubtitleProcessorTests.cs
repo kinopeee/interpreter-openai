@@ -157,6 +157,125 @@ public sealed class RealtimeSubtitleProcessorTests
         Assert.Equal("こんにちは", processor.RoutingSourceText);
     }
 
+    // Given: 文字種の反転を起こさない英語 delta が連続で流れ続ける
+    // When: 同一セグメント内で delta を大量に取り込んだあと日本語へ反転する
+    // Then: routing 判定バッファは上限までで打ち切られ、その後の反転検出も壊れない
+    [Fact]
+    public void NonFlippingSourceDeltaStreamDoesNotGrowRoutingBufferWithoutBound()
+    {
+        var processor = NewProcessor();
+
+        var first = processor.Process(Source("we keep talking in english ", "s0", 1), Origin);
+        Assert.NotNull(first);
+        Assert.Equal(
+            new RealtimeSubtitleRoutingAction.Select(RealtimeTranslationOutputLanguage.Japanese),
+            first.RoutingAction);
+
+        const int nonFlippingDeltaCount = 200;
+        for (var i = 0; i < nonFlippingDeltaCount; i += 1)
+        {
+            processor.Process(
+                Source("and we never flip the script ", $"s{i + 1}", i + 2),
+                Origin);
+        }
+
+        Assert.True(
+            processor.RoutingSourceText.Length <= RoutingSourceTextWindow.MaxLength,
+            $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap before flip");
+
+        var result = processor.Process(Source("ここで日本語へ反転します", "flip", 999), Origin);
+
+        Assert.NotNull(result);
+        Assert.Equal(
+            new RealtimeSubtitleRoutingAction.Switch(RealtimeTranslationOutputLanguage.English),
+            result.RoutingAction);
+        Assert.True(
+            processor.RoutingSourceText.Length <= RoutingSourceTextWindow.MaxLength,
+            $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap after flip");
+    }
+
+    // Given: 長い英語原文で target が確定したあとに日本語へ反転する
+    // When: 切替を起こした delta を取り込む
+    // Then: routing バッファは反転 delta だけになり、切替前の英語尾を残さない
+    [Fact]
+    public void LanguageFlipResetsRoutingBufferToTheFlipDelta()
+    {
+        var processor = NewProcessor();
+        const string flipDelta = "ここで日本語へ反転します";
+
+        processor.Process(Source("we keep talking in english ", "s1", 1), Origin);
+        processor.Process(Source("and we never flip the script ", "s2", 2), Origin);
+
+        Assert.Contains("script", processor.RoutingSourceText, StringComparison.Ordinal);
+        Assert.True(
+            processor.RoutingSourceText.Length > flipDelta.Length,
+            "pre-flip routing buffer should still hold the English tail");
+
+        var result = processor.Process(Source(flipDelta, "s3", 3), Origin);
+
+        Assert.NotNull(result);
+        Assert.Equal(
+            new RealtimeSubtitleRoutingAction.Switch(RealtimeTranslationOutputLanguage.English),
+            result.RoutingAction);
+        Assert.Equal(
+            " " + RoutingSourceTextWindow.Trim(flipDelta, LanguagePair.JaEn),
+            processor.RoutingSourceText);
+        Assert.DoesNotContain("script", processor.RoutingSourceText, StringComparison.Ordinal);
+        Assert.DoesNotContain("english", processor.RoutingSourceText, StringComparison.Ordinal);
+    }
+
+    // Given: en-es で英語 target 確定後、上限を超える空白なしトークン
+    // When: 長い1語の source delta を取り込む
+    // Then: routing バッファは上限以内に収まる
+    [Fact]
+    public void EnEsLongWhitespaceFreeTokenDoesNotGrowRoutingBufferPastMaxLength()
+    {
+        var processor = new RealtimeSubtitleProcessor();
+        processor.BeginEpoch(1, LanguagePair.EnEs);
+
+        var selected = processor.Process(Source("the and is are of to it that", "s1", 1), Origin);
+        Assert.NotNull(selected);
+        Assert.Equal(
+            new RealtimeSubtitleRoutingAction.Select(RealtimeTranslationOutputLanguage.Spanish),
+            selected.RoutingAction);
+
+        processor.Process(
+            Source(new string('x', RoutingSourceTextWindow.MaxLength + 32), "s2", 2),
+            Origin);
+
+        Assert.True(
+            processor.RoutingSourceText.Length <= RoutingSourceTextWindow.MaxLength,
+            $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap");
+    }
+
+    // Given: 日本語セグメントのあと、長い空白 run で隔てられた複数語の英語 delta
+    // When: UTF-16 文字数キャップだけだと末尾 1 語しか残らない入力を取り込む
+    // Then: RecentEvidence ウィンドウを保ち英語反転し、バッファは上限以内に収まる
+    [Fact]
+    public void WideWhitespaceBetweenLatinWordsStillFlipsJapaneseToEnglish()
+    {
+        var processor = NewProcessor();
+
+        var first = processor.Process(Source("これはテストです", "s1", 1), Origin);
+        Assert.NotNull(first);
+        Assert.Equal(
+            new RealtimeSubtitleRoutingAction.Select(RealtimeTranslationOutputLanguage.English),
+            first.RoutingAction);
+
+        var gap = new string(' ', RoutingSourceTextWindow.MaxLength + 32);
+        var result = processor.Process(
+            Source("aa bb cc dd ee ff gg" + gap + " hh", "s2", 2),
+            Origin);
+
+        Assert.NotNull(result);
+        Assert.Equal(
+            new RealtimeSubtitleRoutingAction.Switch(RealtimeTranslationOutputLanguage.Japanese),
+            result.RoutingAction);
+        Assert.True(
+            processor.RoutingSourceText.Length <= RoutingSourceTextWindow.MaxLength,
+            $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap");
+    }
+
     private static RealtimeSubtitleProcessor NewProcessor()
     {
         var processor = new RealtimeSubtitleProcessor();

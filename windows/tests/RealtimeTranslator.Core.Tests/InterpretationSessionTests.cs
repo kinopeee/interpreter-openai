@@ -986,10 +986,10 @@ public sealed class InterpretationSessionTests
     }
 
     // Given: 文字種の反転を起こさない英語 delta がサーバから連続で流れ続ける
-    // When: 同一セグメント内で delta を大量に取り込む
-    // Then: routing 判定バッファは上限までで打ち切られ、その後の反転検出も壊れない
+    // When: 同一セグメント内で delta を大量に取り込んだあと日本語へ反転する
+    // Then: 反転検出が壊れず Japanese へ切り替わる
     [Fact]
-    public async Task NonFlippingSourceDeltaStreamDoesNotGrowRoutingBufferWithoutBound()
+    public async Task NonFlippingSourceDeltaStreamStillDetectsLanguageFlip()
     {
         var client = new FakeDualClient();
         using var session = NewSession(client);
@@ -1000,65 +1000,16 @@ public sealed class InterpretationSessionTests
         client.PublishSourceDelta("we keep talking in english ");
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
 
-        var processedDeltaCount = 0;
-        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
         const int nonFlippingDeltaCount = 200;
         for (var i = 0; i < nonFlippingDeltaCount; i += 1)
         {
             client.PublishSourceDelta("and we never flip the script ");
         }
 
-        // When: 反転前に大量 delta の取り込み完了を待ち、その時点で上限を検証する
-        await WaitUntilAsync(() => Volatile.Read(ref processedDeltaCount) >= nonFlippingDeltaCount);
-        Assert.True(
-            session.RoutingSourceTextLengthForTests <= RoutingSourceTextWindow.MaxLength,
-            $"routing buffer length {session.RoutingSourceTextLengthForTests} exceeded the cap before flip");
-
         client.PublishSourceDelta("ここで日本語へ反転します");
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
 
         Assert.Equal([SpokenLanguage.English, SpokenLanguage.Japanese], client.SpokenLanguages);
-        Assert.True(
-            session.RoutingSourceTextLengthForTests <= RoutingSourceTextWindow.MaxLength,
-            $"routing buffer length {session.RoutingSourceTextLengthForTests} exceeded the cap after flip");
-        await session.StopAsync();
-    }
-
-    // Given: 長い英語原文で target が確定したあとに日本語へ反転する
-    // When: 切替を起こした delta を取り込む
-    // Then: routing バッファは反転 delta だけになり、切替前の英語尾を残さない
-    [Fact]
-    public async Task LanguageFlipResetsRoutingBufferToTheFlipDelta()
-    {
-        var client = new FakeDualClient();
-        using var session = NewSession(client);
-        const string flipDelta = "ここで日本語へ反転します";
-
-        await session.StartAsync();
-        await WaitUntilAsync(() => session.State == TranslationState.Listening);
-
-        client.PublishSourceDelta("we keep talking in english ");
-        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
-
-        var processedDeltaCount = 0;
-        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
-        client.PublishSourceDelta("and we never flip the script ");
-        await WaitUntilAsync(() => Volatile.Read(ref processedDeltaCount) >= 1);
-        var bufferBeforeFlip = session.RoutingSourceTextForTests;
-        Assert.Contains("script", bufferBeforeFlip, StringComparison.Ordinal);
-        Assert.True(
-            bufferBeforeFlip.Length > flipDelta.Length,
-            "pre-flip routing buffer should still hold the English tail");
-
-        client.PublishSourceDelta(flipDelta);
-        await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
-
-        Assert.Equal([SpokenLanguage.English, SpokenLanguage.Japanese], client.SpokenLanguages);
-        Assert.Equal(
-            " " + RoutingSourceTextWindow.Trim(flipDelta, LanguagePair.JaEn),
-            session.RoutingSourceTextForTests);
-        Assert.DoesNotContain("script", session.RoutingSourceTextForTests, StringComparison.Ordinal);
-        Assert.DoesNotContain("english", session.RoutingSourceTextForTests, StringComparison.Ordinal);
         await session.StopAsync();
     }
 
@@ -1090,7 +1041,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => Volatile.Read(ref processedDeltaCount) >= 1);
 
         Assert.Empty(client.SelectedTargets);
-        Assert.Equal(0, session.RoutingSourceTextLengthForTests);
+        Assert.Empty(client.SpokenLanguages);
         lock (updates)
         {
             Assert.DoesNotContain(
@@ -1148,36 +1099,6 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
-    // Given: en-es で英語 target 確定後、上限を超える空白なしトークン
-    // When: 長い1語の source delta を取り込む
-    // Then: ライブの routing バッファも上限以内に収まる
-    [Fact]
-    public async Task EnEsLongWhitespaceFreeTokenDoesNotGrowRoutingBufferPastMaxLength()
-    {
-        var client = new FakeDualClient();
-        using var session = NewSession(
-            client,
-            languagePairProvider: () => LanguagePair.EnEs);
-
-        await session.StartAsync();
-        await WaitUntilAsync(() => session.State == TranslationState.Listening);
-
-        client.PublishSourceDelta("the and is are of to it that");
-        await WaitUntilAsync(() =>
-            client.SelectedTargets.SequenceEqual(
-                [RealtimeTranslationOutputLanguage.Spanish]));
-
-        var processedDeltaCount = 0;
-        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
-        client.PublishSourceDelta(new string('x', RoutingSourceTextWindow.MaxLength + 32));
-        await WaitUntilAsync(() => Volatile.Read(ref processedDeltaCount) >= 1);
-
-        Assert.True(
-            session.RoutingSourceTextLengthForTests <= RoutingSourceTextWindow.MaxLength,
-            $"routing buffer length {session.RoutingSourceTextLengthForTests} exceeded the cap");
-        await session.StopAsync();
-    }
-
     // Given: 日本語セグメントのあと、長い空白 run で隔てられた複数語の英語 delta
     // When: UTF-16 文字数キャップだけだと末尾 1 語しか残らない入力を取り込む
     // Then: RecentEvidence ウィンドウを保ち英語反転できる
@@ -1200,9 +1121,6 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 1);
 
         Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
-        Assert.True(
-            session.RoutingSourceTextLengthForTests <= RoutingSourceTextWindow.MaxLength,
-            $"routing buffer length {session.RoutingSourceTextLengthForTests} exceeded the cap");
         await session.StopAsync();
     }
 
@@ -3188,7 +3106,7 @@ public sealed class InterpretationSessionTests
 
         client.PublishServerError("buffer is empty", "input_audio_buffer_commit_empty");
         client.PublishSourceDelta("こんにちは");
-        await WaitUntilAsync(() => session.RoutingSourceTextLengthForTests > 0);
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
 
         Assert.Equal(TranslationState.Listening, session.State);
         Assert.Equal(1, client.StartCount);
