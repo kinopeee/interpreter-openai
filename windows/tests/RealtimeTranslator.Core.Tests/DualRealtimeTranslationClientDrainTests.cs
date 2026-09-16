@@ -367,25 +367,25 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.True(closeIndex > lastAppendIndex);
     }
 
-    // Given: ResolveTranslationDrainTimeout の base / pending / cap
+    // Given: ResolveDrainTimeout の base / pending / cap
     // When: 各境界値で計算する
     // Then: base を下限、cap を上限、pending 比例の加算になる
     [Fact]
-    public void ResolveTranslationDrainTimeoutScalesAndCaps()
+    public void ResolveDrainTimeoutScalesAndCaps()
     {
         var baseTimeout = TimeSpan.FromSeconds(5);
         Assert.Equal(
             baseTimeout,
-            DualRealtimeTranslationClient.ResolveTranslationDrainTimeout(baseTimeout, pendingFrameCount: 0));
+            DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount: 0));
         Assert.Equal(
             TimeSpan.FromMilliseconds(5_000 + (40 * 250)),
-            DualRealtimeTranslationClient.ResolveTranslationDrainTimeout(baseTimeout, pendingFrameCount: 40));
+            DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount: 40));
         Assert.Equal(
             DualRealtimeTranslationClient.TranslationDrainTimeoutCap,
-            DualRealtimeTranslationClient.ResolveTranslationDrainTimeout(baseTimeout, pendingFrameCount: 200));
+            DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount: 200));
         Assert.Equal(
             TimeSpan.FromMilliseconds(50),
-            DualRealtimeTranslationClient.ResolveTranslationDrainTimeout(
+            DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(
                 TimeSpan.FromMilliseconds(50),
                 pendingFrameCount: 0));
     }

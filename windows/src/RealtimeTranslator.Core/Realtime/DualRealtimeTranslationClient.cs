@@ -646,13 +646,6 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
     }
 
-    /// <summary>
-    /// 停止時 drain 予算。base（既定5秒）に未送信 frame 分を足し、cap（30秒）で打ち切る。
-    /// テストが短い base を注入しているときはその base を下限・基準にする。
-    /// </summary>
-    internal static TimeSpan ResolveTranslationDrainTimeout(TimeSpan baseTimeout, int pendingFrameCount) =>
-        DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount);
-
     private TimeSpan ResolveCloseDrainTimeout()
     {
         int pending;
