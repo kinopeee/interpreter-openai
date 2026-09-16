@@ -32,7 +32,9 @@ actor RealtimeSourceTranscriptionConnection {
         self.safetyIdentifier = safetyIdentifier
         self.handshakeTimeoutNanoseconds = handshakeTimeoutNanoseconds
         self.closeTimeoutNanoseconds = closeTimeoutNanoseconds
-        (events, eventContinuation) = Self.makeEventStream()
+        (events, eventContinuation) = RealtimeTransportSupport.makeEventStream(
+            bufferingLimit: Self.eventBufferLimit
+        )
     }
 
     func start(
@@ -140,9 +142,10 @@ actor RealtimeSourceTranscriptionConnection {
         receiveTask?.cancel()
         receiveTask = nil
         await transport.close()
-        eventContinuation?.finish()
-        eventContinuation = nil
-        deliveryYielder = nil
+        RealtimeTransportSupport.finishEventStream(
+            eventContinuation: &eventContinuation,
+            deliveryYielder: &deliveryYielder
+        )
     }
 
     private func startReceiveLoop(epoch currentEpoch: Int) {
@@ -272,35 +275,10 @@ actor RealtimeSourceTranscriptionConnection {
     ) async throws -> [String: Any] {
         let data: Data
         if let timeoutNanoseconds {
-            // URLSessionWebSocketTask.receive は Swift Task キャンセルを見ない。
-            // timeout / 親 Task キャンセルで transport を閉じ、TaskGroup の残り待ちを解く。
-            let transport = self.transport
-            data = try await withTaskCancellationHandler {
-                try await withThrowingTaskGroup(of: Data.self) { group in
-                    group.addTask { try await transport.receive() }
-                    group.addTask {
-                        try await Task.sleep(nanoseconds: timeoutNanoseconds)
-                        await transport.close()
-                        throw RealtimeTranslationError.sessionUpdateTimeout
-                    }
-                    do {
-                        let result = try await group.next()!
-                        group.cancelAll()
-                        return result
-                    } catch {
-                        group.cancelAll()
-                        if Task.isCancelled {
-                            throw CancellationError()
-                        }
-                        if error is CancellationError {
-                            throw RealtimeTranslationError.sessionUpdateTimeout
-                        }
-                        throw error
-                    }
-                }
-            } onCancel: {
-                Task { await transport.close() }
-            }
+            data = try await RealtimeTransportSupport.receiveWithTimeout(
+                from: transport,
+                timeoutNanoseconds: timeoutNanoseconds
+            )
         } else {
             data = try await transport.receive()
         }
@@ -346,21 +324,13 @@ actor RealtimeSourceTranscriptionConnection {
     }
 
     private func recreateEventStream() {
-        eventContinuation?.finish()
-        let pair = Self.makeEventStream()
-        events = pair.stream
-        eventContinuation = pair.continuation
-    }
-
-    private static func makeEventStream() -> (
-        stream: AsyncStream<RealtimeTranslationStreamEvent>,
-        continuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation
-    ) {
-        var continuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation!
-        let stream = AsyncStream(bufferingPolicy: .bufferingOldest(Self.eventBufferLimit)) {
-            continuation = $0
-        }
-        return (stream, continuation)
+        RealtimeTransportSupport.finishEventStream(
+            eventContinuation: &eventContinuation,
+            deliveryYielder: &deliveryYielder
+        )
+        (events, eventContinuation) = RealtimeTransportSupport.makeEventStream(
+            bufferingLimit: Self.eventBufferLimit
+        )
     }
 
     deinit {
