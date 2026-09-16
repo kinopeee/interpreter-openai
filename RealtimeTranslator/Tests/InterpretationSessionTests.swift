@@ -1885,6 +1885,25 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
     }
 
+    func publishSourceFailureAfterTermination(
+        itemID: String?,
+        eventID: String?,
+        code: String?,
+        errorType: String?
+    ) async {
+        state.withLock { state in
+            state.deliveryState.markSourceItemFailed()
+            state.deliveryState.tryRecordTermination(.recoverableServerError)
+        }
+        await Task.yield()
+        publishSourceFailure(
+            itemID: itemID,
+            eventID: eventID,
+            code: code,
+            errorType: errorType
+        )
+    }
+
     func recordLoss(
         stage: EventDeliveryStage = .merge,
         capacity: Int = DualRealtimeTranslationClient.unacknowledgedRetentionLimit

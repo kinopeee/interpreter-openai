@@ -35,6 +35,7 @@ public sealed class EventDeliveryState
     private int _lossCapacity;
     private EventDeliveryTermination _termination;
     private string? _terminationMessage;
+    private bool _didFailSourceItem;
 
     public EventDeliveryState(int epoch)
     {
@@ -95,6 +96,25 @@ public sealed class EventDeliveryState
             {
                 return _terminationMessage;
             }
+        }
+    }
+
+    public bool DidFailSourceItem
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _didFailSourceItem;
+            }
+        }
+    }
+
+    public void MarkSourceItemFailed()
+    {
+        lock (_sync)
+        {
+            _didFailSourceItem = true;
         }
     }
 

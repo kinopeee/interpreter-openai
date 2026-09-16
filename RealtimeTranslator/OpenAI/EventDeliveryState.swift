@@ -44,6 +44,7 @@ final class EventDeliveryState: @unchecked Sendable {
         var lossStage: EventDeliveryStage?
         var lossCapacity: Int?
         var termination: EventDeliveryTermination = .none
+        var didFailSourceItem = false
         var completed = false
         var waiters: [CheckedContinuation<Void, Never>] = []
     }
@@ -69,6 +70,14 @@ final class EventDeliveryState: @unchecked Sendable {
 
     var termination: EventDeliveryTermination {
         state.withLock { $0.termination }
+    }
+
+    var didFailSourceItem: Bool {
+        state.withLock { $0.didFailSourceItem }
+    }
+
+    func markSourceItemFailed() {
+        state.withLock { $0.didFailSourceItem = true }
     }
 
     func recordLoss(stage: EventDeliveryStage, capacity: Int) {

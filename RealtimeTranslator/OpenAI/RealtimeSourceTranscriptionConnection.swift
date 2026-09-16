@@ -198,6 +198,7 @@ actor RealtimeSourceTranscriptionConnection {
                             code: error?["code"] as? String
                         )
                         if classification.disposition != .keepAlive {
+                            deliveryYielder?.deliveryState.markSourceItemFailed()
                             deliveryYielder?.deliveryState.tryRecordTermination(classification)
                         }
                         guard deliveryYielder?.deliver(

@@ -471,6 +471,7 @@ final class InterpretationSession {
             return
         }
         if feed.deliveryState.termination != .none {
+            discardFailedSourceIfNeeded(feed)
             throw feed.deliveryState.makeError()
         }
         throw RealtimeTranslationError.recoverableTransportFailure("event stream ended")
@@ -589,6 +590,10 @@ final class InterpretationSession {
         if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
             return
         }
+        if let feed = activeFeed, feed.deliveryState.didFailSourceItem {
+            discardFailedSourceIfNeeded(feed)
+            return
+        }
         // スロットル中の live snapshot より assembler を正とする。
         displayScheduler.discardPending()
 
@@ -605,6 +610,14 @@ final class InterpretationSession {
         let snapshot = aggregator.forceFinalize()
         guard snapshot.current.state == .finalized else { return }
         delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
+    }
+
+    private func discardFailedSourceIfNeeded(_ feed: EventFeed) {
+        guard feed.deliveryState.didFailSourceItem else { return }
+        if let invalidation = processor.discardFailedSource(itemID: nil, eventID: nil) {
+            displayScheduler.discardPending()
+            displayScheduler.renderNow(invalidation)
+        }
     }
 
     private func requireAPIKey() throws -> String {

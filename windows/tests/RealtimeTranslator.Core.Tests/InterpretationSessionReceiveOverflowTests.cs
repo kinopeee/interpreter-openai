@@ -623,6 +623,67 @@ public sealed class InterpretationSessionReceiveOverflowTests
         await session.StopAsync();
     }
 
+    // Given: 未確定の字幕ペアを表示中で failed の termination が先に完了する session
+    // When: recover 分類の failed イベントを後から受信する
+    // Then: 未確定ペアを確定せず無効化して再接続する
+    [Fact]
+    public async Task RecoverTranscriptionFailureCompletionBeforeEventDoesNotFinalizePendingPair()
+    {
+        var client = new FakeOverflowDualClient();
+        using var session = CreateSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        var invalidated = NewGate();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+
+            if (update.IsInvalidation)
+            {
+                invalidated.TrySetResult();
+            }
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        client.PublishSourceDelta("順序競合字幕");
+        client.PublishTranslationDelta("Ordering race");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update =>
+                    update.SourceText == "順序競合字幕"
+                    && update.TranslatedText == "Ordering race");
+            }
+        });
+
+        // When: termination が完了してから failed イベントを配送する
+        await client.PublishSourceFailureAfterTerminationAsync(
+            "ordering-item",
+            null,
+            null,
+            "server_error");
+
+        // Then: 無効化して再接続し、失敗したペアを確定しない
+        await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await client.SecondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        lock (updates)
+        {
+            Assert.DoesNotContain(
+                updates,
+                update => update.ShouldFinalize
+                    && (update.SourceText == "順序競合字幕"
+                        || update.TranslatedText == "Ordering race"));
+        }
+
+        await session.StopAsync();
+    }
+
     // Given: Listening 中に未確定の字幕ペアを表示している
     // When: halt 分類の transcription failed を受信する
     // Then: 無効化して Error になり、未確定ペアを確定しない
@@ -1192,6 +1253,18 @@ public sealed class InterpretationSessionReceiveOverflowTests
                 RealtimeTranslationLane.Source,
                 new RealtimeTranslationServerEvent.InputTranscriptFailed(itemId, eventId, code, errorType),
                 epoch);
+
+        public async Task PublishSourceFailureAfterTerminationAsync(
+            string? itemId,
+            string? eventId,
+            string? code,
+            string? errorType)
+        {
+            DeliveryState.MarkSourceItemFailed();
+            DeliveryState.TryRecordTermination(EventDeliveryTermination.RecoverableServerError);
+            await Task.Yield();
+            PublishSourceFailure(itemId, eventId, code, errorType);
+        }
 
         public void PublishTranslationDelta(string delta, int? epoch = null) =>
             Publish(

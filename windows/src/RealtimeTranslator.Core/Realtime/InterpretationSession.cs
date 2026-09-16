@@ -686,6 +686,7 @@ public sealed class InterpretationSession : IDisposable
 
         if (feed.DeliveryState.Termination != EventDeliveryTermination.None)
         {
+            DiscardFailedSourceIfNeeded(feed);
             throw feed.DeliveryState.ToException();
         }
 
@@ -848,6 +849,11 @@ public sealed class InterpretationSession : IDisposable
             HandleEventLoss(feed);
             return;
         }
+        if (feed is { DeliveryState.DidFailSourceItem: true })
+        {
+            DiscardFailedSourceIfNeeded(feed);
+            return;
+        }
 
         RealtimeSubtitleUpdate? pending;
         lock (_sync)
@@ -859,6 +865,25 @@ public sealed class InterpretationSession : IDisposable
         if (pending is { } update)
         {
             EmitSubtitleUpdate(update);
+        }
+    }
+
+    private void DiscardFailedSourceIfNeeded(RealtimeEventFeed feed)
+    {
+        if (!feed.DeliveryState.DidFailSourceItem)
+        {
+            return;
+        }
+
+        RealtimeSubtitleUpdate? invalidation;
+        lock (_sync)
+        {
+            invalidation = _processor.DiscardFailedSource(null, null);
+        }
+
+        if (invalidation is { } failedUpdate)
+        {
+            EmitSubtitleUpdate(failedUpdate);
         }
     }
 

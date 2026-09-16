@@ -346,6 +346,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                         break;
                     }
 
+                    deliveryState.MarkSourceItemFailed();
                     deliveryState.TryRecordTermination(failed.Classification);
                     if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(
                         RealtimeTranslationLane.Source,

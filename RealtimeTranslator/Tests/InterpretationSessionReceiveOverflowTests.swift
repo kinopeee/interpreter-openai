@@ -394,6 +394,55 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         await session.stop()
     }
 
+    // Given: 未確定の字幕ペアを表示中で failed の termination が先に完了する session
+    // When: recover 分類の failed イベントを後から受信する
+    // Then: 未確定ペアを確定せず無効化して再接続する
+    func testRecoverTranscriptionFailureCompletionBeforeEventDoesNotFinalizePendingPair() async {
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+
+        await session.start()
+        await waitForCondition { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "順序競合字幕", eventID: nil, elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Ordering race", eventID: nil, elapsedMs: 20)
+        )
+        await waitForCondition {
+            delegate.latestSnapshot?.current.sourceText == "順序競合字幕"
+                && delegate.latestSnapshot?.current.translatedText == "Ordering race"
+        }
+
+        // When: termination が完了してから failed イベントを配送する
+        await dual.publishSourceFailureAfterTermination(
+            itemID: "ordering-item",
+            eventID: nil,
+            code: nil,
+            errorType: "server_error"
+        )
+        await waitForCondition {
+            session.state == .listening
+                && dual.startCallCount >= 2
+                && delegate.snapshots.contains(where: \.isInvalidation)
+        }
+
+        // Then: 失敗したペアは確定されない
+        XCTAssertFalse(delegate.finalizedSnapshots.contains {
+            $0.sourceText == "順序競合字幕" || $0.translatedText == "Ordering race"
+        })
+        await session.stop()
+    }
+
     // Given: Listening 中に未確定の字幕ペアを表示している session
     // When: halt 分類の transcription failed を受信する
     // Then: 無効化して Error になり、flush で未確定ペアを確定しない
