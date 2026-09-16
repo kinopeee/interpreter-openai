@@ -2285,6 +2285,7 @@ public sealed class InterpretationSessionTests
         clock.Advance(TimeSpan.FromSeconds(5));
         client.PublishTransportError();
         await WaitUntilAsync(() => session.State == TranslationState.Error);
+        await WaitUntilAsync(() => message is not null);
 
         Assert.Equal(expectedStarts, client.StartCount);
         Assert.Equal(UserCopy.Current.Text("error.reconnectLimit"), message);
@@ -2345,6 +2346,7 @@ public sealed class InterpretationSessionTests
         clock.Advance(TimeSpan.FromSeconds(11));
         client.PublishTransportError();
         await WaitUntilAsync(() => session.State == TranslationState.Error);
+        await WaitUntilAsync(() => message is not null);
 
         Assert.Equal(2, client.StartCount);
         Assert.Equal(UserCopy.Current.Text("error.reconnectBudgetExhausted"), message);
@@ -2379,6 +2381,7 @@ public sealed class InterpretationSessionTests
         clock.AdvanceWallClockOnly(TimeSpan.FromHours(1));
         client.PublishTransportError();
         await WaitUntilAsync(() => session.State == TranslationState.Error);
+        await WaitUntilAsync(() => message is not null);
         Assert.Equal(UserCopy.Current.Text("error.reconnectLimit"), message);
     }
 
