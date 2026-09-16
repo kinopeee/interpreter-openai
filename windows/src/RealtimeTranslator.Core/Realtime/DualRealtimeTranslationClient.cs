@@ -45,25 +45,11 @@ public interface IDualRealtimeTranslationClient
 
 public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClient, IDisposable
 {
-    /// <summary>100 ms frame × 40 = 直近 4 秒。言語判定の遅れがあっても発話冒頭を翻訳へ届ける。</summary>
-    public const int TranslationPrerollFrameLimit = DualRealtimeTranslationClientTuning.DefaultPrerollFrameLimit;
-
-    public const int TranslationPendingFrameLimit = DualRealtimeTranslationClientTuning.DefaultPendingFrameLimit;
-
-    public const int ConsecutiveTranslationFailureLimit = DualRealtimeTranslationClientTuning.DefaultConsecutiveFailureLimit;
-
     public static string TransportErrorMessage => UserCopy.Current.Text("error.audioSendFailed");
 
     public static string TranslationBacklogErrorMessage => UserCopy.Current.Text("error.translationBacklog");
 
     public const string TransportErrorCode = "transport";
-
-    /// <summary>停止時 drain で未送信 frame 1 枚あたりに足す予算。preroll flush 後の短い停滞で訳文を落とさない。</summary>
-    public const int TranslationDrainTimeoutMillisecondsPerPendingFrame =
-        DualRealtimeTranslationClientTuning.DefaultDrainTimeoutMillisecondsPerPendingFrame;
-
-    /// <summary>停止時 drain の上限。Send 停滞でも Stop が無期限待ちしない。</summary>
-    public static readonly TimeSpan TranslationDrainTimeoutCap = DualRealtimeTranslationClientTuning.DefaultDrainTimeoutCap;
 
     private readonly RealtimeSourceTranscriptionConnection _sourceConnection;
     private readonly Dictionary<RealtimeTranslationOutputLanguage, RealtimeTranslationConnection> _connections;

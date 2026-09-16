@@ -90,7 +90,7 @@ public sealed class RoutingFixtureTests
         Assert.Equal(
             "frame-" + lastIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
             flushed[^1]);
-        Assert.Equal(DualRealtimeTranslationClient.TranslationPrerollFrameLimit, expectedCount);
+        Assert.Equal(DualRealtimeTranslationClientTuning.DefaultPrerollFrameLimit, expectedCount);
     }
 
     // Given: 呼び出し側が同じバッファを再利用する
@@ -139,10 +139,10 @@ public sealed class RoutingFixtureTests
 
         Assert.Equal(
             SharedFixtures.Number(routing["prerollFrameLimit"]),
-            DualRealtimeTranslationClient.TranslationPrerollFrameLimit);
+            DualRealtimeTranslationClientTuning.DefaultPrerollFrameLimit);
         Assert.Equal(
             SharedFixtures.Number(routing["consecutiveTranslationFailureLimit"]),
-            DualRealtimeTranslationClient.ConsecutiveTranslationFailureLimit);
+            DualRealtimeTranslationClientTuning.DefaultConsecutiveFailureLimit);
     }
 
     private static List<string> FrameNames(JsonNode? node)

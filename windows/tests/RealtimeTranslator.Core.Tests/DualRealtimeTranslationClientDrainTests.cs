@@ -381,7 +381,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
             TimeSpan.FromMilliseconds(5_000 + (40 * 250)),
             DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount: 40));
         Assert.Equal(
-            DualRealtimeTranslationClient.TranslationDrainTimeoutCap,
+            DualRealtimeTranslationClientTuning.DefaultDrainTimeoutCap,
             DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount: 200));
         Assert.Equal(
             TimeSpan.FromMilliseconds(50),

@@ -6,18 +6,7 @@ namespace RealtimeTranslator.Core.OpenAI;
 public sealed record RealtimeTranslationSessionConfig(
     RealtimeTranslationOutputLanguage OutputLanguage,
     string? InputTranscriptionModel,
-    RealtimeTranslationNoiseReduction? NoiseReduction)
-{
-    public const string SourceTranscriptionModel = "gpt-realtime-whisper";
-
-    public static RealtimeTranslationSessionConfig EnglishTargetWithoutSourceTranscription(
-        RealtimeTranslationNoiseReduction? noiseReduction = RealtimeTranslationNoiseReduction.FarField) =>
-        new(RealtimeTranslationOutputLanguage.English, null, noiseReduction);
-
-    public static RealtimeTranslationSessionConfig JapaneseTargetWithoutSourceTranscription(
-        RealtimeTranslationNoiseReduction? noiseReduction = RealtimeTranslationNoiseReduction.FarField) =>
-        new(RealtimeTranslationOutputLanguage.Japanese, null, noiseReduction);
-}
+    RealtimeTranslationNoiseReduction? NoiseReduction);
 
 /// <summary>クライアントからサーバーへ送るイベント。</summary>
 public abstract record RealtimeTranslationClientEvent
