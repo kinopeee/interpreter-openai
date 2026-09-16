@@ -22,7 +22,6 @@ final class SubtitleTranscriptStore: @unchecked Sendable {
 
     private var lastSource: String?
     private var lastTranslation: String?
-    private var announcedSizeLimit = false
     private var cachedByteCount: Int?
 
     init(
@@ -125,7 +124,6 @@ final class SubtitleTranscriptStore: @unchecked Sendable {
         try Data().write(to: fileURL, options: .atomic)
         lastSource = nil
         lastTranslation = nil
-        announcedSizeLimit = false
         cachedByteCount = 0
     }
 
@@ -147,10 +145,6 @@ final class SubtitleTranscriptStore: @unchecked Sendable {
         if currentBytes >= maxFileBytes
             || currentBytes + chunkData.count > maxFileBytes
         {
-            if announcedSizeLimit {
-                return .capped
-            }
-            announcedSizeLimit = true
             return .capped
         }
 
