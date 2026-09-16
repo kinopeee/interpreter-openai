@@ -141,6 +141,13 @@ final class EventDeliveryState: @unchecked Sendable {
         RealtimeServerErrorClassification.classify(errorType: errorType, code: code, message: message)
     }
 
+    static func classifyTranscriptionFailure(
+        errorType: String?,
+        code: String?
+    ) -> RealtimeServerErrorClassification {
+        RealtimeServerErrorClassification.classifyTranscriptionFailure(errorType: errorType, code: code)
+    }
+
     func makeError() -> RealtimeTranslationError {
         switch termination {
         case .none:

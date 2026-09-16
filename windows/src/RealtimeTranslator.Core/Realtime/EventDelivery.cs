@@ -184,6 +184,11 @@ public sealed class EventDeliveryState
         return RealtimeServerErrorClassification.Classify(error.ErrorType, error.Code, error.Message);
     }
 
+    public static RealtimeServerErrorClassification ClassifyTranscriptionFailure(
+        string? errorType,
+        string? code) =>
+        RealtimeServerErrorClassification.ClassifyTranscriptionFailure(errorType, code);
+
     /// <summary>分類結果を記録する。接続維持なら何も記録せず false。</summary>
     public bool TryRecordTermination(RealtimeServerErrorClassification classification) =>
         classification.Disposition != RealtimeServerErrorDisposition.KeepAlive

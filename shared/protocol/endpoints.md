@@ -123,6 +123,7 @@ handshake 中の `error` も同じ分類で扱い、keepAlive は読み飛ばし
 | `session.created` / `session.updated` | handshake 判定 |
 | `conversation.item.input_audio_transcription.delta` | 原文 delta。`delta` が空なら捨てる。`event_id` を重複排除に使い、`item_id` は使わない（同一 turn で共通のため） |
 | `conversation.item.input_audio_transcription.completed` | commit 完了マーカー。close 待ちの解除に使う |
+| `conversation.item.input_audio_transcription.failed` | 原文の一部失敗。`error.type` / `error.code` を別々に保持し `error.message` は保持しない。分類は `server-error.json` の `transcriptionFailed`（許可リスト外は keepAlive）。keepAlive でも失敗 item の未確定字幕を無効化し確定・記録しない。commit 後の close 待ち解除にも使う（completed と同等）。`item_id`（無ければ `event_id`）で重複通知を一度だけ処理する |
 | `error` | 翻訳接続と同じ分類器で扱う。`code` / `type` は原文接続固有の値へ置き換えない |
 | 上記以外 | 無視 |
 
@@ -136,7 +137,7 @@ handshake 中の `error` も同じ分類で扱い、keepAlive は読み飛ばし
 | handshake（`session.updated` 待ち） | 15s |
 | `session.close` → `session.closed` 待ち | 15s |
 | WebSocket `send` | 5s |
-| transcription の commit → completed 待ち | 5s |
+| transcription の commit → completed または failed 待ち | 5s |
 | 再接続リトライ回数 | 最大 5 回（`error.reconnectLimit`） |
 | 再接続 backoff | 500ms × 2^(attempt-1)、上限 8s、+ jitter 0–250ms |
 | 再接続の総予算 | 連続障害の開始から 120s（`error.reconnectBudgetExhausted`） |
