@@ -177,7 +177,7 @@ public sealed class ServerErrorClassificationFixtureTests
             "test-safety");
         await translation.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
         Assert.False(translation.Events.Completion.IsCompleted);
         await translation.ForceCloseAsync();
 
@@ -216,7 +216,7 @@ public sealed class ServerErrorClassificationFixtureTests
         var translationError = await Assert.ThrowsAsync<RealtimeTranslationException>(
             () => translation.StartAsync(
                 "sk-test",
-                RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+                SessionConfigs.EnglishTargetWithoutSourceTranscription()));
         Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, translationError.Kind);
         Assert.InRange(Stopwatch.GetElapsedTime(started), timeout, TimeSpan.FromSeconds(10));
 
@@ -255,7 +255,7 @@ public sealed class ServerErrorClassificationFixtureTests
         var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
             () => connection.StartAsync(
                 "sk-test",
-                RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription()));
+                SessionConfigs.EnglishTargetWithoutSourceTranscription()));
 
         Assert.Equal(RealtimeTranslationErrorKind.RecoverableServerError, error.Kind);
         Assert.True(error.IsRecoverable);

@@ -294,7 +294,7 @@ public sealed class InterpretationSessionReceiveOverflowTests
             "test-safety");
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription(),
+            SessionConfigs.EnglishTargetWithoutSourceTranscription(),
             state);
         var read512 = NewGate();
         var release512 = NewGate();
@@ -352,7 +352,7 @@ public sealed class InterpretationSessionReceiveOverflowTests
             "test-safety");
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription(),
+            SessionConfigs.EnglishTargetWithoutSourceTranscription(),
             state);
         var read512 = NewGate();
         var readAuth = NewGate();

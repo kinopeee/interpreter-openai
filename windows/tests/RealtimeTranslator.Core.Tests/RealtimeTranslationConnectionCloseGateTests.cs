@@ -29,7 +29,7 @@ public sealed class RealtimeTranslationConnectionCloseGateTests
             closeTimeout: TimeSpan.FromSeconds(5));
         await connection.StartAsync(
             "sk-test",
-            RealtimeTranslationSessionConfig.EnglishTargetWithoutSourceTranscription());
+            SessionConfigs.EnglishTargetWithoutSourceTranscription());
         var closeCountAfterStart = transport.CloseCount;
 
         var closeTask = connection.CloseGracefullyAsync();
