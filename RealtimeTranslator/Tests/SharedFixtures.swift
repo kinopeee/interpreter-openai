@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+@testable import RealtimeTranslator
 
 /// `shared/fixtures/v1` を読み込むヘルパ。fixture が唯一の正本。
 enum SharedFixtures {
