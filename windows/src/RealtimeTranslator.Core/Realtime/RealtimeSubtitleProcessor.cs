@@ -132,30 +132,47 @@ internal sealed class RealtimeSubtitleProcessor
 
         RoutingSourceText = RoutingSourceTextWindow.Trim(RoutingSourceText + delta, pair);
         var evidence = SpokenLanguageDetector.RecentEvidence(RoutingSourceText, pair);
+        OppositeScriptRun? oppositeRun = null;
+        if (pair != LanguagePair.EnEs
+            && _selectedTranslationTarget is { } target
+            && pair.Counterpart(target) is { } currentLanguageForRun)
+        {
+            _sourceBoundaryTracker.Observe(
+                _assembler.CurrentSourceText,
+                deltaStart,
+                _assembler.SegmentGeneration,
+                pair,
+                currentLanguageForRun,
+                0);
+            oppositeRun = _sourceBoundaryTracker.OppositeScriptRun(
+                _assembler.CurrentSourceText);
+        }
         var selection = TranslationTargetSelector.Select(
             pair,
             _selectedTranslationTarget,
             _reverseEvidenceCount,
-            evidence);
+            evidence,
+            oppositeRun);
         _reverseEvidenceCount = selection.ReverseEvidenceCount;
 
         if (_selectedTranslationTarget is not { } currentTarget)
         {
-            if (selection.Target is not { } target)
+            if (selection.Target is not { } initialTarget)
             {
                 return result;
             }
 
-            _selectedTranslationTarget = target;
+            _selectedTranslationTarget = initialTarget;
             _sourceBoundaryTracker.Reset();
             _assembler.SetBoundaryCandidatePending(false);
-            _assembler.ExpectLane(target);
-            return result with { RoutingAction = new RealtimeSubtitleRoutingAction.Select(target) };
+            _assembler.ExpectLane(initialTarget);
+            return result with { RoutingAction = new RealtimeSubtitleRoutingAction.Select(initialTarget) };
         }
 
         if (selection.Target == currentTarget)
         {
-            if (pair.Counterpart(currentTarget) is { } currentLanguage)
+            if (pair == LanguagePair.EnEs
+                && pair.Counterpart(currentTarget) is { } currentLanguage)
             {
                 _sourceBoundaryTracker.Observe(
                     _assembler.CurrentSourceText,
@@ -169,18 +186,6 @@ internal sealed class RealtimeSubtitleProcessor
             }
 
             return result;
-        }
-
-        if (pair != LanguagePair.EnEs
-            && pair.Counterpart(currentTarget) is { } currentLanguageForSwitch)
-        {
-            _sourceBoundaryTracker.Observe(
-                _assembler.CurrentSourceText,
-                deltaStart,
-                _assembler.SegmentGeneration,
-                pair,
-                currentLanguageForSwitch,
-                0);
         }
 
         var offset = _sourceBoundaryTracker.CandidateOffset ?? deltaStart;

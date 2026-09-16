@@ -114,11 +114,29 @@ struct RealtimeSubtitleProcessor: Sendable {
             in: routingSourceText,
             pair: pair
         )
+        var oppositeRun: OppositeScriptRun?
+        if pair != .enEs,
+           let currentTarget = selectedTranslationTarget,
+           let currentLanguage = pair.counterpart(of: currentTarget)
+        {
+            sourceBoundaryTracker.observe(
+                segmentSource: assembler.currentSourceText,
+                deltaStart: deltaStart,
+                segmentGeneration: assembler.currentSegmentGeneration,
+                pair: pair,
+                currentLanguage: currentLanguage,
+                reverseEvidenceCount: 0
+            )
+            oppositeRun = sourceBoundaryTracker.oppositeScriptRun(
+                in: assembler.currentSourceText
+            )
+        }
         let selection = TranslationTargetSelector.select(
             pair: pair,
             currentTarget: selectedTranslationTarget,
             reverseEvidenceCount: reverseEvidenceCount,
-            evidence: evidence
+            evidence: evidence,
+            oppositeRun: oppositeRun
         )
         reverseEvidenceCount = selection.reverseEvidenceCount
 
@@ -136,33 +154,22 @@ struct RealtimeSubtitleProcessor: Sendable {
             return result
         }
         guard let target = selection.target, target != currentTarget else {
-            guard let currentLanguage = pair.counterpart(of: currentTarget) else {
-                return result
+            if pair == .enEs, let currentLanguage = pair.counterpart(of: currentTarget) {
+                sourceBoundaryTracker.observe(
+                    segmentSource: assembler.currentSourceText,
+                    deltaStart: deltaStart,
+                    segmentGeneration: assembler.currentSegmentGeneration,
+                    pair: pair,
+                    currentLanguage: currentLanguage,
+                    reverseEvidenceCount: selection.reverseEvidenceCount
+                )
             }
-            sourceBoundaryTracker.observe(
-                segmentSource: assembler.currentSourceText,
-                deltaStart: deltaStart,
-                segmentGeneration: assembler.currentSegmentGeneration,
-                pair: pair,
-                currentLanguage: currentLanguage,
-                reverseEvidenceCount: selection.reverseEvidenceCount
-            )
             assembler.setBoundaryCandidatePending(
                 sourceBoundaryTracker.candidateOffset != nil
             )
             return result
         }
 
-        if pair != .enEs, let currentLanguage = pair.counterpart(of: currentTarget) {
-            sourceBoundaryTracker.observe(
-                segmentSource: assembler.currentSourceText,
-                deltaStart: deltaStart,
-                segmentGeneration: assembler.currentSegmentGeneration,
-                pair: pair,
-                currentLanguage: currentLanguage,
-                reverseEvidenceCount: 0
-            )
-        }
         let offset = sourceBoundaryTracker.candidateOffset ?? deltaStart
         let split = assembler.splitForLanguageSwitch(at: offset, now: now)
         sourceBoundaryTracker.reset()
