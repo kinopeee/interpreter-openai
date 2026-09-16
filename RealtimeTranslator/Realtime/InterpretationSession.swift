@@ -443,6 +443,7 @@ final class InterpretationSession {
                 hasAudioActivity: PCM16AudioActivity.normalizedPeakAmplitude(of: frame)
                     > healthMonitor.thresholds.audioActivityPeakFloor
             )
+            healthMonitor.recordSendStart(now: healthNow())
             try await dualClient.appendAudioFrame(frame)
             healthMonitor.recordSendSuccess(now: healthNow())
         }

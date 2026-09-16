@@ -73,6 +73,9 @@ public sealed class SessionHealthMonitorTests
                 case "send":
                     monitor.RecordSendSuccess(at);
                     break;
+                case "sendStart":
+                    monitor.RecordSendStart(at);
+                    break;
                 case "receive":
                     monitor.RecordReceive(Lane(step["lane"]), at);
                     break;
@@ -196,6 +199,29 @@ public sealed class SessionHealthMonitorTests
         Assert.Contains("expiryRemainingMs=en:130000", text);
         Assert.Contains("sinceCaptureMs=-", text);
         Assert.Contains("sinceSendSuccessMs=-", text);
+    }
+
+    // Given: send が in-flight で capture が止まっている monitor
+    // When: captureStall・sendStall の閾値を超える時刻で Evaluate する
+    // Then: captureStalled は出ず、sendStalled は in-flight 開始から 10s で発火する
+    [Fact]
+    public void InFlightSendSuppressesCaptureStalled()
+    {
+        var monitor = new SessionHealthMonitor();
+        monitor.BeginGeneration(1, 1, false, TimeSpan.Zero);
+        monitor.RecordCapture(TimeSpan.FromMilliseconds(100), true);
+        monitor.RecordSendSuccess(TimeSpan.FromMilliseconds(100));
+        monitor.RecordCapture(TimeSpan.FromMilliseconds(200), true);
+        monitor.RecordSendStart(TimeSpan.FromMilliseconds(200));
+
+        // in-flight 開始から 3.1s 後: captureStalled は出ない。
+        var (_, detections) = monitor.Evaluate(TimeSpan.FromMilliseconds(3_300));
+        Assert.DoesNotContain(detections, d => d.Kind == SessionHealthDetectionKind.CaptureStalled);
+
+        // in-flight 開始から 10s: sendStalled が発火する。
+        (_, detections) = monitor.Evaluate(TimeSpan.FromMilliseconds(10_200));
+        Assert.Contains(detections, d => d.Kind == SessionHealthDetectionKind.SendStalled);
+        Assert.DoesNotContain(detections, d => d.Kind == SessionHealthDetectionKind.CaptureStalled);
     }
 
     public static TheoryData<string> ScenarioNames => SharedFixtures.CaseNames("health", "scenarios");

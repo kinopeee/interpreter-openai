@@ -200,6 +200,7 @@ public sealed class SessionHealthMonitor
 
     private TimeSpan? _lastCapture;
     private TimeSpan? _lastSendSuccess;
+    private TimeSpan? _sendInFlightSince;
     private TimeSpan? _lastReceive;
     private TimeSpan? _lastSourceProgress;
     private readonly Dictionary<RealtimeTranslationLane, TimeSpan> _lastTranslationProgress = new();
@@ -235,6 +236,7 @@ public sealed class SessionHealthMonitor
         _connectedAt = now;
         _lastCapture = null;
         _lastSendSuccess = null;
+        _sendInFlightSince = null;
         _lastReceive = null;
         _lastSourceProgress = null;
         _lastTranslationProgress.Clear();
@@ -264,7 +266,17 @@ public sealed class SessionHealthMonitor
         _firstActivityAfterLastSourceProgress ??= activityAt;
     }
 
-    public void RecordSendSuccess(TimeSpan now) => _lastSendSuccess = now;
+    /// <summary>
+    /// 直列 FeedAudioAsync が send を await し始めた時刻。
+    /// in-flight 中は capture 停滞を「送信中」と解釈して captureStalled を出さない。
+    /// </summary>
+    public void RecordSendStart(TimeSpan now) => _sendInFlightSince = now;
+
+    public void RecordSendSuccess(TimeSpan now)
+    {
+        _lastSendSuccess = now;
+        _sendInFlightSince = null;
+    }
 
     public void RecordReceive(RealtimeTranslationLane lane, TimeSpan now)
     {
@@ -359,7 +371,10 @@ public sealed class SessionHealthMonitor
             switch (kind)
             {
                 case SessionHealthDetectionKind.CaptureStalled:
-                    if (now - (_lastCapture ?? _connectedAt) >= _thresholds.CaptureStall)
+                    // send が in-flight の間は capture が記録されないのは直列 send の
+                    // 待ちによるもので capture 停止ではない。
+                    if (_sendInFlightSince is null
+                        && now - (_lastCapture ?? _connectedAt) >= _thresholds.CaptureStall)
                     {
                         Emit(detections, kind, null, now);
                     }
@@ -367,9 +382,19 @@ public sealed class SessionHealthMonitor
                     break;
 
                 case SessionHealthDetectionKind.SendStalled:
+                    // in-flight send は開始時刻から測る（開始自体が停滞の起点）。
+                    var sendReference = _lastSendSuccess ?? _connectedAt;
+                    if (_sendInFlightSince is { } inFlight && inFlight > sendReference)
+                    {
+                        sendReference = inFlight;
+                    }
+
+                    // in-flight 中は直列 send が capture 記録を止めるため、
+                    // in-flight 自体を capture 生存の証拠とする。
                     if (now >= GraceEnd
-                        && now - (_lastCapture ?? _connectedAt) < _thresholds.CaptureStall
-                        && now - (_lastSendSuccess ?? _connectedAt) >= _thresholds.SendStall)
+                        && (_sendInFlightSince is not null
+                            || now - (_lastCapture ?? _connectedAt) < _thresholds.CaptureStall)
+                        && now - sendReference >= _thresholds.SendStall)
                     {
                         Emit(detections, kind, null, now);
                     }

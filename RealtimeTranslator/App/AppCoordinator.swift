@@ -346,7 +346,8 @@ extension AppCoordinator: InterpretationSessionDelegate {
         didUpdateState state: TranslationState
     ) {
         translationState = state
-        if state == .idle {
+        // 新しい接続世代（初回・再接続）や停止で前世代の health 検知を残さない。
+        if state == .idle || state == .connecting || state == .reconnecting {
             latestHealthStatus = nil
         }
         menuBarController.refresh()

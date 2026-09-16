@@ -559,6 +559,11 @@ public sealed class InterpretationSession : IDisposable
                         > _healthMonitor.Thresholds.AudioActivityPeakFloor);
             }
 
+            lock (_sync)
+            {
+                _healthMonitor.RecordSendStart(HealthNow());
+            }
+
             await _dualClient.AppendAudioFrameAsync(frame, cancellationToken).ConfigureAwait(false);
             lock (_sync)
             {

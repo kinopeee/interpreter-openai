@@ -60,6 +60,8 @@ final class SessionHealthMonitorFixtureTests: XCTestCase {
                     monitor.recordCapture(now: at, hasAudioActivity: step["active"] as? Bool ?? false)
                 case "send":
                     monitor.recordSendSuccess(now: at)
+                case "sendStart":
+                    monitor.recordSendStart(now: at)
                 case "receive":
                     monitor.recordReceive(lane: try lane(step["lane"], stepName: name), now: at)
                 case "source":
@@ -142,6 +144,27 @@ final class SessionHealthMonitorFixtureTests: XCTestCase {
         XCTAssertTrue(snapshot.description.contains("expiryRemainingMs=en:130000"))
         XCTAssertTrue(snapshot.description.contains("sinceCaptureMs=-"))
         XCTAssertTrue(snapshot.description.contains("sinceSendSuccessMs=-"))
+    }
+
+    // Given: send が in-flight で capture が止まっている monitor
+    // When: captureStall・sendStall の閾値を超える時刻で evaluate する
+    // Then: captureStalled は出ず、sendStalled は in-flight 開始から 10s で発火する
+    func testInFlightSendSuppressesCaptureStalled() {
+        var monitor = SessionHealthMonitor()
+        monitor.beginGeneration(generation: 1, epoch: 1, isRecovery: false, now: .zero)
+        monitor.recordCapture(now: .milliseconds(100), hasAudioActivity: true)
+        monitor.recordSendSuccess(now: .milliseconds(100))
+        monitor.recordCapture(now: .milliseconds(200), hasAudioActivity: true)
+        monitor.recordSendStart(now: .milliseconds(200))
+
+        // in-flight 開始から 3.1s 後: captureStalled は出ない。
+        var (_, detections) = monitor.evaluate(now: .milliseconds(3_300))
+        XCTAssertFalse(detections.contains { $0.kind == .captureStalled })
+
+        // in-flight 開始から 10s: sendStalled が発火する。
+        (_, detections) = monitor.evaluate(now: .milliseconds(10_200))
+        XCTAssertTrue(detections.contains { $0.kind == .sendStalled })
+        XCTAssertFalse(detections.contains { $0.kind == .captureStalled })
     }
 
     private func number(_ object: [String: Any], _ key: String) -> Int {

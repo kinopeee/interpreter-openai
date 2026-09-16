@@ -121,6 +121,7 @@ struct SessionHealthMonitor: Sendable {
     private var lastSourceProgress: Duration?
     private var lastTranslationProgress: [RealtimeTranslationLane: Duration] = [:]
     private var lastAudioActivityAt: Duration?
+    private var sendInFlightSince: Duration?
     private var firstActivityAfterLastReceive: Duration?
     private var firstActivityAfterLastSourceProgress: Duration?
     private var selectedLane: RealtimeTranslationLane?
@@ -139,6 +140,7 @@ struct SessionHealthMonitor: Sendable {
         connectedAt + thresholds.connectGrace
     }
 
+
     /// 全 timestamp・selectedLane・expiry・emitted をクリアする
     /// （再接続で言語判定がリセットされる既存契約に合わせる）。
     mutating func beginGeneration(generation: Int, epoch: Int, isRecovery: Bool, now: Duration) {
@@ -149,6 +151,7 @@ struct SessionHealthMonitor: Sendable {
         self.connectedAt = now
         lastCapture = nil
         lastSendSuccess = nil
+        sendInFlightSince = nil
         lastReceive = nil
         lastSourceProgress = nil
         lastTranslationProgress = [:]
@@ -177,8 +180,15 @@ struct SessionHealthMonitor: Sendable {
         }
     }
 
+    /// 直列 feedAudio が send を await し始めた時刻。
+    /// in-flight 中は capture 停滞を「送信中」と解釈して captureStalled を出さない。
+    mutating func recordSendStart(now: Duration) {
+        sendInFlightSince = now
+    }
+
     mutating func recordSendSuccess(now: Duration) {
         lastSendSuccess = now
+        sendInFlightSince = nil
     }
 
     mutating func recordReceive(lane _: RealtimeTranslationLane, now: Duration) {
@@ -267,14 +277,24 @@ struct SessionHealthMonitor: Sendable {
         for kind in SessionHealthDetectionKind.allCases {
             switch kind {
             case .captureStalled:
-                if now - (lastCapture ?? connectedAt) >= thresholds.captureStall {
+                // send が in-flight の間は capture が記録されないのは直列 send の待ち
+                // によるもので capture 停止ではない。
+                if sendInFlightSince == nil,
+                   now - (lastCapture ?? connectedAt) >= thresholds.captureStall {
                     emit(&detections, kind: kind, lane: nil, now: now)
                 }
             case .sendStalled:
                 let sinceCapture = now - (lastCapture ?? connectedAt)
-                let sinceSend = now - (lastSendSuccess ?? connectedAt)
+                // in-flight send は開始時刻から測る（開始自体が停滞の起点）。
+                let sendReference = max(
+                    lastSendSuccess ?? connectedAt,
+                    sendInFlightSince ?? connectedAt
+                )
+                let sinceSend = now - sendReference
+                // in-flight 中は直列 send が capture 記録を止めるため、
+                // in-flight 自体を capture 生存の証拠とする。
                 if now >= graceEnd,
-                   sinceCapture < thresholds.captureStall,
+                   sendInFlightSince != nil || sinceCapture < thresholds.captureStall,
                    sinceSend >= thresholds.sendStall
                 {
                     emit(&detections, kind: kind, lane: nil, now: now)
