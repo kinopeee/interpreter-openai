@@ -21,6 +21,8 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
     private bool _isReady;
     private bool _didReceiveCommitOutcome;
+    /// <summary>commit 送信完了後だけ立てる。送信待ち中の録音時 outcome を commit 結果にしない。</summary>
+    private bool _isAwaitingCommitOutcome;
     private LanguagePair _pair = LanguagePair.JaEn;
 
     /// <summary>接続開始時の noise_reduction。live update では変更しない。</summary>
@@ -65,6 +67,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 currentEpoch = _lifecycle.ResetForReconnect();
                 _isReady = false;
                 _didReceiveCommitOutcome = false;
+                _isAwaitingCommitOutcome = false;
                 _connectedNoiseReduction = tuning.NoiseReduction;
                 _pair = pair;
             }
@@ -170,6 +173,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 _isReady = false;
                 // 録音中の failed / completed を、この commit の結果として使わない。
                 _didReceiveCommitOutcome = false;
+                _isAwaitingCommitOutcome = false;
             }
 
             if (!wasReady)
@@ -188,6 +192,11 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 #pragma warning restore CA1031
             {
                 // 相手が既に落ちている場合も completed 待ちへ進む。
+            }
+
+            lock (_lifecycle.Sync)
+            {
+                _isAwaitingCommitOutcome = true;
             }
 
             var completed = await _lifecycle.WaitForCloseSignalAsync(
@@ -308,7 +317,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 case RealtimeSourceTranscriptionServerEvent.TranscriptionCompleted:
                     lock (_lifecycle.Sync)
                     {
-                        if (!_isReady)
+                        if (_isAwaitingCommitOutcome)
                         {
                             _didReceiveCommitOutcome = true;
                         }
@@ -319,7 +328,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 case RealtimeSourceTranscriptionServerEvent.TranscriptionFailed failed:
                     lock (_lifecycle.Sync)
                     {
-                        if (!_isReady)
+                        if (_isAwaitingCommitOutcome)
                         {
                             _didReceiveCommitOutcome = true;
                         }
