@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -33,6 +34,19 @@ internal sealed class RealtimeConnectionLifecycle : IDisposable
     public object Sync => _sync;
 
     public SemaphoreSlim Gate => _lifecycleGate;
+
+    /// <summary>Dispose と競合した解放は握り潰す。finally から呼ぶ。</summary>
+    public void ReleaseGate()
+    {
+        try
+        {
+            _lifecycleGate.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Dispose 済みなら解放は不要。
+        }
+    }
 
     public int Epoch
     {
@@ -250,8 +264,17 @@ internal sealed class RealtimeConnectionLifecycle : IDisposable
             cts.Dispose();
         }
 
-        await _transport.CloseAsync().ConfigureAwait(false);
+        Exception? closeError = null;
+        try
+        {
+            await _transport.CloseAsync().ConfigureAwait(false);
+        }
+        catch (Exception error)
+        {
+            closeError = error;
+        }
 
+        // transport の close に失敗しても受信ループの観測と channel 完了は必ず行う。
         if (receiveTask is not null)
         {
             try
@@ -262,23 +285,38 @@ internal sealed class RealtimeConnectionLifecycle : IDisposable
             {
                 // cancel 済みの受信ループは正常終了として扱う。
             }
+            catch (Exception error) when (closeError is null)
+            {
+                closeError = error;
+            }
+            catch (Exception)
+            {
+                // transport 側の例外を優先する。
+            }
         }
 
         writer.TryComplete();
+
+        if (closeError is not null)
+        {
+            ExceptionDispatchInfo.Throw(closeError);
+        }
     }
 
     public void Dispose() => Dispose(null);
 
-    /// <summary>受信ループを止めて epoch を進め、lifecycle gate を破棄する。接続ごとのフラグ更新は同じロック内で行う。</summary>
+    /// <summary>受信ループを止めて epoch を進め、events を完了させてから lifecycle gate を破棄する。接続ごとのフラグ更新は同じロック内で行う。</summary>
     public void Dispose(Action? lockedCleanup)
     {
         CancellationTokenSource? cts;
+        ChannelWriter<RealtimeTranslationStreamEvent> writer;
         lock (_sync)
         {
             lockedCleanup?.Invoke();
             _epoch += 1;
             cts = _receiveCts;
             _receiveCts = null;
+            writer = _events.Writer;
         }
 
         if (cts is not null)
@@ -295,6 +333,8 @@ internal sealed class RealtimeConnectionLifecycle : IDisposable
             cts.Dispose();
         }
 
+        // Events を待つ consumer を解放してから gate を破棄する。
+        writer.TryComplete();
         _lifecycleGate.Dispose();
     }
 }

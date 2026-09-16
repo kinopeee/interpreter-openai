@@ -126,7 +126,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         }
         finally
         {
-            _lifecycle.Gate.Release();
+            _lifecycle.ReleaseGate();
         }
     }
 
@@ -216,7 +216,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         }
         finally
         {
-            _lifecycle.Gate.Release();
+            _lifecycle.ReleaseGate();
         }
     }
 
@@ -234,7 +234,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         }
         finally
         {
-            _lifecycle.Gate.Release();
+            _lifecycle.ReleaseGate();
         }
     }
 

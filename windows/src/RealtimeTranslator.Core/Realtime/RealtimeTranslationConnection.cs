@@ -137,7 +137,7 @@ public sealed class RealtimeTranslationConnection : IDisposable
         }
         finally
         {
-            _lifecycle.Gate.Release();
+            _lifecycle.ReleaseGate();
         }
     }
 
@@ -211,7 +211,7 @@ public sealed class RealtimeTranslationConnection : IDisposable
         }
         finally
         {
-            _lifecycle.Gate.Release();
+            _lifecycle.ReleaseGate();
         }
     }
 
@@ -231,7 +231,7 @@ public sealed class RealtimeTranslationConnection : IDisposable
         }
         finally
         {
-            _lifecycle.Gate.Release();
+            _lifecycle.ReleaseGate();
         }
     }
 
