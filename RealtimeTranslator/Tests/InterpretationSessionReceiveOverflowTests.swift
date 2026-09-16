@@ -432,7 +432,11 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
                 $0.sourceText == "確定済み字幕" && $0.translatedText == "Finalized subtitle"
             }
         }
-        let finalizedCount = delegate.finalizedSnapshots.count
+        // 同一 tick の aggregator.tick 再通知が終わるまで待ってから件数を取る。
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let finalizedCount = delegate.snapshots.filter {
+            $0.current.state == .finalized && !$0.isInvalidation
+        }.count
 
         dual.publishSourceFailure(
             itemID: "finalized-item",
@@ -442,7 +446,12 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         )
         try? await Task.sleep(nanoseconds: 100_000_000)
 
-        XCTAssertEqual(delegate.finalizedSnapshots.count, finalizedCount)
+        XCTAssertEqual(
+            delegate.snapshots.filter {
+                $0.current.state == .finalized && !$0.isInvalidation
+            }.count,
+            finalizedCount
+        )
         XCTAssertTrue(delegate.finalizedSnapshots.contains {
             $0.sourceText == "確定済み字幕" && $0.translatedText == "Finalized subtitle"
         })
