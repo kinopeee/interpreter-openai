@@ -450,6 +450,31 @@ public sealed class CapturedAudioFramePipelineTests
         Assert.Equal(0, pipeline.DiscardedMilliseconds);
     }
 
+    // Given: 24kHz mono の capture buffer が overflow して破棄時間を持っている
+    // When: pipeline を reset してから小さい入力を追加する
+    // Then: 新しい世代の破棄時間は 0ms のままになる
+    [Fact]
+    public void ResetClearsDiscardedMilliseconds()
+    {
+        var format = new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1);
+        var pipeline = new CapturedAudioFramePipeline(format);
+        var capacity = format.AverageBytesPerSecond * 2;
+        var overflowBytes = format.AverageBytesPerSecond * 2_500 / 1_000;
+        var smallPushBytes = format.AverageBytesPerSecond * 100 / 1_000;
+
+        pipeline.Push(new byte[capacity], capacity);
+        pipeline.Push(new byte[overflowBytes], overflowBytes);
+
+        Assert.True(pipeline.DiscardedMilliseconds > 0);
+
+        pipeline.Reset();
+        Assert.Equal(0, pipeline.DiscardedMilliseconds);
+
+        pipeline.Push(new byte[smallPushBytes], smallPushBytes);
+
+        Assert.Equal(0, pipeline.DiscardedMilliseconds);
+    }
+
     // Given: 24kHz mono の capture buffer を容量ちょうどまで満たしている
     // When: 小さい overflow と容量以上の入力を順に保持する
     // Then: 破棄時間は両方の入力分を累積する

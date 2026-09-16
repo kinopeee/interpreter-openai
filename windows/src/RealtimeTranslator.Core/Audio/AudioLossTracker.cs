@@ -39,7 +39,11 @@ public sealed class AudioLossTracker
 
     public AudioLossTracker(AudioLossPolicy? policy = null)
     {
-        _policy = policy ?? AudioLossPolicy.Default;
+        var resolved = policy ?? AudioLossPolicy.Default;
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(resolved.FrameDurationMilliseconds, nameof(policy));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(resolved.ReconnectLostMillisecondsThreshold, nameof(policy));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(resolved.ReconnectWindowMilliseconds, nameof(policy));
+        _policy = resolved;
     }
 
     public AudioLossMetrics Metrics => _metrics;

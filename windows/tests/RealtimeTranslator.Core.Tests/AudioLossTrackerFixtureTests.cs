@@ -48,6 +48,19 @@ public sealed class AudioLossTrackerFixtureTests
             RealtimeSubtitleAssembler.AudioLossTaintWindow.TotalMilliseconds);
     }
 
+    // Given: すべての値が 0 の default(AudioLossPolicy)
+    // When: AudioLossTracker を構築する
+    // Then: ArgumentOutOfRangeException が発生し、既定値は構築できる
+    [Fact]
+    public void RejectsZeroInitializedPolicy()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new AudioLossTracker(default(AudioLossPolicy)));
+
+        _ = new AudioLossTracker();
+        _ = new AudioLossTracker(AudioLossPolicy.Default);
+    }
+
     // Given: fixture のフレーム列と独立した期待値
     // When: AudioLossTracker へ順に再生する
     // Then: 累積 metrics と再接続観測が fixture と一致する

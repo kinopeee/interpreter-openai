@@ -3617,7 +3617,8 @@ public sealed class InterpretationSessionTests
 
         public TaskCompletionSource? AppendAudioFrameGate { get; set; }
 
-        public int AppendAudioFrameCount { get; private set; }
+        private int _appendAudioFrameCount;
+        public int AppendAudioFrameCount => Volatile.Read(ref _appendAudioFrameCount);
 
         /// <summary>UpdateTranscriptionTuningAsync で RealtimeTranslationException を投げる。</summary>
         public bool ThrowRealtimeOnUpdateTuning { get; set; }
@@ -3713,7 +3714,7 @@ public sealed class InterpretationSessionTests
             ReadOnlyMemory<byte> pcm16LittleEndian,
             CancellationToken cancellationToken = default)
         {
-            AppendAudioFrameCount += 1;
+            Interlocked.Increment(ref _appendAudioFrameCount);
             return AppendAudioFrameGate is { } gate
                 ? gate.Task.WaitAsync(cancellationToken)
                 : Task.CompletedTask;

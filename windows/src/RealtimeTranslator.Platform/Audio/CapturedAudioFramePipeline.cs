@@ -226,6 +226,7 @@ public sealed class CapturedAudioFramePipeline
             _buffered.ClearBuffer();
             _packetizer.Reset();
             _emptyTicks = 0;
+            _discardedBytes = 0;
         }
     }
 
