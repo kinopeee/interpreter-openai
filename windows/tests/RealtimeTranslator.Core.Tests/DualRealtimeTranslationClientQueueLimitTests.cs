@@ -26,8 +26,8 @@ public sealed class DualRealtimeTranslationClientQueueLimitTests
     public void ConstantsMatchFixture()
     {
         var fixture = SharedFixtures.Load("translation-queue");
-        Assert.Equal(SharedFixtures.Number(fixture["pendingFrameLimit"]), DualRealtimeTranslationClient.TranslationPendingFrameLimit);
-        Assert.Equal(SharedFixtures.Number(fixture["prerollFrameLimit"]), DualRealtimeTranslationClient.TranslationPrerollFrameLimit);
+        Assert.Equal(SharedFixtures.Number(fixture["pendingFrameLimit"]), DualRealtimeTranslationClientTuning.DefaultPendingFrameLimit);
+        Assert.Equal(SharedFixtures.Number(fixture["prerollFrameLimit"]), DualRealtimeTranslationClientTuning.DefaultPrerollFrameLimit);
         var overflow = fixture["overflow"]!.AsObject();
         Assert.Equal(SharedFixtures.Text(overflow["errorCode"]), DualRealtimeTranslationClient.TransportErrorCode);
         Assert.Equal("翻訳音声の送信待ちが上限に達しました。", DualRealtimeTranslationClient.TranslationBacklogErrorMessage);
