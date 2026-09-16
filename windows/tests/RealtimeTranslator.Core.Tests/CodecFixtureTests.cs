@@ -53,8 +53,14 @@ public sealed class CodecFixtureTests
         switch (SharedFixtures.Text(expected["kind"]))
         {
             case "sessionCreated":
-                Assert.IsType<RealtimeTranslationServerEvent.SessionCreated>(actual);
+            {
+                // expiresAt が expected にあればその値、無ければ null を要求する。
+                var typed = Assert.IsType<RealtimeTranslationServerEvent.SessionCreated>(actual);
+                Assert.Equal(
+                    (long?)SharedFixtures.OptionalNumber(expected["expiresAt"]),
+                    typed.ExpiresAtUnixSeconds);
                 break;
+            }
 
             case "sessionUpdated":
                 Assert.IsType<RealtimeTranslationServerEvent.SessionUpdated>(actual);

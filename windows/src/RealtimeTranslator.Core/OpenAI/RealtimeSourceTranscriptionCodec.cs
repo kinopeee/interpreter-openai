@@ -34,7 +34,8 @@ public abstract record RealtimeSourceTranscriptionServerEvent
     {
     }
 
-    public sealed record SessionCreated : RealtimeSourceTranscriptionServerEvent;
+    /// <summary><c>session.expires_at</c>（unix 秒）。transcription の公式 schema には定義がなく、返れば保持する。不明は null。</summary>
+    public sealed record SessionCreated(long? ExpiresAtUnixSeconds) : RealtimeSourceTranscriptionServerEvent;
 
     public sealed record SessionUpdated : RealtimeSourceTranscriptionServerEvent;
 
@@ -136,7 +137,8 @@ public static class RealtimeSourceTranscriptionCodec
         switch (typeName)
         {
             case "session.created":
-                return new RealtimeSourceTranscriptionServerEvent.SessionCreated();
+                return new RealtimeSourceTranscriptionServerEvent.SessionCreated(
+                    RealtimeSessionExpiry.ParseExpiresAt(payload["session"]));
 
             case "session.updated":
                 return new RealtimeSourceTranscriptionServerEvent.SessionUpdated();

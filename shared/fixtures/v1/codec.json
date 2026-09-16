@@ -108,6 +108,36 @@
       "expected": { "kind": "sessionCreated" }
     },
     {
+      "name": "session.created with expires_at",
+      "json": "{\"type\":\"session.created\",\"session\":{\"id\":\"sess_x\",\"type\":\"translation\",\"expires_at\":1756324625}}",
+      "expected": { "kind": "sessionCreated", "expiresAt": 1756324625 }
+    },
+    {
+      "name": "session.created with string expires_at",
+      "json": "{\"type\":\"session.created\",\"session\":{\"id\":\"sess_x\",\"type\":\"translation\",\"expires_at\":\"1756324625\"}}",
+      "expected": { "kind": "sessionCreated" }
+    },
+    {
+      "name": "session.created with negative expires_at",
+      "json": "{\"type\":\"session.created\",\"session\":{\"id\":\"sess_x\",\"type\":\"translation\",\"expires_at\":-1}}",
+      "expected": { "kind": "sessionCreated" }
+    },
+    {
+      "name": "session.created with fractional expires_at",
+      "json": "{\"type\":\"session.created\",\"session\":{\"id\":\"sess_x\",\"type\":\"translation\",\"expires_at\":1756324625.5}}",
+      "expected": { "kind": "sessionCreated" }
+    },
+    {
+      "name": "session.created with null expires_at",
+      "json": "{\"type\":\"session.created\",\"session\":{\"id\":\"sess_x\",\"type\":\"translation\",\"expires_at\":null}}",
+      "expected": { "kind": "sessionCreated" }
+    },
+    {
+      "name": "session.created with non-object session",
+      "json": "{\"type\":\"session.created\",\"session\":\"x\"}",
+      "expected": { "kind": "sessionCreated" }
+    },
+    {
       "name": "session.updated",
       "json": "{\"type\":\"session.updated\"}",
       "expected": { "kind": "sessionUpdated" }
@@ -306,6 +336,21 @@
     }
   ],
   "transcriptionDecode": [
+    {
+      "name": "transcription session.created with expires_at",
+      "json": "{\"type\":\"session.created\",\"session\":{\"id\":\"sess_t\",\"expires_at\":1756324625}}",
+      "expected": { "kind": "sessionCreated", "expiresAt": 1756324625 }
+    },
+    {
+      "name": "transcription session.created with string expires_at",
+      "json": "{\"type\":\"session.created\",\"session\":{\"id\":\"sess_t\",\"expires_at\":\"1756324625\"}}",
+      "expected": { "kind": "sessionCreated" }
+    },
+    {
+      "name": "transcription session.created without expires_at",
+      "json": "{\"type\":\"session.created\",\"session\":{\"id\":\"sess_t\"}}",
+      "expected": { "kind": "sessionCreated" }
+    },
     {
       "name": "source transcript delta",
       "json": "{\"type\":\"conversation.item.input_audio_transcription.delta\",\"delta\":\"こんにちは\",\"event_id\":\"evt_1\",\"item_id\":\"item_1\"}",

@@ -29,7 +29,8 @@ public abstract record RealtimeTranslationServerEvent
     {
     }
 
-    public sealed record SessionCreated : RealtimeTranslationServerEvent;
+    /// <summary><c>session.expires_at</c>（unix 秒）。不明（欠落・非数値・範囲外）は null。</summary>
+    public sealed record SessionCreated(long? ExpiresAtUnixSeconds) : RealtimeTranslationServerEvent;
 
     public sealed record SessionUpdated : RealtimeTranslationServerEvent;
 

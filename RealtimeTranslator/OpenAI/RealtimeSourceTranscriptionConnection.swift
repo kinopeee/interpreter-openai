@@ -70,6 +70,12 @@ actor RealtimeSourceTranscriptionConnection {
             guard created["type"] as? String == "session.created" else {
                 throw RealtimeTranslationError.invalidMessage
             }
+            state.recordSessionExpiry(
+                lane: .source,
+                expiresAtUnixSeconds: RealtimeSessionExpiry.parseExpiresAt(
+                    fromSessionPayload: created["session"] as? [String: Any]
+                )
+            )
 
             connectedNoiseReduction = tuning.noiseReduction
             languagePair = pair
@@ -285,6 +291,7 @@ actor RealtimeSourceTranscriptionConnection {
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw RealtimeTranslationError.invalidMessage
         }
+        deliveryYielder?.deliveryState.recordReceive(lane: .source)
         return object
     }
 

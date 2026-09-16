@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -35,6 +36,8 @@ public sealed class EventDeliveryState
     private int _lossCapacity;
     private EventDeliveryTermination _termination;
     private string? _terminationMessage;
+    private readonly Dictionary<RealtimeTranslationLane, int> _receiveCounts = new();
+    private readonly Dictionary<RealtimeTranslationLane, long> _sessionExpiries = new();
 
     public EventDeliveryState(int epoch)
     {
@@ -124,6 +127,47 @@ public sealed class EventDeliveryState
 
         _completion.TrySetResult();
         return upgraded;
+    }
+
+    /// <summary>decode した全メッセージ（handshake 受信・keepAlive error・unknown を含む）で +1。</summary>
+    public void RecordReceive(RealtimeTranslationLane lane)
+    {
+        lock (_sync)
+        {
+            _receiveCounts[lane] = _receiveCounts.TryGetValue(lane, out var count) ? count + 1 : 1;
+        }
+    }
+
+    public int ReceiveCount(RealtimeTranslationLane lane)
+    {
+        lock (_sync)
+        {
+            return _receiveCounts.TryGetValue(lane, out var count) ? count : 0;
+        }
+    }
+
+    /// <summary>`session.created` handshake 時に呼ぶ。不明なら null を記録する。</summary>
+    public void RecordSessionExpiry(RealtimeTranslationLane lane, long? expiresAtUnixSeconds)
+    {
+        lock (_sync)
+        {
+            if (expiresAtUnixSeconds is { } value)
+            {
+                _sessionExpiries[lane] = value;
+            }
+            else
+            {
+                _sessionExpiries.Remove(lane);
+            }
+        }
+    }
+
+    public long? SessionExpiry(RealtimeTranslationLane lane)
+    {
+        lock (_sync)
+        {
+            return _sessionExpiries.TryGetValue(lane, out var value) ? value : null;
+        }
     }
 
     public void RecordLoss(EventDeliveryStage stage, int capacity)

@@ -87,6 +87,8 @@ public sealed class RealtimeTranslationConnection : IDisposable
                 _didReceiveClosed = false;
             }
 
+            var state = deliveryState ?? new EventDeliveryState(currentEpoch);
+
             try
             {
                 await _transport.ConnectAsync(
@@ -95,15 +97,18 @@ public sealed class RealtimeTranslationConnection : IDisposable
                     cancellationToken).ConfigureAwait(false);
 
                 // handshake は共有 channel を消費せず transport から直接読む。
-                var created = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
+                var created = await ReceiveHandshakeEventAsync(state, cancellationToken).ConfigureAwait(false);
                 RealtimeConnectionLifecycle
                     .RequireHandshakeEvent<RealtimeTranslationServerEvent.SessionCreated>(created);
+                state.RecordSessionExpiry(
+                    RealtimeTranslationLane.Translation(_target),
+                    ((RealtimeTranslationServerEvent.SessionCreated)created).ExpiresAtUnixSeconds);
 
                 await SendAsync(
                     new RealtimeTranslationClientEvent.SessionUpdate(config),
                     cancellationToken).ConfigureAwait(false);
 
-                var updated = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
+                var updated = await ReceiveHandshakeEventAsync(state, cancellationToken).ConfigureAwait(false);
                 RealtimeConnectionLifecycle
                     .RequireHandshakeEvent<RealtimeTranslationServerEvent.SessionUpdated>(updated);
 
@@ -119,7 +124,7 @@ public sealed class RealtimeTranslationConnection : IDisposable
 
                 _lifecycle.StartReceiveLoop(
                     currentEpoch,
-                    deliveryState ?? new EventDeliveryState(currentEpoch),
+                    state,
                     EventDeliveryStage.Translation,
                     ReceiveLoopAsync);
             }
@@ -238,12 +243,15 @@ public sealed class RealtimeTranslationConnection : IDisposable
     private Task SendAsync(RealtimeTranslationClientEvent clientEvent, CancellationToken cancellationToken) =>
         _transport.SendAsync(RealtimeTranslationMessageCodec.Encode(clientEvent), cancellationToken);
 
-    private Task<RealtimeTranslationServerEvent> ReceiveHandshakeEventAsync(CancellationToken cancellationToken) =>
+    private Task<RealtimeTranslationServerEvent> ReceiveHandshakeEventAsync(
+        EventDeliveryState state,
+        CancellationToken cancellationToken) =>
         _lifecycle.ReceiveHandshakeEventAsync(
             RealtimeTranslationMessageCodec.DecodeServerEvent,
             TryClassifyError,
             _sessionUpdateTimeout,
-            cancellationToken);
+            cancellationToken,
+            _ => state.RecordReceive(RealtimeTranslationLane.Translation(_target)));
 
     private static RealtimeServerErrorClassification? TryClassifyError(
         RealtimeTranslationServerEvent serverEvent) =>
@@ -269,6 +277,7 @@ public sealed class RealtimeTranslationConnection : IDisposable
                 }
 
                 serverEvent = RealtimeTranslationMessageCodec.DecodeServerEvent(data);
+                deliveryState.RecordReceive(RealtimeTranslationLane.Translation(_target));
             }
             catch (OperationCanceledException)
             {

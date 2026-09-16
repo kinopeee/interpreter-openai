@@ -57,7 +57,11 @@ enum RealtimeTranslationMessageCodec {
 
         switch type {
         case "session.created":
-            return .sessionCreated
+            return .sessionCreated(
+                expiresAtUnixSeconds: RealtimeSessionExpiry.parseExpiresAt(
+                    fromSessionPayload: dictionary["session"] as? [String: Any]
+                )
+            )
         case "session.updated":
             return .sessionUpdated
         case "session.input_transcript.delta":
