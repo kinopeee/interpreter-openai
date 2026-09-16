@@ -13,6 +13,9 @@ public sealed class CodecFixtureTests
 
     public static TheoryData<string> DecodeFailureCases => SharedFixtures.CaseNames("codec", "decodeFailures");
 
+    public static TheoryData<string> TranscriptionDecodeCases =>
+        SharedFixtures.CaseNames("codec", "transcriptionDecode");
+
     // Given: fixture の翻訳クライアントイベント
     // When: 翻訳 codec でエンコードする
     // Then: 期待する JSON ペイロードと一致する
@@ -121,6 +124,51 @@ public sealed class CodecFixtureTests
 
         // Then: InvalidMessage に正規化される
         Assert.Equal(RealtimeTranslationErrorKind.InvalidMessage, error.Kind);
+    }
+
+    // Given: fixture のソース文字起こしサーバーメッセージ
+    // When: source transcription codec でデコードする
+    // Then: failed の item / event / type / code だけが一致する
+    [Theory]
+    [MemberData(nameof(TranscriptionDecodeCases))]
+    public void TranscriptionDecodeMatchesFixture(string name)
+    {
+        var fixture = SharedFixtures.Case("codec", "transcriptionDecode", name);
+        var actual = RealtimeSourceTranscriptionCodec.DecodeServerEvent(
+            Encoding.UTF8.GetBytes(SharedFixtures.Text(fixture["json"])));
+        var expected = fixture["expected"]!.AsObject();
+
+        switch (SharedFixtures.Text(expected["kind"]))
+        {
+            case "transcriptionFailed":
+            {
+                var typed = Assert.IsType<RealtimeSourceTranscriptionServerEvent.TranscriptionFailed>(actual);
+                Assert.Equal(SharedFixtures.OptionalText(expected["itemId"]), typed.ItemId);
+                Assert.Equal(SharedFixtures.OptionalText(expected["eventId"]), typed.EventId);
+                Assert.Equal(SharedFixtures.OptionalText(expected["code"]), typed.Code);
+                Assert.Equal(SharedFixtures.OptionalText(expected["errorType"]), typed.ErrorType);
+                break;
+            }
+            case "inputTranscriptDelta":
+            {
+                var typed = Assert.IsType<RealtimeSourceTranscriptionServerEvent.InputTranscriptDelta>(actual);
+                Assert.Equal(SharedFixtures.Text(expected["delta"]), typed.Delta);
+                Assert.Equal(SharedFixtures.OptionalText(expected["eventId"]), typed.EventId);
+                break;
+            }
+            case "transcriptionCompleted":
+                Assert.IsType<RealtimeSourceTranscriptionServerEvent.TranscriptionCompleted>(actual);
+                break;
+            case "ignored":
+                Assert.IsType<RealtimeSourceTranscriptionServerEvent.Ignored>(actual);
+                break;
+            case "error":
+                Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
+                break;
+            default:
+                Assert.Fail("unhandled transcription fixture kind");
+                break;
+        }
     }
 
     private static void AssertDelta(JsonObject expected, string delta, string? eventId, int? elapsedMs)

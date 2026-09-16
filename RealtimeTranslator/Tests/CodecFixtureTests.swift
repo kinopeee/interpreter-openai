@@ -42,6 +42,14 @@ final class CodecFixtureTests: XCTestCase {
                     return XCTFail("expected inputTranscriptDelta")
                 }
                 assertDelta(expected, delta: delta, eventID: eventID, elapsedMs: elapsedMs)
+            case "transcriptionFailed":
+                guard case .inputTranscriptFailed(let itemID, let eventID, let code, let errorType) = actual else {
+                    return XCTFail("expected inputTranscriptFailed")
+                }
+                XCTAssertEqual(SharedFixtures.optionalText(expected["itemId"]), itemID)
+                XCTAssertEqual(SharedFixtures.optionalText(expected["eventId"]), eventID)
+                XCTAssertEqual(SharedFixtures.optionalText(expected["code"]), code)
+                XCTAssertEqual(SharedFixtures.optionalText(expected["errorType"]), errorType)
             case "outputTranscriptDelta":
                 guard case .outputTranscriptDelta(let delta, let eventID, let elapsedMs) = actual else {
                     return XCTFail("expected outputTranscriptDelta")
@@ -179,7 +187,9 @@ final class CodecFixtureTests: XCTestCase {
             }
 
             let inbound = Data(SharedFixtures.text(fixture["json"]).utf8)
-            await transport.enqueueInbound(inbound)
+            if kind != "transcriptionFailed" {
+                await transport.enqueueInbound(inbound)
+            }
 
             switch kind {
             case "inputTranscriptDelta":
@@ -208,6 +218,29 @@ final class CodecFixtureTests: XCTestCase {
                 }
                 try await waitUntilSentContains(transport, type: "input_audio_buffer.commit")
                 try await closeTask.value
+
+            case "transcriptionFailed":
+                // Given: commit 待ち中に失敗通知が届く
+                // When: close drain を完了する
+                // Then: failed でも completed と同様に close が成功する
+                let closeTask = Task {
+                    try await connection.closeGracefully()
+                }
+                try await waitUntilSentContains(transport, type: "input_audio_buffer.commit")
+                await transport.enqueueInbound(inbound)
+                try await closeTask.value
+                let event = try await waitForEvent(box)
+                guard case .inputTranscriptFailed(let itemID, let eventID, let code, let errorType) = event.event
+                else {
+                    XCTFail("expected inputTranscriptFailed for \(name)")
+                    collector.cancel()
+                    await connection.forceClose()
+                    continue
+                }
+                XCTAssertEqual(SharedFixtures.optionalText(expected["itemId"]), itemID, name)
+                XCTAssertEqual(SharedFixtures.optionalText(expected["eventId"]), eventID, name)
+                XCTAssertEqual(SharedFixtures.optionalText(expected["code"]), code, name)
+                XCTAssertEqual(SharedFixtures.optionalText(expected["errorType"]), errorType, name)
 
             case "error":
                 let event = try await waitForEvent(box)

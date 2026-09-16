@@ -1855,6 +1855,36 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
     }
 
+    func publishSourceFailure(
+        itemID: String?,
+        eventID: String?,
+        code: String?,
+        errorType: String?,
+        epoch: Int? = nil
+    ) {
+        state.withLock { state in
+            guard let continuation = state.eventContinuation else { return }
+            let yielder = EventDeliveryYielder(
+                continuation: continuation,
+                deliveryState: state.deliveryState,
+                stage: .source,
+                capacity: RealtimeSourceTranscriptionConnection.eventBufferLimit
+            )
+            _ = yielder.deliver(
+                RealtimeTranslationStreamEvent(
+                    lane: .source,
+                    event: .inputTranscriptFailed(
+                        itemID: itemID,
+                        eventID: eventID,
+                        code: code,
+                        errorType: errorType
+                    ),
+                    epoch: epoch ?? state.connectionEpoch
+                )
+            )
+        }
+    }
+
     func recordLoss(
         stage: EventDeliveryStage = .merge,
         capacity: Int = DualRealtimeTranslationClient.unacknowledgedRetentionLimit

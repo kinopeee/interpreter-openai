@@ -196,6 +196,60 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         XCTAssertFalse(delegate.finalizedSnapshots.contains { $0.translatedText == "late" })
     }
 
+    // Given: Listening 中に未確定の字幕ペアを受信した session
+    // When: unknown code の transcription failed を受信する
+    // Then: 未確定字幕だけを無効化し、接続を維持する
+    func testUnknownTranscriptionFailureInvalidatesPendingPair() async {
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+
+        await session.start()
+        await waitForCondition { session.state == .listening }
+        dual.emit(target: .english, event: .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 10))
+        dual.emit(target: .english, event: .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 20))
+        await waitForCondition { delegate.latestSnapshot?.current.sourceText == "こんにちは" }
+        dual.publishSourceFailure(itemID: "item-1", eventID: nil, code: "unknown", errorType: nil)
+        await waitForCondition { delegate.snapshots.last?.isInvalidation == true }
+
+        XCTAssertEqual(session.state, .listening)
+        XCTAssertEqual(dual.startCallCount, 1)
+        XCTAssertFalse(delegate.finalizedSnapshots.contains { $0.sourceText == "こんにちは" })
+        await session.stop()
+    }
+
+    // Given: 同じ item の transcription failed を二度受信した session
+    // When: 両方の通知を処理する
+    // Then: 無効化通知は一度だけ発生する
+    func testDuplicateTranscriptionFailureInvalidatesOnce() async {
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService()
+        )
+        session.delegate = delegate
+
+        await session.start()
+        await waitForCondition { session.state == .listening }
+        dual.emit(target: .english, event: .inputTranscriptDelta(delta: "こんにちは", eventID: nil, elapsedMs: 10))
+        dual.emit(target: .english, event: .outputTranscriptDelta(delta: "Hello", eventID: nil, elapsedMs: 20))
+        await waitForCondition { delegate.latestSnapshot?.current.sourceText == "こんにちは" }
+        dual.publishSourceFailure(itemID: "item-1", eventID: nil, code: "unknown", errorType: nil)
+        await waitForCondition { delegate.snapshots.contains(where: \.isInvalidation) }
+        dual.publishSourceFailure(itemID: "item-1", eventID: "evt-2", code: "unknown", errorType: nil)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(delegate.snapshots.filter(\.isInvalidation).count, 1)
+        await session.stop()
+    }
+
     private func waitForCondition(
         timeout: TimeInterval = 5,
         file: StaticString = #filePath,

@@ -392,6 +392,55 @@ public sealed class InterpretationSessionReceiveOverflowTests
         await connection.ForceCloseAsync();
     }
 
+    [Fact]
+    public async Task UnknownTranscriptionFailureInvalidatesPendingPairWithoutReconnect()
+    {
+        // Given: Listening 中に未確定の翻訳ペアが取り込まれている
+        var client = new FakeOverflowDualClient();
+        using var session = CreateSession(client);
+        var invalidated = NewGate();
+        var pairReady = NewGate();
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+
+            if (update.TranslatedText == "hello" && !update.ShouldFinalize)
+            {
+                pairReady.TrySetResult();
+            }
+
+            if (update.IsInvalidation)
+            {
+                invalidated.TrySetResult();
+            }
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        client.PublishSourceDelta("こんにちは");
+        client.PublishTranslationDelta("hello");
+        await pairReady.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // When: unknown code の transcription failed を受信する
+        client.PublishSourceFailure("item-1", null, "unknown", null);
+
+        // Then: 未確定字幕だけを無効化し、接続を維持する
+        await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, client.StartCount);
+        lock (updates)
+        {
+            Assert.Single(updates, update => update.IsInvalidation);
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize && update.SourceText == "こんにちは");
+        }
+
+        await session.StopAsync();
+    }
+
     private static InterpretationSession CreateSession(FakeOverflowDualClient client) =>
         new(
             new FakeApiKeyStore(),
@@ -622,6 +671,17 @@ public sealed class InterpretationSessionReceiveOverflowTests
                     delta,
                     Guid.NewGuid().ToString(),
                     null),
+                epoch);
+
+        public void PublishSourceFailure(
+            string? itemId,
+            string? eventId,
+            string? code,
+            string? errorType,
+            int? epoch = null) =>
+            Publish(
+                RealtimeTranslationLane.Source,
+                new RealtimeTranslationServerEvent.InputTranscriptFailed(itemId, eventId, code, errorType),
                 epoch);
 
         public void PublishTranslationDelta(string delta, int? epoch = null) =>
