@@ -95,6 +95,11 @@ internal sealed class RealtimeSubtitleProcessor
             return null;
         }
 
+        if (!_assembler.HasUnconfirmedContent)
+        {
+            return null;
+        }
+
         return DiscardUnconfirmed();
     }
 

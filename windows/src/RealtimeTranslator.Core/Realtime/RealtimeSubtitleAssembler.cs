@@ -76,6 +76,9 @@ public sealed class RealtimeSubtitleAssembler
 
     public int CurrentSourceLength => _sourceText.Length;
 
+    public bool HasUnconfirmedContent =>
+        _sourceText.Length > 0 || _translationText.Values.Any(value => value.Length > 0);
+
     public void DiscardUnconfirmed()
     {
         ClearSegmentBuffers(advancingGeneration: true);

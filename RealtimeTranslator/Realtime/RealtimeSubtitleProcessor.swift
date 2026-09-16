@@ -74,6 +74,7 @@ struct RealtimeSubtitleProcessor: Sendable {
         if let key, !handledFailedSourceKeys.insert(key).inserted {
             return nil
         }
+        guard assembler.hasUnconfirmedContent else { return nil }
         return discardUnconfirmed()
     }
 

@@ -58,6 +58,10 @@ struct RealtimeSubtitleAssembler: Sendable {
         sourceText.utf16.count
     }
 
+    var hasUnconfirmedContent: Bool {
+        !sourceText.isEmpty || translationText.values.contains { !$0.isEmpty }
+    }
+
     mutating func setLanguagePair(_ pair: LanguagePair) {
         languagePair = pair
     }
