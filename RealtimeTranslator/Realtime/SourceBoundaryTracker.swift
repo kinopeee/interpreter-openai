@@ -46,7 +46,6 @@ struct SourceBoundaryTracker: Sendable {
         currentLanguage: SpokenLanguage
     ) {
         let oppositeIsJapanese = currentLanguage != .japanese
-        let oppositeIsLatin = currentLanguage == .japanese
         let entries = scalarEntries(in: segmentSource)
 
         for entry in entries where entry.offset >= deltaStart {
