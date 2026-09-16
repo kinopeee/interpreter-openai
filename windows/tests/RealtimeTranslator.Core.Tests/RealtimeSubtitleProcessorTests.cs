@@ -149,6 +149,30 @@ public sealed class RealtimeSubtitleProcessorTests
             result.RoutingAction);
     }
 
+    // Given: 日本語原文「今日は晴れです。」で英語 target が選択済み
+    // When: 音声欠落後、新しい原文なしで日本語 lane、続いて英語 lane の訳文 delta を取り込む
+    // Then: stale な expected lane を使わず first-output で日本語 lane を選び、その後も日本語訳を保持する
+    [Fact]
+    public void AudioLossClearsExpectedLaneBeforeFirstTranslationOutput()
+    {
+        var processor = NewProcessor();
+        processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
+        processor.MarkAudioLoss(Origin);
+
+        var japanese = processor.Process(
+            Translation(RealtimeTranslationOutputLanguage.Japanese, "こんにちは", "t-loss-1", 10),
+            Origin.AddMilliseconds(10));
+        var english = processor.Process(
+            Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t-loss-2", 11),
+            Origin.AddMilliseconds(11));
+
+        Assert.NotNull(japanese);
+        Assert.Equal("こんにちは", japanese.Updates[0].TranslatedText);
+        Assert.True(japanese.Updates[0].IsTranslationCurrent);
+        Assert.NotNull(english);
+        Assert.Equal("こんにちは", english.Updates[0].TranslatedText);
+    }
+
     // Given: epoch 1 を開始した直後
     // When: 旧 epoch の原文 delta を取り込む
     // Then: イベントは無視され state は変わらない

@@ -147,6 +147,28 @@ final class RealtimeSubtitleProcessorTests: XCTestCase {
         XCTAssertFalse(processor.hasSelectedTranslationTarget)
     }
 
+    // Given: 日本語原文「今日は晴れです。」で英語 target が選択済み
+    // When: 音声欠落後、新しい原文なしで日本語 lane、続いて英語 lane の訳文 delta を取り込む
+    // Then: stale な expected lane を使わず first-output で日本語 lane を選び、その後も日本語訳を保持する
+    func testAudioLossClearsExpectedLaneBeforeFirstTranslationOutput() {
+        var processor = makeProcessor()
+        _ = processor.process(source("今日は晴れです。", "s1", 1), now: origin)
+        _ = processor.markAudioLoss(now: origin)
+
+        let japanese = processor.process(
+            translation(.japanese, "こんにちは", "t-loss-1", 10),
+            now: origin.addingTimeInterval(0.010)
+        )
+        let english = processor.process(
+            translation(.english, "Hello", "t-loss-2", 11),
+            now: origin.addingTimeInterval(0.011)
+        )
+
+        XCTAssertEqual(japanese?.updates[0].translatedText, "こんにちは")
+        XCTAssertEqual(japanese?.updates[0].isTranslationCurrent, true)
+        XCTAssertEqual(english?.updates[0].translatedText, "こんにちは")
+    }
+
     // Given: epoch 1 を開始した直後
     // When: 旧 epoch の原文 delta を取り込む
     // Then: イベントは無視され state は変わらない

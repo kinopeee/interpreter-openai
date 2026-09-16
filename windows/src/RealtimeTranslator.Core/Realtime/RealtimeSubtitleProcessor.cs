@@ -96,6 +96,7 @@ internal sealed class RealtimeSubtitleProcessor
         RoutingSourceText = string.Empty;
         _selectedTranslationTarget = null;
         _reverseEvidenceCount = 0;
+        _assembler.ExpectLane(null);
         return new RealtimeSubtitleUpdate(
             string.Empty,
             string.Empty,

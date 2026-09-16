@@ -1764,6 +1764,8 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         var connectionEpoch = 0
         var deliveryState = EventDeliveryState(epoch: 0)
         var appendedFrames: [Data] = []
+        var appendAudioFrameCallCount = 0
+        var appendAudioFrameGate: CheckedContinuationBox?
 
         init() {
             var continuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation!
@@ -1779,7 +1781,6 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     private(set) var selectedTargets: [RealtimeTranslationOutputLanguage] = []
     private(set) var resetAudioRoutingCallCount = 0
     private(set) var updateTranscriptionTuningCallCount = 0
-    private(set) var appendAudioFrameCallCount = 0
     private(set) var lastTuning: RealtimeSessionTuning?
     private(set) var lastLanguagePair: LanguagePair = .jaEn
     var startGate: CheckedContinuationBox?
@@ -1791,10 +1792,21 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     var closeGracefullyShouldFail = false
     var onCloseGracefully: (() -> Void)?
     private(set) var beginStopDrainCaptureCallCount = 0
-    var appendAudioFrameGate: CheckedContinuationBox?
-
     var appendedFrameCount: Int {
         state.withLock { $0.appendedFrames.count }
+    }
+
+    var appendAudioFrameCallCount: Int {
+        state.withLock(\.appendAudioFrameCallCount)
+    }
+
+    var appendAudioFrameGate: CheckedContinuationBox? {
+        get {
+            state.withLock(\.appendAudioFrameGate)
+        }
+        set {
+            state.withLock { $0.appendAudioFrameGate = newValue }
+        }
     }
 
     var connectionEpoch: Int {
@@ -1837,7 +1849,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
                         continuation.resume(throwing: CancellationError())
                         return
                     }
-                    startGate.throwingContinuation = continuation
+                    startGate.installThrowing(continuation)
                 }
             } onCancel: {
                 startGate.resumeThrowing(CancellationError())
@@ -1865,16 +1877,20 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     }
 
     func appendAudioFrame(_ pcm16LE: Data) async throws {
-        appendAudioFrameCallCount += 1
-        if let appendAudioFrameGate {
-            self.appendAudioFrameGate = nil
+        let gate = state.withLock { state in
+            state.appendAudioFrameCallCount += 1
+            let gate = state.appendAudioFrameGate
+            state.appendAudioFrameGate = nil
+            return gate
+        }
+        if let gate {
             try Task.checkCancellation()
             await withTaskCancellationHandler {
                 await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                    appendAudioFrameGate.continuation = continuation
+                    gate.install(continuation)
                 }
             } onCancel: {
-                appendAudioFrameGate.resume()
+                gate.resume()
             }
             try Task.checkCancellation()
         }
@@ -2016,27 +2032,94 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
 }
 
 final class CheckedContinuationBox: @unchecked Sendable {
-    var continuation: CheckedContinuation<Void, Never>?
-    var throwingContinuation: CheckedContinuation<Void, Error>?
+    private struct State {
+        var continuation: CheckedContinuation<Void, Never>?
+        var throwingContinuation: CheckedContinuation<Void, Error>?
+        var pendingResume = false
+        var pendingError: Error?
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: State())
 
     func resume() {
-        if let throwingContinuation {
-            self.throwingContinuation = nil
+        let continuations = state.withLock { state -> (
+            CheckedContinuation<Void, Never>?,
+            CheckedContinuation<Void, Error>?
+        ) in
+            if let throwingContinuation = state.throwingContinuation {
+                state.throwingContinuation = nil
+                return (nil, throwingContinuation)
+            }
+            if let continuation = state.continuation {
+                state.continuation = nil
+                return (continuation, nil)
+            }
+            state.pendingResume = true
+            return (nil, nil)
+        }
+        if let throwingContinuation = continuations.1 {
             throwingContinuation.resume()
             return
         }
-        continuation?.resume()
-        continuation = nil
+        continuations.0?.resume()
     }
 
     func resumeThrowing(_ error: Error) {
-        if let throwingContinuation {
-            self.throwingContinuation = nil
+        let continuations = state.withLock { state -> (
+            CheckedContinuation<Void, Never>?,
+            CheckedContinuation<Void, Error>?
+        ) in
+            if let throwingContinuation = state.throwingContinuation {
+                state.throwingContinuation = nil
+                return (nil, throwingContinuation)
+            }
+            if let continuation = state.continuation {
+                state.continuation = nil
+                return (continuation, nil)
+            }
+            state.pendingResume = true
+            state.pendingError = error
+            return (nil, nil)
+        }
+        if let throwingContinuation = continuations.1 {
             throwingContinuation.resume(throwing: error)
             return
         }
-        continuation?.resume()
-        continuation = nil
+        continuations.0?.resume()
+    }
+
+    func install(_ continuation: CheckedContinuation<Void, Never>) {
+        let shouldResume = state.withLock { state in
+            guard state.pendingResume else {
+                state.continuation = continuation
+                return false
+            }
+            state.pendingResume = false
+            state.pendingError = nil
+            return true
+        }
+        if shouldResume {
+            continuation.resume()
+        }
+    }
+
+    func installThrowing(_ continuation: CheckedContinuation<Void, Error>) {
+        let pending = state.withLock { state -> (Bool, Error?) in
+            guard state.pendingResume else {
+                state.throwingContinuation = continuation
+                return (false, nil)
+            }
+            let error = state.pendingError
+            state.pendingResume = false
+            state.pendingError = nil
+            return (true, error)
+        }
+        guard pending.0 else { return }
+        if let error = pending.1 {
+            continuation.resume(throwing: error)
+        } else {
+            continuation.resume()
+        }
     }
 }
 

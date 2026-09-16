@@ -75,6 +75,7 @@ struct RealtimeSubtitleProcessor: Sendable {
         routingSourceText = ""
         selectedTranslationTarget = nil
         reverseEvidenceCount = 0
+        assembler.expectLane(nil)
         return RealtimeSubtitleUpdate(
             sourceText: "",
             translatedText: "",
