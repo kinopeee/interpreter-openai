@@ -56,6 +56,9 @@ public sealed class InterpretationSession : IDisposable
     private readonly SemaphoreSlim _routingGate = new(1, 1);
     private readonly SessionHealthMonitor _healthMonitor;
     private readonly Dictionary<RealtimeTranslationLane, int> _healthReceiveCounts = new();
+    /// <summary>世代未開始（pre-Listening）の終了診断用に、接続試行の開始時刻と意図 epoch を保持する。</summary>
+    private TimeSpan? _healthAttemptStart;
+    private int _healthAttemptEpoch;
     private bool _healthGenerationEnded = true;
     private int _connectionCountInGeneration;
 
@@ -122,6 +125,9 @@ public sealed class InterpretationSession : IDisposable
 
     /// <summary>テスト・診断用の最新 snapshot（検知には使わない）。</summary>
     public SessionHealthSnapshot? LatestHealthSnapshot { get; private set; }
+
+    /// <summary>テスト・診断用の最新 termination diagnostic（各試行で最大 1 件）。</summary>
+    public SessionTerminationDiagnostic? LatestTerminationDiagnostic { get; private set; }
 
     public TranslationState State
     {
@@ -447,7 +453,13 @@ public sealed class InterpretationSession : IDisposable
     private async Task ConnectAndStreamAsync(int generation, CancellationToken cancellationToken)
     {
         var apiKey = RequireApiKey();
-        _connectionCountInGeneration += 1;
+        lock (_sync)
+        {
+            _connectionCountInGeneration += 1;
+            _healthAttemptStart = HealthNow();
+            _healthAttemptEpoch = _connectionCountInGeneration;
+        }
+
         SetState(TranslationState.Connecting);
 
         LanguagePair languagePair;
@@ -500,7 +512,15 @@ public sealed class InterpretationSession : IDisposable
                 _connectionCountInGeneration > 1,
                 monitorNow);
             _healthGenerationEnded = false;
+            // handshake の受信を初回 tick で「新規受信」と誤認しないよう現数でシードする。
             _healthReceiveCounts.Clear();
+            foreach (var lane in HealthLanes)
+            {
+                _healthReceiveCounts[lane] = feed.DeliveryState.ReceiveCount(lane);
+            }
+
+            // 世代が始まった attempt の診断窓は monitor 側へ移す。
+            _healthAttemptStart = null;
             // 期限の remaining は受信時に一度だけ壁時計で算出し、以後は単調時計で追う。
             var wallNow = _timeProvider.GetUtcNow().ToUnixTimeSeconds();
             foreach (var lane in HealthLanes)
@@ -887,6 +907,17 @@ public sealed class InterpretationSession : IDisposable
 
         IngestAlreadyQueuedEvents();
 
+        lock (_sync)
+        {
+            // recoverable・正常終了を問わず接続 teardown で健康世代を閉じる。
+            if (!_healthGenerationEnded)
+            {
+                _healthGenerationEnded = true;
+                _healthMonitor.EndGeneration(HealthNow());
+                LatestHealthSnapshot = _healthMonitor.Evaluate(HealthNow()).Snapshot;
+            }
+        }
+
         try
         {
             await _audioCapture.StopAsync().ConfigureAwait(false);
@@ -1052,15 +1083,32 @@ public sealed class InterpretationSession : IDisposable
     {
         lock (_sync)
         {
-            if (_healthGenerationEnded)
+            var now = HealthNow();
+            if (!_healthGenerationEnded)
+            {
+                LatestTerminationDiagnostic = _healthMonitor.RecordTermination(kind, now);
+                _healthGenerationEnded = true;
+                _healthMonitor.EndGeneration(now);
+                LatestHealthSnapshot = _healthMonitor.Evaluate(now).Snapshot;
+            }
+            else if (_healthAttemptStart is { } attemptStart)
+            {
+                // 世代未開始（pre-Listening / handshake 失敗）の終了は attempt の
+                // 開始時刻・意図 epoch で記録する。monitor の stall 状態には触れない。
+                var duration = now - attemptStart;
+                LatestTerminationDiagnostic = new SessionTerminationDiagnostic(
+                    kind,
+                    duration < TimeSpan.Zero ? TimeSpan.Zero : duration,
+                    _lifecycleGeneration,
+                    _healthAttemptEpoch);
+            }
+            else
             {
                 return;
             }
 
-            _ = _healthMonitor.RecordTermination(kind, HealthNow());
-            _healthGenerationEnded = true;
-            _healthMonitor.EndGeneration(HealthNow());
-            LatestHealthSnapshot = _healthMonitor.Evaluate(HealthNow()).Snapshot;
+            // 1 試行につき 1 件だけ。
+            _healthAttemptStart = null;
         }
     }
 

@@ -253,4 +253,81 @@ final class SessionHealthIntegrationTests: XCTestCase {
         }
         await session.stop()
     }
+
+    // Given: handshake で source lane の受信数が記録済みの接続
+    // When: Listening 直後に活動 frame が届き、その後受信が止まる
+    // Then: handshake 受信を新規受信と誤認せず receiveStalled が発火する（sourceStalled ではない）
+    func testHandshakeReceivesDoNotMaskReceiveStall() async {
+        let clock = FakeHealthClock()
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        dual.handshakeReceiveCount = 2
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = makeSession(clock: clock, audio: audio, dual: dual)
+        session.delegate = delegate
+
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        await emitActiveFrame(audio: audio, dual: dual)
+        // 最初の tick が走るのを待ってから次の活動を送る。
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        clock.now = .milliseconds(15_000)
+        await emitActiveFrame(audio: audio, dual: dual)
+        clock.now = .milliseconds(30_100)
+
+        await waitUntil {
+            delegate.healthDetections.contains { $0.kind == .receiveStalled }
+        }
+        XCTAssertFalse(delegate.healthDetections.contains { $0.kind == .sourceStalled })
+        await session.stop()
+    }
+
+    // Given: 初回 handshake が認証失敗で落ちる接続
+    // When: start が error へ終わる
+    // Then: 世代未開始でも attempt 情報の終了診断が epoch=1・非負の duration で記録される
+    func testInitialHandshakeFailureEmitsAttemptTermination() async {
+        let clock = FakeHealthClock()
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        dual.startError = RealtimeTranslationError.authenticationFailed
+        let session = makeSession(clock: clock, audio: audio, dual: dual)
+
+        await session.start()
+        await waitUntil { session.state == .error }
+
+        let diagnostic = session.latestHealthTermination
+        XCTAssertEqual(diagnostic?.epoch, 1)
+        XCTAssertEqual(diagnostic?.kind, .authenticationFailed)
+        XCTAssertGreaterThanOrEqual(diagnostic?.connectionDuration ?? .zero, .zero)
+        await session.stop()
+    }
+
+    // Given: Listening 中の接続（epoch 1）が recoverable 切断され、再接続 handshake が致命的に失敗する
+    // When: 2 回目の試行が error へ終わる
+    // Then: 終了診断は epoch=2 で、試行開始からの非負の duration を持つ
+    func testReconnectHandshakeFailureEmitsAttemptTermination() async {
+        let clock = FakeHealthClock()
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let session = makeSession(clock: clock, audio: audio, dual: dual)
+
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        dual.startError = RealtimeTranslationError.fatalServerError(
+            RealtimeTranslationError.SanitizedMessage("upstream boom")
+        )
+        dual.emit(
+            target: .english,
+            event: .error(message: "transport glitch", code: "server_error", errorType: nil)
+        )
+        await waitUntil { session.state == .error }
+
+        let diagnostic = session.latestHealthTermination
+        XCTAssertEqual(diagnostic?.epoch, 2)
+        XCTAssertEqual(diagnostic?.kind, .fatalServerError)
+        XCTAssertGreaterThanOrEqual(diagnostic?.connectionDuration ?? .zero, .zero)
+        await session.stop()
+    }
 }

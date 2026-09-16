@@ -68,10 +68,15 @@ final class InterpretationSession {
     private var healthMonitor = SessionHealthMonitor()
     private var healthReceiveCounts: [RealtimeTranslationLane: Int] = [:]
     private var healthGenerationEnded = true
+    /// 世代未開始（pre-Listening）の終了診断用に、接続試行の開始時刻と意図 epoch を保持する。
+    private var healthAttemptStart: Duration?
+    private var healthAttemptEpoch = 0
     private var lastHealthSnapshotLogAt: Duration?
     private var connectionCountInGeneration = 0
     /// テスト・診断用の最新 snapshot（検知には使わない）。
     private(set) var latestHealthSnapshot: SessionHealthSnapshot?
+    /// テスト・診断用の最新 termination diagnostic（各試行で最大 1 件）。
+    private(set) var latestHealthTermination: SessionTerminationDiagnostic?
 
     init(
         apiKeyStore: any APIKeyStore,
@@ -286,6 +291,8 @@ final class InterpretationSession {
 
     private func connectAndStream(generation: Int) async throws {
         connectionCountInGeneration += 1
+        healthAttemptStart = healthNow()
+        healthAttemptEpoch = connectionCountInGeneration
         let apiKey = try requireAPIKey()
         state = .connecting
         aggregator.setStatusBanner(UiCopy.text("banner.connecting"))
@@ -329,7 +336,12 @@ final class InterpretationSession {
             now: monitorNow
         )
         healthGenerationEnded = false
-        healthReceiveCounts = [:]
+        // handshake の受信を初回 tick で「新規受信」と誤認しないよう現数でシードする。
+        for lane in Self.healthLanes {
+            healthReceiveCounts[lane] = feed.deliveryState.receiveCount(lane)
+        }
+        // 世代が始まった attempt の診断窓は monitor 側へ移す。
+        healthAttemptStart = nil
         // 期限の remaining は受信時に一度だけ壁時計で算出し、以後は単調時計で追う。
         let wallNow = wallClockNow()
         for lane in Self.healthLanes {
@@ -628,6 +640,8 @@ final class InterpretationSession {
     }
 
     private func tearDownStreaming(keepSubtitles: Bool = false) async {
+        // recoverable・正常終了を問わず接続 teardown で健康世代を閉じる。
+        endHealthGeneration()
         await audioCapture.stop()
         await dualClient.forceClose()
         activeFeed = nil
@@ -801,14 +815,31 @@ final class InterpretationSession {
     }
 
     private func recordHealthTermination(kind: SessionTerminationKind) {
-        guard !healthGenerationEnded else { return }
-        let diagnostic = healthMonitor.recordTermination(kind: kind, now: healthNow())
+        let now = healthNow()
+        let diagnostic: SessionTerminationDiagnostic
+        if !healthGenerationEnded {
+            diagnostic = healthMonitor.recordTermination(kind: kind, now: now)
+            endHealthGeneration()
+        } else if let attemptStart = healthAttemptStart {
+            // 世代未開始（pre-Listening / handshake 失敗）の終了は attempt の
+            // 開始時刻・意図 epoch で記録する。monitor の stall 状態には触れない。
+            diagnostic = SessionTerminationDiagnostic(
+                kind: kind,
+                connectionDuration: max(.zero, now - attemptStart),
+                generation: lifecycleGeneration,
+                epoch: healthAttemptEpoch
+            )
+        } else {
+            return
+        }
+        // 1 試行につき 1 件だけ。
+        healthAttemptStart = nil
+        latestHealthTermination = diagnostic
         #if DEBUG
         AppLogger.session.notice(
             "DBG_HEALTH_TERMINATION \(diagnostic.description, privacy: .public)"
         )
         #endif
-        endHealthGeneration()
     }
 
     private func endHealthGeneration() {

@@ -3428,6 +3428,91 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: handshake で source lane の受信数が記録済みの接続
+    // When: Listening 直後に活動 frame が届き、その後受信が止まる
+    // Then: handshake 受信を新規受信と誤認せず receiveStalled が発火する（sourceStalled ではない）
+    [Fact]
+    public async Task HandshakeReceivesDoNotMaskReceiveStall()
+    {
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture();
+        var client = new FakeDualClient { HandshakeReceiveCount = 2 };
+        using var session = NewSession(client, audio: audio, timeProvider: clock);
+        var detections = new List<SessionHealthDetection>();
+        session.HealthDetected += (_, detection) => detections.Add(detection);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var activeFrame = new byte[4800];
+        activeFrame[0] = 0xFF;
+        activeFrame[1] = 0x7F;
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+
+        clock.Advance(TimeSpan.FromMilliseconds(15_000));
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+        clock.Advance(TimeSpan.FromMilliseconds(15_100));
+
+        await WaitUntilAsync(
+            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
+        Assert.DoesNotContain(detections, d => d.Kind == SessionHealthDetectionKind.SourceStalled);
+        await session.StopAsync();
+    }
+
+    // Given: 初回 handshake が認証失敗で落ちる接続
+    // When: StartAsync が Error へ終わる
+    // Then: 世代未開始でも attempt 情報の終了診断が epoch=1・非負の duration で記録される
+    [Fact]
+    public async Task InitialHandshakeFailureEmitsAttemptTermination()
+    {
+        var clock = new MonotonicClock();
+        var client = new FakeDualClient
+        {
+            StartException = new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.AuthenticationFailed),
+        };
+        using var session = NewSession(client, timeProvider: clock);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(1, diagnostic.Epoch);
+        Assert.Equal(SessionTerminationKind.AuthenticationFailed, diagnostic.Kind);
+        Assert.True(diagnostic.ConnectionDuration >= TimeSpan.Zero);
+        await session.StopAsync();
+    }
+
+    // Given: Listening 中の接続（epoch 1）が recoverable 切断され、再接続 handshake が致命的に失敗する
+    // When: 2 回目の試行が Error へ終わる
+    // Then: 終了診断は epoch=2 で、試行開始からの非負の duration を持つ
+    [Fact]
+    public async Task ReconnectHandshakeFailureEmitsAttemptTermination()
+    {
+        var clock = new MonotonicClock();
+        var client = new FakeDualClient();
+        using var session = NewSession(client, timeProvider: clock);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.StartException = new RealtimeTranslationException(
+            RealtimeTranslationErrorKind.FatalServerError,
+            "upstream boom");
+        client.PublishServerError("transport glitch", "server_error");
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(2, diagnostic.Epoch);
+        Assert.Equal(SessionTerminationKind.FatalServerError, diagnostic.Kind);
+        Assert.True(diagnostic.ConnectionDuration >= TimeSpan.Zero);
+        await session.StopAsync();
+    }
+
     // Given: 受信が一度もないセッション
     // When: 接続直後の tick 群を回す
     // Then: count=0 を受信と誤認せず SinceReceive は null のまま
@@ -3658,6 +3743,12 @@ public sealed class InterpretationSessionTests
         /// <summary>StartAsync を指定回数だけ失敗させる（再接続上限テスト用）。</summary>
         public int RemainingStartFailures { get; set; }
 
+        /// <summary>StartAsync から 1 回だけ投げる非 recoverable 例外（handshake 失敗テスト用）。</summary>
+        public RealtimeTranslationException? StartException { get; set; }
+
+        /// <summary>handshake 相当として StartAsync 完了時に source lane へ記録する受信数。</summary>
+        public int HandshakeReceiveCount { get; set; }
+
         /// <summary>CloseGracefully 時に close drain イベントを流すテスト用フック。</summary>
         public Func<Task>? OnCloseGracefully { get; set; }
 
@@ -3717,6 +3808,12 @@ public sealed class InterpretationSessionTests
                     throw new InvalidOperationException("repeated device failure");
                 }
 
+                if (StartException is { } startException)
+                {
+                    StartException = null;
+                    throw startException;
+                }
+
                 gateTask = StartGate?.Task;
             }
 
@@ -3729,6 +3826,10 @@ public sealed class InterpretationSessionTests
             {
                 _epoch += 1;
                 DeliveryState = new EventDeliveryState(_epoch);
+                for (var i = 0; i < HandshakeReceiveCount; i++)
+                {
+                    DeliveryState.RecordReceive(RealtimeTranslationLane.Source);
+                }
                 _spokenLanguages.Clear();
                 _selectedTargets.Clear();
                 ResetAudioRoutingCount = 0;

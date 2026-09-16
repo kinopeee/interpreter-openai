@@ -1756,6 +1756,8 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     var startGate: CheckedContinuationBox?
     var startFailuresRemaining = 0
     var startError: Error?
+    /// handshake 相当として start 完了時に source lane へ記録する受信数。
+    var handshakeReceiveCount = 0
     /// CloseGracefully 時に返す close drain イベント（停止時取り込みの回帰用）。
     var closeGracefullyEvents: [RealtimeTranslationStreamEvent] = []
     /// CloseGracefully 中に失敗したことにして forceClose へ回す（drain 自体は返す）。
@@ -1823,6 +1825,9 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         state.withLock { state in
             state.connectionEpoch += 1
             state.deliveryState = EventDeliveryState(epoch: state.connectionEpoch)
+            for _ in 0..<handshakeReceiveCount {
+                state.deliveryState.recordReceive(lane: .source)
+            }
             state.eventContinuation?.finish()
             var continuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation!
             state.eventStream = AsyncStream { continuation = $0 }
