@@ -627,7 +627,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
     {
         // Given: 短い idle tick 間隔で完全ペアを表示する
         var client = new FakeOverflowDualClient();
-        using var session = CreateSession(client, TimeSpan.FromMilliseconds(15));
+        var clock = new MonotonicClock();
+        using var session = CreateSession(client, TimeSpan.FromMilliseconds(15), clock);
         var updates = new List<RealtimeSubtitleUpdate>();
         session.SubtitleUpdated += (_, update) =>
         {
@@ -647,15 +648,31 @@ public sealed class InterpretationSessionReceiveOverflowTests
             lock (updates)
             {
                 return updates.Any(update =>
+                    update.SourceText == "確定済み字幕"
+                    && update.TranslatedText == "Finalized subtitle");
+            }
+        });
+        clock.Advance(RealtimeSubtitleAssembler.IdleFinalizeInterval + TimeSpan.FromMilliseconds(50));
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update =>
                     update.ShouldFinalize
                     && update.SourceText == "確定済み字幕"
                     && update.TranslatedText == "Finalized subtitle");
             }
         });
-        var finalizedCount = updates.Count(update =>
-            update.ShouldFinalize
-            && update.SourceText == "確定済み字幕"
-            && update.TranslatedText == "Finalized subtitle");
+        int finalizedCount;
+        lock (updates)
+        {
+            finalizedCount = updates.Count(update =>
+                update.ShouldFinalize
+                && update.SourceText == "確定済み字幕"
+                && update.TranslatedText == "Finalized subtitle");
+        }
+
+        Assert.True(finalizedCount > 0);
 
         // When: 確定済み字幕に紐づく failed を投入する
         client.PublishSourceFailure("finalized-item", null, "audio_unintelligible", null);
@@ -861,11 +878,13 @@ public sealed class InterpretationSessionReceiveOverflowTests
 
     private static InterpretationSession CreateSession(
         FakeOverflowDualClient client,
-        TimeSpan? tickInterval = null) =>
+        TimeSpan? tickInterval = null,
+        TimeProvider? timeProvider = null) =>
         new(
             new FakeApiKeyStore(),
             new FakeAudioCapture(),
             client,
+            timeProvider: timeProvider,
             initialReconnectDelay: TimeSpan.FromMilliseconds(1),
             tickInterval: tickInterval ?? TimeSpan.FromHours(1));
 
