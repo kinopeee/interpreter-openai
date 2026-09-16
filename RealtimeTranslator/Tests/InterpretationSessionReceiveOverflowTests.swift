@@ -353,6 +353,51 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         await session.stop()
     }
 
+    // Given: Listening 中に未確定の字幕ペアを表示している session
+    // When: halt 分類の transcription failed を受信する
+    // Then: 無効化して Error になり、flush で未確定ペアを確定しない
+    func testHaltTranscriptionFailureDoesNotFinalizePendingPair() async {
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+
+        await session.start()
+        await waitForCondition { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "失敗する字幕", eventID: "source-halt", elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Halt subtitle", eventID: "target-halt", elapsedMs: 20)
+        )
+        await waitForCondition {
+            delegate.latestSnapshot?.current.sourceText == "失敗する字幕"
+                && delegate.latestSnapshot?.current.translatedText == "Halt subtitle"
+        }
+
+        dual.publishSourceFailure(
+            itemID: "halt-item",
+            eventID: nil,
+            code: "insufficient_quota",
+            errorType: "server_error"
+        )
+        await waitForCondition { session.state == .error }
+
+        XCTAssertEqual(dual.startCallCount, 1)
+        XCTAssertTrue(delegate.snapshots.contains(where: \.isInvalidation))
+        XCTAssertFalse(delegate.finalizedSnapshots.contains {
+            $0.sourceText == "失敗する字幕" || $0.translatedText == "Halt subtitle"
+        })
+        await session.stop()
+    }
+
     // Given: reconnect 前の flush で確定済み字幕ペアを保持している session
     // When: transcription failed を受信する
     // Then: 確定済み字幕と delegate 通知数を保持する
@@ -451,6 +496,57 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         XCTAssertEqual(session.state, .idle)
         XCTAssertFalse(delegate.finalizedSnapshots.contains {
             $0.sourceText == "停止中の字幕" || $0.translatedText == "Stopping subtitle"
+        })
+    }
+
+    // Given: 停止前に未確定の字幕ペアを表示している session
+    // When: stop drain 中に古い epoch の transcription failed を受信する
+    // Then: 現在の未確定ペアを無効化せず、停止時に確定できる
+    func testStopDrainStaleEpochTranscriptionFailureDoesNotInvalidateCurrentPair() async {
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+
+        await session.start()
+        await waitForCondition { session.state == .listening }
+        let epoch = await dual.connectionEpoch
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "停止中の字幕", eventID: "source-stale-stop", elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Stopping subtitle", eventID: "target-stale-stop", elapsedMs: 20)
+        )
+        await waitForCondition {
+            delegate.latestSnapshot?.current.sourceText == "停止中の字幕"
+                && delegate.latestSnapshot?.current.translatedText == "Stopping subtitle"
+        }
+        dual.closeGracefullyEvents = [
+            RealtimeTranslationStreamEvent(
+                lane: .source,
+                event: .inputTranscriptFailed(
+                    itemID: "stale-stop-item",
+                    eventID: "stale-stop-event",
+                    code: "audio_unintelligible",
+                    errorType: nil
+                ),
+                epoch: epoch - 1
+            )
+        ]
+
+        await session.stop()
+
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertFalse(delegate.snapshots.contains(where: \.isInvalidation))
+        XCTAssertTrue(delegate.finalizedSnapshots.contains {
+            $0.sourceText == "停止中の字幕" && $0.translatedText == "Stopping subtitle"
         })
     }
 

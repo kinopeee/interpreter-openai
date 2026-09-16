@@ -116,6 +116,8 @@ actor RealtimeSourceTranscriptionConnection {
             return
         }
         isReady = false
+        // 録音中の failed / completed を、この commit の結果として使わない。
+        didReceiveCommitOutcome = false
         try await sendJSON(["type": "input_audio_buffer.commit"])
 
         let deadline = ContinuousClock.now + .nanoseconds(Int64(closeTimeoutNanoseconds))
@@ -178,9 +180,13 @@ actor RealtimeSourceTranscriptionConnection {
                             )
                         ) == true else { return }
                     case "conversation.item.input_audio_transcription.completed":
-                        didReceiveCommitOutcome = true
+                        if !isReady {
+                            didReceiveCommitOutcome = true
+                        }
                     case "conversation.item.input_audio_transcription.failed":
-                        didReceiveCommitOutcome = true
+                        if !isReady {
+                            didReceiveCommitOutcome = true
+                        }
                         let error = object["error"] as? [String: Any]
                         guard deliveryYielder?.deliver(
                             RealtimeTranslationStreamEvent(

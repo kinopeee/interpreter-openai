@@ -905,6 +905,12 @@ public sealed class InterpretationSession : IDisposable
 
             if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptFailed failed)
             {
+                var expectedEpoch = feed?.Epoch ?? _dualClient.Feed.Epoch;
+                if (streamEvent.Epoch != expectedEpoch)
+                {
+                    continue;
+                }
+
                 RealtimeSubtitleUpdate? invalidation;
                 lock (_sync)
                 {

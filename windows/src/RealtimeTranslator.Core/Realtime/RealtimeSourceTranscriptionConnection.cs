@@ -168,6 +168,8 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
             {
                 wasReady = _isReady;
                 _isReady = false;
+                // 録音中の failed / completed を、この commit の結果として使わない。
+                _didReceiveCommitOutcome = false;
             }
 
             if (!wasReady)
@@ -306,7 +308,10 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 case RealtimeSourceTranscriptionServerEvent.TranscriptionCompleted:
                     lock (_lifecycle.Sync)
                     {
-                        _didReceiveCommitOutcome = true;
+                        if (!_isReady)
+                        {
+                            _didReceiveCommitOutcome = true;
+                        }
                     }
 
                     break;
@@ -314,7 +319,10 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 case RealtimeSourceTranscriptionServerEvent.TranscriptionFailed failed:
                     lock (_lifecycle.Sync)
                     {
-                        _didReceiveCommitOutcome = true;
+                        if (!_isReady)
+                        {
+                            _didReceiveCommitOutcome = true;
+                        }
                     }
 
                     if (failed.Classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)

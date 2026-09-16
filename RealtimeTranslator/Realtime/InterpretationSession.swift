@@ -422,7 +422,9 @@ final class InterpretationSession {
                     code: code
                 )
                 if let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID) {
-                    enqueueRender(invalidation)
+                    // halt/recover の flushPendingFinalizeIfNeeded が discardPending するため、
+                    // 間引きせず即時適用し、aggregator の未確定ペアを先に消す。
+                    displayScheduler.renderNow(invalidation)
                     await resetAudioRoutingForNextSegment()
                 }
                 if classification.disposition == .keepAlive {
@@ -532,6 +534,7 @@ final class InterpretationSession {
                 continue
             }
             if case .inputTranscriptFailed(let itemID, let eventID, _, _) = streamEvent.event {
+                guard streamEvent.epoch == feed.runToken else { continue }
                 if let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID) {
                     displayScheduler.renderNow(invalidation)
                 }
@@ -612,6 +615,10 @@ final class InterpretationSession {
 
     private func enqueueRender(_ update: RealtimeSubtitleUpdate) {
         if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
+            return
+        }
+        if update.isInvalidation {
+            displayScheduler.renderNow(update)
             return
         }
         displayScheduler.enqueue(update)

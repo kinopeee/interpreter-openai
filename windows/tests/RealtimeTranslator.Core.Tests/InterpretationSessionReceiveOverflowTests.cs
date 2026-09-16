@@ -564,6 +564,61 @@ public sealed class InterpretationSessionReceiveOverflowTests
         await session.StopAsync();
     }
 
+    // Given: Listening 中に未確定の字幕ペアを表示している
+    // When: halt 分類の transcription failed を受信する
+    // Then: 無効化して Error になり、未確定ペアを確定しない
+    [Fact]
+    public async Task HaltTranscriptionFailureDoesNotFinalizePendingPair()
+    {
+        var client = new FakeOverflowDualClient();
+        using var session = CreateSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        var invalidated = NewGate();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+
+            if (update.IsInvalidation)
+            {
+                invalidated.TrySetResult();
+            }
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        client.PublishSourceDelta("失敗する字幕");
+        client.PublishTranslationDelta("Halt subtitle");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update =>
+                    update.SourceText == "失敗する字幕"
+                    && update.TranslatedText == "Halt subtitle");
+            }
+        });
+
+        client.PublishSourceFailure("halt-item", null, "insufficient_quota", "server_error");
+
+        await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Error);
+        Assert.Equal(1, client.StartCount);
+        lock (updates)
+        {
+            Assert.DoesNotContain(
+                updates,
+                update => update.ShouldFinalize
+                    && (update.SourceText == "失敗する字幕"
+                        || update.TranslatedText == "Halt subtitle"));
+        }
+
+        await session.StopAsync();
+    }
+
     // Given: idle finalize で確定済みの字幕ペアを保持している
     // When: transcription failed を受信する
     // Then: 確定済み字幕と通知数を保持する
@@ -676,6 +731,63 @@ public sealed class InterpretationSessionReceiveOverflowTests
                 update => update.ShouldFinalize
                     && (update.SourceText == "停止中の字幕"
                         || update.TranslatedText == "Stopping subtitle"));
+        }
+    }
+
+    // Given: 停止前に未確定の字幕ペアを表示している
+    // When: stop drain 中に古い epoch の transcription failed を受信する
+    // Then: 現在の未確定ペアを無効化せず、停止時に確定する
+    [Fact]
+    public async Task StopDrainStaleEpochTranscriptionFailureDoesNotInvalidateCurrentPair()
+    {
+        var client = new FakeOverflowDualClient();
+        using var session = CreateSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        client.PublishSourceDelta("停止中の字幕");
+        client.PublishTranslationDelta("Stopping subtitle");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update =>
+                    update.SourceText == "停止中の字幕"
+                    && update.TranslatedText == "Stopping subtitle");
+            }
+        });
+        client.CloseGracefullyEvents =
+        [
+            new RealtimeTranslationStreamEvent(
+                RealtimeTranslationLane.Source,
+                new RealtimeTranslationServerEvent.InputTranscriptFailed(
+                    "stale-stop-item",
+                    "stale-stop-event",
+                    "audio_unintelligible",
+                    null),
+                client.ConnectionEpoch - 1)
+        ];
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.IsInvalidation);
+            Assert.Contains(
+                updates,
+                update => update.ShouldFinalize
+                    && update.SourceText == "停止中の字幕"
+                    && update.TranslatedText == "Stopping subtitle");
         }
     }
 
