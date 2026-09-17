@@ -51,19 +51,11 @@ public sealed class InterpretationSession : IDisposable
     private readonly ReconnectBudget _reconnectBudget;
     private readonly TimeSpan _tickInterval;
     private readonly Func<LanguagePair> _languagePairProvider;
-    private readonly RealtimeSubtitleProcessor _processor = new();
-    private readonly AudioLossTracker _audioLossTracker = new();
     private readonly long _startTimestamp;
     private readonly object _sync = new();
-    private readonly SemaphoreSlim _routingGate = new(1, 1);
-    private readonly SessionHealthMonitor _healthMonitor;
-    private readonly Dictionary<RealtimeTranslationLane, int> _healthReceiveCounts = new();
-    /// <summary>世代未開始（pre-Listening）の終了診断用に、接続試行の開始時刻と意図 epoch を保持する。</summary>
-    private TimeSpan? _healthAttemptStart;
-    private int _healthAttemptEpoch;
-    private int _healthAttemptGeneration;
-    private bool _healthGenerationEnded = true;
-    private int _connectionCountInGeneration;
+    private readonly SessionHealthBookkeeper _healthBookkeeper;
+    private readonly SessionSubtitlePipeline _subtitlePipeline;
+    private readonly AudioRoutingCoordinator _audioRouting;
 
     private CancellationTokenSource? _sessionCts;
     private Task? _sessionTask;
@@ -74,8 +66,6 @@ public sealed class InterpretationSession : IDisposable
     /// <summary>現在の録音世代で使う言語ペア。Start 時に固定し、再接続でも settings の変更を取り込まない。</summary>
     private LanguagePair? _sessionLanguagePair;
     private RealtimeEventFeed? _activeFeed;
-    private int? _handledLossEpoch;
-    private long _subtitleSequence;
 
     /// <summary>テスト用。generation 確認後・assembler 更新前に差し込む。</summary>
     internal Action? BeforeAssemblerIngestForTests { get; set; }
@@ -120,7 +110,22 @@ public sealed class InterpretationSession : IDisposable
         _reconnectBudget = new ReconnectBudget(policy, _timeProvider, reconnectJitter);
         _tickInterval = tickInterval ?? DefaultTickInterval;
         _languagePairProvider = languagePairProvider ?? (() => LanguagePair.JaEn);
-        _healthMonitor = new SessionHealthMonitor(healthThresholds);
+        _healthBookkeeper = new SessionHealthBookkeeper(
+            healthThresholds,
+            () => _timeProvider.GetElapsedTime(0L),
+            () => _timeProvider.GetUtcNow().ToUnixTimeSeconds());
+        _subtitlePipeline = new SessionSubtitlePipeline(
+            _sync,
+            _timeProvider,
+            GetActiveFeed,
+            () => _dualClient.Feed,
+            update => SubtitleUpdated?.Invoke(this, update),
+            () => AfterFailedSourceFallbackForTests);
+        _audioRouting = new AudioRoutingCoordinator(
+            _sync,
+            _dualClient,
+            _subtitlePipeline,
+            _healthBookkeeper);
         _startTimestamp = _timeProvider.GetTimestamp();
     }
 
@@ -135,10 +140,10 @@ public sealed class InterpretationSession : IDisposable
     public event EventHandler<SessionHealthDetection>? HealthDetected;
 
     /// <summary>テスト・診断用の最新 snapshot（検知には使わない）。</summary>
-    public SessionHealthSnapshot? LatestHealthSnapshot { get; private set; }
+    public SessionHealthSnapshot? LatestHealthSnapshot => _healthBookkeeper.LatestSnapshot;
 
     /// <summary>テスト・診断用の最新 termination diagnostic（各試行で最大 1 件）。</summary>
-    public SessionTerminationDiagnostic? LatestTerminationDiagnostic { get; private set; }
+    public SessionTerminationDiagnostic? LatestTerminationDiagnostic => _healthBookkeeper.LatestTermination;
 
     public TranslationState State
     {
@@ -157,7 +162,7 @@ public sealed class InterpretationSession : IDisposable
         {
             lock (_sync)
             {
-                return _audioLossTracker.Metrics;
+                return _subtitlePipeline.AudioLossMetrics;
             }
         }
     }
@@ -209,9 +214,9 @@ public sealed class InterpretationSession : IDisposable
             previousCts?.Dispose();
             _lifecycleGeneration += 1;
             generation = _lifecycleGeneration;
-            _connectionCountInGeneration = 0;
+            _healthBookkeeper.BeginRecordingGeneration();
             _reconnectBudget.Reset();
-            _audioLossTracker.Reset();
+            _subtitlePipeline.ResetAudioLoss();
             // 録音開始時点のペアを世代全体で固定する。録音中の設定変更は再接続でも反映しない
             // （VALIDATION: 停止→次の録音開始後にだけ新しいペアが反映される）。
             _sessionLanguagePair = _languagePairProvider();
@@ -311,15 +316,15 @@ public sealed class InterpretationSession : IDisposable
             }
 
             // commit / session.close 中に届いた最終 delta を assembler へ取り込む。
-            await IngestStopDrainEventsAsync().ConfigureAwait(false);
+            await _subtitlePipeline.IngestStopDrainEventsAsync().ConfigureAwait(false);
 
             // 停止時点で完全ペアが残っていれば確定して見せる（オプトイン字幕記録も含む）。
-            FlushPendingFinalizeIfNeeded();
+            _subtitlePipeline.FlushPendingFinalizeIfNeeded();
 
             lock (_sync)
             {
                 _sessionLanguagePair = null;
-                _processor.DeactivateLanguagePair();
+                _subtitlePipeline.DeactivateLanguagePair();
             }
 
             SetState(TranslationState.Idle);
@@ -346,7 +351,7 @@ public sealed class InterpretationSession : IDisposable
             LanguagePair? activePair;
             lock (_sync)
             {
-                activePair = _processor.ActiveLanguagePair;
+                activePair = _subtitlePipeline.ActiveLanguagePair;
             }
 
             await _dualClient.UpdateTranscriptionTuningAsync(
@@ -387,7 +392,7 @@ public sealed class InterpretationSession : IDisposable
 
         try
         {
-            FlushPendingFinalizeIfNeeded();
+            _subtitlePipeline.FlushPendingFinalizeIfNeeded();
         }
 #pragma warning disable CA1031 // Dispose 経路では例外を外へ出さない。
         catch (Exception)
@@ -396,9 +401,7 @@ public sealed class InterpretationSession : IDisposable
             // flush 失敗でも破棄完了は継続する。
         }
 
-        // `_routingGate` は同期 Dispose では破棄しない。
-        // in-flight の Update/ResetAudioRouting が Wait/Release 中に ObjectDisposedException へ落ちないようにする。
-        // StopAsync 後は参照が切れ、SemaphoreSlim は GC で回収される (AvailableWaitHandle 未使用)。
+        _audioRouting.Dispose();
     }
 
     private async Task RunSessionLoopAsync(int generation, CancellationToken cancellationToken)
@@ -426,7 +429,7 @@ public sealed class InterpretationSession : IDisposable
                 RecordHealthTermination(SessionTerminationKindMapping.FromException(error));
                 await TearDownStreamingAsync().ConfigureAwait(false);
                 // epoch を捨てる前に完全ペアを確定し、オプトイン字幕記録へ渡す。
-                FlushPendingFinalizeIfNeeded();
+                _subtitlePipeline.FlushPendingFinalizeIfNeeded();
                 EnterError(error.Message);
                 return;
             }
@@ -457,7 +460,7 @@ public sealed class InterpretationSession : IDisposable
                         ? SessionTerminationKind.ReconnectBudgetExhausted
                         : SessionTerminationKind.ReconnectAttemptLimit);
                 await TearDownStreamingAsync().ConfigureAwait(false);
-                FlushPendingFinalizeIfNeeded();
+                _subtitlePipeline.FlushPendingFinalizeIfNeeded();
                 EnterError(UserCopy.Current.Text(
                     decision.Kind == ReconnectDecisionKind.BudgetExhausted
                         ? "error.reconnectBudgetExhausted"
@@ -492,10 +495,7 @@ public sealed class InterpretationSession : IDisposable
         lock (_sync)
         {
             // RequireApiKey 失敗（missing key）も試行の終了診断へ乗せるため先に記録する。
-            _connectionCountInGeneration += 1;
-            _healthAttemptStart = HealthNow();
-            _healthAttemptEpoch = entryAttemptEpoch;
-            _healthAttemptGeneration = _lifecycleGeneration;
+            _healthBookkeeper.BeginAttempt(_lifecycleGeneration, entryAttemptEpoch);
         }
 
         var apiKey = RequireApiKey();
@@ -522,14 +522,14 @@ public sealed class InterpretationSession : IDisposable
             var reservedEpoch = _dualClient.ReservedEpoch;
             lock (_sync)
             {
-                _healthAttemptEpoch = reservedEpoch;
+                _healthBookkeeper.UpdateAttemptEpoch(reservedEpoch);
             }
             throw;
         }
         var reservedAfterStart = _dualClient.ReservedEpoch;
         lock (_sync)
         {
-            _healthAttemptEpoch = reservedAfterStart;
+            _healthBookkeeper.UpdateAttemptEpoch(reservedAfterStart);
         }
         if (!IsCurrentGeneration(generation))
         {
@@ -541,13 +541,12 @@ public sealed class InterpretationSession : IDisposable
         var epoch = feed.Epoch;
         // 再接続時 BeginNewEpoch は buffer を捨てる。idle finalize 前の完全ペアを
         // 先に確定しないと、オプトイン字幕記録へ ShouldFinalize が届かない。
-        FlushPendingFinalizeIfNeeded();
+        _subtitlePipeline.FlushPendingFinalizeIfNeeded();
         lock (_sync)
         {
-            _healthAttemptEpoch = epoch;
-            _processor.BeginEpoch(epoch, languagePair);
+            _healthBookkeeper.UpdateAttemptEpoch(epoch);
+            _subtitlePipeline.BeginEpoch(epoch, languagePair);
             _activeFeed = feed;
-            _handledLossEpoch = null;
         }
 
         await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
@@ -573,36 +572,7 @@ public sealed class InterpretationSession : IDisposable
             else
             {
                 _reconnectBudget.RecordListening();
-
-                var monitorNow = HealthNow();
-                _healthMonitor.BeginGeneration(
-                    generation,
-                    epoch,
-                    _connectionCountInGeneration > 1,
-                    monitorNow);
-                _healthGenerationEnded = false;
-                // handshake の受信を初回 tick で「新規受信」と誤認しないよう現数でシードする。
-                _healthReceiveCounts.Clear();
-                foreach (var lane in HealthLanes)
-                {
-                    _healthReceiveCounts[lane] = feed.DeliveryState.ReceiveCount(lane);
-                }
-
-                // 世代が始まった attempt の診断窓は monitor 側へ移す。
-                _healthAttemptStart = null;
-                // 期限の remaining は受信時に一度だけ壁時計で算出し、以後は単調時計で追う。
-                var wallNow = _timeProvider.GetUtcNow().ToUnixTimeSeconds();
-                foreach (var lane in HealthLanes)
-                {
-                    var expiry = feed.DeliveryState.SessionExpiry(lane);
-                    _healthMonitor.RecordSessionExpiry(
-                        lane,
-                        expiry is { } value
-                            && RealtimeSessionExpiry.RemainingSeconds(value, wallNow) is { } seconds
-                            ? TimeSpan.FromSeconds(seconds)
-                            : null,
-                        monitorNow);
-                }
+                _healthBookkeeper.BeginGeneration(generation, epoch, feed.DeliveryState);
             }
         }
         if (staleGeneration)
@@ -649,10 +619,9 @@ public sealed class InterpretationSession : IDisposable
 
             lock (_sync)
             {
-                _healthMonitor.RecordCapture(
-                    HealthNow(),
+                _healthBookkeeper.RecordCapture(
                     Pcm16AudioActivity.NormalizedPeakAmplitude(frame.Pcm16.Span)
-                        > _healthMonitor.Thresholds.AudioActivityPeakFloor);
+                        > _healthBookkeeper.Thresholds.AudioActivityPeakFloor);
             }
 
             var queueWaitMilliseconds = Math.Max(
@@ -665,7 +634,7 @@ public sealed class InterpretationSession : IDisposable
             RealtimeSubtitleUpdate? invalidation = null;
             lock (_sync)
             {
-                observation = _audioLossTracker.Observe(
+                observation = _subtitlePipeline.ObserveAudio(
                     frame.Generation,
                     frame.Sequence,
                     frame.DiscardedMilliseconds,
@@ -673,14 +642,15 @@ public sealed class InterpretationSession : IDisposable
                     atMilliseconds);
                 if (observation.DidLose)
                 {
-                    invalidation = _processor.MarkAudioLoss(_timeProvider.GetUtcNow());
+                    invalidation = _subtitlePipeline.MarkAudioLoss();
                 }
             }
 
             if (invalidation is { } lossUpdate)
             {
-                EmitSubtitleUpdate(lossUpdate);
-                await ResetAudioRoutingAfterAudioLossAsync().ConfigureAwait(false);
+                _subtitlePipeline.EmitSubtitleUpdate(lossUpdate);
+                await _audioRouting.ResetAfterAudioLossAsync(BeforeAudioLossRoutingResetForTests)
+                    .ConfigureAwait(false);
             }
 
             if (observation.ShouldReconnect)
@@ -692,13 +662,13 @@ public sealed class InterpretationSession : IDisposable
 
             lock (_sync)
             {
-                _healthMonitor.RecordSendStart(HealthNow());
+                _healthBookkeeper.RecordSendStart();
             }
 
             await _dualClient.AppendAudioFrameAsync(frame.Pcm16, cancellationToken).ConfigureAwait(false);
             lock (_sync)
             {
-                _healthMonitor.RecordSendSuccess(HealthNow());
+                _healthBookkeeper.RecordSendSuccess();
             }
         }
 
@@ -725,7 +695,7 @@ public sealed class InterpretationSession : IDisposable
 
             if (feed.DeliveryState.DidLoseEvents)
             {
-                HandleEventLoss(feed);
+                _subtitlePipeline.HandleEventLoss(feed);
                 if (IsCurrentGeneration(generation))
                 {
                     throw feed.DeliveryState.ToException();
@@ -748,7 +718,7 @@ public sealed class InterpretationSession : IDisposable
 
             if (feed.DeliveryState.DidLoseEvents)
             {
-                HandleEventLoss(feed);
+                _subtitlePipeline.HandleEventLoss(feed);
                 if (IsCurrentGeneration(generation))
                 {
                     throw feed.DeliveryState.ToException();
@@ -772,16 +742,15 @@ public sealed class InterpretationSession : IDisposable
             // delta 文字列は monitor へ渡さない（検知は到着・進捗の事実だけを見る）。
             lock (_sync)
             {
-                var healthNow = HealthNow();
                 switch (streamEvent.Event)
                 {
                     case RealtimeTranslationServerEvent.InputTranscriptDelta input
                         when streamEvent.Lane.IsSource && input.Delta.Length > 0:
-                        _healthMonitor.RecordSourceProgress(healthNow);
+                        _healthBookkeeper.RecordSourceProgress();
                         break;
                     case RealtimeTranslationServerEvent.OutputTranscriptDelta output
                         when output.Delta.Length > 0:
-                        _healthMonitor.RecordTranslationProgress(streamEvent.Lane, healthNow);
+                        _healthBookkeeper.RecordTranslationProgress(streamEvent.Lane);
                         break;
                 }
             }
@@ -795,14 +764,14 @@ public sealed class InterpretationSession : IDisposable
                 RealtimeSubtitleUpdate? invalidation;
                 lock (_sync)
                 {
-                    invalidation = _processor.DiscardFailedSource(failed.ItemId, failed.EventId);
+                    invalidation = _subtitlePipeline.DiscardFailedSource(failed.ItemId, failed.EventId);
                 }
                 feed.DeliveryState.NoteSourceFailureConsumed();
 
                 if (invalidation is { } failedUpdate)
                 {
-                    EmitSubtitleUpdate(failedUpdate);
-                    await ResetAudioRoutingForNextSegmentAsync().ConfigureAwait(false);
+                    _subtitlePipeline.EmitSubtitleUpdate(failedUpdate);
+                    await _audioRouting.ResetForNextSegmentAsync().ConfigureAwait(false);
                 }
 
                 if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
@@ -833,13 +802,13 @@ public sealed class InterpretationSession : IDisposable
                 }
                 else
                 {
-                    result = _processor.Process(streamEvent, _timeProvider.GetUtcNow());
+                    result = _subtitlePipeline.Process(streamEvent);
                 }
             }
 
             if (lostAfterRouting)
             {
-                HandleEventLoss(feed);
+                _subtitlePipeline.HandleEventLoss(feed);
                 if (IsCurrentGeneration(generation))
                 {
                     throw feed.DeliveryState.ToException();
@@ -852,7 +821,7 @@ public sealed class InterpretationSession : IDisposable
             {
                 foreach (var update in processed.Updates)
                 {
-                    EmitSubtitleUpdate(update);
+                    _subtitlePipeline.EmitSubtitleUpdate(update);
                 }
 
                 switch (processed.RoutingAction)
@@ -860,17 +829,17 @@ public sealed class InterpretationSession : IDisposable
                     case RealtimeSubtitleRoutingAction.None:
                         if (processed.IngestedUpdate.ShouldFinalize)
                         {
-                            await ResetAudioRoutingForNextSegmentAsync().ConfigureAwait(false);
+                            await _audioRouting.ResetForNextSegmentAsync().ConfigureAwait(false);
                         }
 
                         break;
                     case RealtimeSubtitleRoutingAction.Select select:
-                        await ApplySourceRoutingTransportAsync(
+                        await _audioRouting.ApplyAsync(
                             select,
                             cancellationToken).ConfigureAwait(false);
                         break;
                     case RealtimeSubtitleRoutingAction.Switch @switch:
-                        await ApplySourceRoutingTransportAsync(
+                        await _audioRouting.ApplyAsync(
                             @switch,
                             cancellationToken).ConfigureAwait(false);
                         break;
@@ -890,7 +859,7 @@ public sealed class InterpretationSession : IDisposable
             return;
         }
 
-        DiscardFailedSourceIfNeeded(feed);
+        _subtitlePipeline.DiscardFailedSourceIfNeeded(feed);
         if (feed.DeliveryState.Termination != EventDeliveryTermination.None)
         {
             throw feed.DeliveryState.ToException();
@@ -919,14 +888,14 @@ public sealed class InterpretationSession : IDisposable
             IReadOnlyList<SessionHealthDetection> healthDetections;
             lock (_sync)
             {
-                healthDetections = HealthTick(feed);
+                healthDetections = _healthBookkeeper.Tick(feed);
                 if (feed is { DeliveryState.DidLoseEvents: true })
                 {
                     update = null;
                 }
                 else
                 {
-                    update = _processor.Tick(_timeProvider.GetUtcNow());
+                    update = _subtitlePipeline.Tick();
                 }
             }
 
@@ -937,128 +906,17 @@ public sealed class InterpretationSession : IDisposable
 
             if (feed is { DeliveryState.DidLoseEvents: true })
             {
-                HandleEventLoss(feed);
+                _subtitlePipeline.HandleEventLoss(feed);
                 continue;
             }
 
             if (update is { } value)
             {
-                EmitSubtitleUpdate(value);
+                _subtitlePipeline.EmitSubtitleUpdate(value);
                 BeforeRoutingResetForTests?.Invoke();
-                await ResetAudioRoutingForNextSegmentAsync().ConfigureAwait(false);
+                await _audioRouting.ResetForNextSegmentAsync().ConfigureAwait(false);
             }
         }
-    }
-
-    private async Task ResetAudioRoutingForNextSegmentAsync()
-    {
-        await _routingGate.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            await ResetAudioRoutingForNextSegmentCoreAsync().ConfigureAwait(false);
-        }
-        finally
-        {
-            _routingGate.Release();
-        }
-    }
-
-    private async Task ResetAudioRoutingAfterAudioLossAsync()
-    {
-        await _routingGate.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            if (BeforeAudioLossRoutingResetForTests is { } hook)
-            {
-                await hook().ConfigureAwait(false);
-            }
-
-            bool skip;
-            lock (_sync)
-            {
-                skip = _processor.HasSelectedTranslationTarget;
-            }
-
-            if (!skip)
-            {
-                await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
-            }
-        }
-        finally
-        {
-            _routingGate.Release();
-        }
-    }
-
-    private async Task ApplySourceRoutingTransportAsync(
-        RealtimeSubtitleRoutingAction action,
-        CancellationToken cancellationToken)
-    {
-        await _routingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            switch (action)
-            {
-                case RealtimeSubtitleRoutingAction.Select select:
-                    lock (_sync)
-                    {
-                        _healthMonitor.SetSelectedLane(
-                            select.Target is { } selectTarget
-                                ? RealtimeTranslationLane.Translation(selectTarget)
-                                : null,
-                            HealthNow());
-                    }
-
-                    await _dualClient.SelectTranslationTargetAsync(
-                        select.Target,
-                        cancellationToken).ConfigureAwait(false);
-                    break;
-                case RealtimeSubtitleRoutingAction.Switch @switch:
-                    lock (_sync)
-                    {
-                        _healthMonitor.SetSelectedLane(
-                            @switch.Target is { } switchTarget
-                                ? RealtimeTranslationLane.Translation(switchTarget)
-                                : null,
-                            HealthNow());
-                    }
-
-                    await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
-                    await _dualClient.SelectTranslationTargetAsync(
-                        @switch.Target,
-                        cancellationToken).ConfigureAwait(false);
-                    break;
-            }
-        }
-        finally
-        {
-            _routingGate.Release();
-        }
-    }
-
-    private async Task ResetAudioRoutingForNextSegmentCoreAsync()
-    {
-        bool skip;
-        lock (_sync)
-        {
-            skip = _processor.CurrentSourceLength > 0;
-            if (!skip)
-            {
-                _processor.ResetRoutingForNextSegment();
-            }
-        }
-
-        if (skip)
-        {
-            return;
-        }
-
-        lock (_sync)
-        {
-            _healthMonitor.SetSelectedLane(null, HealthNow());
-        }
-
-        await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
     }
 
     private async Task TearDownStreamingAsync()
@@ -1069,20 +927,15 @@ public sealed class InterpretationSession : IDisposable
         var feed = GetActiveFeed();
         if (feed is { DeliveryState.DidLoseEvents: true })
         {
-            HandleEventLoss(feed);
+            _subtitlePipeline.HandleEventLoss(feed);
         }
 
-        IngestAlreadyQueuedEvents();
+        _subtitlePipeline.IngestAlreadyQueuedEvents();
 
         lock (_sync)
         {
             // recoverable・正常終了を問わず接続 teardown で健康世代を閉じる。
-            if (!_healthGenerationEnded)
-            {
-                _healthGenerationEnded = true;
-                _healthMonitor.EndGeneration(HealthNow());
-                LatestHealthSnapshot = _healthMonitor.Evaluate(HealthNow()).Snapshot;
-            }
+            _healthBookkeeper.EndGeneration();
         }
 
         try
@@ -1101,204 +954,18 @@ public sealed class InterpretationSession : IDisposable
                 // StartAsync が channel を差し替える前に読まないと消える。
                 // ForceClose 中の遅延 source でも言語境界を分割できるよう、
                 // ペアと tracker は二度目の回収が終わるまで残す。通信先は変えない。
-                IngestAlreadyQueuedEvents();
+                _subtitlePipeline.IngestAlreadyQueuedEvents();
                 if (feed is { DeliveryState.HasPendingSourceFailure: true })
                 {
-                    DiscardFailedSourceIfNeeded(feed);
+                    _subtitlePipeline.DiscardFailedSourceIfNeeded(feed);
                 }
                 lock (_sync)
                 {
-                    _processor.DeactivateLanguagePair();
-                    _processor.ClearBoundaryCandidate();
+                    _subtitlePipeline.DeactivateLanguagePair();
+                    _subtitlePipeline.ClearBoundaryCandidate();
                 }
             }
         }
-    }
-
-    /// <summary>
-    /// 完全な原文+訳文ペアが assembler に残っていれば idle 待ちを飛ばして確定する。
-    /// 停止・再接続・致命エラーで epoch/buffer を捨てる直前に呼び、字幕記録の欠落を防ぐ。
-    /// </summary>
-    private void FlushPendingFinalizeIfNeeded()
-    {
-        var feed = GetActiveFeed();
-        if (feed is { DeliveryState.DidLoseEvents: true })
-        {
-            HandleEventLoss(feed);
-            return;
-        }
-        if (feed is { DeliveryState.HasPendingSourceFailure: true })
-        {
-            DiscardFailedSourceIfNeeded(feed);
-            return;
-        }
-
-        RealtimeSubtitleUpdate? pending;
-        lock (_sync)
-        {
-            pending = _processor.IsCurrentSegmentTainted
-                ? _processor.DiscardUnconfirmed()
-                : _processor.Tick(
-                    _timeProvider.GetUtcNow() + RealtimeSubtitleAssembler.IdleFinalizeInterval);
-        }
-
-        if (pending is { } update)
-        {
-            EmitSubtitleUpdate(update);
-        }
-    }
-
-    private void DiscardFailedSourceIfNeeded(RealtimeEventFeed feed)
-    {
-        if (!feed.DeliveryState.HasPendingSourceFailure)
-        {
-            return;
-        }
-
-        RealtimeSubtitleUpdate? invalidation;
-        lock (_sync)
-        {
-            invalidation = _processor.DiscardFailedSource(null, null);
-        }
-
-        if (invalidation is { } failedUpdate)
-        {
-            EmitSubtitleUpdate(failedUpdate);
-        }
-
-        while (feed.DeliveryState.HasPendingSourceFailure)
-        {
-            feed.DeliveryState.NoteSourceFailureConsumed();
-        }
-        AfterFailedSourceFallbackForTests?.Invoke();
-    }
-
-    /// <summary>
-    /// 正常停止の close drain で channel に残った字幕イベントを assembler へ取り込む。
-    /// session consumer は世代更新で既に止まっている前提。
-    /// </summary>
-    private async Task IngestStopDrainEventsAsync()
-    {
-        var feed = GetActiveFeed();
-        if (feed is { DeliveryState.DidLoseEvents: true })
-        {
-            HandleEventLoss(feed);
-            return;
-        }
-
-        var events = feed?.Events ?? _dualClient.Feed.Events;
-        while (await events.WaitToReadAsync().ConfigureAwait(false))
-        {
-            IngestAlreadyQueuedEvents();
-        }
-    }
-
-    /// <summary>
-    /// すでに channel にあるイベントだけを取り込む。WaitToRead しないので、
-    /// ForceClose 前の再接続 teardown から呼んでも開いたままの channel で止まらない。
-    /// </summary>
-    private void IngestAlreadyQueuedEvents()
-    {
-        var feed = GetActiveFeed();
-        if (feed is { DeliveryState.DidLoseEvents: true })
-        {
-            HandleEventLoss(feed);
-            return;
-        }
-
-        var currentFeed = feed ?? _dualClient.Feed;
-        var events = currentFeed.Events;
-        while (events.TryRead(out var streamEvent))
-        {
-            if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError)
-            {
-                continue;
-            }
-
-            if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptFailed failed)
-            {
-                if (streamEvent.Epoch != currentFeed.Epoch)
-                {
-                    continue;
-                }
-
-                RealtimeSubtitleUpdate? invalidation;
-                lock (_sync)
-                {
-                    invalidation = _processor.DiscardFailedSource(failed.ItemId, failed.EventId);
-                }
-                currentFeed.DeliveryState.NoteSourceFailureConsumed();
-
-                if (invalidation is { } failedUpdate)
-                {
-                    EmitSubtitleUpdate(failedUpdate);
-                }
-
-                continue;
-            }
-
-            RealtimeSubtitleProcessingResult? result;
-            lock (_sync)
-            {
-                if (feed is { DeliveryState.DidLoseEvents: true })
-                {
-                    result = null;
-                }
-                else
-                {
-                    result = _processor.Process(streamEvent, _timeProvider.GetUtcNow());
-                }
-            }
-
-            if (result is { } processed)
-            {
-                foreach (var update in processed.Updates)
-                {
-                    EmitSubtitleUpdate(update);
-                }
-            }
-        }
-    }
-
-    /// <summary>受信監視で数える対象 lane（source + 全 target）。</summary>
-    private static readonly RealtimeTranslationLane[] HealthLanes =
-    [
-        RealtimeTranslationLane.Source,
-        RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
-        RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.Japanese),
-        RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.Spanish),
-    ];
-
-    /// <summary>monitor が使う単調時計（_sync の下で呼ぶ）。</summary>
-    private TimeSpan HealthNow() => _timeProvider.GetElapsedTime(0L);
-
-    /// <summary>
-    /// 各 lane の decode 受信数の差分で RecordReceive し、Evaluate を回す。
-    /// 検知に対して再接続や lane 変更は行わない（診断のみ）。_sync の下で呼ぶ。
-    /// </summary>
-    /// 戻り値は _sync 解放後に HealthDetected へ流す検知列。
-    private IReadOnlyList<SessionHealthDetection> HealthTick(RealtimeEventFeed? feed)
-    {
-        if (feed is null)
-        {
-            return Array.Empty<SessionHealthDetection>();
-        }
-
-        var now = HealthNow();
-        foreach (var lane in HealthLanes)
-        {
-            var count = feed.DeliveryState.ReceiveCount(lane);
-            if (count > (_healthReceiveCounts.TryGetValue(lane, out var previous) ? previous : 0))
-            {
-                _healthMonitor.RecordReceive(lane, now);
-            }
-
-            _healthReceiveCounts[lane] = count;
-        }
-
-        var (snapshot, detections) = _healthMonitor.Evaluate(now);
-        LatestHealthSnapshot = snapshot;
-        return detections;
     }
 
     /// <summary>
@@ -1307,37 +974,12 @@ public sealed class InterpretationSession : IDisposable
     /// </summary>
     private void RecordHealthTermination(SessionTerminationKind kind)
     {
-        // handshake 中の stop では Dual 側の予約 epoch が _healthAttemptEpoch より
+        // handshake 中の stop では Dual 側の予約 epoch が attempt の意図 epoch より
         // 先に進むため、_sync 保持前に予約 epoch を読んでおく。
         var reservedEpoch = _dualClient.ReservedEpoch;
         lock (_sync)
         {
-            var now = HealthNow();
-            if (!_healthGenerationEnded)
-            {
-                LatestTerminationDiagnostic = _healthMonitor.RecordTermination(kind, now);
-                _healthGenerationEnded = true;
-                _healthMonitor.EndGeneration(now);
-                LatestHealthSnapshot = _healthMonitor.Evaluate(now).Snapshot;
-            }
-            else if (_healthAttemptStart is { } attemptStart)
-            {
-                // 世代未開始（pre-Listening / handshake 失敗）の終了は attempt の
-                // 開始時刻・意図 epoch で記録する。monitor の stall 状態には触れない。
-                var duration = now - attemptStart;
-                LatestTerminationDiagnostic = new SessionTerminationDiagnostic(
-                    kind,
-                    duration < TimeSpan.Zero ? TimeSpan.Zero : duration,
-                    _healthAttemptGeneration,
-                    reservedEpoch);
-            }
-            else
-            {
-                return;
-            }
-
-            // 1 試行につき 1 件だけ。
-            _healthAttemptStart = null;
+            _healthBookkeeper.RecordTermination(kind, reservedEpoch);
         }
     }
 
@@ -1349,38 +991,6 @@ public sealed class InterpretationSession : IDisposable
         {
             return _activeFeed;
         }
-    }
-
-    private bool HandleEventLoss(RealtimeEventFeed feed)
-    {
-        RealtimeSubtitleUpdate? invalidation = null;
-        lock (_sync)
-        {
-            if (!feed.DeliveryState.DidLoseEvents
-                || _handledLossEpoch == feed.Epoch)
-            {
-                return false;
-            }
-
-            _handledLossEpoch = feed.Epoch;
-            invalidation = _processor.DiscardUnconfirmed();
-        }
-
-        EmitSubtitleUpdate(invalidation.Value);
-        return true;
-    }
-
-    private void EmitSubtitleUpdate(RealtimeSubtitleUpdate update)
-    {
-        RealtimeSubtitleUpdate stamped;
-        lock (_sync)
-        {
-            stamped = update.Sequence == 0
-                ? update with { Sequence = ++_subtitleSequence }
-                : update;
-        }
-
-        SubtitleUpdated?.Invoke(this, stamped);
     }
 
     private bool IsCurrentGeneration(int generation)
