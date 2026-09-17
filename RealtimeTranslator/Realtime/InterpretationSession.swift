@@ -38,16 +38,12 @@ final class InterpretationSession {
     private let apiKeyStore: any APIKeyStore
     private let audioCapture: any RealtimeAudioCaptureServicing
     private let dualClient: any DualRealtimeTranslationClienting
-    private let aggregator: SubtitleAggregator
-    private let displayScheduler: SubtitleDisplayScheduler
     private let activeTickerIntervalNanoseconds: UInt64
-    private let postStopSubtitleRetentionNanoseconds: UInt64
     private let tuningProvider: @MainActor () -> RealtimeSessionTuning
     private let languagePairProvider: @MainActor () -> LanguagePair
     private var reconnectBudget: ReconnectBudget
-    /// 受信停止監視用の単調時計と壁時計（remaining は受信時に一度だけ壁時計で算出）。
-    private let healthNow: ReconnectBudget.Now
-    private let wallClockNow: @Sendable () -> TimeInterval
+    private let healthBookkeeper: SessionHealthBookkeeper
+    private let subtitlePipeline: SessionSubtitlePipeline
 
     private(set) var state: TranslationState = .idle {
         didSet {
@@ -60,31 +56,22 @@ final class InterpretationSession {
     private var stopTask: Task<Void, Never>?
     private var sessionTask: Task<Void, Never>?
     private var lifecycleGeneration = 0
-    private var processor = RealtimeSubtitleProcessor()
-    private var audioLossTracker = AudioLossTracker()
     /// 現在の録音世代で使う言語ペア。Start 時に固定し、再接続でも settings の変更を取り込まない。
     private var sessionLanguagePair: LanguagePair?
     private var activeFeed: EventFeed?
-    private var handledLossRunToken: Int?
-    private var healthMonitor = SessionHealthMonitor()
-    private var healthReceiveCounts: [RealtimeTranslationLane: Int] = [:]
-    private var healthGenerationEnded = true
-    /// 世代未開始（pre-Listening）の終了診断用に、接続試行の開始時刻と意図 epoch を保持する。
-    /// epoch は dual client の予約済み epoch（handshake 失敗時も予約値を保持し、
-    /// APIキー欠落時は直前の予約 epoch）。
-    private var healthAttemptStart: Duration?
-    private var healthAttemptEpoch = 0
-    private var healthAttemptGeneration = 0
-    private var lastHealthSnapshotLogAt: Duration?
-    private var connectionCountInGeneration = 0
-    /// テスト・診断用の最新 snapshot（検知には使わない）。
-    private(set) var latestHealthSnapshot: SessionHealthSnapshot?
-    /// テスト・診断用の最新 termination diagnostic（各試行で最大 1 件）。
-    private(set) var latestHealthTermination: SessionTerminationDiagnostic?
     internal var afterFailedSourceTerminationForTests: (() -> Void)?
 
+    /// テスト・診断用の最新 snapshot（検知には使わない）。
+    var latestHealthSnapshot: SessionHealthSnapshot? {
+        healthBookkeeper.latestHealthSnapshot
+    }
+    /// テスト・診断用の最新 termination diagnostic（各試行で最大 1 件）。
+    var latestHealthTermination: SessionTerminationDiagnostic? {
+        healthBookkeeper.latestHealthTermination
+    }
+
     var audioLossMetrics: AudioLossMetrics {
-        audioLossTracker.metrics
+        subtitlePipeline.audioLossMetrics
     }
 
     init(
@@ -106,22 +93,37 @@ final class InterpretationSession {
         self.apiKeyStore = apiKeyStore
         self.audioCapture = audioCapture
         self.dualClient = dualClient
-        self.aggregator = aggregator
-        self.displayScheduler = displayScheduler
         self.activeTickerIntervalNanoseconds = activeTickerIntervalNanoseconds
-        self.postStopSubtitleRetentionNanoseconds = postStopSubtitleRetentionNanoseconds
         self.tuningProvider = tuningProvider
         self.languagePairProvider = languagePairProvider
         self.reconnectBudget = reconnectBudget
-        self.healthNow = healthNow
-        self.wallClockNow = wallClockNow
-        self.healthMonitor.thresholds = healthThresholds
-        self.displayScheduler.delegate = self
+        self.healthBookkeeper = SessionHealthBookkeeper(
+            thresholds: healthThresholds,
+            healthNow: healthNow,
+            wallClockNow: wallClockNow,
+            reservedEpochProvider: { await dualClient.reservedEpoch }
+        )
+        self.subtitlePipeline = SessionSubtitlePipeline(
+            aggregator: aggregator,
+            displayScheduler: displayScheduler,
+            postStopSubtitleRetentionNanoseconds: postStopSubtitleRetentionNanoseconds,
+            healthBookkeeper: self.healthBookkeeper,
+            dualClient: dualClient
+        )
+        self.subtitlePipeline.bind(
+            activeFeed: { [weak self] in self?.activeFeed },
+            lifecycleGeneration: { [weak self] in self?.lifecycleGeneration ?? 0 },
+            state: { [weak self] in self?.state ?? .idle },
+            publishUpdate: { [weak self] snapshot in
+                guard let self else { return }
+                self.delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
+            }
+        )
     }
 
     func start() async {
         guard state == .idle || state == .error else { return }
-        cancelPostStopSubtitleClear()
+        subtitlePipeline.cancelPostStopClear()
 
         // 旧sessionTaskが世代不一致のforceClose/stopを後から走らせ、
         // 新しい接続やマイクを落とさないよう先に排水する。
@@ -134,15 +136,15 @@ final class InterpretationSession {
 
         lifecycleGeneration += 1
         let generation = lifecycleGeneration
-        connectionCountInGeneration = 0
+        healthBookkeeper.beginRecordingGeneration()
         reconnectBudget.reset()
-        audioLossTracker.reset()
+        subtitlePipeline.resetAudioLoss()
         // 録音開始時点のペアを世代全体で固定する。録音中の設定変更は再接続でも反映しない
         // （VALIDATION: 停止→次の録音開始後にだけ新しいペアが反映される）。
         sessionLanguagePair = languagePairProvider()
         state = .connecting
-        aggregator.reset()
-        aggregator.setStatusBanner(UiCopy.text("banner.connecting"))
+        subtitlePipeline.aggregator.reset()
+        subtitlePipeline.aggregator.setStatusBanner(UiCopy.text("banner.connecting"))
         publishSubtitles()
 
         sessionTask = Task { @MainActor [weak self] in
@@ -169,7 +171,7 @@ final class InterpretationSession {
     /// 録音中に設定画面から変更されたprompt/keywordsを原文セッションへ反映する。
     func applyTuningChange() async {
         guard state == .listening else { return }
-        let tuning = tuningProvider().forPair(processor.activeLanguagePair ?? .jaEn)
+        let tuning = tuningProvider().forPair(subtitlePipeline.activeLanguagePair ?? .jaEn)
         do {
             try await dualClient.updateTranscriptionTuning(tuning)
         } catch {
@@ -205,10 +207,10 @@ final class InterpretationSession {
                 recoverableError = error
             } catch let error as RealtimeTranslationError {
                 guard generation == lifecycleGeneration else { return }
-                await recordHealthTermination(error)
+                await healthBookkeeper.recordTermination(error)
                 await tearDownStreaming()
                 // epoch/buffer を捨てる前に完全ペアを確定し、オプトイン字幕記録へ渡す。
-                flushPendingFinalizeIfNeeded()
+                subtitlePipeline.flushPendingFinalizeIfNeeded()
                 enterError(error)
                 return
             } catch let error as RealtimeAudioCaptureError {
@@ -222,18 +224,18 @@ final class InterpretationSession {
                     recoverableError = error
                 default:
                     guard generation == lifecycleGeneration else { return }
-                    await recordHealthTermination(kind: .other)
+                    await healthBookkeeper.recordTermination(kind: .other)
                     await tearDownStreaming()
-                    flushPendingFinalizeIfNeeded()
+                    subtitlePipeline.flushPendingFinalizeIfNeeded()
                     enterError(error)
                     return
                 }
             } catch {
                 // 未知のアプリエラーは再接続せず即 error（予測可能性を優先）。
                 guard generation == lifecycleGeneration else { return }
-                await recordHealthTermination(kind: .other)
+                await healthBookkeeper.recordTermination(kind: .other)
                 await tearDownStreaming()
-                flushPendingFinalizeIfNeeded()
+                subtitlePipeline.flushPendingFinalizeIfNeeded()
                 enterError(error)
                 return
             }
@@ -241,13 +243,13 @@ final class InterpretationSession {
             guard generation == lifecycleGeneration else { return }
             let decision = reconnectBudget.recordFailure()
             guard decision.kind == .wait else {
-                await recordHealthTermination(
+                await healthBookkeeper.recordTermination(
                     kind: decision.kind == .budgetExhausted
                         ? .reconnectBudgetExhausted
                         : .reconnectAttemptLimit
                 )
                 await tearDownStreaming()
-                flushPendingFinalizeIfNeeded()
+                subtitlePipeline.flushPendingFinalizeIfNeeded()
                 enterErrorMessage(
                     UiCopy.text(
                         decision.kind == .budgetExhausted
@@ -261,14 +263,14 @@ final class InterpretationSession {
             state = .reconnecting
             let micMessage = RealtimeAudioCaptureError.inputDeviceChanged.errorDescription
             if let reconnectDetail, let micMessage, reconnectDetail == micMessage {
-                aggregator.setStatusBanner(reconnectingBanner(detail: reconnectDetail))
+                subtitlePipeline.aggregator.setStatusBanner(reconnectingBanner(detail: reconnectDetail))
             } else {
-                aggregator.setStatusBanner(reconnectingBanner(detail: nil))
+                subtitlePipeline.aggregator.setStatusBanner(reconnectingBanner(detail: nil))
             }
             publishSubtitles()
             // recoverable 失敗も終了診断として記録する（診断のみ、挙動は変えない）。
             if let recoverableError {
-                await recordHealthTermination(recoverableError)
+                await healthBookkeeper.recordTermination(recoverableError)
             }
             await tearDownStreaming(keepSubtitles: true)
 
@@ -313,13 +315,13 @@ final class InterpretationSession {
     }
 
     private func connectAndStream(generation: Int) async throws {
-        connectionCountInGeneration += 1
-        healthAttemptStart = healthNow()
-        healthAttemptEpoch = await dualClient.reservedEpoch
-        healthAttemptGeneration = lifecycleGeneration
+        healthBookkeeper.beginAttempt(
+            lifecycleGeneration: lifecycleGeneration,
+            reservedEpoch: await dualClient.reservedEpoch
+        )
         let apiKey = try requireAPIKey()
         state = .connecting
-        aggregator.setStatusBanner(UiCopy.text("banner.connecting"))
+        subtitlePipeline.aggregator.setStatusBanner(UiCopy.text("banner.connecting"))
         publishSubtitles()
 
         let pair = sessionLanguagePair ?? languagePairProvider()
@@ -332,10 +334,10 @@ final class InterpretationSession {
         } catch {
             // start は network 処理の前に connectionEpoch を予約済み。失敗した handshake の
             // epoch で診断するため読み直す。
-            healthAttemptEpoch = await dualClient.reservedEpoch
+            healthBookkeeper.updateAttemptEpoch(await dualClient.reservedEpoch)
             throw error
         }
-        healthAttemptEpoch = await dualClient.reservedEpoch
+        healthBookkeeper.updateAttemptEpoch(await dualClient.reservedEpoch)
         guard generation == lifecycleGeneration else {
             await dualClient.forceClose()
             return
@@ -346,8 +348,8 @@ final class InterpretationSession {
         let epoch = feed.runToken
         // 再接続時 beginNewEpoch は buffer を捨てる。idle finalize 前の完全ペアを
         // 先に確定しないと、オプトイン字幕記録へ .finalized が届かない。
-        flushPendingFinalizeIfNeeded()
-        processor.beginEpoch(epoch, pair: pair)
+        subtitlePipeline.flushPendingFinalizeIfNeeded()
+        subtitlePipeline.beginEpoch(epoch, pair: pair)
         await dualClient.resetAudioRouting()
 
         try await audioCapture.start()
@@ -359,34 +361,12 @@ final class InterpretationSession {
 
         state = .listening
         reconnectBudget.recordListening()
-
-        let monitorNow = healthNow()
-        healthMonitor.beginGeneration(
+        healthBookkeeper.beginGeneration(
             generation: generation,
             epoch: epoch,
-            isRecovery: connectionCountInGeneration > 1,
-            now: monitorNow
+            deliveryState: feed.deliveryState
         )
-        healthGenerationEnded = false
-        lastHealthSnapshotLogAt = nil
-        // handshake の受信を初回 tick で「新規受信」と誤認しないよう現数でシードする。
-        for lane in Self.healthLanes {
-            healthReceiveCounts[lane] = feed.deliveryState.receiveCount(lane)
-        }
-        // 世代が始まった attempt の診断窓は monitor 側へ移す。
-        healthAttemptStart = nil
-        // 期限の remaining は受信時に一度だけ壁時計で算出し、以後は単調時計で追う。
-        let wallNow = wallClockNow()
-        for lane in Self.healthLanes {
-            let remaining = feed.deliveryState.sessionExpiry(lane).flatMap {
-                RealtimeSessionExpiry.remaining(
-                    expiresAtUnixSeconds: $0,
-                    wallNowUnixSeconds: Int64(wallNow)
-                )
-            }
-            healthMonitor.recordSessionExpiry(lane: lane, remaining: remaining, now: monitorNow)
-        }
-        aggregator.setStatusBanner(UiCopy.text("banner.listening"))
+        subtitlePipeline.aggregator.setStatusBanner(UiCopy.text("banner.listening"))
         startTicker(intervalNanoseconds: activeTickerIntervalNanoseconds)
         publishSubtitles()
 
@@ -402,7 +382,7 @@ final class InterpretationSession {
                 throw CancellationError()
             }
             if feed.deliveryState.didLoseEvents {
-                self.handleEventLoss(feed)
+                self.subtitlePipeline.handleEventLoss(feed)
                 throw feed.deliveryState.makeError()
             }
             if feed.deliveryState.termination != .none {
@@ -414,7 +394,7 @@ final class InterpretationSession {
             // 正常完了も consumeEvents に任せる。success で戻ると session loop が終わる。
             while !Task.isCancelled {
                 if feed.deliveryState.didLoseEvents {
-                    self.handleEventLoss(feed)
+                    self.subtitlePipeline.handleEventLoss(feed)
                     throw feed.deliveryState.makeError()
                 }
                 try await Task.sleep(nanoseconds: 100_000_000)
@@ -430,9 +410,9 @@ final class InterpretationSession {
         _ = await feedTask.result
         _ = await eventTask.result
         if feed.deliveryState.didLoseEvents {
-            handleEventLoss(feed)
+            subtitlePipeline.handleEventLoss(feed)
         }
-        discardFailedSourceIfNeeded(feed)
+        subtitlePipeline.discardFailedSourceIfNeeded(feed)
         try firstResult.get()
     }
 
@@ -475,22 +455,13 @@ final class InterpretationSession {
         }
     }
 
-    /// 受信監視で数える対象 lane（source + 全 target）。
-    private static let healthLanes: [RealtimeTranslationLane] = [
-        .source,
-        .translation(.english),
-        .translation(.japanese),
-        .translation(.spanish),
-    ]
-
     private func feedAudio(generation: Int) async throws {
         for await frame in audioCapture.frames {
             guard generation == lifecycleGeneration else { return }
             guard state == .listening else { return }
-            healthMonitor.recordCapture(
-                now: healthNow(),
+            healthBookkeeper.recordCapture(
                 hasAudioActivity: PCM16AudioActivity.normalizedPeakAmplitude(of: frame.pcm16)
-                    > healthMonitor.thresholds.audioActivityPeakFloor
+                    > healthBookkeeper.thresholds.audioActivityPeakFloor
             )
             let queueWaitMilliseconds = max(
                 0,
@@ -504,7 +475,7 @@ final class InterpretationSession {
                 0,
                 Int(ReconnectBudget.nanoseconds(ReconnectBudget.continuousNow()) / 1_000_000)
             )
-            let observation = audioLossTracker.observe(
+            let observation = subtitlePipeline.observeAudio(
                 generation: frame.generation,
                 sequence: frame.sequence,
                 discardedMilliseconds: frame.discardedMilliseconds,
@@ -512,7 +483,7 @@ final class InterpretationSession {
                 atMilliseconds: atMilliseconds
             )
             if observation.didLose {
-                await handleAudioLoss()
+                await subtitlePipeline.handleAudioLoss()
                 #if DEBUG
                 AppLogger.session.notice(
                     "DBG_AUDIO_LOSS droppedFrames=\(observation.droppedFrames, privacy: .public) lostMs=\(observation.lostMilliseconds, privacy: .public) reconnect=\(observation.shouldReconnect, privacy: .public)"
@@ -522,9 +493,9 @@ final class InterpretationSession {
             if observation.shouldReconnect {
                 throw RealtimeAudioCaptureError.pipelineOverloaded
             }
-            healthMonitor.recordSendStart(now: healthNow())
+            healthBookkeeper.recordSendStart()
             try await dualClient.appendAudioFrame(frame.pcm16)
-            healthMonitor.recordSendSuccess(now: healthNow())
+            healthBookkeeper.recordSendSuccess()
         }
         guard generation == lifecycleGeneration, state == .listening else { return }
         if let terminationError = audioCapture.terminationError {
@@ -540,7 +511,7 @@ final class InterpretationSession {
             // ここで ingest/enqueueRender すると、performStop が消した renderTask が再生成され、
             // forceFinalize 後に replaceCurrent で確定ペアを live へ戻す。
             guard generation == lifecycleGeneration else { return }
-            if checkEventLoss(feed, generation: generation) {
+            if subtitlePipeline.checkEventLoss(feed, generation: generation) {
                 if generation == lifecycleGeneration {
                     throw feed.deliveryState.makeError()
                 }
@@ -555,9 +526,9 @@ final class InterpretationSession {
             switch streamEvent.event {
             case .inputTranscriptDelta(let delta, _, _) where streamEvent.lane == .source
                 && !delta.isEmpty:
-                healthMonitor.recordSourceProgress(now: healthNow())
+                healthBookkeeper.recordSourceProgress()
             case .outputTranscriptDelta(let delta, _, _) where !delta.isEmpty:
-                healthMonitor.recordTranslationProgress(lane: streamEvent.lane, now: healthNow())
+                healthBookkeeper.recordTranslationProgress(lane: streamEvent.lane)
             default:
                 break
             }
@@ -581,14 +552,14 @@ final class InterpretationSession {
                     errorType: errorType,
                     code: code
                 )
-                let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID)
+                let invalidation = subtitlePipeline.discardFailedSource(itemID: itemID, eventID: eventID)
                 feed.deliveryState.noteSourceFailureConsumed()
                 if let invalidation {
-                    displayScheduler.discardPending()
+                    subtitlePipeline.discardPending()
                     // halt/recover の flushPendingFinalizeIfNeeded が discardPending するため、
                     // 間引きせず即時適用し、aggregator の未確定ペアを先に消す。
-                    displayScheduler.renderNow(invalidation)
-                    await resetAudioRoutingForNextSegment()
+                    subtitlePipeline.renderNow(invalidation)
+                    await subtitlePipeline.resetAudioRoutingForNextSegment()
                 }
                 if classification.disposition == .keepAlive {
                     await dualClient.acknowledgeConsumedStreamEvent(runToken: feed.runToken)
@@ -602,25 +573,25 @@ final class InterpretationSession {
             // 適用または明示破棄のあとで acknowledge する。ack を先にすると、
             // この await 中に performStop が走ったとき未適用イベントが stop drain から外れる。
             guard generation == lifecycleGeneration else { return }
-            if let result = processSubtitleEvent(streamEvent, now: Date()) {
+            if let result = subtitlePipeline.processSubtitleEvent(streamEvent, now: Date()) {
                 #if DEBUG
                 AppLogger.session.notice(
                     "DBG_ASSEMBLER_UPDATE epoch=\(streamEvent.epoch, privacy: .public) generation=\(result.ingestedUpdate.segmentGeneration, privacy: .public) sourceEmpty=\(result.ingestedUpdate.sourceText.isEmpty, privacy: .public) translationEmpty=\(result.ingestedUpdate.translatedText.isEmpty, privacy: .public)"
                 )
                 #endif
                 for update in result.updates {
-                    enqueueRender(update)
+                    subtitlePipeline.enqueueRender(update)
                 }
                 switch result.routingAction {
                 case .none:
                     if !result.isSourceUpdate && result.ingestedUpdate.shouldFinalize {
-                        await resetAudioRoutingForNextSegment()
+                        await subtitlePipeline.resetAudioRoutingForNextSegment()
                     }
                 case .select(let target):
-                    healthMonitor.setSelectedLane(target.map { .translation($0) }, now: healthNow())
+                    healthBookkeeper.setSelectedLane(target.map { .translation($0) })
                     try await dualClient.selectTranslationTarget(target)
                 case .switch(let target):
-                    healthMonitor.setSelectedLane(target.map { .translation($0) }, now: healthNow())
+                    healthBookkeeper.setSelectedLane(target.map { .translation($0) })
                     await dualClient.resetAudioRouting()
                     try await dualClient.selectTranslationTarget(target)
                 }
@@ -628,33 +599,33 @@ final class InterpretationSession {
             await dualClient.acknowledgeConsumedStreamEvent(runToken: feed.runToken)
         }
         guard generation == lifecycleGeneration else { return }
-        if checkEventLoss(feed, generation: generation) {
+        if subtitlePipeline.checkEventLoss(feed, generation: generation) {
             if generation == lifecycleGeneration {
                 throw feed.deliveryState.makeError()
             }
             return
         }
         if feed.deliveryState.termination != .none {
-            discardFailedSourceIfNeeded(feed)
+            subtitlePipeline.discardFailedSourceIfNeeded(feed)
             throw feed.deliveryState.makeError()
         }
         throw RealtimeTranslationError.recoverableTransportFailure("event stream ended")
     }
 
     private func performStop() async {
-        await recordHealthTermination(kind: .userStopped)
+        await healthBookkeeper.recordTermination(kind: .userStopped)
         // ingest を先に止め、既読を acknowledge させてから未読窓だけを武装する。
         // AsyncStream.finish() は未読を捨てるため、未消費の最新窓とこれ以降の close 窓を Dual 側で保持する。
         lifecycleGeneration += 1
         await dualClient.beginStopDrainCapture()
         state = .closing
-        aggregator.setStatusBanner(UiCopy.text("banner.closing"))
+        subtitlePipeline.aggregator.setStatusBanner(UiCopy.text("banner.closing"))
         publishSubtitles()
 
         let runningSessionTask = sessionTask
         runningSessionTask?.cancel()
         sessionTask = nil
-        let pending = displayScheduler.takePendingUpdate()
+        let pending = subtitlePipeline.takePendingUpdate()
 
         // 先に音声と session consumer を止め、close drain を破棄されないようにする。
         // generation を上げたまま consumer が生きていると、commit/session.close の
@@ -666,144 +637,54 @@ final class InterpretationSession {
 
         // スロットル中の旧 snapshot を先に適用し、その後の close drain で上書きする。
         if let pending {
-            displayScheduler.renderNow(pending)
+            subtitlePipeline.renderNow(pending)
         }
 
         let drainedEvents = await dualClient.closeGracefully()
         if let feed = activeFeed {
             if feed.deliveryState.didLoseEvents {
-                handleEventLoss(feed)
+                subtitlePipeline.handleEventLoss(feed)
             } else {
-                ingestStopDrainEvents(drainedEvents, feed: feed)
+                subtitlePipeline.ingestStopDrainEvents(drainedEvents, feed: feed)
             }
         }
-        processor.clearBoundaryCandidate()
+        subtitlePipeline.clearBoundaryCandidate()
         if let feed = activeFeed, feed.deliveryState.hasPendingSourceFailure {
-            discardFailedSourceIfNeeded(feed)
-        } else if processor.isCurrentSegmentTainted {
-            let invalidation = processor.discardUnconfirmed()
-            displayScheduler.renderNow(invalidation)
+            subtitlePipeline.discardFailedSourceIfNeeded(feed)
+        } else if subtitlePipeline.isCurrentSegmentTainted {
+            let invalidation = subtitlePipeline.discardUnconfirmed()
+            subtitlePipeline.renderNow(invalidation)
         } else {
-            if let tickUpdate = processor.tick(now: Date()) {
-                displayScheduler.renderNow(tickUpdate)
+            if let tickUpdate = subtitlePipeline.tickProcessor(now: Date()) {
+                subtitlePipeline.renderNow(tickUpdate)
             }
-            let snapshot = aggregator.forceFinalize()
+            let snapshot = subtitlePipeline.aggregator.forceFinalize()
             delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
         }
-        aggregator.setStatusBanner(nil)
+        subtitlePipeline.aggregator.setStatusBanner(nil)
         sessionLanguagePair = nil
-        processor.deactivateLanguagePair()
+        subtitlePipeline.deactivateLanguagePair()
         state = .idle
         publishSubtitles()
         stopTicker()
-        schedulePostStopSubtitleClearIfNeeded()
-    }
-
-    /// 正常停止の close drain で届いた字幕イベントを assembler へ取り込む。
-    private func ingestStopDrainEvents(_ events: [RealtimeTranslationStreamEvent], feed: EventFeed) {
-        guard !feed.deliveryState.didLoseEvents else { return }
-        for streamEvent in events {
-            if case .error = streamEvent.event {
-                continue
-            }
-            if case .inputTranscriptFailed(let itemID, let eventID, _, _) = streamEvent.event {
-                guard streamEvent.epoch == feed.runToken else { continue }
-                let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID)
-                feed.deliveryState.noteSourceFailureConsumed()
-                if let invalidation {
-                    displayScheduler.renderNow(invalidation)
-                }
-                continue
-            }
-            guard let result = processSubtitleEvent(streamEvent, now: Date(), isReplay: true) else {
-                continue
-            }
-            for update in result.updates {
-                displayScheduler.renderNow(update)
-            }
-        }
-    }
-
-    private func schedulePostStopSubtitleClearIfNeeded() {
-        cancelPostStopSubtitleClear()
-        guard !aggregator.snapshot().current.isEmpty else { return }
-        let generation = lifecycleGeneration
-        displayScheduler.schedulePostStopClear(
-            afterNanoseconds: postStopSubtitleRetentionNanoseconds
-        ) { [weak self] in
-            guard let self else { return false }
-            return self.lifecycleGeneration == generation && self.state == .idle
-        } onClear: { [weak self] in
-            guard let self else { return }
-            self.aggregator.reset()
-            self.publishSubtitles()
-        }
-    }
-
-    private func cancelPostStopSubtitleClear() {
-        displayScheduler.cancelPostStopClear()
+        subtitlePipeline.schedulePostStopSubtitleClearIfNeeded()
     }
 
     private func tearDownStreaming(keepSubtitles: Bool = false) async {
         // recoverable・正常終了を問わず接続 teardown で健康世代を閉じる。
-        endHealthGeneration()
+        healthBookkeeper.endGeneration()
         await audioCapture.stop()
         await dualClient.forceClose()
         if let feed = activeFeed {
-            discardFailedSourceIfNeeded(feed)
+            subtitlePipeline.discardFailedSourceIfNeeded(feed)
         }
         activeFeed = nil
-        handledLossRunToken = nil
-        processor.deactivateLanguagePair()
-        processor.clearBoundaryCandidate()
+        subtitlePipeline.resetHandledLossRunToken()
+        subtitlePipeline.deactivateLanguagePair()
+        subtitlePipeline.clearBoundaryCandidate()
         stopTicker()
         if !keepSubtitles {
-            displayScheduler.discardPending()
-        }
-    }
-
-    /// 完全な原文+訳文ペアが assembler / aggregator に残っていれば idle 待ちを飛ばして確定する。
-    /// 停止・再接続・致命エラーで epoch/buffer を捨てる直前に呼び、字幕記録の欠落を防ぐ。
-    private func flushPendingFinalizeIfNeeded() {
-        if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
-            return
-        }
-        if let feed = activeFeed, feed.deliveryState.hasPendingSourceFailure {
-            discardFailedSourceIfNeeded(feed)
-            return
-        }
-        // スロットル中の live snapshot より assembler を正とする。
-        displayScheduler.discardPending()
-
-        if processor.isCurrentSegmentTainted {
-            let invalidation = processor.discardUnconfirmed()
-            displayScheduler.renderNow(invalidation)
-            return
-        }
-
-        let flushAt = Date().addingTimeInterval(RealtimeSubtitleAssembler.idleFinalizeInterval)
-        if let update = processor.tick(now: flushAt) {
-            displayScheduler.renderNow(update)
-            return
-        }
-
-        // assembler が空でも、live 経路 (canFinalize: false) の完全ペアが
-        // aggregator に残っている場合がある — 字幕記録のため確定する。
-        let before = aggregator.snapshot().current
-        guard before.state != .finalized else { return }
-        let snapshot = aggregator.forceFinalize()
-        guard snapshot.current.state == .finalized else { return }
-        delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
-    }
-
-    private func discardFailedSourceIfNeeded(_ feed: EventFeed) {
-        guard feed.deliveryState.hasPendingSourceFailure else { return }
-        if let invalidation = processor.discardFailedSource(itemID: nil, eventID: nil) {
-            displayScheduler.discardPending()
-            displayScheduler.renderNow(invalidation)
-        }
-        while feed.deliveryState.hasPendingSourceFailure {
-            feed.deliveryState.noteSourceFailureConsumed()
+            subtitlePipeline.discardPending()
         }
     }
 
@@ -814,75 +695,6 @@ final class InterpretationSession {
         return try RealtimeTranslationError.requireNormalizedAPIKey(key)
     }
 
-    private func enqueueRender(_ update: RealtimeSubtitleUpdate) {
-        if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
-            return
-        }
-        if update.isInvalidation {
-            displayScheduler.discardPending()
-            displayScheduler.renderNow(update)
-            return
-        }
-        displayScheduler.enqueue(update)
-    }
-
-    private func processSubtitleEvent(
-        _ streamEvent: RealtimeTranslationStreamEvent,
-        now: Date,
-        isReplay: Bool = false
-    ) -> RealtimeSubtitleProcessingResult? {
-        if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
-            return nil
-        }
-        return processor.process(streamEvent, now: now, isReplay: isReplay)
-    }
-
-    private func resetAudioRoutingForNextSegment() async {
-        processor.resetRoutingForNextSegment()
-        healthMonitor.setSelectedLane(nil, now: healthNow())
-        await dualClient.resetAudioRouting()
-    }
-
-    private func handleAudioLoss() async {
-        let invalidation = processor.markAudioLoss(now: Date())
-        displayScheduler.discardPending()
-        displayScheduler.renderNow(invalidation)
-        if !processor.hasSelectedTranslationTarget {
-            await dualClient.resetAudioRouting()
-        }
-    }
-
-    /// scheduler からの描画要求を aggregator・delegate へ反映する。
-    private func apply(_ update: RealtimeSubtitleUpdate) {
-        if update.isInvalidation {
-            let snapshot = aggregator.invalidateCurrent()
-            delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
-            return
-        }
-
-        if state == .listening || state == .reconnecting {
-            aggregator.setStatusBanner(nil)
-        }
-
-        if update.shouldFinalize {
-            let snapshot = aggregator.finalizePair(
-                sourceText: update.sourceText,
-                translatedText: update.translatedText,
-                clearCurrent: true
-            )
-            delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
-            return
-        }
-
-        let snapshot = aggregator.replaceCurrent(
-            sourceText: update.sourceText,
-            translatedText: update.translatedText,
-            isTranslationCurrent: update.isTranslationCurrent,
-            canFinalize: false
-        )
-        delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
-    }
-
     private func startTicker(intervalNanoseconds: UInt64) {
         stopTicker()
         tickerTask = Task { @MainActor [weak self] in
@@ -891,18 +703,20 @@ final class InterpretationSession {
                 try? await Task.sleep(nanoseconds: intervalNanoseconds)
                 guard !Task.isCancelled else { return }
                 if let feed = self.activeFeed,
-                   self.checkEventLoss(feed, generation: self.lifecycleGeneration)
+                   self.subtitlePipeline.checkEventLoss(feed, generation: self.lifecycleGeneration)
                 {
                     continue
                 }
-                if let update = self.processor.tick(now: Date()) {
-                    self.enqueueRender(update)
+                if let update = self.subtitlePipeline.tickProcessor(now: Date()) {
+                    self.subtitlePipeline.enqueueRender(update)
                     if update.shouldFinalize || update.isInvalidation {
-                        await self.resetAudioRoutingForNextSegment()
+                        await self.subtitlePipeline.resetAudioRoutingForNextSegment()
                     }
                 }
-                self.healthTick()
-                let snapshot = self.aggregator.tick()
+                for detection in self.healthBookkeeper.tick(feed: self.activeFeed) {
+                    self.delegate?.interpretationSession(self, didEmitHealthDetection: detection)
+                }
+                let snapshot = self.subtitlePipeline.aggregator.tick()
                 self.delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
                 if self.state == .idle || self.state == .error {
                     self.tickerTask = nil
@@ -912,110 +726,13 @@ final class InterpretationSession {
         }
     }
 
-    /// 各 lane の decode 受信数の差分で recordReceive し、evaluate を回す。
-    /// 検知に対して再接続や lane 変更は行わない（診断のみ）。
-    private func healthTick() {
-        guard let feed = activeFeed else { return }
-        let now = healthNow()
-        for lane in Self.healthLanes {
-            let count = feed.deliveryState.receiveCount(lane)
-            if count > (healthReceiveCounts[lane] ?? 0) {
-                healthMonitor.recordReceive(lane: lane, now: now)
-            }
-            healthReceiveCounts[lane] = count
-        }
-
-        let (snapshot, detections) = healthMonitor.evaluate(now: now)
-        latestHealthSnapshot = snapshot
-        for detection in detections {
-            #if DEBUG
-            AppLogger.session.notice(
-                "DBG_HEALTH \(detection.description, privacy: .public)"
-            )
-            #endif
-            delegate?.interpretationSession(self, didEmitHealthDetection: detection)
-        }
-        #if DEBUG
-        if lastHealthSnapshotLogAt == nil || now - lastHealthSnapshotLogAt! >= .seconds(5) {
-            lastHealthSnapshotLogAt = now
-            AppLogger.session.notice(
-                "DBG_HEALTH_SNAPSHOT \(snapshot.description, privacy: .public)"
-            )
-        }
-        #endif
-    }
-
-    /// セッションループ終了・停止時の診断。kind は自前 enum のみ（生 message は渡さない）。
-    /// 各世代で最初の終了経路だけを記録する。
-    private func recordHealthTermination(_ error: Error) async {
-        let kind: SessionTerminationKind
-        if let error = error as? RealtimeTranslationError {
-            kind = SessionTerminationKind(error)
-        } else {
-            kind = .other
-        }
-        await recordHealthTermination(kind: kind)
-    }
-
-    private func recordHealthTermination(kind: SessionTerminationKind) async {
-        let now = healthNow()
-        let diagnostic: SessionTerminationDiagnostic
-        if !healthGenerationEnded {
-            diagnostic = healthMonitor.recordTermination(kind: kind, now: now)
-            endHealthGeneration()
-        } else if let attemptStart = healthAttemptStart {
-            // 世代未開始（pre-Listening / handshake 失敗）の終了は attempt の
-            // 開始時刻・意図 epoch で記録する。monitor の stall 状態には触れない。
-            // handshake 中の stop では接続側の予約 epoch が先に進むため記録時に読み直す。
-            healthAttemptEpoch = await dualClient.reservedEpoch
-            diagnostic = SessionTerminationDiagnostic(
-                kind: kind,
-                connectionDuration: max(.zero, now - attemptStart),
-                generation: healthAttemptGeneration,
-                epoch: healthAttemptEpoch
-            )
-        } else {
-            return
-        }
-        // 1 試行につき 1 件だけ。
-        healthAttemptStart = nil
-        latestHealthTermination = diagnostic
-        #if DEBUG
-        AppLogger.session.notice(
-            "DBG_HEALTH_TERMINATION \(diagnostic.description, privacy: .public)"
-        )
-        #endif
-    }
-
-    private func endHealthGeneration() {
-        guard !healthGenerationEnded else { return }
-        healthGenerationEnded = true
-        healthMonitor.endGeneration(now: healthNow())
-        latestHealthSnapshot = healthMonitor.evaluate(now: healthNow()).snapshot
-    }
-
     private func stopTicker() {
         tickerTask?.cancel()
         tickerTask = nil
     }
 
     private func publishSubtitles() {
-        delegate?.interpretationSession(self, didUpdateSubtitles: aggregator.snapshot())
-    }
-
-    private func checkEventLoss(_ feed: EventFeed, generation _: Int) -> Bool {
-        guard feed.deliveryState.didLoseEvents else { return false }
-        if handledLossRunToken != feed.runToken {
-            handledLossRunToken = feed.runToken
-            let invalidation = processor.discardUnconfirmed()
-            displayScheduler.discardPending()
-            displayScheduler.renderNow(invalidation)
-        }
-        return true
-    }
-
-    private func handleEventLoss(_ feed: EventFeed) {
-        _ = checkEventLoss(feed, generation: lifecycleGeneration)
+        delegate?.interpretationSession(self, didUpdateSubtitles: subtitlePipeline.aggregator.snapshot())
     }
 
     private func reconnectingBanner(detail: String?) -> String {
@@ -1034,18 +751,9 @@ final class InterpretationSession {
 
     private func enterErrorMessage(_ message: String) {
         state = .error
-        aggregator.setStatusBanner(message)
+        subtitlePipeline.aggregator.setStatusBanner(message)
         publishSubtitles()
         delegate?.interpretationSession(self, didEncounterMessage: message)
     }
 
-}
-
-extension InterpretationSession: SubtitleDisplaySchedulerDelegate {
-    func subtitleDisplayScheduler(
-        _ scheduler: SubtitleDisplayScheduler,
-        requestsRenderOf update: RealtimeSubtitleUpdate
-    ) {
-        apply(update)
-    }
 }
