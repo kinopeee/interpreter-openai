@@ -86,7 +86,7 @@ final class SessionSubtitlePipeline {
 
     func observeAudio(
         generation: Int,
-        sequence: Int64,
+        sequence: Int,
         discardedMilliseconds: Int,
         queueWaitMilliseconds: Int,
         atMilliseconds: Int
