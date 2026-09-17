@@ -484,12 +484,14 @@ public sealed class InterpretationSession : IDisposable
 
     private async Task ConnectAndStreamAsync(int generation, CancellationToken cancellationToken)
     {
+        // _dualClient.ConnectionEpoch は Dual 側の lock を取るため _sync 保持中には読まない。
+        var entryAttemptEpoch = _dualClient.ConnectionEpoch;
         lock (_sync)
         {
             // RequireApiKey 失敗（missing key）も試行の終了診断へ乗せるため先に記録する。
             _connectionCountInGeneration += 1;
             _healthAttemptStart = HealthNow();
-            _healthAttemptEpoch = _connectionCountInGeneration;
+            _healthAttemptEpoch = entryAttemptEpoch;
             _healthAttemptGeneration = _lifecycleGeneration;
         }
 
@@ -502,11 +504,30 @@ public sealed class InterpretationSession : IDisposable
             languagePair = _sessionLanguagePair ?? _languagePairProvider();
         }
 
-        await _dualClient.StartAsync(
-            apiKey,
-            _tuningProvider().ForPair(languagePair),
-            languagePair,
-            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _dualClient.StartAsync(
+                apiKey,
+                _tuningProvider().ForPair(languagePair),
+                languagePair,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // StartAsync は network 処理の前に connectionEpoch を予約済み。失敗した
+            // handshake の epoch で診断するため読み直す。
+            var reservedEpoch = _dualClient.ConnectionEpoch;
+            lock (_sync)
+            {
+                _healthAttemptEpoch = reservedEpoch;
+            }
+            throw;
+        }
+        var reservedAfterStart = _dualClient.ConnectionEpoch;
+        lock (_sync)
+        {
+            _healthAttemptEpoch = reservedAfterStart;
+        }
         if (!IsCurrentGeneration(generation))
         {
             await _dualClient.ForceCloseAsync().ConfigureAwait(false);
@@ -520,6 +541,7 @@ public sealed class InterpretationSession : IDisposable
         FlushPendingFinalizeIfNeeded();
         lock (_sync)
         {
+            _healthAttemptEpoch = epoch;
             _processor.BeginEpoch(epoch, languagePair);
             _activeFeed = feed;
             _handledLossEpoch = null;
@@ -1265,6 +1287,9 @@ public sealed class InterpretationSession : IDisposable
     /// </summary>
     private void RecordHealthTermination(SessionTerminationKind kind)
     {
+        // handshake 中の stop では Dual 側の予約 epoch が _healthAttemptEpoch より
+        // 先に進むため、_sync 保持前に現 epoch を読んでおく。
+        var currentEpoch = _dualClient.ConnectionEpoch;
         lock (_sync)
         {
             var now = HealthNow();
@@ -1284,7 +1309,7 @@ public sealed class InterpretationSession : IDisposable
                     kind,
                     duration < TimeSpan.Zero ? TimeSpan.Zero : duration,
                     _healthAttemptGeneration,
-                    _healthAttemptEpoch);
+                    Math.Max(_healthAttemptEpoch, currentEpoch));
             }
             else
             {

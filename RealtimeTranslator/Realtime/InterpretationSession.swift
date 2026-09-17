@@ -70,6 +70,8 @@ final class InterpretationSession {
     private var healthReceiveCounts: [RealtimeTranslationLane: Int] = [:]
     private var healthGenerationEnded = true
     /// 世代未開始（pre-Listening）の終了診断用に、接続試行の開始時刻と意図 epoch を保持する。
+    /// epoch は dual client の connectionEpoch（handshake 失敗時は予約済み epoch、
+    /// APIキー欠落時は直前の接続 epoch）。
     private var healthAttemptStart: Duration?
     private var healthAttemptEpoch = 0
     private var healthAttemptGeneration = 0
@@ -203,7 +205,7 @@ final class InterpretationSession {
                 recoverableError = error
             } catch let error as RealtimeTranslationError {
                 guard generation == lifecycleGeneration else { return }
-                recordHealthTermination(error)
+                await recordHealthTermination(error)
                 await tearDownStreaming()
                 // epoch/buffer を捨てる前に完全ペアを確定し、オプトイン字幕記録へ渡す。
                 flushPendingFinalizeIfNeeded()
@@ -220,7 +222,7 @@ final class InterpretationSession {
                     recoverableError = error
                 default:
                     guard generation == lifecycleGeneration else { return }
-                    recordHealthTermination(kind: .other)
+                    await recordHealthTermination(kind: .other)
                     await tearDownStreaming()
                     flushPendingFinalizeIfNeeded()
                     enterError(error)
@@ -229,7 +231,7 @@ final class InterpretationSession {
             } catch {
                 // 未知のアプリエラーは再接続せず即 error（予測可能性を優先）。
                 guard generation == lifecycleGeneration else { return }
-                recordHealthTermination(kind: .other)
+                await recordHealthTermination(kind: .other)
                 await tearDownStreaming()
                 flushPendingFinalizeIfNeeded()
                 enterError(error)
@@ -239,7 +241,7 @@ final class InterpretationSession {
             guard generation == lifecycleGeneration else { return }
             let decision = reconnectBudget.recordFailure()
             guard decision.kind == .wait else {
-                recordHealthTermination(
+                await recordHealthTermination(
                     kind: decision.kind == .budgetExhausted
                         ? .reconnectBudgetExhausted
                         : .reconnectAttemptLimit
@@ -266,7 +268,7 @@ final class InterpretationSession {
             publishSubtitles()
             // recoverable 失敗も終了診断として記録する（診断のみ、挙動は変えない）。
             if let recoverableError {
-                recordHealthTermination(recoverableError)
+                await recordHealthTermination(recoverableError)
             }
             await tearDownStreaming(keepSubtitles: true)
 
@@ -313,7 +315,7 @@ final class InterpretationSession {
     private func connectAndStream(generation: Int) async throws {
         connectionCountInGeneration += 1
         healthAttemptStart = healthNow()
-        healthAttemptEpoch = connectionCountInGeneration
+        healthAttemptEpoch = await dualClient.connectionEpoch
         healthAttemptGeneration = lifecycleGeneration
         let apiKey = try requireAPIKey()
         state = .connecting
@@ -321,11 +323,19 @@ final class InterpretationSession {
         publishSubtitles()
 
         let pair = sessionLanguagePair ?? languagePairProvider()
-        try await dualClient.start(
-            apiKey: apiKey,
-            tuning: tuningProvider().forPair(pair),
-            pair: pair
-        )
+        do {
+            try await dualClient.start(
+                apiKey: apiKey,
+                tuning: tuningProvider().forPair(pair),
+                pair: pair
+            )
+        } catch {
+            // start は network 処理の前に connectionEpoch を予約済み。失敗した handshake の
+            // epoch で診断するため読み直す。
+            healthAttemptEpoch = await dualClient.connectionEpoch
+            throw error
+        }
+        healthAttemptEpoch = await dualClient.connectionEpoch
         guard generation == lifecycleGeneration else {
             await dualClient.forceClose()
             return
@@ -631,7 +641,7 @@ final class InterpretationSession {
     }
 
     private func performStop() async {
-        recordHealthTermination(kind: .userStopped)
+        await recordHealthTermination(kind: .userStopped)
         // ingest を先に止め、既読を acknowledge させてから未読窓だけを武装する。
         // AsyncStream.finish() は未読を捨てるため、未消費の最新窓とこれ以降の close 窓を Dual 側で保持する。
         lifecycleGeneration += 1
@@ -936,17 +946,17 @@ final class InterpretationSession {
 
     /// セッションループ終了・停止時の診断。kind は自前 enum のみ（生 message は渡さない）。
     /// 各世代で最初の終了経路だけを記録する。
-    private func recordHealthTermination(_ error: Error) {
+    private func recordHealthTermination(_ error: Error) async {
         let kind: SessionTerminationKind
         if let error = error as? RealtimeTranslationError {
             kind = SessionTerminationKind(error)
         } else {
             kind = .other
         }
-        recordHealthTermination(kind: kind)
+        await recordHealthTermination(kind: kind)
     }
 
-    private func recordHealthTermination(kind: SessionTerminationKind) {
+    private func recordHealthTermination(kind: SessionTerminationKind) async {
         let now = healthNow()
         let diagnostic: SessionTerminationDiagnostic
         if !healthGenerationEnded {
@@ -955,6 +965,8 @@ final class InterpretationSession {
         } else if let attemptStart = healthAttemptStart {
             // 世代未開始（pre-Listening / handshake 失敗）の終了は attempt の
             // 開始時刻・意図 epoch で記録する。monitor の stall 状態には触れない。
+            // handshake 中の stop では接続側の予約 epoch が先に進むため記録時に読み直す。
+            healthAttemptEpoch = await dualClient.connectionEpoch
             diagnostic = SessionTerminationDiagnostic(
                 kind: kind,
                 connectionDuration: max(.zero, now - attemptStart),

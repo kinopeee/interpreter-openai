@@ -3515,7 +3515,7 @@ public sealed class InterpretationSessionTests
 
     // Given: API キー未設定のセッション
     // When: StartAsync が Error へ終わる
-    // Then: RequireApiKey 失敗も attempt 診断として epoch=1・MissingApiKey で記録される
+    // Then: RequireApiKey 失敗も attempt 診断として epoch=直前の接続epoch(0)・MissingApiKey で記録される
     [Fact]
     public async Task MissingApiKeyEmitsAttemptTermination()
     {
@@ -3530,7 +3530,7 @@ public sealed class InterpretationSessionTests
 
         var diagnostic = session.LatestTerminationDiagnostic;
         Assert.NotNull(diagnostic);
-        Assert.Equal(1, diagnostic.Epoch);
+        Assert.Equal(0, diagnostic.Epoch);
         Assert.Equal(SessionTerminationKind.MissingApiKey, diagnostic.Kind);
         await session.StopAsync();
     }
@@ -3555,6 +3555,35 @@ public sealed class InterpretationSessionTests
         Assert.NotNull(diagnostic);
         Assert.Equal(SessionTerminationKind.RecoverableTransportFailure, diagnostic.Kind);
         Assert.Equal(1, diagnostic.Epoch);
+        await session.StopAsync();
+    }
+
+    // Given: 録音 A が Listening 到達後に停止し、次の StartAsync が handshake 失敗する fake
+    // When: 録音 B の StartAsync が Error へ終わる
+    // Then: 終了診断の epoch は Dual client の ConnectionEpoch（A の Listening epoch より大きい）で記録される
+    //       （stop() が世代を進めるため B の試行 generation は 3）
+    [Fact]
+    public async Task HandshakeFailureEpochUsesDualConnectionEpoch()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, timeProvider: new MonotonicClock());
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        var listeningEpoch = client.ConnectionEpoch;
+        await session.StopAsync();
+
+        client.StartException = new RealtimeTranslationException(
+            RealtimeTranslationErrorKind.FatalServerError,
+            "upstream boom");
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(3, diagnostic.Generation);
+        Assert.Equal(client.ConnectionEpoch, diagnostic.Epoch);
+        Assert.True(diagnostic.Epoch > listeningEpoch);
         await session.StopAsync();
     }
 
@@ -4129,6 +4158,8 @@ public sealed class InterpretationSessionTests
             {
                 StartCount += 1;
                 LastStartedPair = pair;
+                // 本物と同じく、network 処理（注入失敗を含む）の前に epoch を予約する。
+                _epoch += 1;
                 LastStartedTuning = tuning;
                 if (ThrowOnNextStart)
                 {
@@ -4158,7 +4189,6 @@ public sealed class InterpretationSessionTests
 
             lock (_sync)
             {
-                _epoch += 1;
                 DeliveryState = new EventDeliveryState(_epoch);
                 for (var i = 0; i < HandshakeReceiveCount; i++)
                 {

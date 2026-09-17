@@ -1859,6 +1859,10 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         startCallCount += 1
         lastTuning = tuning
         lastLanguagePair = pair
+        // 本物と同じく、network 処理（注入失敗を含む）の前に epoch を予約する。
+        state.withLock { state in
+            state.connectionEpoch += 1
+        }
         if let startGate {
             try await withTaskCancellationHandler {
                 try await withCheckedThrowingContinuation {
@@ -1885,7 +1889,6 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
 
         state.withLock { state in
-            state.connectionEpoch += 1
             state.deliveryState = EventDeliveryState(epoch: state.connectionEpoch)
             for _ in 0..<handshakeReceiveCount {
                 state.deliveryState.recordReceive(lane: .source)
