@@ -87,4 +87,5 @@ OpenAI Realtime Translation によるリアルタイム字幕アプリ。macOS 2
 
 - Origin の Depot CI（`.depot/workflows/`）は共有契約と Linux 上の Windows Core を検証する。Windows / macOS のサンドボックスはなく、WPF / Platform を検証済みとしない。Core 検査の正本は `scripts/ci-windows-core.sh`。
 - GitHub Actions（`.github/workflows/`）は Windows 全体・macOS `xcodebuild`・タグ Release 用に維持する。Platform / App / publish / 署名・公証はこちらで検証する。
+- `.depot/workflows/` は Dependabot の対象外のため、action の SHA は `.github/workflows/` と手動で同期する。
 - Depot の初回接続手順は [README.md のテスト節](README.md#テスト) を参照する。
