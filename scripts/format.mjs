@@ -411,7 +411,12 @@ async function setup({
     for (const entry of await fs.readdir(parent)) {
       if (entry.startsWith(prefix)) {
         const pid = Number(entry.slice(prefix.length));
-        if (Number.isInteger(pid) && pid !== process.pid && isAlive(pid))
+        if (
+          Number.isInteger(pid) &&
+          pid > 0 &&
+          pid !== process.pid &&
+          isAlive(pid)
+        )
           continue;
         await fs.rm(path.join(parent, entry), {
           recursive: true,
