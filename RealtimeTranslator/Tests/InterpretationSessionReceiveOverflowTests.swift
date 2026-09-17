@@ -646,6 +646,51 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         })
     }
 
+    // Given: 再接続前に未確定の字幕ペアと未配送の keepAlive failed が残る session
+    // When: transport error で接続が再接続される
+    // Then: 再接続前のペアを無効化し、確定せず Listening に戻る
+    func testReconnectPreservesQueuedKeepAliveFailureInvalidation() async {
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+
+        await session.start()
+        await waitForCondition { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "再接続drop字幕", eventID: nil, elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Reconnect dropped", eventID: nil, elapsedMs: 20)
+        )
+        await waitForCondition {
+            delegate.latestSnapshot?.current.sourceText == "再接続drop字幕"
+                && delegate.latestSnapshot?.current.translatedText == "Reconnect dropped"
+        }
+
+        dual.queueSourceFailureWithoutDrain()
+        dual.emit(
+            target: .english,
+            event: .error(message: "socket closed", code: "transport", errorType: nil)
+        )
+        await waitForCondition {
+            session.state == .listening && dual.startCallCount >= 2
+        }
+
+        XCTAssertTrue(delegate.snapshots.contains(where: \.isInvalidation))
+        XCTAssertFalse(delegate.finalizedSnapshots.contains {
+            $0.sourceText == "再接続drop字幕" || $0.translatedText == "Reconnect dropped"
+        })
+        await session.stop()
+    }
+
     // Given: keepAlive failed を正常に消費して pending counter が空になった session
     // When: その後に新しい字幕ペアを表示して停止する
     // Then: 新しい字幕ペアは停止時に確定される

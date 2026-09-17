@@ -922,6 +922,55 @@ public sealed class InterpretationSessionReceiveOverflowTests
         }
     }
 
+    // Given: 再接続前に未確定の字幕ペアと未配送の keepAlive failed が残る session
+    // When: transport error で接続が再接続される
+    // Then: 再接続前のペアを無効化し、確定せず Listening に戻る
+    [Fact]
+    public async Task ReconnectPreservesQueuedKeepAliveFailureInvalidation()
+    {
+        var client = new FakeOverflowDualClient();
+        using var session = CreateSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        client.PublishSourceDelta("再接続drop字幕");
+        client.PublishTranslationDelta("Reconnect dropped");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update =>
+                    update.SourceText == "再接続drop字幕"
+                    && update.TranslatedText == "Reconnect dropped");
+            }
+        });
+
+        client.QueueSourceFailureWithoutDrain();
+        client.PublishServerError("socket closed", "transport");
+        await client.SecondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+
+        lock (updates)
+        {
+            Assert.Contains(updates, update => update.IsInvalidation);
+            Assert.DoesNotContain(
+                updates,
+                update => update.ShouldFinalize
+                    && (update.SourceText == "再接続drop字幕"
+                        || update.TranslatedText == "Reconnect dropped"));
+        }
+        await session.StopAsync();
+    }
+
     // Given: keepAlive failed を正常に消費して pending counter が空になった session
     // When: その後に新しい字幕ペアを表示して停止する
     // Then: 新しい字幕ペアは停止時に確定される

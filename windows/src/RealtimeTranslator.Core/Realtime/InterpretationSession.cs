@@ -637,7 +637,6 @@ public sealed class InterpretationSession : IDisposable
 
             if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptFailed failed)
             {
-                feed.DeliveryState.NoteSourceFailureConsumed();
                 RealtimeServerErrorClassification classification =
                     RealtimeServerErrorClassification.ClassifyTranscriptionFailure(
                         failed.ErrorType,
@@ -647,6 +646,7 @@ public sealed class InterpretationSession : IDisposable
                 {
                     invalidation = _processor.DiscardFailedSource(failed.ItemId, failed.EventId);
                 }
+                feed.DeliveryState.NoteSourceFailureConsumed();
 
                 if (invalidation is { } failedUpdate)
                 {
@@ -739,9 +739,9 @@ public sealed class InterpretationSession : IDisposable
             return;
         }
 
+        DiscardFailedSourceIfNeeded(feed);
         if (feed.DeliveryState.Termination != EventDeliveryTermination.None)
         {
-            DiscardFailedSourceIfNeeded(feed);
             throw feed.DeliveryState.ToException();
         }
 
@@ -910,6 +910,10 @@ public sealed class InterpretationSession : IDisposable
                 // ForceClose 中の遅延 source でも言語境界を分割できるよう、
                 // ペアと tracker は二度目の回収が終わるまで残す。通信先は変えない。
                 IngestAlreadyQueuedEvents();
+                if (feed is { DeliveryState.HasPendingSourceFailure: true })
+                {
+                    DiscardFailedSourceIfNeeded(feed);
+                }
                 lock (_sync)
                 {
                     _processor.DeactivateLanguagePair();
@@ -1026,12 +1030,12 @@ public sealed class InterpretationSession : IDisposable
                     continue;
                 }
 
-                currentFeed.DeliveryState.NoteSourceFailureConsumed();
                 RealtimeSubtitleUpdate? invalidation;
                 lock (_sync)
                 {
                     invalidation = _processor.DiscardFailedSource(failed.ItemId, failed.EventId);
                 }
+                currentFeed.DeliveryState.NoteSourceFailureConsumed();
 
                 if (invalidation is { } failedUpdate)
                 {

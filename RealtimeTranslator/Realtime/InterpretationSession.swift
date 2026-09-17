@@ -339,9 +339,7 @@ final class InterpretationSession {
         if feed.deliveryState.didLoseEvents {
             handleEventLoss(feed)
         }
-        if feed.deliveryState.termination != .none {
-            discardFailedSourceIfNeeded(feed)
-        }
+        discardFailedSourceIfNeeded(feed)
         try firstResult.get()
     }
 
@@ -460,12 +458,13 @@ final class InterpretationSession {
             }
 
             if case .inputTranscriptFailed(let itemID, let eventID, let code, let errorType) = streamEvent.event {
-                feed.deliveryState.noteSourceFailureConsumed()
                 let classification = EventDeliveryState.classifyTranscriptionFailure(
                     errorType: errorType,
                     code: code
                 )
-                if let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID) {
+                let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID)
+                feed.deliveryState.noteSourceFailureConsumed()
+                if let invalidation {
                     displayScheduler.discardPending()
                     // halt/recover の flushPendingFinalizeIfNeeded が discardPending するため、
                     // 間引きせず即時適用し、aggregator の未確定ペアを先に消す。
@@ -587,8 +586,9 @@ final class InterpretationSession {
             }
             if case .inputTranscriptFailed(let itemID, let eventID, _, _) = streamEvent.event {
                 guard streamEvent.epoch == feed.runToken else { continue }
+                let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID)
                 feed.deliveryState.noteSourceFailureConsumed()
-                if let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID) {
+                if let invalidation {
                     displayScheduler.renderNow(invalidation)
                 }
                 continue
@@ -625,6 +625,9 @@ final class InterpretationSession {
     private func tearDownStreaming(keepSubtitles: Bool = false) async {
         await audioCapture.stop()
         await dualClient.forceClose()
+        if let feed = activeFeed {
+            discardFailedSourceIfNeeded(feed)
+        }
         activeFeed = nil
         handledLossRunToken = nil
         processor.deactivateLanguagePair()
