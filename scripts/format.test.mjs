@@ -289,15 +289,13 @@ test("paths remain individual arguments and sorting uses UTF-8 bytes", async () 
   ]);
 });
 
-test("no targets, merge conflicts, spawn errors, and signals fail without formatting", async () => {
-  /* Given: 対象なし、競合、spawn エラー、シグナル終了の各状態がある */
+test("no targets fail with a diagnostic before formatter invocation", async () => {
+  /* Given: formatter の対象ファイルがない */
   /* When: check を実行する */
-  /* Then: 明示的な診断と非ゼロ終了になる */
+  /* Then: 対象なしの診断と非ゼロ終了になり formatter を起動しない */
   const root = await makeRepo("swift", { "shared/fixture.json": "{}\n" });
   const calls = [];
-  const spawn = probeSpawn(calls, "swift", {
-    formatter: () => ({ code: null, signal: "SIGKILL" }),
-  });
+  const spawn = probeSpawn(calls, "swift");
   await fakeCache(root, "swift", spawn);
   const io = streams();
   const code = await createRunner({
@@ -312,6 +310,71 @@ test("no targets, merge conflicts, spawn errors, and signals fail without format
   assert.equal(
     calls.filter((call) => call.cmd.includes("swift-format")).length,
     0,
+  );
+});
+
+test("signal-terminated formatter fails with a signal diagnostic", async () => {
+  /* Given: formatter が SIGKILL で終了する */
+  /* When: 対象ファイルの check を実行する */
+  /* Then: シグナルの診断と非ゼロ終了になり formatter を一度起動する */
+  const root = await makeRepo("swift", {
+    "RealtimeTranslator/A.swift": "let value = 1\n",
+  });
+  const calls = [];
+  const spawn = probeSpawn(calls, "swift", {
+    formatter: () => ({
+      code: null,
+      signal: "SIGKILL",
+      stdout: "",
+      stderr: "",
+    }),
+  });
+  await fakeCache(root, "swift", spawn);
+  const io = streams();
+  const code = await createRunner({
+    root,
+    spawn,
+    platform: "linux",
+    arch: "x64",
+    stderr: io.stderr,
+  }).run("swift", "check");
+  assert.equal(code, 1);
+  assert.match(io.stderrText, /terminated by signal SIGKILL/);
+  assert.equal(
+    calls.filter((call) => call.cmd.includes("swift-format")).length,
+    1,
+  );
+});
+
+test("formatter spawn errors fail with a spawn diagnostic", async () => {
+  /* Given: formatter の起動が ENOENT で失敗する */
+  /* When: 対象ファイルの check を実行する */
+  /* Then: spawn の診断と非ゼロ終了になり formatter を一度起動する */
+  const root = await makeRepo("swift", {
+    "RealtimeTranslator/A.swift": "let value = 1\n",
+  });
+  const calls = [];
+  const spawn = probeSpawn(calls, "swift", {
+    formatter: () => ({
+      code: null,
+      signal: null,
+      error: new Error("spawn ENOENT"),
+    }),
+  });
+  await fakeCache(root, "swift", spawn);
+  const io = streams();
+  const code = await createRunner({
+    root,
+    spawn,
+    platform: "linux",
+    arch: "x64",
+    stderr: io.stderr,
+  }).run("swift", "check");
+  assert.equal(code, 1);
+  assert.match(io.stderrText, /spawn error: spawn ENOENT/);
+  assert.equal(
+    calls.filter((call) => call.cmd.includes("swift-format")).length,
+    1,
   );
 });
 
