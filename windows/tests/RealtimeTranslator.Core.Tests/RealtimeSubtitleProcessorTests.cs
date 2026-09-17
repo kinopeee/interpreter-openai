@@ -89,6 +89,39 @@ public sealed class RealtimeSubtitleProcessorTests
         Assert.Equal("it is sunny outside", processor.RoutingSourceText);
     }
 
+    // Given: 日本語原文と stale な英訳で英語 target が選択済み
+    // When: ゲート未満の英語 delta を取り込んで idle する
+    // Then: 境界候補が pending のまま原文を保持し、後続 delta で候補位置から切り替える
+    [Fact]
+    public void JapaneseBoundaryCandidateRemainsPendingUntilLatinGate()
+    {
+        var processor = NewProcessor();
+        processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
+        processor.Process(
+            Translation(RealtimeTranslationOutputLanguage.English, "It is sunny today.", "t1", 2),
+            Origin.AddMilliseconds(2));
+
+        var partial = processor.Process(
+            Source("Today it is", "s2", 3),
+            Origin.AddMilliseconds(3));
+        Assert.NotNull(partial);
+        Assert.Equal(new RealtimeSubtitleRoutingAction.None(), partial.RoutingAction);
+        Assert.Null(processor.Tick(Origin.AddSeconds(9)));
+        Assert.Equal("今日は晴れです。Today it is".Length, processor.CurrentSourceLength);
+
+        var result = processor.Process(
+            Source(" sunny outside", "s3", 4),
+            Origin.AddSeconds(9).AddMilliseconds(4));
+
+        Assert.NotNull(result);
+        Assert.Equal(
+            new RealtimeSubtitleRoutingAction.Switch(RealtimeTranslationOutputLanguage.Japanese),
+            result.RoutingAction);
+        Assert.Equal("今日は晴れです。", result.Updates[0].SourceText);
+        Assert.True(result.Updates[0].ShouldFinalize);
+        Assert.Equal("Today it is sunny outside", result.Updates[1].SourceText);
+    }
+
     // Given: 日本語原文で英語 target が選択済み
     // When: DiscardUnconfirmed を呼ぶ
     // Then: 無効化 update が返り routing がリセットされて再選択できる
@@ -114,6 +147,30 @@ public sealed class RealtimeSubtitleProcessorTests
         Assert.Equal(
             new RealtimeSubtitleRoutingAction.Select(RealtimeTranslationOutputLanguage.English),
             result.RoutingAction);
+    }
+
+    // Given: 日本語原文「今日は晴れです。」で英語 target が選択済み
+    // When: 音声欠落後、新しい原文なしで日本語 lane、続いて英語 lane の訳文 delta を取り込む
+    // Then: stale な expected lane を使わず first-output で日本語 lane を選び、その後も日本語訳を保持する
+    [Fact]
+    public void AudioLossClearsExpectedLaneBeforeFirstTranslationOutput()
+    {
+        var processor = NewProcessor();
+        processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
+        processor.MarkAudioLoss(Origin);
+
+        var japanese = processor.Process(
+            Translation(RealtimeTranslationOutputLanguage.Japanese, "こんにちは", "t-loss-1", 10),
+            Origin.AddMilliseconds(10));
+        var english = processor.Process(
+            Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t-loss-2", 11),
+            Origin.AddMilliseconds(11));
+
+        Assert.NotNull(japanese);
+        Assert.Equal("こんにちは", japanese.Updates[0].TranslatedText);
+        Assert.True(japanese.Updates[0].IsTranslationCurrent);
+        Assert.NotNull(english);
+        Assert.Equal("こんにちは", english.Updates[0].TranslatedText);
     }
 
     // Given: epoch 1 を開始した直後
@@ -246,6 +303,35 @@ public sealed class RealtimeSubtitleProcessorTests
         Assert.True(
             processor.RoutingSourceText.Length <= RoutingSourceTextWindow.MaxLength,
             $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap");
+    }
+
+    // Given: 日本語原文と英訳のあと、ゲート未達の 3 語製品名が続く
+    // When: idle finalize 間隔を超えて Tick する
+    // Then: 切替は起きず、pending のまま stale セグメントを abandon しない
+    [Fact]
+    public void GatedJapaneseProductNameKeepsPendingAndDoesNotAbandon()
+    {
+        var processor = NewProcessor();
+        processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
+        processor.Process(
+            Translation(RealtimeTranslationOutputLanguage.English, "It is sunny today.", "t1", 2),
+            Origin.AddMilliseconds(2));
+
+        var gated = processor.Process(
+            Source(" Google Cloud Platform", "s2", 3),
+            Origin.AddMilliseconds(3));
+        Assert.NotNull(gated);
+        Assert.Equal(new RealtimeSubtitleRoutingAction.None(), gated.RoutingAction);
+        Assert.False(gated.Updates[0].IsTranslationCurrent);
+
+        var generation = processor.SegmentGeneration;
+        var sourceLength = processor.CurrentSourceLength;
+
+        var tick = processor.Tick(Origin.AddSeconds(9));
+
+        Assert.Null(tick);
+        Assert.Equal(generation, processor.SegmentGeneration);
+        Assert.Equal(sourceLength, processor.CurrentSourceLength);
     }
 
     // Given: 日本語セグメントのあと、長い空白 run で隔てられた複数語の英語 delta

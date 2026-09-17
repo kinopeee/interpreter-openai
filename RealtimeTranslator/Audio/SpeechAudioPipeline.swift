@@ -199,13 +199,16 @@ final class AnalyzerAudioConverter: @unchecked Sendable {
 final class AnalyzerAudioTap: @unchecked Sendable {
     private let continuation: AsyncStream<CapturedAudioBuffer>.Continuation
     private let bufferPool: CapturedAudioBufferPool
+    private let discardedFrames: OSAllocatedUnfairLock<Int>
 
     init(
         continuation: AsyncStream<CapturedAudioBuffer>.Continuation,
-        bufferPool: CapturedAudioBufferPool
+        bufferPool: CapturedAudioBufferPool,
+        discardedFrames: OSAllocatedUnfairLock<Int>
     ) {
         self.continuation = continuation
         self.bufferPool = bufferPool
+        self.discardedFrames = discardedFrames
     }
 
     func receive(_ buffer: AVAudioPCMBuffer) {
@@ -214,6 +217,13 @@ final class AnalyzerAudioTap: @unchecked Sendable {
         case .enqueued:
             break
         case .dropped(let dropped):
+            let frameCount = Int(dropped.buffer.frameLength)
+            discardedFrames.withLock { $0 += frameCount }
+            #if DEBUG
+            AppLogger.audio.notice(
+                "DBG_CAPTURE_PRECONVERSION_DROP frames=\(frameCount, privacy: .public)"
+            )
+            #endif
             dropped.release()
         case .terminated:
             captured.release()

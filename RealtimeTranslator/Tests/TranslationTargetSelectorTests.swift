@@ -2,6 +2,27 @@ import XCTest
 @testable import RealtimeTranslator
 
 final class TranslationTargetSelectorTests: XCTestCase {
+    // Given: shared fixture の script switch gate
+    // When: selector の定数と照合する
+    // Then: Swift 実装の閾値が共有契約と一致する
+    func testScriptSwitchGateMatchesFixture() throws {
+        let gate = try XCTUnwrap(
+            SharedFixtures.load("routing")["scriptSwitchGate"] as? [String: Any]
+        )
+        XCTAssertEqual(
+            SharedFixtures.number(gate["minimumLatinWords"]),
+            TranslationTargetSelector.scriptSwitchMinimumLatinWords
+        )
+        XCTAssertEqual(
+            SharedFixtures.number(gate["minimumLatinScalars"]),
+            TranslationTargetSelector.scriptSwitchMinimumLatinScalars
+        )
+        XCTAssertEqual(
+            SharedFixtures.number(gate["minimumJapaneseScalars"]),
+            TranslationTargetSelector.scriptSwitchMinimumJapaneseScalars
+        )
+    }
+
     // Given: shared fixtureのtargetSelection契約
     // When: 全ての証拠列を純粋な調停器へ渡す
     // Then: 各stepの出力targetがfixtureと一致する
@@ -15,11 +36,19 @@ final class TranslationTargetSelectorTests: XCTestCase {
             var reverseCount = 0
             let steps = try XCTUnwrap(item["evidence"] as? [[String: Any]])
             for step in steps {
+                let oppositeRun = (step["oppositeRun"] as? [String: Any]).map {
+                    OppositeScriptRun(
+                        latinWordCount: SharedFixtures.number($0["latinWords"]),
+                        latinScalarCount: SharedFixtures.number($0["latinScalars"]),
+                        japaneseScalarCount: SharedFixtures.number($0["japaneseScalars"])
+                    )
+                }
                 let result = TranslationTargetSelector.select(
                     pair: pair,
                     currentTarget: target,
                     reverseEvidenceCount: reverseCount,
-                    evidence: parseEvidence(SharedFixtures.text(step["evidence"]))
+                    evidence: parseEvidence(SharedFixtures.text(step["evidence"])),
+                    oppositeRun: oppositeRun
                 )
                 target = result.target
                 reverseCount = result.reverseEvidenceCount

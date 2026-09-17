@@ -2,21 +2,19 @@
 import Foundation
 import os
 
-/// `AsyncStream` の yield 結果を録音継続可否へ写す。
-///
-/// `.bufferingNewest` は満杯時に古い要素を捨てて新規を enqueue したうえで
-/// `.dropped(古い要素)` を返す。これを失敗扱いすると送信遅延で再接続嵐になる。
 enum RealtimeAudioFrameYieldOutcome {
-    static func didAccept(
-        _ result: AsyncStream<Data>.Continuation.YieldResult
+    static func isTerminated<Element>(
+        _ result: AsyncStream<Element>.Continuation.YieldResult
     ) -> Bool {
         switch result {
-        case .enqueued, .dropped:
-            return true
+        case .enqueued:
+            return false
+        case .dropped:
+            return false
         case .terminated:
-            return false
+            return true
         @unknown default:
-            return false
+            return true
         }
     }
 }
@@ -49,7 +47,7 @@ enum RealtimeAudioCaptureError: Error, LocalizedError, Sendable {
 
 @MainActor
 protocol RealtimeAudioCaptureServicing: AnyObject {
-    var frames: AsyncStream<Data> { get }
+    var frames: AsyncStream<CapturedAudioFrame> { get }
     /// `frames` が終端した理由。正常停止時は nil。
     var terminationError: Error? { get }
     func start() async throws
@@ -63,21 +61,20 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     private static let targetSampleRate = 24_000.0
 
     private let audioEngine = AVAudioEngine()
+    private let discardedFrames = OSAllocatedUnfairLock(initialState: 0)
+    private var frameQueue: RealtimeAudioFrameQueue
     private var captureContinuation: AsyncStream<CapturedAudioBuffer>.Continuation?
-    private var frameContinuation: AsyncStream<Data>.Continuation?
     private var feederTask: Task<Void, Never>?
     private var configurationObserver: (any NSObjectProtocol)?
     private var isTapInstalled = false
     private var lifecycleGeneration = 0
-    private(set) var frames: AsyncStream<Data>
+    private var inputSampleRate = 0.0
+    private(set) var frames: AsyncStream<CapturedAudioFrame>
     private(set) var terminationError: Error?
 
     init() {
-        var continuation: AsyncStream<Data>.Continuation!
-        frames = AsyncStream(bufferingPolicy: .bufferingNewest(32)) {
-            continuation = $0
-        }
-        frameContinuation = continuation
+        frameQueue = RealtimeAudioFrameQueue()
+        frames = frameQueue.frames
     }
 
     func start() async throws {
@@ -85,6 +82,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         lifecycleGeneration += 1
         let generation = lifecycleGeneration
         terminationError = nil
+        discardedFrames.withLock { $0 = 0 }
         recreateFrameStream()
 
         let microphoneGranted = await requestMicrophonePermission()
@@ -98,6 +96,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             throw RealtimeAudioCaptureError.audioFormatUnavailable
         }
+        inputSampleRate = inputFormat.sampleRate
         #if DEBUG
         AppLogger.audio.notice(
             "DBG_CAPTURE_START rate=\(inputFormat.sampleRate, privacy: .public) channels=\(inputFormat.channelCount, privacy: .public)"
@@ -140,7 +139,8 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
 
         let audioTap = AnalyzerAudioTap(
             continuation: captureContinuation,
-            bufferPool: bufferPool
+            bufferPool: bufferPool,
+            discardedFrames: discardedFrames
         )
         let tapBlock: @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void = { buffer, _ in
             audioTap.receive(buffer)
@@ -178,7 +178,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
                             )
                         }
                         #endif
-                        let result = await self?.yieldFrame(frame)
+                        let result = await self?.yieldFrame(frame, generation: generation)
                         if result == false {
                             await self?.reportFailure(
                                 RealtimeAudioCaptureError.pipelineOverloaded,
@@ -189,7 +189,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
                     }
                 }
                 if let padded = packetizer.flushWithSilencePadding() {
-                    _ = await self?.yieldFrame(padded)
+                    _ = await self?.yieldFrame(padded, generation: generation)
                 }
             } catch is CancellationError {
                 return
@@ -240,8 +240,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
             await feederTask.value
         }
         feederTask = nil
-        frameContinuation?.finish()
-        frameContinuation = nil
+        frameQueue.finish()
     }
 
     private func removeConfigurationObserver() {
@@ -272,9 +271,22 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         )
     }
 
-    private func yieldFrame(_ frame: Data) -> Bool {
-        guard let frameContinuation else { return false }
-        return RealtimeAudioFrameYieldOutcome.didAccept(frameContinuation.yield(frame))
+    private func yieldFrame(_ frame: Data, generation: Int) -> Bool {
+        let sampleRate = inputSampleRate
+        let discarded = discardedFrames.withLock { frames in
+            Self.discardedMilliseconds(forFrames: frames, inputSampleRate: sampleRate)
+        }
+        return frameQueue.enqueue(
+            pcm16: frame,
+            generation: generation,
+            discardedMilliseconds: discarded,
+            capturedAt: .now
+        )
+    }
+
+    nonisolated static func discardedMilliseconds(forFrames frames: Int, inputSampleRate: Double) -> Int {
+        guard frames > 0, inputSampleRate > 0 else { return 0 }
+        return Int((Double(frames) * 1_000 / inputSampleRate).rounded())
     }
 
     private func reportFailure(_ error: Error, generation: Int) {
@@ -289,18 +301,14 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         // feeder の for-await を終わらせ、追加 yield → pipelineOverloaded を防ぐ。
         captureContinuation?.finish()
         captureContinuation = nil
-        frameContinuation?.finish()
-        frameContinuation = nil
+        frameQueue.finish()
         removeConfigurationObserver()
     }
 
     private func recreateFrameStream() {
-        frameContinuation?.finish()
-        var continuation: AsyncStream<Data>.Continuation!
-        frames = AsyncStream(bufferingPolicy: .bufferingNewest(32)) {
-            continuation = $0
-        }
-        frameContinuation = continuation
+        frameQueue.finish()
+        frameQueue = RealtimeAudioFrameQueue()
+        frames = frameQueue.frames
     }
 
     private func requestMicrophonePermission() async -> Bool {

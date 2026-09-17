@@ -46,10 +46,15 @@ final class InterpretationSession {
     private var sessionTask: Task<Void, Never>?
     private var lifecycleGeneration = 0
     private var processor = RealtimeSubtitleProcessor()
+    private var audioLossTracker = AudioLossTracker()
     /// 現在の録音世代で使う言語ペア。Start 時に固定し、再接続でも settings の変更を取り込まない。
     private var sessionLanguagePair: LanguagePair?
     private var activeFeed: EventFeed?
     private var handledLossRunToken: Int?
+
+    var audioLossMetrics: AudioLossMetrics {
+        audioLossTracker.metrics
+    }
 
     init(
         apiKeyStore: any APIKeyStore,
@@ -93,6 +98,7 @@ final class InterpretationSession {
         lifecycleGeneration += 1
         let generation = lifecycleGeneration
         reconnectBudget.reset()
+        audioLossTracker.reset()
         // 録音開始時点のペアを世代全体で固定する。録音中の設定変更は再接続でも反映しない
         // （VALIDATION: 停止→次の録音開始後にだけ新しいペアが反映される）。
         sessionLanguagePair = languagePairProvider()
@@ -375,7 +381,37 @@ final class InterpretationSession {
         for await frame in audioCapture.frames {
             guard generation == lifecycleGeneration else { return }
             guard state == .listening else { return }
-            try await dualClient.appendAudioFrame(frame)
+            let queueWaitMilliseconds = max(
+                0,
+                Int(
+                    ReconnectBudget.nanoseconds(
+                        frame.capturedAt.duration(to: .now)
+                    ) / 1_000_000
+                )
+            )
+            let atMilliseconds = max(
+                0,
+                Int(ReconnectBudget.nanoseconds(ReconnectBudget.continuousNow()) / 1_000_000)
+            )
+            let observation = audioLossTracker.observe(
+                generation: frame.generation,
+                sequence: frame.sequence,
+                discardedMilliseconds: frame.discardedMilliseconds,
+                queueWaitMilliseconds: queueWaitMilliseconds,
+                atMilliseconds: atMilliseconds
+            )
+            if observation.didLose {
+                await handleAudioLoss()
+                #if DEBUG
+                AppLogger.session.notice(
+                    "DBG_AUDIO_LOSS droppedFrames=\(observation.droppedFrames, privacy: .public) lostMs=\(observation.lostMilliseconds, privacy: .public) reconnect=\(observation.shouldReconnect, privacy: .public)"
+                )
+                #endif
+            }
+            if observation.shouldReconnect {
+                throw RealtimeAudioCaptureError.pipelineOverloaded
+            }
+            try await dualClient.appendAudioFrame(frame.pcm16)
         }
         guard generation == lifecycleGeneration, state == .listening else { return }
         if let terminationError = audioCapture.terminationError {
@@ -513,12 +549,16 @@ final class InterpretationSession {
             }
         }
         processor.clearBoundaryCandidate()
-        if let tickUpdate = processor.tick(now: Date()) {
-            displayScheduler.renderNow(tickUpdate)
+        if processor.isCurrentSegmentTainted {
+            let invalidation = processor.discardUnconfirmed()
+            displayScheduler.renderNow(invalidation)
+        } else {
+            if let tickUpdate = processor.tick(now: Date()) {
+                displayScheduler.renderNow(tickUpdate)
+            }
+            let snapshot = aggregator.forceFinalize()
+            delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
         }
-
-        let snapshot = aggregator.forceFinalize()
-        delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
         aggregator.setStatusBanner(nil)
         sessionLanguagePair = nil
         processor.deactivateLanguagePair()
@@ -597,6 +637,12 @@ final class InterpretationSession {
         // スロットル中の live snapshot より assembler を正とする。
         displayScheduler.discardPending()
 
+        if processor.isCurrentSegmentTainted {
+            let invalidation = processor.discardUnconfirmed()
+            displayScheduler.renderNow(invalidation)
+            return
+        }
+
         let flushAt = Date().addingTimeInterval(RealtimeSubtitleAssembler.idleFinalizeInterval)
         if let update = processor.tick(now: flushAt) {
             displayScheduler.renderNow(update)
@@ -655,6 +701,15 @@ final class InterpretationSession {
         await dualClient.resetAudioRouting()
     }
 
+    private func handleAudioLoss() async {
+        let invalidation = processor.markAudioLoss(now: Date())
+        displayScheduler.discardPending()
+        displayScheduler.renderNow(invalidation)
+        if !processor.hasSelectedTranslationTarget {
+            await dualClient.resetAudioRouting()
+        }
+    }
+
     /// scheduler からの描画要求を aggregator・delegate へ反映する。
     private func apply(_ update: RealtimeSubtitleUpdate) {
         if update.isInvalidation {
@@ -700,7 +755,7 @@ final class InterpretationSession {
                 }
                 if let update = self.processor.tick(now: Date()) {
                     self.enqueueRender(update)
-                    if update.shouldFinalize {
+                    if update.shouldFinalize || update.isInvalidation {
                         await self.resetAudioRoutingForNextSegment()
                     }
                 }

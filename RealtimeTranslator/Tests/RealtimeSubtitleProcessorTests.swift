@@ -81,6 +81,36 @@ final class RealtimeSubtitleProcessorTests: XCTestCase {
         XCTAssertEqual(processor.routingSourceText, "it is sunny outside")
     }
 
+    // Given: 日本語原文と stale な英訳で英語 target が選択済み
+    // When: ゲート未満の英語 delta を取り込んで idle する
+    // Then: 境界候補が pending のまま原文を保持し、後続 delta で候補位置から切り替える
+    func testJapaneseBoundaryCandidateRemainsPendingUntilLatinGate() {
+        var processor = makeProcessor()
+        _ = processor.process(source("今日は晴れです。", "s1", 1), now: origin)
+        _ = processor.process(
+            translation(.english, "It is sunny today.", "t1", 2),
+            now: origin.addingTimeInterval(0.002)
+        )
+
+        let partial = processor.process(
+            source("Today it is", "s2", 3),
+            now: origin.addingTimeInterval(0.003)
+        )
+        XCTAssertEqual(partial?.routingAction, RealtimeSubtitleRoutingAction.none)
+        XCTAssertNil(processor.tick(now: origin.addingTimeInterval(9)))
+        XCTAssertEqual(processor.currentSourceLength, "今日は晴れです。Today it is".utf16.count)
+
+        let result = processor.process(
+            source(" sunny outside", "s3", 4),
+            now: origin.addingTimeInterval(9.004)
+        )
+
+        XCTAssertEqual(result?.routingAction, .switch(.japanese))
+        XCTAssertEqual(result?.updates[0].sourceText, "今日は晴れです。")
+        XCTAssertEqual(result?.updates[0].shouldFinalize, true)
+        XCTAssertEqual(result?.updates[1].sourceText, "Today it is sunny outside")
+    }
+
     // Given: 日本語原文で英語 target が選択済み
     // When: discardUnconfirmed を呼ぶ
     // Then: 無効化 update が返り routing がリセットされて再選択できる
@@ -102,6 +132,41 @@ final class RealtimeSubtitleProcessorTests: XCTestCase {
             now: origin.addingTimeInterval(0.005)
         )
         XCTAssertEqual(result?.routingAction, .select(.english))
+    }
+
+    // Given: 日本語原文で英語 target が選択済みのprocessor
+    // When: 音声欠落を通知する
+    // Then: selected translation target が解除される
+    func testAudioLossClearsSelectedTranslationTarget() {
+        var processor = makeProcessor()
+        _ = processor.process(source("今日は晴れです。", "s1", 1), now: origin)
+        XCTAssertTrue(processor.hasSelectedTranslationTarget)
+
+        _ = processor.markAudioLoss(now: origin)
+
+        XCTAssertFalse(processor.hasSelectedTranslationTarget)
+    }
+
+    // Given: 日本語原文「今日は晴れです。」で英語 target が選択済み
+    // When: 音声欠落後、新しい原文なしで日本語 lane、続いて英語 lane の訳文 delta を取り込む
+    // Then: stale な expected lane を使わず first-output で日本語 lane を選び、その後も日本語訳を保持する
+    func testAudioLossClearsExpectedLaneBeforeFirstTranslationOutput() {
+        var processor = makeProcessor()
+        _ = processor.process(source("今日は晴れです。", "s1", 1), now: origin)
+        _ = processor.markAudioLoss(now: origin)
+
+        let japanese = processor.process(
+            translation(.japanese, "こんにちは", "t-loss-1", 10),
+            now: origin.addingTimeInterval(0.010)
+        )
+        let english = processor.process(
+            translation(.english, "Hello", "t-loss-2", 11),
+            now: origin.addingTimeInterval(0.011)
+        )
+
+        XCTAssertEqual(japanese?.updates[0].translatedText, "こんにちは")
+        XCTAssertEqual(japanese?.updates[0].isTranslationCurrent, true)
+        XCTAssertEqual(english?.updates[0].translatedText, "こんにちは")
     }
 
     // Given: epoch 1 を開始した直後
@@ -171,6 +236,34 @@ final class RealtimeSubtitleProcessorTests: XCTestCase {
             RoutingSourceTextWindow.maxLength,
             "routing buffer length \(processor.routingSourceText.utf16.count) exceeded the cap after flip"
         )
+    }
+
+    // Given: 日本語原文と英訳のあと、ゲート未達の 3 語製品名が続く
+    // When: idle finalize 間隔を超えて Tick する
+    // Then: 切替は起きず、pending のまま stale セグメントを abandon しない
+    func testGatedJapaneseProductNameKeepsPendingAndDoesNotAbandon() {
+        var processor = makeProcessor()
+        _ = processor.process(source("今日は晴れです。", "s1", 1), now: origin)
+        _ = processor.process(
+            translation(.english, "It is sunny today.", "t1", 2),
+            now: origin.addingTimeInterval(0.002)
+        )
+
+        let gated = processor.process(
+            source(" Google Cloud Platform", "s2", 3),
+            now: origin.addingTimeInterval(0.003)
+        )
+        XCTAssertEqual(gated?.routingAction, RealtimeSubtitleRoutingAction.none)
+        XCTAssertEqual(gated?.updates[0].isTranslationCurrent, false)
+
+        let generation = processor.currentSegmentGeneration
+        let sourceLength = processor.currentSourceLength
+
+        let tick = processor.tick(now: origin.addingTimeInterval(9))
+
+        XCTAssertNil(tick)
+        XCTAssertEqual(processor.currentSegmentGeneration, generation)
+        XCTAssertEqual(processor.currentSourceLength, sourceLength)
     }
 
     // Given: 日本語セグメントのあと、長い空白 run で隔てられた複数語の英語 delta
