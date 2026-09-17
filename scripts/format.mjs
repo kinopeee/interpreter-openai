@@ -76,6 +76,14 @@ const commandResult = async (spawn, cmd, args, cwd, capture = false, env) =>
 
 const failedResult = (result) =>
   result?.code !== 0 || result?.signal || result?.error;
+const isAlive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === "EPERM";
+  }
+};
 
 const firstLine = (value) => text(value).split(/\r?\n/, 1)[0];
 const outputOf = (result) => `${text(result?.stderr)}${text(result?.stdout)}`;
@@ -401,8 +409,15 @@ async function setup({
   const prefix = `${path.basename(cacheDir)}.partial-`;
   try {
     for (const entry of await fs.readdir(parent)) {
-      if (entry.startsWith(prefix))
-        await fs.rm(path.join(parent, entry), { recursive: true, force: true });
+      if (entry.startsWith(prefix)) {
+        const pid = Number(entry.slice(prefix.length));
+        if (Number.isInteger(pid) && pid !== process.pid && isAlive(pid))
+          continue;
+        await fs.rm(path.join(parent, entry), {
+          recursive: true,
+          force: true,
+        });
+      }
     }
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
@@ -432,6 +447,11 @@ async function setup({
     const temp = path.join(partial, `provenance.json.tmp-${process.pid}`);
     await fs.writeFile(temp, JSON.stringify(provenance, null, 2) + "\n");
     await fs.rename(temp, path.join(partial, "provenance.json"));
+    if ((await validateCache(cacheDir, key)).valid) {
+      await fs.rm(partial, { recursive: true, force: true });
+      write(stdout, `reusing cache ${cacheDir}\n`);
+      return 0;
+    }
     await fs.rename(partial, cacheDir);
   } catch (error) {
     await fs.rm(partial, { recursive: true, force: true });

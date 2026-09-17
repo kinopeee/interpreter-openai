@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
 import {
+  access,
   mkdtemp,
   mkdir,
   readFile,
@@ -492,6 +493,72 @@ test("setup failure removes partial and cache provenance", async () => {
       ),
     ),
   );
+});
+
+test("setup removes stale partial caches but preserves live partial caches", async () => {
+  /* Given: 死んだPIDと生きたPIDのセットアップ途中キャッシュがある */
+  /* When: CSharpier の setup を実行する */
+  /* Then: 死んだPIDだけ削除し、生きたPIDは残す */
+  const root = await makeRepo("csharp");
+  const calls = [];
+  const version = "1.3.0";
+  const spawn = probeSpawn(calls, "csharp", {
+    dotnet: async (args) => {
+      if (args[0] === "tool") {
+        const tools = args[args.indexOf("--tool-path") + 1];
+        const dll = path.join(
+          tools,
+          ".store",
+          "csharpier",
+          version,
+          "csharpier",
+          version,
+          "tools/net10.0/any/CSharpier.dll",
+        );
+        await mkdir(path.dirname(dll), { recursive: true });
+        await writeFile(path.join(tools, "csharpier"), "fake csharpier");
+        await writeFile(dll, "fake CSharpier.dll");
+      }
+      return {
+        code: 0,
+        signal: null,
+        stdout: args[0] === "--version" ? "10.0.401\n" : "",
+        stderr: "",
+      };
+    },
+    formatter: () => ({
+      code: 0,
+      signal: null,
+      stdout: `${version}\n`,
+      stderr: "",
+    }),
+  });
+  const cacheKey = await computeCacheKey({
+    root,
+    language: "csharp",
+    platform: "linux",
+    arch: "x64",
+    spawn,
+  });
+  const cacheRoot = path.join(root, ".devin/format/tools/csharpier", cacheKey);
+  const deadPartial = `${cacheRoot}.partial-99999999`;
+  const livePartial = `${cacheRoot}.partial-${process.ppid}`;
+  await mkdir(deadPartial, { recursive: true });
+  await mkdir(livePartial, { recursive: true });
+  const io = streams();
+  assert.equal(
+    await createRunner({
+      root,
+      spawn,
+      platform: "linux",
+      arch: "x64",
+      stdout: io.stdout,
+      stderr: io.stderr,
+    }).run("csharp", "setup"),
+    0,
+  );
+  await assert.rejects(access(deadPartial));
+  await assert.doesNotReject(access(livePartial));
 });
 
 test("tool version output is not used as provenance identity", async () => {
