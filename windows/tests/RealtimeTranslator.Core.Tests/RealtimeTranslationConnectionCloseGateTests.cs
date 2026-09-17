@@ -26,17 +26,17 @@ public sealed class RealtimeTranslationConnectionCloseGateTests
             RealtimeTranslationOutputLanguage.English,
             transport,
             "test-safety",
-            closeTimeout: TimeSpan.FromSeconds(5));
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+            closeTimeout: TimeSpan.FromSeconds(5)
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
         var closeCountAfterStart = transport.CloseCount;
 
         var closeTask = connection.CloseGracefullyAsync();
         await WaitUntilAsync(() => TypeOf(transport.Sent[^1]) == "session.close");
 
-        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("late-frame")));
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("late-frame"))
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
         Assert.DoesNotContain("late-frame", transport.AppendedFrameTexts());
@@ -62,6 +62,5 @@ public sealed class RealtimeTranslationConnectionCloseGateTests
         Assert.Fail("condition was not met in time");
     }
 
-    private static string? TypeOf(byte[] payload) =>
-        JsonNode.Parse(payload)!.AsObject()["type"]?.GetValue<string>();
+    private static string? TypeOf(byte[] payload) => JsonNode.Parse(payload)!.AsObject()["type"]?.GetValue<string>();
 }

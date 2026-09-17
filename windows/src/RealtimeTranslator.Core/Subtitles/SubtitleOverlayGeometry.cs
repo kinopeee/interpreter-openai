@@ -29,8 +29,10 @@ public static class SubtitleOverlayGeometry
                 workArea.X + ((workArea.Width - width) / 2),
                 workArea.Bottom - height - BottomOffset,
                 width,
-                height),
-            workArea);
+                height
+            ),
+            workArea
+        );
     }
 
     /// <summary>作業領域からはみ出さない位置へ寄せる。領域より大きい場合は左上に合わせる。</summary>

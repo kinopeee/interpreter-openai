@@ -26,22 +26,18 @@ public sealed partial class RealtimeTranslationException : Exception
     public static string GenericServerMessage => UserCopy.Current.Text("error.genericServer");
 
     public RealtimeTranslationException(RealtimeTranslationErrorKind kind, string? serverMessage = null)
-        : this(kind, serverMessage, UserCopy.Current)
-    {
-    }
+        : this(kind, serverMessage, UserCopy.Current) { }
 
     /// <summary>表示文言の <see cref="UserCopy"/> を明示する。未指定時は <see cref="UserCopy.Current"/>。</summary>
-    internal RealtimeTranslationException(
-        RealtimeTranslationErrorKind kind,
-        string? serverMessage,
-        UserCopy copy)
+    internal RealtimeTranslationException(RealtimeTranslationErrorKind kind, string? serverMessage, UserCopy copy)
         : base(DescribeFor(kind, serverMessage, copy))
     {
         Kind = kind;
         // 生のサーバー文言は保持しない。ToString / プロパティ列挙でも資格情報を残さない。
-        ServerMessage = kind == RealtimeTranslationErrorKind.FatalServerError
-            ? SanitizeServerMessage(serverMessage ?? string.Empty)
-            : null;
+        ServerMessage =
+            kind == RealtimeTranslationErrorKind.FatalServerError
+                ? SanitizeServerMessage(serverMessage ?? string.Empty)
+                : null;
     }
 
     public RealtimeTranslationErrorKind Kind { get; }
@@ -49,10 +45,12 @@ public sealed partial class RealtimeTranslationException : Exception
     /// <summary>正規化済みのサーバー文言。生の資格情報は載せない。UI/ログは <see cref="Exception.Message"/> を使う。</summary>
     public string? ServerMessage { get; }
 
-    public bool IsRecoverable => Kind is RealtimeTranslationErrorKind.RecoverableTransportFailure
-        or RealtimeTranslationErrorKind.RecoverableServerError
-        or RealtimeTranslationErrorKind.ReceiveOverflow
-        or RealtimeTranslationErrorKind.SessionUpdateTimeout;
+    public bool IsRecoverable =>
+        Kind
+            is RealtimeTranslationErrorKind.RecoverableTransportFailure
+                or RealtimeTranslationErrorKind.RecoverableServerError
+                or RealtimeTranslationErrorKind.ReceiveOverflow
+                or RealtimeTranslationErrorKind.SessionUpdateTimeout;
 
     /// <summary>アラート・バナー・ログへ出してよいサーバー文言へ正規化する。</summary>
     public static string SanitizeServerMessage(string message)
@@ -61,10 +59,12 @@ public sealed partial class RealtimeTranslationException : Exception
 
         var lowered = SecretText.NormalizeForMatch(message);
         var compact = lowered.Replace(" ", string.Empty, StringComparison.Ordinal);
-        if (compact.Contains("sk-", StringComparison.Ordinal)
+        if (
+            compact.Contains("sk-", StringComparison.Ordinal)
             || lowered.Contains("api key", StringComparison.Ordinal)
             || lowered.Contains("authorization", StringComparison.Ordinal)
-            || lowered.Contains("bearer ", StringComparison.Ordinal))
+            || lowered.Contains("bearer ", StringComparison.Ordinal)
+        )
         {
             return GenericServerMessage;
         }
@@ -78,7 +78,8 @@ public sealed partial class RealtimeTranslationException : Exception
     /// </summary>
     public static bool IsAuthenticationFailure(string? code, string message)
     {
-        var codeLowered = SecretText.NormalizeForMatch(code ?? string.Empty)
+        var codeLowered = SecretText
+            .NormalizeForMatch(code ?? string.Empty)
             .Replace(" ", string.Empty, StringComparison.Ordinal);
         var messageLowered = SecretText.NormalizeForMatch(message);
 
@@ -87,10 +88,12 @@ public sealed partial class RealtimeTranslationException : Exception
             return true;
         }
 
-        if (codeLowered.Contains("invalid_api_key", StringComparison.Ordinal)
+        if (
+            codeLowered.Contains("invalid_api_key", StringComparison.Ordinal)
             || codeLowered.Contains("authentication", StringComparison.Ordinal)
             || codeLowered.Contains("unauthorized", StringComparison.Ordinal)
-            || codeLowered.Contains("authorization", StringComparison.Ordinal))
+            || codeLowered.Contains("authorization", StringComparison.Ordinal)
+        )
         {
             return true;
         }
@@ -106,10 +109,7 @@ public sealed partial class RealtimeTranslationException : Exception
         return HttpAuthStatusPattern().IsMatch(messageLowered);
     }
 
-    private static string DescribeFor(
-        RealtimeTranslationErrorKind kind,
-        string? serverMessage,
-        UserCopy copy)
+    private static string DescribeFor(RealtimeTranslationErrorKind kind, string? serverMessage, UserCopy copy)
     {
         ArgumentNullException.ThrowIfNull(copy);
         return kind switch

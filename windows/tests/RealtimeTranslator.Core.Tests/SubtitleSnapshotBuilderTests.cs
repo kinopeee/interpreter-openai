@@ -30,7 +30,8 @@ public sealed class SubtitleSnapshotBuilderTests
         Assert.Equal(SubtitleSnapshotBuilder.ConnectingBanner, builder.Apply(TranslationState.Connecting).StatusBanner);
         Assert.Equal(
             SubtitleSnapshotBuilder.ReconnectingBanner,
-            builder.Apply(TranslationState.Reconnecting).StatusBanner);
+            builder.Apply(TranslationState.Reconnecting).StatusBanner
+        );
     }
 
     // Given: listening 中の字幕更新
@@ -43,7 +44,8 @@ public sealed class SubtitleSnapshotBuilderTests
 
         var snapshot = builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
-            TranslationState.Listening);
+            TranslationState.Listening
+        );
 
         Assert.Equal("こんにちは", snapshot.Current.SourceText);
         Assert.Equal("Hello", snapshot.Current.TranslatedText);
@@ -59,11 +61,19 @@ public sealed class SubtitleSnapshotBuilderTests
         var builder = new SubtitleSnapshotBuilder();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: true, 0),
-            TranslationState.Listening);
+            TranslationState.Listening
+        );
 
         var snapshot = builder.Apply(
-            new RealtimeSubtitleUpdate("ありがとう", string.Empty, IsTranslationCurrent: false, ShouldFinalize: false, 1),
-            TranslationState.Listening);
+            new RealtimeSubtitleUpdate(
+                "ありがとう",
+                string.Empty,
+                IsTranslationCurrent: false,
+                ShouldFinalize: false,
+                1
+            ),
+            TranslationState.Listening
+        );
 
         Assert.Equal("ありがとう", snapshot.Current.SourceText);
         Assert.Equal(string.Empty, snapshot.Current.TranslatedText);
@@ -78,7 +88,8 @@ public sealed class SubtitleSnapshotBuilderTests
         var builder = new SubtitleSnapshotBuilder();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
-            TranslationState.Listening);
+            TranslationState.Listening
+        );
 
         var snapshot = builder.Apply(TranslationState.Idle);
 
@@ -95,7 +106,8 @@ public sealed class SubtitleSnapshotBuilderTests
         var builder = new SubtitleSnapshotBuilder();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
-            TranslationState.Listening);
+            TranslationState.Listening
+        );
 
         var snapshot = builder.Reset(TranslationState.Idle);
 
@@ -112,7 +124,8 @@ public sealed class SubtitleSnapshotBuilderTests
         var builder = new SubtitleSnapshotBuilder();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
-            TranslationState.Listening);
+            TranslationState.Listening
+        );
 
         var snapshot = builder.Reset(TranslationState.Error);
 
@@ -130,7 +143,8 @@ public sealed class SubtitleSnapshotBuilderTests
 
         var snapshot = builder.Apply(
             new RealtimeSubtitleUpdate("source", "translation", IsTranslationCurrent: true, ShouldFinalize: true, 0),
-            TranslationState.Listening);
+            TranslationState.Listening
+        );
 
         Assert.True(snapshot.Current.IsFinalized);
     }
@@ -144,7 +158,8 @@ public sealed class SubtitleSnapshotBuilderTests
         var builder = new SubtitleSnapshotBuilder();
         var snapshot = builder.Apply(
             new RealtimeSubtitleUpdate("source", "translation", IsTranslationCurrent: true, ShouldFinalize: true, 0),
-            TranslationState.Listening);
+            TranslationState.Listening
+        );
         var viewModel = new SubtitleOverlayViewModel();
 
         viewModel.Apply(snapshot);
@@ -163,7 +178,8 @@ public sealed class SubtitleSnapshotBuilderTests
         var builder = new SubtitleSnapshotBuilder();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
-            TranslationState.Listening);
+            TranslationState.Listening
+        );
 
         var snapshot = builder.Apply(TranslationState.Error);
 
@@ -181,7 +197,8 @@ public sealed class SubtitleSnapshotBuilderTests
         var builder = new SubtitleSnapshotBuilder();
         builder.Apply(
             new RealtimeSubtitleUpdate("source", "translation", IsTranslationCurrent: true, ShouldFinalize: true, 0),
-            TranslationState.Listening);
+            TranslationState.Listening
+        );
 
         var snapshot = builder.Reset(TranslationState.Idle);
 
@@ -194,18 +211,16 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void BannersComeFromCatalogAndIdleSubstitutesHotkey()
     {
-        Assert.Equal(
-            UserCopy.Current.Text("banner.connecting"),
-            SubtitleSnapshotBuilder.ConnectingBanner);
-        Assert.Equal(
-            UserCopy.Current.Text("banner.reconnecting"),
-            SubtitleSnapshotBuilder.ReconnectingBanner);
+        Assert.Equal(UserCopy.Current.Text("banner.connecting"), SubtitleSnapshotBuilder.ConnectingBanner);
+        Assert.Equal(UserCopy.Current.Text("banner.reconnecting"), SubtitleSnapshotBuilder.ReconnectingBanner);
         Assert.Equal(
             UserCopy.Current.Format("banner.idle", "hotkey", "Ctrl + Alt + Space"),
-            SubtitleSnapshotBuilder.IdleBanner);
+            SubtitleSnapshotBuilder.IdleBanner
+        );
         Assert.Equal(
             UserCopy.Current.Format("banner.idle", "hotkey", "Control + Option + Space"),
-            SubtitleSnapshotBuilder.IdleBannerFor("Control + Option + Space"));
+            SubtitleSnapshotBuilder.IdleBannerFor("Control + Option + Space")
+        );
         Assert.Contains("Control + Option + Space", SubtitleSnapshotBuilder.IdleBannerFor("Control + Option + Space"));
     }
 
@@ -219,12 +234,14 @@ public sealed class SubtitleSnapshotBuilderTests
         var builder = new SubtitleSnapshotBuilder();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
-            TranslationState.Listening);
+            TranslationState.Listening
+        );
         builder.Reset(TranslationState.Idle);
 
         var snapshot = builder.Apply(
             new RealtimeSubtitleUpdate("遅延原文", "Late", IsTranslationCurrent: true, ShouldFinalize: false, 0),
-            TranslationState.Listening);
+            TranslationState.Listening
+        );
 
         Assert.Equal("遅延原文", snapshot.Current.SourceText);
         Assert.Equal("Late", snapshot.Current.TranslatedText);
@@ -244,8 +261,10 @@ public sealed class SubtitleSnapshotBuilderTests
                 IsTranslationCurrent: true,
                 ShouldFinalize: true,
                 SegmentGeneration: 0,
-                Sequence: 2),
-            TranslationState.Listening);
+                Sequence: 2
+            ),
+            TranslationState.Listening
+        );
 
         var stale = builder.Apply(
             new RealtimeSubtitleUpdate(
@@ -254,8 +273,10 @@ public sealed class SubtitleSnapshotBuilderTests
                 IsTranslationCurrent: true,
                 ShouldFinalize: false,
                 SegmentGeneration: 0,
-                Sequence: 1),
-            TranslationState.Listening);
+                Sequence: 1
+            ),
+            TranslationState.Listening
+        );
         var invalidated = builder.Apply(
             new RealtimeSubtitleUpdate(
                 string.Empty,
@@ -264,8 +285,10 @@ public sealed class SubtitleSnapshotBuilderTests
                 ShouldFinalize: false,
                 SegmentGeneration: 1,
                 IsInvalidation: true,
-                Sequence: 3),
-            TranslationState.Listening);
+                Sequence: 3
+            ),
+            TranslationState.Listening
+        );
 
         Assert.Equal("Final", stale.Current.TranslatedText);
         Assert.True(stale.Current.IsFinalized);

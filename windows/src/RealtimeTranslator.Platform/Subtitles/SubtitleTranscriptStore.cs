@@ -35,7 +35,8 @@ public sealed class SubtitleTranscriptStore
     public SubtitleTranscriptStore(
         string? filePath = null,
         Func<DateTimeOffset>? now = null,
-        int maxFileBytes = SubtitleTranscriptLimits.MaxFileBytes)
+        int maxFileBytes = SubtitleTranscriptLimits.MaxFileBytes
+    )
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxFileBytes);
         _filePath = filePath ?? DefaultFilePath();
@@ -69,7 +70,8 @@ public sealed class SubtitleTranscriptStore
         var directory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "RealtimeTranslator",
-            "transcripts");
+            "transcripts"
+        );
         // ディレクトリ作成は初回書き込み側で行い、既定パス解決だけでは起動を落とさない。
         return Path.Combine(directory, "session.txt");
     }
@@ -77,9 +79,7 @@ public sealed class SubtitleTranscriptStore
     public static string DefaultExportFileName(DateTimeOffset? now = null)
     {
         var timestamp = now ?? DateTimeOffset.Now;
-        return string.Create(
-            CultureInfo.InvariantCulture,
-            $"subtitles-{timestamp:yyyyMMdd-HHmmss}.txt");
+        return string.Create(CultureInfo.InvariantCulture, $"subtitles-{timestamp:yyyyMMdd-HHmmss}.txt");
     }
 
     public SubtitleTranscriptAppendResult MarkSessionStart()
@@ -177,7 +177,8 @@ public sealed class SubtitleTranscriptStore
         string chunk,
         bool updateLastPair,
         string? source,
-        string? translation)
+        string? translation
+    )
     {
         try
         {
@@ -196,11 +197,7 @@ public sealed class SubtitleTranscriptStore
             }
 
             EnsureFileExistsLocked();
-            using var stream = new FileStream(
-                _filePath,
-                FileMode.Append,
-                FileAccess.Write,
-                FileShare.Read);
+            using var stream = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.Read);
             var payload = Encoding.UTF8.GetBytes(chunk);
             stream.Write(payload, 0, payload.Length);
             stream.Flush(flushToDisk: true);

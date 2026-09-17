@@ -38,8 +38,8 @@ public sealed class AppReleaseVersionTests
     [Fact]
     public void UnpublishedAssemblyVersionIsZero()
     {
-        var informational = typeof(AppReleaseVersion).Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+        var informational = typeof(AppReleaseVersion)
+            .Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion;
 
         Assert.Equal(AppReleaseVersion.Unpublished, AppReleaseVersion.DisplayValue(informational));

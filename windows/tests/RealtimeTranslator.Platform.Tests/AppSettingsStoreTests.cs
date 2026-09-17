@@ -14,14 +14,14 @@ public sealed class AppSettingsStoreTests : IDisposable
     private readonly string _directory = Path.Combine(
         Path.GetTempPath(),
         "RealtimeTranslator.Tests",
-        Guid.NewGuid().ToString("N"));
+        Guid.NewGuid().ToString("N")
+    );
 
     // Given: 設定ファイルが未作成の環境
     // When: 読み込む
     // Then: 既定値が返る
     [Fact]
-    public void LoadReturnsDefaultsWhenFileIsMissing() =>
-        Assert.Equal(AppSettingsData.Default, CreateStore().Load());
+    public void LoadReturnsDefaultsWhenFileIsMissing() => Assert.Equal(AppSettingsData.Default, CreateStore().Load());
 
     // Given: 変更した設定
     // When: 保存して読み戻す
@@ -103,6 +103,5 @@ public sealed class AppSettingsStoreTests : IDisposable
         }
     }
 
-    private AppSettingsStore CreateStore() =>
-        new(Path.Combine(_directory, AppSettingsStore.FileName));
+    private AppSettingsStore CreateStore() => new(Path.Combine(_directory, AppSettingsStore.FileName));
 }

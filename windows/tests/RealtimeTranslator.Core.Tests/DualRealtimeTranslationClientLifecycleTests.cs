@@ -28,12 +28,15 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         var japanese = new FakeRealtimeServerTransport();
         using var dual = CreateDual(source, english, japanese);
 
-        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.AppendAudioFrameAsync(Frame(0x11)));
-        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English));
-        var tuningError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.UpdateTranscriptionTuningAsync(RealtimeSessionTuning.Default));
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.AppendAudioFrameAsync(Frame(0x11))
+        );
+        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English)
+        );
+        var tuningError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.UpdateTranscriptionTuningAsync(RealtimeSessionTuning.Default)
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, selectError.Kind);
@@ -81,9 +84,7 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         Assert.True(source.CloseCount >= 1);
         Assert.True(english.CloseCount >= 1);
         Assert.True(japanese.CloseCount >= 1);
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         Assert.False(await dual.Events.WaitToReadAsync(timeout.Token));
@@ -111,9 +112,7 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         Assert.Equal(sourceCloseAfterForce, source.CloseCount);
         Assert.Equal(englishCloseAfterForce, english.CloseCount);
         Assert.Equal(englishSentAfterForce, english.Sent.Count);
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         Assert.False(await dual.Events.WaitToReadAsync());
     }
@@ -132,12 +131,15 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
         await dual.CloseGracefullyAsync();
 
-        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English));
-        var tuningError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.UpdateTranscriptionTuningAsync(RealtimeSessionTuning.Default));
-        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.AppendAudioFrameAsync(Frame(0x41)));
+        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English)
+        );
+        var tuningError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.UpdateTranscriptionTuningAsync(RealtimeSessionTuning.Default)
+        );
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.AppendAudioFrameAsync(Frame(0x41))
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, selectError.Kind);
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, tuningError.Kind);
@@ -196,8 +198,9 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         using var cancelled = new CancellationTokenSource();
         await cancelled.CancelAsync();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => dual.WaitForTranslationDrainAsync(TimeSpan.FromSeconds(5), cancelled.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            dual.WaitForTranslationDrainAsync(TimeSpan.FromSeconds(5), cancelled.Token)
+        );
         await dual.ForceCloseAsync();
     }
 
@@ -213,15 +216,10 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         var baseTimeout = TimeSpan.FromMilliseconds(50);
         using var dual = new DualRealtimeTranslationClient(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.English,
-                english,
-                "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.Japanese,
-                japanese,
-                "test-safety"),
-            translationDrainTimeout: baseTimeout);
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"),
+            translationDrainTimeout: baseTimeout
+        );
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
         await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
@@ -230,7 +228,8 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
 
         var inFlightOnly = DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(
             baseTimeout,
-            pendingFrameCount: 1);
+            pendingFrameCount: 1
+        );
         await WaitUntilAsync(() => dual.CloseDrainTimeoutForTests == inFlightOnly);
 
         await dual.AppendAudioFrameAsync(Frame(0x32));
@@ -238,7 +237,8 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
 
         Assert.Equal(
             DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount: 3),
-            dual.CloseDrainTimeoutForTests);
+            dual.CloseDrainTimeoutForTests
+        );
         await dual.ForceCloseAsync();
     }
 
@@ -267,8 +267,9 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
 
         Assert.Equal(["beforeClose"], english.AppendedFrameTexts());
         Assert.DoesNotContain("duringClose", english.AppendedFrameTexts());
-        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("afterClose")));
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("afterClose"))
+        );
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
     }
 
@@ -371,23 +372,16 @@ public sealed class DualRealtimeTranslationClientLifecycleTests
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,
         FakeRealtimeServerTransport japanese,
-        FakeRealtimeServerTransport? spanish = null) =>
+        FakeRealtimeServerTransport? spanish = null
+    ) =>
         new(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.English,
-                english,
-                "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.Japanese,
-                japanese,
-                "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"),
             spanishConnection: spanish is null
                 ? null
-                : new RealtimeTranslationConnection(
-                    RealtimeTranslationOutputLanguage.Spanish,
-                    spanish,
-                    "test-safety"));
+                : new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Spanish, spanish, "test-safety")
+        );
 
     private static byte[] Frame(byte fill)
     {

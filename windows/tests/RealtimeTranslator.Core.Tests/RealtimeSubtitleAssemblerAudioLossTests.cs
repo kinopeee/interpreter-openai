@@ -7,8 +7,7 @@ namespace RealtimeTranslator.Core.Tests;
 
 public sealed class RealtimeSubtitleAssemblerAudioLossTests
 {
-    private static readonly DateTimeOffset Origin =
-        new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset Origin = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     // Given: 音声欠落を検知して汚染窓を開始する
     // When: 原文と訳文を受け取り、idle finalize を評価する
@@ -40,7 +39,8 @@ public sealed class RealtimeSubtitleAssemblerAudioLossTests
         assembler.MarkAudioLoss(Origin);
         assembler.Ingest(
             Source("ありがとう", "s1"),
-            Origin.Add(RealtimeSubtitleAssembler.AudioLossTaintWindow).AddMilliseconds(1));
+            Origin.Add(RealtimeSubtitleAssembler.AudioLossTaintWindow).AddMilliseconds(1)
+        );
         assembler.Ingest(Translation("Thank you", "t1"), Origin.AddSeconds(8.2));
 
         var update = assembler.Tick(Origin.AddSeconds(17));
@@ -108,8 +108,10 @@ public sealed class RealtimeSubtitleAssemblerAudioLossTests
             new RealtimeTranslationStreamEvent(
                 RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.Japanese),
                 new RealtimeTranslationServerEvent.OutputTranscriptDelta("こんにちは", "t2", 300),
-                1),
-            Origin.AddSeconds(1));
+                1
+            ),
+            Origin.AddSeconds(1)
+        );
         var update = assembler.Tick(Origin.AddSeconds(10));
 
         Assert.NotNull(update);
@@ -131,11 +133,13 @@ public sealed class RealtimeSubtitleAssemblerAudioLossTests
         new(
             RealtimeTranslationLane.Source,
             new RealtimeTranslationServerEvent.InputTranscriptDelta(text, eventId, 100),
-            1);
+            1
+        );
 
     private static RealtimeTranslationStreamEvent Translation(string text, string eventId) =>
         new(
             RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
             new RealtimeTranslationServerEvent.OutputTranscriptDelta(text, eventId, 200),
-            1);
+            1
+        );
 }

@@ -26,7 +26,8 @@ struct DualRealtimeTranslationClientTuning: Sendable {
         pendingFrameCount: Int
     ) -> UInt64 {
         let pending = UInt64(max(0, pendingFrameCount))
-        let scaled = baseNanoseconds
+        let scaled =
+            baseNanoseconds
             &+ (pending &* translationDrainTimeoutNanosecondsPerPendingFrame)
         let cap = max(baseNanoseconds, translationDrainTimeoutCapNanoseconds)
         return min(max(scaled, baseNanoseconds), cap)

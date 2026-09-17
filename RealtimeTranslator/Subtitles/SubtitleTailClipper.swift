@@ -11,7 +11,8 @@ enum SubtitleTailClipper {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return text }
 
-        let limit = containsCJK(trimmed)
+        let limit =
+            containsCJK(trimmed)
             ? japaneseCharacterLimit
             : englishCharacterLimit
         guard trimmed.count > limit else { return trimmed }

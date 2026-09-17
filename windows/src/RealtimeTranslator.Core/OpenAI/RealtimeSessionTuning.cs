@@ -12,7 +12,8 @@ public sealed record RealtimeSessionTuning(
     RealtimeTranslationNoiseReduction NoiseReduction,
     RealtimeTranscriptionDelay TranscriptionDelay,
     string TranscriptionPrompt,
-    ImmutableArray<string> TranscriptionKeywords)
+    ImmutableArray<string> TranscriptionKeywords
+)
 {
     /// <summary>OpenAI が keywords 内で拒否する文字。session.update 全体が失敗するため除去する。</summary>
     public const string ForbiddenKeywordCharacters = "<>";
@@ -39,25 +40,28 @@ public sealed record RealtimeSessionTuning(
         RealtimeTranslationNoiseReduction.FarField,
         RealtimeTranscriptionDelay.Low,
         DefaultPrompt,
-        DefaultKeywords);
+        DefaultKeywords
+    );
 
-    public static string DefaultPromptForPair(LanguagePair pair) => pair switch
-    {
-        LanguagePair.JaEn => DefaultPrompt,
-        LanguagePair.JaEs => "Japanese and Spanish conversation about software development, programming, and hackathons.",
-        LanguagePair.EnEs => "English and Spanish conversation about software development, programming, and hackathons.",
-        _ => throw new ArgumentOutOfRangeException(nameof(pair), pair, null),
-    };
+    public static string DefaultPromptForPair(LanguagePair pair) =>
+        pair switch
+        {
+            LanguagePair.JaEn => DefaultPrompt,
+            LanguagePair.JaEs =>
+                "Japanese and Spanish conversation about software development, programming, and hackathons.",
+            LanguagePair.EnEs =>
+                "English and Spanish conversation about software development, programming, and hackathons.",
+            _ => throw new ArgumentOutOfRangeException(nameof(pair), pair, null),
+        };
 
-    public static ImmutableArray<string> DefaultKeywordsForPair(LanguagePair pair) => pair == LanguagePair.JaEn
-        ? DefaultKeywords
-        : ["hackathon", "software", "programming", "desarrollo", "programación"];
+    public static ImmutableArray<string> DefaultKeywordsForPair(LanguagePair pair) =>
+        pair == LanguagePair.JaEn
+            ? DefaultKeywords
+            : ["hackathon", "software", "programming", "desarrollo", "programación"];
 
     public RealtimeSessionTuning ForPair(LanguagePair pair)
     {
-        var prompt = IsKnownDefaultPrompt(TranscriptionPrompt)
-            ? DefaultPromptForPair(pair)
-            : TranscriptionPrompt;
+        var prompt = IsKnownDefaultPrompt(TranscriptionPrompt) ? DefaultPromptForPair(pair) : TranscriptionPrompt;
         var keywords = IsKnownDefaultKeywords(TranscriptionKeywords)
             ? DefaultKeywordsForPair(pair)
             : TranscriptionKeywords;
@@ -81,7 +85,8 @@ public sealed record RealtimeSessionTuning(
             "software_development",
             "ソフトウェア開発",
             DefaultPrompt,
-            DefaultKeywords);
+            DefaultKeywords
+        );
 
         public static readonly Preset BusinessMeeting = new(
             "business_meeting",
@@ -98,7 +103,8 @@ public sealed record RealtimeSessionTuning(
                 "ステークホルダー",
                 "stakeholder",
                 "フォローアップ",
-            ]);
+            ]
+        );
 
         public static readonly Preset Hackathon = new(
             "hackathon",
@@ -116,7 +122,8 @@ public sealed record RealtimeSessionTuning(
                 "チーム",
                 "プロトタイプ",
                 "prototype",
-            ]);
+            ]
+        );
 
         public static readonly ImmutableArray<Preset> All = [SoftwareDevelopment, BusinessMeeting, Hackathon];
     }
@@ -164,8 +171,7 @@ public sealed record RealtimeSessionTuning(
     {
         ArgumentNullException.ThrowIfNull(text);
 
-        return text
-            .Replace("\r\n", " ", StringComparison.Ordinal)
+        return text.Replace("\r\n", " ", StringComparison.Ordinal)
             .Replace("\n", " ", StringComparison.Ordinal)
             .Replace("\r", " ", StringComparison.Ordinal)
             .Trim();
@@ -230,8 +236,8 @@ public sealed record RealtimeSessionTuning(
         RealtimeTranslationNoiseReduction noiseReduction,
         RealtimeTranscriptionDelay transcriptionDelay,
         string prompt,
-        string keywordsText) =>
-        new(noiseReduction, transcriptionDelay, SanitizedPrompt(prompt), ParseKeywords(keywordsText));
+        string keywordsText
+    ) => new(noiseReduction, transcriptionDelay, SanitizedPrompt(prompt), ParseKeywords(keywordsText));
 
     private static string StripForbiddenCharacters(string value)
     {

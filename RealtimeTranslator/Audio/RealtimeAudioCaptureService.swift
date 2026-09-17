@@ -103,19 +103,23 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         )
         #endif
 
-        guard let targetFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: Self.targetSampleRate,
-            channels: 1,
-            interleaved: false
-        ) else {
+        guard
+            let targetFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: Self.targetSampleRate,
+                channels: 1,
+                interleaved: false
+            )
+        else {
             throw RealtimeAudioCaptureError.audioFormatUnavailable
         }
 
-        guard let converter = AnalyzerAudioConverter(
-            inputFormat: inputFormat,
-            outputFormat: targetFormat
-        ) else {
+        guard
+            let converter = AnalyzerAudioConverter(
+                inputFormat: inputFormat,
+                outputFormat: targetFormat
+            )
+        else {
             throw RealtimeAudioCaptureError.audioConverterUnavailable
         }
 
@@ -123,11 +127,13 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
             Self.tapBufferSize,
             AVAudioFrameCount(inputFormat.sampleRate.rounded(.up))
         )
-        guard let bufferPool = CapturedAudioBufferPool(
-            format: inputFormat,
-            frameCapacity: captureFrameCapacity,
-            capacity: Self.bufferPoolCapacity
-        ) else {
+        guard
+            let bufferPool = CapturedAudioBufferPool(
+                format: inputFormat,
+                frameCapacity: captureFrameCapacity,
+                capacity: Self.bufferPoolCapacity
+            )
+        else {
             throw RealtimeAudioCaptureError.audioBufferPoolUnavailable
         }
 
@@ -327,7 +333,7 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         guard frameLength > 0 else { return Data() }
 
         if buffer.format.commonFormat == .pcmFormatInt16,
-           let channel = buffer.int16ChannelData?[0]
+            let channel = buffer.int16ChannelData?[0]
         {
             return PCM16LittleEndianEncoder.encode(
                 int16Samples: channel,

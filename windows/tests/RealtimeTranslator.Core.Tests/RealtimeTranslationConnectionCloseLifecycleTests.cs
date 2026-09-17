@@ -27,13 +27,11 @@ public sealed class RealtimeTranslationConnectionCloseLifecycleTests
             RealtimeTranslationOutputLanguage.English,
             transport,
             "test-safety",
-            closeTimeout: TimeSpan.FromMilliseconds(250));
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+            closeTimeout: TimeSpan.FromMilliseconds(250)
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
-        var first = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.CloseGracefullyAsync());
+        var first = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.CloseGracefullyAsync());
         Assert.Equal(RealtimeTranslationErrorKind.CloseTimeout, first.Kind);
         var closeCountAfterFirst = transport.CloseCount;
         var sessionCloseCount = SentTypes(transport).Count(type => type == "session.close");
@@ -56,10 +54,9 @@ public sealed class RealtimeTranslationConnectionCloseLifecycleTests
             RealtimeTranslationOutputLanguage.Japanese,
             transport,
             "test-safety",
-            closeTimeout: TimeSpan.FromMilliseconds(400));
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.JapaneseTargetWithoutSourceTranscription());
+            closeTimeout: TimeSpan.FromMilliseconds(400)
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.JapaneseTargetWithoutSourceTranscription());
 
         var first = connection.CloseGracefullyAsync();
         var second = connection.CloseGracefullyAsync();
@@ -82,10 +79,9 @@ public sealed class RealtimeTranslationConnectionCloseLifecycleTests
             RealtimeTranslationOutputLanguage.English,
             transport,
             "test-safety",
-            closeTimeout: TimeSpan.FromSeconds(5));
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+            closeTimeout: TimeSpan.FromSeconds(5)
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         using var caller = new CancellationTokenSource();
         var closeTask = connection.CloseGracefullyAsync(caller.Token);
@@ -118,8 +114,8 @@ public sealed class RealtimeTranslationConnectionCloseLifecycleTests
     }
 
     private static string[] SentTypes(FakeRealtimeServerTransport transport) =>
-        transport.Sent
-            .Select(payload => JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>() ?? string.Empty)
+        transport
+            .Sent.Select(payload => JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>() ?? string.Empty)
             .Where(type => type.Length > 0)
             .ToArray();
 }

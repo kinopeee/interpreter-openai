@@ -38,16 +38,14 @@ public sealed class SubtitleTranscriptSessionGateTests
     {
         var gate = new SubtitleTranscriptSessionGate();
 
-        Assert.True(gate.TryOpenOnMidRecordingOptIn(
-            previouslyEnabled: false,
-            nowEnabled: true,
-            isActivelyRecording: true));
+        Assert.True(
+            gate.TryOpenOnMidRecordingOptIn(previouslyEnabled: false, nowEnabled: true, isActivelyRecording: true)
+        );
         Assert.True(gate.HasOpenSession);
 
-        Assert.False(gate.TryOpenOnMidRecordingOptIn(
-            previouslyEnabled: false,
-            nowEnabled: true,
-            isActivelyRecording: true));
+        Assert.False(
+            gate.TryOpenOnMidRecordingOptIn(previouslyEnabled: false, nowEnabled: true, isActivelyRecording: true)
+        );
     }
 
     // Given: 待機中または既にオン
@@ -60,14 +58,12 @@ public sealed class SubtitleTranscriptSessionGateTests
     public void MidRecordingOptInIgnoredOutsideTransition(
         bool previouslyEnabled,
         bool nowEnabled,
-        bool isActivelyRecording)
+        bool isActivelyRecording
+    )
     {
         var gate = new SubtitleTranscriptSessionGate();
 
-        Assert.False(gate.TryOpenOnMidRecordingOptIn(
-            previouslyEnabled,
-            nowEnabled,
-            isActivelyRecording));
+        Assert.False(gate.TryOpenOnMidRecordingOptIn(previouslyEnabled, nowEnabled, isActivelyRecording));
         Assert.False(gate.HasOpenSession);
     }
 

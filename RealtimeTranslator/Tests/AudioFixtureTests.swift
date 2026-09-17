@@ -33,7 +33,7 @@ final class AudioFixtureTests: XCTestCase {
     // Then: 期待するフレーム分割と残バイトになる
     func testPacketizerMatchesFixture() throws {
         for name in try SharedFixtures.caseNames("audio", "packetizer") {
-                        let fixture = try SharedFixtures.case("audio", "packetizer", name)
+            let fixture = try SharedFixtures.case("audio", "packetizer", name)
             var packetizer = PCM16FramePacketizer()
             let steps = try XCTUnwrap(fixture["steps"] as? [Any])
             for stepItem in steps {
@@ -117,7 +117,7 @@ final class AudioFixtureTests: XCTestCase {
     // Then: クリップと丸めを含めて期待値と一致する
     func testFloat32ToPcm16MatchesFixture() throws {
         for name in try SharedFixtures.caseNames("audio", "float32ToPcm16") {
-                        let fixture = try SharedFixtures.case("audio", "float32ToPcm16", name)
+            let fixture = try SharedFixtures.case("audio", "float32ToPcm16", name)
             var sample = Float(SharedFixtures.real(fixture["sample"]))
             let encoded = PCM16LittleEndianEncoder.encode(
                 floatSamples: &sample,
@@ -176,7 +176,7 @@ final class AudioFixtureTests: XCTestCase {
         for caseItem in cases {
             let fixture = try XCTUnwrap(caseItem as? [String: Any])
             let name = SharedFixtures.text(fixture["name"])
-                        var gain = AdaptiveMicrophoneGain(
+            var gain = AdaptiveMicrophoneGain(
                 initialGain: Float(SharedFixtures.real(fixture["initialGain"]))
             )
             var last = gain.gain

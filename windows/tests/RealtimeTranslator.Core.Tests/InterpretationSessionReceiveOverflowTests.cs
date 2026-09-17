@@ -62,12 +62,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
         lock (updates)
         {
             Assert.Single(updates, update => update.IsInvalidation);
-            Assert.DoesNotContain(
-                updates,
-                update => update.ShouldFinalize && update.TranslatedText == "stale");
-            Assert.DoesNotContain(
-                updates,
-                update => update.ShouldFinalize && update.SourceText == "こんにちは");
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize && update.TranslatedText == "stale");
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize && update.SourceText == "こんにちは");
         }
 
         await session.StopAsync();
@@ -154,9 +150,7 @@ public sealed class InterpretationSessionReceiveOverflowTests
         client.RecordTermination(EventDeliveryTermination.AuthenticationFailed);
 
         // When: a lower-precedence transport error is the first queued event.
-        client.PublishServerError(
-            "transport disconnected",
-            DualRealtimeTranslationClient.TransportErrorCode);
+        client.PublishServerError("transport disconnected", DualRealtimeTranslationClient.TransportErrorCode);
 
         // Then: the recorded authentication failure wins without reconnecting.
         await error.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -272,9 +266,7 @@ public sealed class InterpretationSessionReceiveOverflowTests
 
         // When: 以前のエポックだけにロスを記録する
         previousState.RecordLoss(EventDeliveryStage.Merge, RealtimeEventChannelCapacity());
-        previousState.TryRecordTermination(
-            EventDeliveryTermination.FatalServerError,
-            "stale fatal error");
+        previousState.TryRecordTermination(EventDeliveryTermination.FatalServerError, "stale fatal error");
 
         // Then: 現在エポックは Listening のままで再接続しない
         Assert.Equal(1, invalidationCount);
@@ -292,11 +284,9 @@ public sealed class InterpretationSessionReceiveOverflowTests
         using var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription(),
-            state);
+            "test-safety"
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription(), state);
         var read512 = NewGate();
         var release512 = NewGate();
         var read513 = NewGate();
@@ -337,7 +327,10 @@ public sealed class InterpretationSessionReceiveOverflowTests
         Assert.Equal(RealtimeEventChannelCapacity(), delivered.Count);
         Assert.Equal(
             EnumerableRange(RealtimeEventChannelCapacity()),
-            delivered.ConvertAll(streamEvent => ((RealtimeTranslationServerEvent.OutputTranscriptDelta)streamEvent.Event).Delta));
+            delivered.ConvertAll(streamEvent =>
+                ((RealtimeTranslationServerEvent.OutputTranscriptDelta)streamEvent.Event).Delta
+            )
+        );
         await connection.ForceCloseAsync();
     }
 
@@ -350,11 +343,9 @@ public sealed class InterpretationSessionReceiveOverflowTests
         using var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription(),
-            state);
+            "test-safety"
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription(), state);
         var read512 = NewGate();
         var readAuth = NewGate();
         var releaseAuth = NewGate();
@@ -379,8 +370,7 @@ public sealed class InterpretationSessionReceiveOverflowTests
         await read512.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // When: 満杯のキューへ認証エラーを到着させる
-        transport.EnqueueJson(
-            """{"type":"error","error":{"message":"Incorrect API key","code":"invalid_api_key"}}""");
+        transport.EnqueueJson("""{"type":"error","error":{"message":"Incorrect API key","code":"invalid_api_key"}}""");
         await readAuth.Task.WaitAsync(TimeSpan.FromSeconds(5));
         releaseAuth.TrySetResult();
         await state.Completion.WaitAsync(TimeSpan.FromSeconds(5));
@@ -478,8 +468,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             lock (updates)
             {
                 return updates.Any(update =>
-                    update.SourceText == "後続字幕"
-                    && update.TranslatedText == "Later subtitle");
+                    update.SourceText == "後続字幕" && update.TranslatedText == "Later subtitle"
+                );
             }
         });
 
@@ -525,7 +515,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
         var oldEpoch = client.ConnectionEpoch;
         client.PublishServerError(
             DualRealtimeTranslationClient.TransportErrorMessage,
-            DualRealtimeTranslationClient.TransportErrorCode);
+            DualRealtimeTranslationClient.TransportErrorCode
+        );
         await client.SecondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await WaitForStateAsync(session, TranslationState.Listening);
         client.PublishSourceDelta("現在の字幕");
@@ -535,19 +526,14 @@ public sealed class InterpretationSessionReceiveOverflowTests
             lock (updates)
             {
                 return updates.Any(update =>
-                    update.SourceText == "現在の字幕"
-                    && update.TranslatedText == "Current subtitle");
+                    update.SourceText == "現在の字幕" && update.TranslatedText == "Current subtitle"
+                );
             }
         });
         var invalidationsBefore = updates.Count(update => update.IsInvalidation);
 
         // When: 古い epoch の failed を投入する
-        client.PublishSourceFailure(
-            "stale-item",
-            "stale-event",
-            "audio_unintelligible",
-            null,
-            oldEpoch);
+        client.PublishSourceFailure("stale-item", "stale-event", "audio_unintelligible", null, oldEpoch);
         await Task.Delay(100);
 
         // Then: 現在の字幕と Listening 状態を保つ
@@ -558,8 +544,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             Assert.Equal(invalidationsBefore, updates.Count(update => update.IsInvalidation));
             Assert.Contains(
                 updates,
-                update => update.SourceText == "現在の字幕"
-                    && update.TranslatedText == "Current subtitle");
+                update => update.SourceText == "現在の字幕" && update.TranslatedText == "Current subtitle"
+            );
         }
 
         await session.StopAsync();
@@ -599,8 +585,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             lock (updates)
             {
                 return updates.Any(update =>
-                    update.SourceText == "失敗する字幕"
-                    && update.TranslatedText == "Recover subtitle");
+                    update.SourceText == "失敗する字幕" && update.TranslatedText == "Recover subtitle"
+                );
             }
         });
 
@@ -615,9 +601,10 @@ public sealed class InterpretationSessionReceiveOverflowTests
         {
             Assert.DoesNotContain(
                 updates,
-                update => update.ShouldFinalize
-                    && (update.SourceText == "失敗する字幕"
-                        || update.TranslatedText == "Recover subtitle"));
+                update =>
+                    update.ShouldFinalize
+                    && (update.SourceText == "失敗する字幕" || update.TranslatedText == "Recover subtitle")
+            );
         }
 
         await session.StopAsync();
@@ -656,8 +643,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             lock (updates)
             {
                 return updates.Any(update =>
-                    update.SourceText == "順序競合字幕"
-                    && update.TranslatedText == "Ordering race");
+                    update.SourceText == "順序競合字幕" && update.TranslatedText == "Ordering race"
+                );
             }
         });
 
@@ -669,7 +656,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             null,
             null,
             "server_error",
-            fallbackGate);
+            fallbackGate
+        );
 
         // Then: 無効化して再接続し、失敗したペアを確定しない
         await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -679,9 +667,10 @@ public sealed class InterpretationSessionReceiveOverflowTests
         {
             Assert.DoesNotContain(
                 updates,
-                update => update.ShouldFinalize
-                    && (update.SourceText == "順序競合字幕"
-                        || update.TranslatedText == "Ordering race"));
+                update =>
+                    update.ShouldFinalize
+                    && (update.SourceText == "順序競合字幕" || update.TranslatedText == "Ordering race")
+            );
         }
 
         await session.StopAsync();
@@ -720,8 +709,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             lock (updates)
             {
                 return updates.Any(update =>
-                    update.SourceText == "失敗する字幕"
-                    && update.TranslatedText == "Halt subtitle");
+                    update.SourceText == "失敗する字幕" && update.TranslatedText == "Halt subtitle"
+                );
             }
         });
 
@@ -734,9 +723,10 @@ public sealed class InterpretationSessionReceiveOverflowTests
         {
             Assert.DoesNotContain(
                 updates,
-                update => update.ShouldFinalize
-                    && (update.SourceText == "失敗する字幕"
-                        || update.TranslatedText == "Halt subtitle"));
+                update =>
+                    update.ShouldFinalize
+                    && (update.SourceText == "失敗する字幕" || update.TranslatedText == "Halt subtitle")
+            );
         }
 
         await session.StopAsync();
@@ -771,8 +761,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             lock (updates)
             {
                 return updates.Any(update =>
-                    update.SourceText == "確定済み字幕"
-                    && update.TranslatedText == "Finalized subtitle");
+                    update.SourceText == "確定済み字幕" && update.TranslatedText == "Finalized subtitle"
+                );
             }
         });
         clock.Advance(RealtimeSubtitleAssembler.IdleFinalizeInterval + TimeSpan.FromMilliseconds(50));
@@ -783,7 +773,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
                 return updates.Any(update =>
                     update.ShouldFinalize
                     && update.SourceText == "確定済み字幕"
-                    && update.TranslatedText == "Finalized subtitle");
+                    && update.TranslatedText == "Finalized subtitle"
+                );
             }
         });
         int finalizedCount;
@@ -792,7 +783,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             finalizedCount = updates.Count(update =>
                 update.ShouldFinalize
                 && update.SourceText == "確定済み字幕"
-                && update.TranslatedText == "Finalized subtitle");
+                && update.TranslatedText == "Finalized subtitle"
+            );
         }
 
         Assert.True(finalizedCount > 0);
@@ -809,7 +801,9 @@ public sealed class InterpretationSessionReceiveOverflowTests
                 updates.Count(update =>
                     update.ShouldFinalize
                     && update.SourceText == "確定済み字幕"
-                    && update.TranslatedText == "Finalized subtitle"));
+                    && update.TranslatedText == "Finalized subtitle"
+                )
+            );
         }
 
         await session.StopAsync();
@@ -843,8 +837,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             lock (updates)
             {
                 return updates.Any(update =>
-                    update.SourceText == "停止中の字幕"
-                    && update.TranslatedText == "Stopping subtitle");
+                    update.SourceText == "停止中の字幕" && update.TranslatedText == "Stopping subtitle"
+                );
             }
         });
         client.CloseGracefullyEvents =
@@ -855,8 +849,10 @@ public sealed class InterpretationSessionReceiveOverflowTests
                     "stop-item",
                     "stop-event",
                     "audio_unintelligible",
-                    null),
-                client.ConnectionEpoch)
+                    null
+                ),
+                client.ConnectionEpoch
+            ),
         ];
 
         // When: 停止する
@@ -869,9 +865,10 @@ public sealed class InterpretationSessionReceiveOverflowTests
             Assert.Contains(updates, update => update.IsInvalidation);
             Assert.DoesNotContain(
                 updates,
-                update => update.ShouldFinalize
-                    && (update.SourceText == "停止中の字幕"
-                        || update.TranslatedText == "Stopping subtitle"));
+                update =>
+                    update.ShouldFinalize
+                    && (update.SourceText == "停止中の字幕" || update.TranslatedText == "Stopping subtitle")
+            );
         }
     }
 
@@ -902,8 +899,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             lock (updates)
             {
                 return updates.Any(update =>
-                    update.SourceText == "停止drop字幕"
-                    && update.TranslatedText == "Dropped failure");
+                    update.SourceText == "停止drop字幕" && update.TranslatedText == "Dropped failure"
+                );
             }
         });
 
@@ -916,9 +913,10 @@ public sealed class InterpretationSessionReceiveOverflowTests
             Assert.Contains(updates, update => update.IsInvalidation);
             Assert.DoesNotContain(
                 updates,
-                update => update.ShouldFinalize
-                    && (update.SourceText == "停止drop字幕"
-                        || update.TranslatedText == "Dropped failure"));
+                update =>
+                    update.ShouldFinalize
+                    && (update.SourceText == "停止drop字幕" || update.TranslatedText == "Dropped failure")
+            );
         }
     }
 
@@ -949,8 +947,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             lock (updates)
             {
                 return updates.Any(update =>
-                    update.SourceText == "再接続drop字幕"
-                    && update.TranslatedText == "Reconnect dropped");
+                    update.SourceText == "再接続drop字幕" && update.TranslatedText == "Reconnect dropped"
+                );
             }
         });
 
@@ -964,9 +962,10 @@ public sealed class InterpretationSessionReceiveOverflowTests
             Assert.Contains(updates, update => update.IsInvalidation);
             Assert.DoesNotContain(
                 updates,
-                update => update.ShouldFinalize
-                    && (update.SourceText == "再接続drop字幕"
-                        || update.TranslatedText == "Reconnect dropped"));
+                update =>
+                    update.ShouldFinalize
+                    && (update.SourceText == "再接続drop字幕" || update.TranslatedText == "Reconnect dropped")
+            );
         }
         await session.StopAsync();
     }
@@ -991,11 +990,7 @@ public sealed class InterpretationSessionReceiveOverflowTests
         await session.StartAsync();
         await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await WaitForStateAsync(session, TranslationState.Listening);
-        client.QueueAndPublishSourceFailure(
-            "consumed-item",
-            "consumed-event",
-            "audio_unintelligible",
-            null);
+        client.QueueAndPublishSourceFailure("consumed-item", "consumed-event", "audio_unintelligible", null);
         await WaitUntilAsync(() => client.DeliveryState.PendingSourceFailureCount == 0);
 
         client.PublishSourceDelta("有効な後続字幕");
@@ -1005,8 +1000,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             lock (updates)
             {
                 return updates.Any(update =>
-                    update.SourceText == "有効な後続字幕"
-                    && update.TranslatedText == "Valid follow-up");
+                    update.SourceText == "有効な後続字幕" && update.TranslatedText == "Valid follow-up"
+                );
             }
         });
 
@@ -1016,9 +1011,11 @@ public sealed class InterpretationSessionReceiveOverflowTests
         {
             Assert.Contains(
                 updates,
-                update => update.ShouldFinalize
+                update =>
+                    update.ShouldFinalize
                     && update.SourceText == "有効な後続字幕"
-                    && update.TranslatedText == "Valid follow-up");
+                    && update.TranslatedText == "Valid follow-up"
+            );
         }
     }
 
@@ -1049,8 +1046,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             lock (updates)
             {
                 return updates.Any(update =>
-                    update.SourceText == "停止中の字幕"
-                    && update.TranslatedText == "Stopping subtitle");
+                    update.SourceText == "停止中の字幕" && update.TranslatedText == "Stopping subtitle"
+                );
             }
         });
         client.CloseGracefullyEvents =
@@ -1061,8 +1058,10 @@ public sealed class InterpretationSessionReceiveOverflowTests
                     "stale-stop-item",
                     "stale-stop-event",
                     "audio_unintelligible",
-                    null),
-                client.ConnectionEpoch - 1)
+                    null
+                ),
+                client.ConnectionEpoch - 1
+            ),
         ];
 
         await session.StopAsync();
@@ -1073,9 +1072,11 @@ public sealed class InterpretationSessionReceiveOverflowTests
             Assert.DoesNotContain(updates, update => update.IsInvalidation);
             Assert.Contains(
                 updates,
-                update => update.ShouldFinalize
+                update =>
+                    update.ShouldFinalize
                     && update.SourceText == "停止中の字幕"
-                    && update.TranslatedText == "Stopping subtitle");
+                    && update.TranslatedText == "Stopping subtitle"
+            );
         }
     }
 
@@ -1140,8 +1141,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             Assert.True(invalidationIndex >= 0);
             Assert.DoesNotContain(
                 updates.Skip(invalidationIndex),
-                update => update.SourceText.Contains("sk-")
-                    || update.TranslatedText.Contains("sk-"));
+                update => update.SourceText.Contains("sk-") || update.TranslatedText.Contains("sk-")
+            );
         }
 
         await session.StopAsync();
@@ -1150,17 +1151,18 @@ public sealed class InterpretationSessionReceiveOverflowTests
     private static InterpretationSession CreateSession(
         FakeOverflowDualClient client,
         TimeSpan? tickInterval = null,
-        TimeProvider? timeProvider = null) =>
+        TimeProvider? timeProvider = null
+    ) =>
         new(
             new FakeApiKeyStore(),
             new FakeAudioCapture(),
             client,
             timeProvider: timeProvider,
             initialReconnectDelay: TimeSpan.FromMilliseconds(1),
-            tickInterval: tickInterval ?? TimeSpan.FromHours(1));
+            tickInterval: tickInterval ?? TimeSpan.FromHours(1)
+        );
 
-    private static TaskCompletionSource NewGate() =>
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private static TaskCompletionSource NewGate() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
@@ -1176,9 +1178,7 @@ public sealed class InterpretationSessionReceiveOverflowTests
         }
     }
 
-    private static async Task WaitForStateAsync(
-        InterpretationSession session,
-        TranslationState state)
+    private static async Task WaitForStateAsync(InterpretationSession session, TranslationState state)
     {
         if (session.State == state)
         {
@@ -1212,7 +1212,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
 
     private static async Task<List<RealtimeTranslationStreamEvent>> ReadEventsAsync(
         ChannelReader<RealtimeTranslationStreamEvent> reader,
-        int count)
+        int count
+    )
     {
         var result = new List<RealtimeTranslationStreamEvent>(count);
         while (result.Count < count)
@@ -1254,13 +1255,11 @@ public sealed class InterpretationSessionReceiveOverflowTests
 
     private sealed class FakeAudioCapture : IRealtimeAudioCapture
     {
-        private readonly Channel<CapturedAudioFrame> _frames =
-            Channel.CreateUnbounded<CapturedAudioFrame>();
+        private readonly Channel<CapturedAudioFrame> _frames = Channel.CreateUnbounded<CapturedAudioFrame>();
 
         public ChannelReader<CapturedAudioFrame> Frames => _frames.Reader;
 
-        public Task StartAsync(CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         public Task StopAsync() => Task.CompletedTask;
     }
@@ -1312,11 +1311,9 @@ public sealed class InterpretationSessionReceiveOverflowTests
 
         public int StartCount { get; private set; }
 
-        public TaskCompletionSource Started { get; } =
-            NewGate();
+        public TaskCompletionSource Started { get; } = NewGate();
 
-        public TaskCompletionSource SecondStarted { get; } =
-            NewGate();
+        public TaskCompletionSource SecondStarted { get; } = NewGate();
 
         public Func<Task>? OnCloseGracefully { get; set; }
 
@@ -1326,7 +1323,8 @@ public sealed class InterpretationSessionReceiveOverflowTests
             string apiKey,
             RealtimeSessionTuning tuning,
             LanguagePair pair = LanguagePair.JaEn,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             lock (_sync)
             {
@@ -1350,18 +1348,18 @@ public sealed class InterpretationSessionReceiveOverflowTests
 
         public Task AppendAudioFrameAsync(
             ReadOnlyMemory<byte> pcm16LittleEndian,
-            CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+            CancellationToken cancellationToken = default
+        ) => Task.CompletedTask;
 
         public Task SelectTranslationTargetAsync(
             RealtimeTranslationOutputLanguage? target,
-            CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+            CancellationToken cancellationToken = default
+        ) => Task.CompletedTask;
 
         public Task UpdateTranscriptionTuningAsync(
             RealtimeSessionTuning tuning,
-            CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+            CancellationToken cancellationToken = default
+        ) => Task.CompletedTask;
 
         public Task ResetAudioRoutingAsync() => Task.CompletedTask;
 
@@ -1393,37 +1391,36 @@ public sealed class InterpretationSessionReceiveOverflowTests
         public void RecordLoss(EventDeliveryStage stage) =>
             DeliveryState.RecordLoss(stage, RealtimeEventChannelCapacity());
 
-        public void RecordTermination(
-            EventDeliveryTermination termination,
-            string? message = null) =>
+        public void RecordTermination(EventDeliveryTermination termination, string? message = null) =>
             DeliveryState.TryRecordTermination(termination, message);
 
         public void PublishSourceDelta(string delta, int? epoch = null) =>
             Publish(
                 RealtimeTranslationLane.Source,
-                new RealtimeTranslationServerEvent.InputTranscriptDelta(
-                    delta,
-                    Guid.NewGuid().ToString(),
-                    null),
-                epoch);
+                new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
+                epoch
+            );
 
         public void PublishSourceFailure(
             string? itemId,
             string? eventId,
             string? code,
             string? errorType,
-            int? epoch = null) =>
+            int? epoch = null
+        ) =>
             Publish(
                 RealtimeTranslationLane.Source,
                 new RealtimeTranslationServerEvent.InputTranscriptFailed(itemId, eventId, code, errorType),
-                epoch);
+                epoch
+            );
 
         public async Task PublishSourceFailureAfterTerminationAsync(
             string? itemId,
             string? eventId,
             string? code,
             string? errorType,
-            TaskCompletionSource? waitUntilFallback = null)
+            TaskCompletionSource? waitUntilFallback = null
+        )
         {
             DeliveryState.NoteSourceFailureQueued();
             DeliveryState.TryRecordTermination(EventDeliveryTermination.RecoverableServerError);
@@ -1434,14 +1431,9 @@ public sealed class InterpretationSessionReceiveOverflowTests
             PublishSourceFailure(itemId, eventId, code, errorType);
         }
 
-        public void QueueSourceFailureWithoutDrain() =>
-            DeliveryState.NoteSourceFailureQueued();
+        public void QueueSourceFailureWithoutDrain() => DeliveryState.NoteSourceFailureQueued();
 
-        public void QueueAndPublishSourceFailure(
-            string? itemId,
-            string? eventId,
-            string? code,
-            string? errorType)
+        public void QueueAndPublishSourceFailure(string? itemId, string? eventId, string? code, string? errorType)
         {
             DeliveryState.NoteSourceFailureQueued();
             PublishSourceFailure(itemId, eventId, code, errorType);
@@ -1450,30 +1442,22 @@ public sealed class InterpretationSessionReceiveOverflowTests
         public void PublishTranslationDelta(string delta, int? epoch = null) =>
             Publish(
                 RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
-                new RealtimeTranslationServerEvent.OutputTranscriptDelta(
-                    delta,
-                    Guid.NewGuid().ToString(),
-                    null),
-                epoch);
+                new RealtimeTranslationServerEvent.OutputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
+                epoch
+            );
 
         public void PublishServerError(string message, string code, int? epoch = null) =>
             Publish(
                 RealtimeTranslationLane.Source,
                 new RealtimeTranslationServerEvent.ServerError(message, code),
-                epoch);
+                epoch
+            );
 
-        private void Publish(
-            RealtimeTranslationLane lane,
-            RealtimeTranslationServerEvent serverEvent,
-            int? epoch)
+        private void Publish(RealtimeTranslationLane lane, RealtimeTranslationServerEvent serverEvent, int? epoch)
         {
             lock (_sync)
             {
-                _events.Writer.TryWrite(
-                    new RealtimeTranslationStreamEvent(
-                        lane,
-                        serverEvent,
-                        epoch ?? _epoch));
+                _events.Writer.TryWrite(new RealtimeTranslationStreamEvent(lane, serverEvent, epoch ?? _epoch));
             }
         }
 

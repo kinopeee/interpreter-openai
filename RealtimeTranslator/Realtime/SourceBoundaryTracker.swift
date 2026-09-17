@@ -108,11 +108,11 @@ struct SourceBoundaryTracker: Sendable {
         let reverseLanguage = currentLanguage == .english ? SpokenLanguage.spanish : .english
         let entries = scalarEntries(in: segmentSource)
         if let candidateOffset,
-           firstCueStarting(
-               atOrAfter: candidateOffset,
-               in: segmentSource,
-               entries: entries
-           ) == reverseLanguage
+            firstCueStarting(
+                atOrAfter: candidateOffset,
+                in: segmentSource,
+                entries: entries
+            ) == reverseLanguage
         {
             return
         }
@@ -210,8 +210,7 @@ struct SourceBoundaryTracker: Sendable {
     ) -> Int {
         var result = windowStart
         for entry in entries
-            where entry.offset >= windowStart && entry.offset < offset
-        {
+        where entry.offset >= windowStart && entry.offset < offset {
             if Self.isSentenceTerminator(entry.scalar) {
                 result = entry.offset + entry.scalar.utf16.count
             }
@@ -240,9 +239,10 @@ struct SourceBoundaryTracker: Sendable {
         var index = entries.firstIndex { $0.offset >= candidateOffset } ?? entries.count
         while index > 0 {
             let previous = entries[index - 1]
-            guard CharacterSet.whitespacesAndNewlines.contains(previous.scalar)
-                || previous.scalar.value == 0x00BF
-                || previous.scalar.value == 0x00A1
+            guard
+                CharacterSet.whitespacesAndNewlines.contains(previous.scalar)
+                    || previous.scalar.value == 0x00BF
+                    || previous.scalar.value == 0x00A1
             else {
                 break
             }
@@ -274,8 +274,8 @@ struct SourceBoundaryTracker: Sendable {
     private static func isSpanishAccentOrN(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.value {
         case 0x00E1, 0x00E9, 0x00ED, 0x00F3, 0x00FA, 0x00FC,
-             0x00C1, 0x00C9, 0x00CD, 0x00D3, 0x00DA, 0x00DC,
-             0x00F1, 0x00D1:
+            0x00C1, 0x00C9, 0x00CD, 0x00D3, 0x00DA, 0x00DC,
+            0x00F1, 0x00D1:
             return true
         default:
             return false

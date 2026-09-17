@@ -36,15 +36,18 @@ public sealed class ReconnectBudgetFixtureTests
         Assert.Equal(SharedFixtures.Number(policy["stablePeriodMs"]), actual.StablePeriod.TotalMilliseconds);
         Assert.Equal(
             SharedFixtures.Number(policy["attemptTimeoutMs"]),
-            RealtimeTranslationConnection.DefaultHandshakeTimeout.TotalMilliseconds);
+            RealtimeTranslationConnection.DefaultHandshakeTimeout.TotalMilliseconds
+        );
 
         Assert.Equal(
             "error.reconnectBudgetExhausted",
-            SharedFixtures.Text(fixture["budgetExhausted"]!["errorMessageKey"]));
+            SharedFixtures.Text(fixture["budgetExhausted"]!["errorMessageKey"])
+        );
         Assert.Equal("error.reconnectLimit", SharedFixtures.Text(fixture["attemptLimit"]!["errorMessageKey"]));
         Assert.NotEqual(
             UserCopy.Current.Text("error.reconnectLimit"),
-            UserCopy.Current.Text("error.reconnectBudgetExhausted"));
+            UserCopy.Current.Text("error.reconnectBudgetExhausted")
+        );
     }
 
     // Given: fixture の失敗 / Listening の時系列
@@ -79,7 +82,8 @@ public sealed class ReconnectBudgetFixtureTests
                             Assert.True(SharedFixtures.Number(expected["attempt"]) == decision.Attempt, step);
                             Assert.True(
                                 SharedFixtures.Number(expected["backoffMs"]) == decision.Backoff.TotalMilliseconds,
-                                step);
+                                step
+                            );
                             Assert.Equal(TimeSpan.Zero, decision.Jitter);
                             break;
                         case "attemptLimit":

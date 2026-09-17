@@ -40,7 +40,8 @@ enum TranslationTargetSelector {
             let shouldSwitch: Bool
             switch evidence {
             case .english, .spanish:
-                shouldSwitch = oppositeRun.latinWordCount >= scriptSwitchMinimumLatinWords
+                shouldSwitch =
+                    oppositeRun.latinWordCount >= scriptSwitchMinimumLatinWords
                     && oppositeRun.latinScalarCount >= scriptSwitchMinimumLatinScalars
             case .japanese:
                 shouldSwitch = oppositeRun.japaneseScalarCount >= scriptSwitchMinimumJapaneseScalars

@@ -23,7 +23,8 @@ public sealed class RealtimeSubtitleAssemblerEchoExpectLaneTests
         assembler.Ingest(Source("Tokyo", "s1", 100), Origin);
         var echo = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Tokyo", "echo", 150),
-            Origin.AddMilliseconds(150));
+            Origin.AddMilliseconds(150)
+        );
 
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.Japanese);
         var blanked = assembler.Ingest(Source(" now", "s2", 180), Origin.AddMilliseconds(180));
@@ -49,13 +50,15 @@ public sealed class RealtimeSubtitleAssemblerEchoExpectLaneTests
         assembler.Ingest(Source("Tokyo", "s1", 100), Origin);
         assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Tokyo", "echo", 150),
-            Origin.AddMilliseconds(150));
+            Origin.AddMilliseconds(150)
+        );
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.Japanese);
         assembler.Ingest(Source(" now", "s2", 180), Origin.AddMilliseconds(180));
 
         var restored = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.Japanese, "東京", "ja", 220),
-            Origin.AddMilliseconds(220));
+            Origin.AddMilliseconds(220)
+        );
         var idle = assembler.Tick(Origin.AddSeconds(9));
 
         Assert.NotNull(restored);
@@ -79,15 +82,18 @@ public sealed class RealtimeSubtitleAssemblerEchoExpectLaneTests
         new(
             RealtimeTranslationLane.Source,
             new RealtimeTranslationServerEvent.InputTranscriptDelta(text, eventId, elapsedMs),
-            1);
+            1
+        );
 
     private static RealtimeTranslationStreamEvent Translation(
         RealtimeTranslationOutputLanguage target,
         string text,
         string eventId,
-        int? elapsedMs) =>
+        int? elapsedMs
+    ) =>
         new(
             RealtimeTranslationLane.Translation(target),
             new RealtimeTranslationServerEvent.OutputTranscriptDelta(text, eventId, elapsedMs),
-            1);
+            1
+        );
 }

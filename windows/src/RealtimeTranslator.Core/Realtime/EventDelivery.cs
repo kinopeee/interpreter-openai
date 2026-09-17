@@ -29,8 +29,7 @@ public enum EventDeliveryTermination
 public sealed class EventDeliveryState
 {
     private readonly object _sync = new();
-    private readonly TaskCompletionSource _completion = new(
-        TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _didLoseEvents;
     private EventDeliveryStage _lossStage;
     private int _lossCapacity;
@@ -145,9 +144,7 @@ public sealed class EventDeliveryState
 
     public Task Completion => _completion.Task;
 
-    public bool TryRecordTermination(
-        EventDeliveryTermination termination,
-        string? sanitizedMessage = null)
+    public bool TryRecordTermination(EventDeliveryTermination termination, string? sanitizedMessage = null)
     {
         if (termination == EventDeliveryTermination.None)
         {
@@ -161,9 +158,10 @@ public sealed class EventDeliveryState
             if (upgraded)
             {
                 _termination = termination;
-                _terminationMessage = termination == EventDeliveryTermination.FatalServerError
-                    ? RealtimeTranslationException.SanitizeServerMessage(sanitizedMessage ?? string.Empty)
-                    : null;
+                _terminationMessage =
+                    termination == EventDeliveryTermination.FatalServerError
+                        ? RealtimeTranslationException.SanitizeServerMessage(sanitizedMessage ?? string.Empty)
+                        : null;
             }
         }
 
@@ -247,32 +245,33 @@ public sealed class EventDeliveryState
 
         return termination switch
         {
-            EventDeliveryTermination.AuthenticationFailed =>
-                new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed),
-            EventDeliveryTermination.FatalServerError =>
-                new RealtimeTranslationException(
-                    RealtimeTranslationErrorKind.FatalServerError,
-                    message),
-            EventDeliveryTermination.ReceiveOverflow =>
-                new RealtimeTranslationException(RealtimeTranslationErrorKind.ReceiveOverflow),
-            EventDeliveryTermination.RecoverableServerError =>
-                new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableServerError),
-            EventDeliveryTermination.TransportFailure =>
-                new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableTransportFailure),
+            EventDeliveryTermination.AuthenticationFailed => new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.AuthenticationFailed
+            ),
+            EventDeliveryTermination.FatalServerError => new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.FatalServerError,
+                message
+            ),
+            EventDeliveryTermination.ReceiveOverflow => new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.ReceiveOverflow
+            ),
+            EventDeliveryTermination.RecoverableServerError => new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.RecoverableServerError
+            ),
+            EventDeliveryTermination.TransportFailure => new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.RecoverableTransportFailure
+            ),
             _ => throw new InvalidOperationException("Event delivery has no termination."),
         };
     }
 
-    public static RealtimeServerErrorClassification Classify(
-        RealtimeTranslationServerEvent.ServerError error)
+    public static RealtimeServerErrorClassification Classify(RealtimeTranslationServerEvent.ServerError error)
     {
         ArgumentNullException.ThrowIfNull(error);
         return RealtimeServerErrorClassification.Classify(error.ErrorType, error.Code, error.Message);
     }
 
-    public static RealtimeServerErrorClassification ClassifyTranscriptionFailure(
-        string? errorType,
-        string? code) =>
+    public static RealtimeServerErrorClassification ClassifyTranscriptionFailure(string? errorType, string? code) =>
         RealtimeServerErrorClassification.ClassifyTranscriptionFailure(errorType, code);
 
     /// <summary>分類結果を記録する。接続維持なら何も記録せず false。</summary>
@@ -293,7 +292,8 @@ internal sealed class EventDeliveryWriter
         ChannelWriter<RealtimeTranslationStreamEvent> writer,
         EventDeliveryState state,
         EventDeliveryStage stage,
-        int capacity)
+        int capacity
+    )
     {
         _writer = writer;
         _state = state;
@@ -335,4 +335,5 @@ internal sealed class EventDeliveryWriter
 public sealed record RealtimeEventFeed(
     ChannelReader<RealtimeTranslationStreamEvent> Events,
     int Epoch,
-    EventDeliveryState DeliveryState);
+    EventDeliveryState DeliveryState
+);

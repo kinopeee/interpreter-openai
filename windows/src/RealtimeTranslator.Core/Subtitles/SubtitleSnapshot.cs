@@ -9,8 +9,7 @@ public readonly record struct LiveSubtitle(string SourceText, string TranslatedT
 {
     public static readonly LiveSubtitle Empty = new(string.Empty, string.Empty, false);
 
-    public bool IsEmpty =>
-        string.IsNullOrWhiteSpace(SourceText) && string.IsNullOrWhiteSpace(TranslatedText);
+    public bool IsEmpty => string.IsNullOrWhiteSpace(SourceText) && string.IsNullOrWhiteSpace(TranslatedText);
 }
 
 /// <summary>オーバーレイに渡す 1 フレーム分の表示内容。</summary>
@@ -44,8 +43,7 @@ public sealed class SubtitleSnapshotBuilder
         Current = new SubtitleSnapshot(LiveSubtitle.Empty, _idleBanner);
     }
 
-    public static string IdleBannerFor(string hotkey) =>
-        UserCopy.Current.Format("banner.idle", "hotkey", hotkey);
+    public static string IdleBannerFor(string hotkey) => UserCopy.Current.Format("banner.idle", "hotkey", hotkey);
 
     public SubtitleSnapshot Current { get; private set; }
 
@@ -102,14 +100,15 @@ public sealed class SubtitleSnapshotBuilder
         return Current;
     }
 
-    private string? BannerFor(TranslationState state, LiveSubtitle current) => state switch
-    {
-        TranslationState.Connecting => ConnectingBanner,
-        TranslationState.Reconnecting => ReconnectingBanner,
-        // 表示中の字幕があるうちはバナーで覆わない。
-        TranslationState.Idle => current.IsEmpty ? _idleBanner : null,
-        // Error はトレイ側が状態を示す。空スロットで待機バナーを出すと失敗と矛盾する。
-        TranslationState.Error => null,
-        _ => null,
-    };
+    private string? BannerFor(TranslationState state, LiveSubtitle current) =>
+        state switch
+        {
+            TranslationState.Connecting => ConnectingBanner,
+            TranslationState.Reconnecting => ReconnectingBanner,
+            // 表示中の字幕があるうちはバナーで覆わない。
+            TranslationState.Idle => current.IsEmpty ? _idleBanner : null,
+            // Error はトレイ側が状態を示す。空スロットで待機バナーを出すと失敗と矛盾する。
+            TranslationState.Error => null,
+            _ => null,
+        };
 }

@@ -48,10 +48,12 @@ struct RealtimeSessionTuning: Sendable, Equatable {
     }
 
     func forPair(_ pair: LanguagePair) -> RealtimeSessionTuning {
-        let prompt = Self.isKnownDefaultPrompt(transcriptionPrompt)
+        let prompt =
+            Self.isKnownDefaultPrompt(transcriptionPrompt)
             ? Self.defaultPrompt(for: pair)
             : transcriptionPrompt
-        let keywords = Self.isKnownDefaultKeywords(transcriptionKeywords)
+        let keywords =
+            Self.isKnownDefaultKeywords(transcriptionKeywords)
             ? Self.defaultKeywords(for: pair)
             : transcriptionKeywords
         return RealtimeSessionTuning(

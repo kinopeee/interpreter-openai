@@ -250,9 +250,7 @@ public sealed class DualRealtimeTranslationClientHaltTests
         Assert.Contains("input_audio_buffer.commit", SentTypes(harness.Source));
         Assert.Contains("session.close", SentTypes(harness.English));
         Assert.Contains("session.close", SentTypes(harness.Japanese));
-        while (harness.Dual.Events.TryRead(out _))
-        {
-        }
+        while (harness.Dual.Events.TryRead(out _)) { }
 
         Assert.False(await harness.Dual.Events.WaitToReadAsync());
     }
@@ -281,7 +279,8 @@ public sealed class DualRealtimeTranslationClientHaltTests
             RealtimeTranslationNoiseReduction.FarField,
             RealtimeTranscriptionDelay.High,
             "After halt glossary",
-            ["Acme"]);
+            ["Acme"]
+        );
         await harness.Dual.UpdateTranscriptionTuningAsync(updated);
         await WaitUntilSentAsync(harness.Source, sentBefore + 1);
 
@@ -314,8 +313,8 @@ public sealed class DualRealtimeTranslationClientHaltTests
     }
 
     private static List<JsonObject> SessionUpdates(FakeRealtimeServerTransport transport) =>
-        transport.Sent
-            .Select(payload => JsonNode.Parse(payload)?.AsObject())
+        transport
+            .Sent.Select(payload => JsonNode.Parse(payload)?.AsObject())
             .Where(node => node?["type"]?.GetValue<string>() == "session.update")
             .Select(node => node!)
             .ToList();
@@ -337,7 +336,8 @@ public sealed class DualRealtimeTranslationClientHaltTests
             FakeRealtimeServerTransport english,
             FakeRealtimeServerTransport japanese,
             FakeRealtimeServerTransport spanish,
-            DualRealtimeTranslationClient dual)
+            DualRealtimeTranslationClient dual
+        )
         {
             Source = source;
             English = english;
@@ -364,18 +364,14 @@ public sealed class DualRealtimeTranslationClientHaltTests
             var spanish = new FakeRealtimeServerTransport { AutoCloseResponses = autoCloseResponses };
             var dual = new DualRealtimeTranslationClient(
                 new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-                new RealtimeTranslationConnection(
-                    RealtimeTranslationOutputLanguage.English,
-                    english,
-                    "test-safety"),
-                new RealtimeTranslationConnection(
-                    RealtimeTranslationOutputLanguage.Japanese,
-                    japanese,
-                    "test-safety"),
+                new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+                new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"),
                 spanishConnection: new RealtimeTranslationConnection(
                     RealtimeTranslationOutputLanguage.Spanish,
                     spanish,
-                    "test-safety"));
+                    "test-safety"
+                )
+            );
 
             await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn);
             return new HaltHarness(source, english, japanese, spanish, dual);

@@ -23,10 +23,9 @@ public sealed class RealtimeConnectionReceiveEpochTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+            "test-safety"
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         transport.AfterInboundRead = () =>
@@ -35,12 +34,14 @@ public sealed class RealtimeConnectionReceiveEpochTests
             disposed.TrySetResult();
         };
         transport.EnqueueJson(
-            """{"type":"session.output_transcript.delta","delta":"stale translation","event_id":"stale-1"}""");
+            """{"type":"session.output_transcript.delta","delta":"stale translation","event_id":"stale-1"}"""
+        );
 
         await disposed.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await AssertNoTranscriptAsync(connection);
-        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("frame")));
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("frame"))
+        );
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
     }
 
@@ -61,14 +62,17 @@ public sealed class RealtimeConnectionReceiveEpochTests
             disposed.TrySetResult();
         };
         transport.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"stale source","event_id":"stale-src-1"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"stale source","event_id":"stale-src-1"}"""
+        );
 
         await disposed.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await AssertNoSourceDeltaAsync(connection);
-        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("frame")));
-        var tuningError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.UpdateTuningAsync(RealtimeSessionTuning.Default));
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("frame"))
+        );
+        var tuningError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.UpdateTuningAsync(RealtimeSessionTuning.Default)
+        );
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, tuningError.Kind);
     }
@@ -83,10 +87,9 @@ public sealed class RealtimeConnectionReceiveEpochTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.Japanese,
             transport,
-            "test-safety");
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.JapaneseTargetWithoutSourceTranscription());
+            "test-safety"
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.JapaneseTargetWithoutSourceTranscription());
 
         var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         transport.AfterInboundRead = () =>

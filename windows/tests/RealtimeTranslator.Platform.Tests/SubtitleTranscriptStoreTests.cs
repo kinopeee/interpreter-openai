@@ -11,8 +11,7 @@ public sealed class SubtitleTranscriptStoreTests : IDisposable
 {
     private readonly string _directory;
     private readonly string _filePath;
-    private readonly DateTimeOffset _fixedNow =
-        new(2026, 8, 7, 15, 40, 12, TimeSpan.FromHours(9));
+    private readonly DateTimeOffset _fixedNow = new(2026, 8, 7, 15, 40, 12, TimeSpan.FromHours(9));
 
     public SubtitleTranscriptStoreTests()
     {
@@ -39,9 +38,7 @@ public sealed class SubtitleTranscriptStoreTests : IDisposable
 
         Assert.False(store.HasEntries);
         Assert.Equal(SubtitleTranscriptAppendResult.Appended, store.MarkSessionStart());
-        Assert.Equal(
-            SubtitleTranscriptAppendResult.Appended,
-            store.AppendEntry("こんにちは", "Hello"));
+        Assert.Equal(SubtitleTranscriptAppendResult.Appended, store.AppendEntry("こんにちは", "Hello"));
         Assert.True(store.HasEntries);
 
         var text = File.ReadAllText(_filePath, Encoding.UTF8);
@@ -59,9 +56,7 @@ public sealed class SubtitleTranscriptStoreTests : IDisposable
     {
         var store = MakeStore();
         Assert.Equal(SubtitleTranscriptAppendResult.Appended, store.AppendEntry("こんにちは", "Hello"));
-        Assert.Equal(
-            SubtitleTranscriptAppendResult.SkippedDuplicate,
-            store.AppendEntry("こんにちは", "Hello"));
+        Assert.Equal(SubtitleTranscriptAppendResult.SkippedDuplicate, store.AppendEntry("こんにちは", "Hello"));
 
         var text = File.ReadAllText(_filePath, Encoding.UTF8);
         Assert.Equal(1, text.Split("--- ", StringSplitOptions.None).Length - 1);
@@ -93,12 +88,8 @@ public sealed class SubtitleTranscriptStoreTests : IDisposable
         Directory.CreateDirectory(blockedPath);
         var store = new SubtitleTranscriptStore(blockedPath, () => _fixedNow);
 
-        Assert.Equal(
-            SubtitleTranscriptAppendResult.Failed,
-            store.AppendEntry("こんにちは", "Hello"));
-        Assert.Equal(
-            SubtitleTranscriptAppendResult.SkippedDuplicate,
-            store.AppendEntry("こんにちは", "Hello"));
+        Assert.Equal(SubtitleTranscriptAppendResult.Failed, store.AppendEntry("こんにちは", "Hello"));
+        Assert.Equal(SubtitleTranscriptAppendResult.SkippedDuplicate, store.AppendEntry("こんにちは", "Hello"));
     }
 
     // Given: 空白のみの原文または訳文
@@ -125,10 +116,9 @@ public sealed class SubtitleTranscriptStoreTests : IDisposable
 
         Assert.Equal(
             SubtitleTranscriptAppendResult.Capped,
-            store.AppendEntry("とても長い原文を追加して上限を超える", "overflow"));
-        Assert.Equal(
-            SubtitleTranscriptAppendResult.Capped,
-            store.AppendEntry("別の文", "another"));
+            store.AppendEntry("とても長い原文を追加して上限を超える", "overflow")
+        );
+        Assert.Equal(SubtitleTranscriptAppendResult.Capped, store.AppendEntry("別の文", "another"));
         Assert.Equal(first, File.ReadAllText(_filePath, Encoding.UTF8));
 
         store.Clear();
@@ -147,9 +137,7 @@ public sealed class SubtitleTranscriptStoreTests : IDisposable
         Assert.Equal(SubtitleTranscriptAppendResult.Appended, store.AppendEntry("こんにちは", "Hello"));
         var destination = Path.Combine(_directory, "export.txt");
         store.ExportCopy(destination);
-        Assert.Equal(
-            File.ReadAllText(_filePath, Encoding.UTF8),
-            File.ReadAllText(destination, Encoding.UTF8));
+        Assert.Equal(File.ReadAllText(_filePath, Encoding.UTF8), File.ReadAllText(destination, Encoding.UTF8));
     }
 
     // Given: セッションファイルがまだ無い
@@ -215,9 +203,7 @@ public sealed class SubtitleTranscriptStoreTests : IDisposable
     [Fact]
     public void DefaultExportFileName()
     {
-        Assert.Equal(
-            "subtitles-20260807-154012.txt",
-            SubtitleTranscriptStore.DefaultExportFileName(_fixedNow));
+        Assert.Equal("subtitles-20260807-154012.txt", SubtitleTranscriptStore.DefaultExportFileName(_fixedNow));
     }
 
     // Given: 上限・失敗バナー定数

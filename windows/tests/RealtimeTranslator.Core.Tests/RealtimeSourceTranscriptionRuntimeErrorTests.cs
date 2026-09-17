@@ -25,14 +25,16 @@ public sealed class RealtimeSourceTranscriptionRuntimeErrorTests
         await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         transport.EnqueueJson(
-            """{"type":"error","error":{"message":"rate_limit exceeded","code":"rate_limit_exceeded"}}""");
+            """{"type":"error","error":{"message":"rate_limit exceeded","code":"rate_limit_exceeded"}}"""
+        );
         var errorEvent = await ReadOneAsync(connection.Events);
         var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(errorEvent.Event);
         Assert.Equal("rate_limit_exceeded", error.Code);
         Assert.False(connection.Events.Completion.IsCompleted);
 
         transport.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","delta":"still-here","event_id":"e2"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","delta":"still-here","event_id":"e2"}"""
+        );
         var deltaEvent = await ReadOneAsync(connection.Events);
         var delta = Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptDelta>(deltaEvent.Event);
 
@@ -52,32 +54,31 @@ public sealed class RealtimeSourceTranscriptionRuntimeErrorTests
         var japanese = new FakeRealtimeServerTransport();
         using var dual = new DualRealtimeTranslationClient(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.English,
-                english,
-                "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.Japanese,
-                japanese,
-                "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         source.EnqueueJson(
-            """{"type":"error","error":{"message":"rate_limit exceeded","code":"rate_limit_exceeded"}}""");
+            """{"type":"error","error":{"message":"rate_limit exceeded","code":"rate_limit_exceeded"}}"""
+        );
         var errorEvent = await ReadUntilAsync(
             dual,
-            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.ServerError);
+            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.ServerError
+        );
         var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(errorEvent.Event);
         Assert.Equal("rate_limit_exceeded", error.Code);
         Assert.True(errorEvent.Lane.IsSource);
         Assert.False(dual.Events.Completion.IsCompleted);
 
         source.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","delta":"after-error","event_id":"e3"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","delta":"after-error","event_id":"e3"}"""
+        );
         var deltaEvent = await ReadUntilAsync(
             dual,
-            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta);
+            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta
+        );
         var delta = Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptDelta>(deltaEvent.Event);
 
         Assert.Equal("after-error", delta.Delta);
@@ -87,7 +88,8 @@ public sealed class RealtimeSourceTranscriptionRuntimeErrorTests
     }
 
     private static async Task<RealtimeTranslationStreamEvent> ReadOneAsync(
-        System.Threading.Channels.ChannelReader<RealtimeTranslationStreamEvent> reader)
+        System.Threading.Channels.ChannelReader<RealtimeTranslationStreamEvent> reader
+    )
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         return await reader.ReadAsync(timeout.Token);
@@ -95,7 +97,8 @@ public sealed class RealtimeSourceTranscriptionRuntimeErrorTests
 
     private static async Task<RealtimeTranslationStreamEvent> ReadUntilAsync(
         DualRealtimeTranslationClient dual,
-        Func<RealtimeTranslationStreamEvent, bool> match)
+        Func<RealtimeTranslationStreamEvent, bool> match
+    )
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (true)

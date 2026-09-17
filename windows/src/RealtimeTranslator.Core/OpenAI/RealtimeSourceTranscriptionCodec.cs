@@ -13,13 +13,10 @@ namespace RealtimeTranslator.Core.OpenAI;
 /// <summary>原文 transcription 接続でクライアントが送るイベント。翻訳接続とは語彙が別。</summary>
 public abstract record RealtimeSourceTranscriptionClientEvent
 {
-    private RealtimeSourceTranscriptionClientEvent()
-    {
-    }
+    private RealtimeSourceTranscriptionClientEvent() { }
 
-    public sealed record SessionUpdate(
-        RealtimeSessionTuning Tuning,
-        LanguagePair Pair = LanguagePair.JaEn) : RealtimeSourceTranscriptionClientEvent;
+    public sealed record SessionUpdate(RealtimeSessionTuning Tuning, LanguagePair Pair = LanguagePair.JaEn)
+        : RealtimeSourceTranscriptionClientEvent;
 
     public sealed record InputAudioBufferAppend(string Base64Audio) : RealtimeSourceTranscriptionClientEvent;
 
@@ -30,9 +27,7 @@ public abstract record RealtimeSourceTranscriptionClientEvent
 /// <summary>原文 transcription 接続から届くイベント。</summary>
 public abstract record RealtimeSourceTranscriptionServerEvent
 {
-    private RealtimeSourceTranscriptionServerEvent()
-    {
-    }
+    private RealtimeSourceTranscriptionServerEvent() { }
 
     /// <summary><c>session.expires_at</c>（unix 秒）。transcription の公式 schema には定義がなく、返れば保持する。不明は null。</summary>
     public sealed record SessionCreated(long? ExpiresAtUnixSeconds) : RealtimeSourceTranscriptionServerEvent;
@@ -50,8 +45,8 @@ public abstract record RealtimeSourceTranscriptionServerEvent
         string? EventId,
         string? Code,
         string? ErrorType,
-        RealtimeServerErrorClassification Classification)
-        : RealtimeSourceTranscriptionServerEvent;
+        RealtimeServerErrorClassification Classification
+    ) : RealtimeSourceTranscriptionServerEvent;
 
     /// <summary>
     /// Message は表示用に正規化済み（認証失敗はローカライズ文言に置き換わる）。
@@ -61,8 +56,8 @@ public abstract record RealtimeSourceTranscriptionServerEvent
         string Message,
         string? Code,
         string? ErrorType,
-        RealtimeServerErrorClassification Classification)
-        : RealtimeSourceTranscriptionServerEvent
+        RealtimeServerErrorClassification Classification
+    ) : RealtimeSourceTranscriptionServerEvent
     {
         public RealtimeTranslationServerEvent.ServerError ToStreamError() => new(Message, Code, ErrorType);
     }
@@ -76,16 +71,20 @@ public static class RealtimeSourceTranscriptionCodec
 {
     public const string TranscriptionModel = "gpt-live-transcribe";
 
-
     /// <summary>認識対象言語。相手言語を確定する前から両方受け付ける。</summary>
     public static ImmutableArray<string> Languages(LanguagePair pair) =>
-        [.. pair.Languages().Select(language => language switch
-        {
-            SpokenLanguage.Japanese => "ja",
-            SpokenLanguage.English => "en",
-            SpokenLanguage.Spanish => "es",
-            _ => throw new ArgumentOutOfRangeException(nameof(pair), pair, null),
-        })];
+        [
+            .. pair.Languages()
+                .Select(language =>
+                    language switch
+                    {
+                        SpokenLanguage.Japanese => "ja",
+                        SpokenLanguage.English => "en",
+                        SpokenLanguage.Spanish => "es",
+                        _ => throw new ArgumentOutOfRangeException(nameof(pair), pair, null),
+                    }
+                ),
+        ];
 
     private static string DefaultErrorMessage => UserCopy.Current.Text("error.sourceSessionGeneric");
 
@@ -95,17 +94,16 @@ public static class RealtimeSourceTranscriptionCodec
 
         JsonObject payload = clientEvent switch
         {
-            RealtimeSourceTranscriptionClientEvent.SessionUpdate sessionUpdate =>
-                SessionUpdatePayload(sessionUpdate.Tuning, sessionUpdate.Pair),
+            RealtimeSourceTranscriptionClientEvent.SessionUpdate sessionUpdate => SessionUpdatePayload(
+                sessionUpdate.Tuning,
+                sessionUpdate.Pair
+            ),
             RealtimeSourceTranscriptionClientEvent.InputAudioBufferAppend append => new JsonObject
             {
                 ["type"] = "input_audio_buffer.append",
                 ["audio"] = append.Base64Audio,
             },
-            RealtimeSourceTranscriptionClientEvent.Commit => new JsonObject
-            {
-                ["type"] = "input_audio_buffer.commit",
-            },
+            RealtimeSourceTranscriptionClientEvent.Commit => new JsonObject { ["type"] = "input_audio_buffer.commit" },
             _ => throw new ArgumentOutOfRangeException(nameof(clientEvent), clientEvent, null),
         };
 
@@ -146,7 +144,8 @@ public static class RealtimeSourceTranscriptionCodec
         {
             case "session.created":
                 return new RealtimeSourceTranscriptionServerEvent.SessionCreated(
-                    RealtimeSessionExpiry.ParseExpiresAt(payload["session"]));
+                    RealtimeSessionExpiry.ParseExpiresAt(payload["session"])
+                );
 
             case "session.updated":
                 return new RealtimeSourceTranscriptionServerEvent.SessionUpdated();
@@ -162,7 +161,8 @@ public static class RealtimeSourceTranscriptionCodec
                 // item_id は同一 turn の全 delta で共通なので重複排除に使わない。
                 return new RealtimeSourceTranscriptionServerEvent.InputTranscriptDelta(
                     delta,
-                    ReadString(payload["event_id"]));
+                    ReadString(payload["event_id"])
+                );
             }
 
             case "conversation.item.input_audio_transcription.completed":
@@ -180,7 +180,8 @@ public static class RealtimeSourceTranscriptionCodec
                     eventId,
                     code,
                     errorType,
-                    RealtimeServerErrorClassification.ClassifyTranscriptionFailure(errorType, code));
+                    RealtimeServerErrorClassification.ClassifyTranscriptionFailure(errorType, code)
+                );
             }
 
             case "error":
@@ -191,10 +192,12 @@ public static class RealtimeSourceTranscriptionCodec
                     classification.Termination == EventDeliveryTermination.AuthenticationFailed
                         ? classification.ToException().Message
                         : RealtimeTranslationException.SanitizeServerMessage(
-                            ReadString(body?["message"]) ?? DefaultErrorMessage),
+                            ReadString(body?["message"]) ?? DefaultErrorMessage
+                        ),
                     ReadString(body?["code"]),
                     ReadString(body?["type"]),
-                    classification);
+                    classification
+                );
             }
 
             default:
@@ -211,7 +214,8 @@ public static class RealtimeSourceTranscriptionCodec
         return RealtimeServerErrorClassification.Classify(
             ReadString(body?["type"]),
             ReadString(body?["code"]),
-            ReadString(body?["message"]) ?? DefaultErrorMessage);
+            ReadString(body?["message"]) ?? DefaultErrorMessage
+        );
     }
 
     /// <summary>ハンドシェイク応答が期待した type でないときに投げる例外を組み立てる。</summary>
@@ -223,9 +227,7 @@ public static class RealtimeSourceTranscriptionCodec
             : classification.ToException();
     }
 
-    public static JsonObject SessionUpdatePayload(
-        RealtimeSessionTuning tuning,
-        LanguagePair pair = LanguagePair.JaEn)
+    public static JsonObject SessionUpdatePayload(RealtimeSessionTuning tuning, LanguagePair pair = LanguagePair.JaEn)
     {
         ArgumentNullException.ThrowIfNull(tuning);
 
@@ -255,10 +257,7 @@ public static class RealtimeSourceTranscriptionCodec
                             ["prompt"] = tuning.TranscriptionPrompt,
                             ["keywords"] = keywords,
                         },
-                        ["noise_reduction"] = new JsonObject
-                        {
-                            ["type"] = tuning.NoiseReduction.ToWireValue(),
-                        },
+                        ["noise_reduction"] = new JsonObject { ["type"] = tuning.NoiseReduction.ToWireValue() },
 
                         // turn_detection は明示的に null。サーバ側 VAD が無音を捨てないようにする。
                         ["turn_detection"] = null,

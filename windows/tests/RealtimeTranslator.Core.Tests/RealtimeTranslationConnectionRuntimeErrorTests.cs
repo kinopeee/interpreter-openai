@@ -23,13 +23,13 @@ public sealed class RealtimeTranslationConnectionRuntimeErrorTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+            "test-safety"
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         transport.EnqueueJson(
-            """{"type":"error","error":{"message":"rate_limit exceeded","code":"rate_limit_exceeded"}}""");
+            """{"type":"error","error":{"message":"rate_limit exceeded","code":"rate_limit_exceeded"}}"""
+        );
         var errorEvent = await ReadOneAsync(connection.Events);
         var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(errorEvent.Event);
         Assert.Equal("rate_limit_exceeded", error.Code);
@@ -37,7 +37,8 @@ public sealed class RealtimeTranslationConnectionRuntimeErrorTests
         Assert.False(connection.Events.Completion.IsCompleted);
 
         transport.EnqueueJson(
-            """{"type":"session.output_transcript.delta","delta":"kept after error","event_id":"out-2"}""");
+            """{"type":"session.output_transcript.delta","delta":"kept after error","event_id":"out-2"}"""
+        );
         var deltaEvent = await ReadOneAsync(connection.Events);
         var delta = Assert.IsType<RealtimeTranslationServerEvent.OutputTranscriptDelta>(deltaEvent.Event);
 
@@ -56,10 +57,9 @@ public sealed class RealtimeTranslationConnectionRuntimeErrorTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.Japanese,
             transport,
-            "test-safety");
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.JapaneseTargetWithoutSourceTranscription());
+            "test-safety"
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.JapaneseTargetWithoutSourceTranscription());
 
         transport.EnqueueJson("""{"type":"session.foo_bar"}""");
         var unknownEvent = await ReadOneAsync(connection.Events);
@@ -68,7 +68,8 @@ public sealed class RealtimeTranslationConnectionRuntimeErrorTests
         Assert.False(connection.Events.Completion.IsCompleted);
 
         transport.EnqueueJson(
-            """{"type":"session.output_transcript.delta","delta":"kept after unknown","event_id":"out-3"}""");
+            """{"type":"session.output_transcript.delta","delta":"kept after unknown","event_id":"out-3"}"""
+        );
         var deltaEvent = await ReadOneAsync(connection.Events);
         var delta = Assert.IsType<RealtimeTranslationServerEvent.OutputTranscriptDelta>(deltaEvent.Event);
 
@@ -78,7 +79,8 @@ public sealed class RealtimeTranslationConnectionRuntimeErrorTests
     }
 
     private static async Task<RealtimeTranslationStreamEvent> ReadOneAsync(
-        System.Threading.Channels.ChannelReader<RealtimeTranslationStreamEvent> reader)
+        System.Threading.Channels.ChannelReader<RealtimeTranslationStreamEvent> reader
+    )
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         return await reader.ReadAsync(timeout.Token);

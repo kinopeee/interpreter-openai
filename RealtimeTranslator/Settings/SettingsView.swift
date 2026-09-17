@@ -205,8 +205,8 @@ private struct SettingsGeneralTab: View {
                 )
 
                 Text(UiCopy.text("settings.consentHelp"))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 Link(
                     "OpenAI Pricing",
@@ -256,8 +256,8 @@ private struct SettingsGeneralTab: View {
                             ? UiCopy.text("settings.apiKeySaved.mac")
                             : UiCopy.text("settings.apiKeyNotSaved")
                     )
-                        .font(.caption)
-                        .foregroundStyle(storedKeyState.hasUsableKey ? Color.secondary : Color.orange)
+                    .font(.caption)
+                    .foregroundStyle(storedKeyState.hasUsableKey ? Color.secondary : Color.orange)
                 }
 
                 if let statusMessage {
@@ -267,8 +267,8 @@ private struct SettingsGeneralTab: View {
                 }
 
                 Text(UiCopy.text("settings.apiKeyStorageHelp.mac"))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -382,8 +382,8 @@ private struct SettingsSpeechRecognitionTab: View {
 
             Section {
                 Text(UiCopy.text("settings.tuningLiveHelp"))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

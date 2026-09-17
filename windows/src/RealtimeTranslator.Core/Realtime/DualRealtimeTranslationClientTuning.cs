@@ -31,8 +31,7 @@ public sealed record DualRealtimeTranslationClientTuning
 
     public int ConsecutiveFailureLimit { get; init; } = DefaultConsecutiveFailureLimit;
 
-    public int DrainTimeoutMillisecondsPerPendingFrame { get; init; } =
-        DefaultDrainTimeoutMillisecondsPerPendingFrame;
+    public int DrainTimeoutMillisecondsPerPendingFrame { get; init; } = DefaultDrainTimeoutMillisecondsPerPendingFrame;
 
     public TimeSpan DrainTimeoutCap { get; init; } = DefaultDrainTimeoutCap;
 
@@ -51,12 +50,14 @@ public sealed record DualRealtimeTranslationClientTuning
         ArgumentOutOfRangeException.ThrowIfNegative(ConsecutiveFailureLimit, nameof(ConsecutiveFailureLimit));
         ArgumentOutOfRangeException.ThrowIfNegative(
             DrainTimeoutMillisecondsPerPendingFrame,
-            nameof(DrainTimeoutMillisecondsPerPendingFrame));
+            nameof(DrainTimeoutMillisecondsPerPendingFrame)
+        );
         ArgumentOutOfRangeException.ThrowIfLessThan(DrainTimeoutCap, TimeSpan.Zero, nameof(DrainTimeoutCap));
         ArgumentOutOfRangeException.ThrowIfLessThan(
             DefaultCloseDrainTimeout,
             TimeSpan.Zero,
-            nameof(DefaultCloseDrainTimeout));
+            nameof(DefaultCloseDrainTimeout)
+        );
     }
 
     /// <summary>

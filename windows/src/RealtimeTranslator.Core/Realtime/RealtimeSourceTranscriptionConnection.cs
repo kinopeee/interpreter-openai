@@ -21,6 +21,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
     private bool _isReady;
     private bool _didReceiveCommitOutcome;
+
     /// <summary>commit 送信完了後だけ立てる。送信待ち中の録音時 outcome を commit 結果にしない。</summary>
     private bool _isAwaitingCommitOutcome;
     private LanguagePair _pair = LanguagePair.JaEn;
@@ -32,7 +33,8 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         IRealtimeWebSocketTransport transport,
         string safetyIdentifier,
         TimeSpan? handshakeTimeout = null,
-        TimeSpan? closeTimeout = null)
+        TimeSpan? closeTimeout = null
+    )
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentException.ThrowIfNullOrWhiteSpace(safetyIdentifier);
@@ -51,7 +53,8 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         RealtimeSessionTuning tuning,
         LanguagePair pair = LanguagePair.JaEn,
         EventDeliveryState? deliveryState = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(tuning);
         apiKey = RealtimeApiKey.Require(apiKey);
@@ -76,25 +79,29 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
             try
             {
-                await _transport.ConnectAsync(
-                    EndpointUrl,
-                    RealtimeRequestHeaders.For(apiKey, _safetyIdentifier),
-                    cancellationToken).ConfigureAwait(false);
+                await _transport
+                    .ConnectAsync(EndpointUrl, RealtimeRequestHeaders.For(apiKey, _safetyIdentifier), cancellationToken)
+                    .ConfigureAwait(false);
 
                 var created = await ReceiveHandshakeEventAsync(state, cancellationToken).ConfigureAwait(false);
-                RealtimeConnectionLifecycle
-                    .RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionCreated>(created);
+                RealtimeConnectionLifecycle.RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionCreated>(
+                    created
+                );
                 state.RecordSessionExpiry(
                     RealtimeTranslationLane.Source,
-                    ((RealtimeSourceTranscriptionServerEvent.SessionCreated)created).ExpiresAtUnixSeconds);
+                    ((RealtimeSourceTranscriptionServerEvent.SessionCreated)created).ExpiresAtUnixSeconds
+                );
 
                 await SendAsync(
-                    new RealtimeSourceTranscriptionClientEvent.SessionUpdate(tuning, pair),
-                    cancellationToken).ConfigureAwait(false);
+                        new RealtimeSourceTranscriptionClientEvent.SessionUpdate(tuning, pair),
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
 
                 var updated = await ReceiveHandshakeEventAsync(state, cancellationToken).ConfigureAwait(false);
-                RealtimeConnectionLifecycle
-                    .RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionUpdated>(updated);
+                RealtimeConnectionLifecycle.RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionUpdated>(
+                    updated
+                );
 
                 lock (_lifecycle.Sync)
                 {
@@ -106,11 +113,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                     _isReady = true;
                 }
 
-                _lifecycle.StartReceiveLoop(
-                    currentEpoch,
-                    state,
-                    EventDeliveryStage.Source,
-                    ReceiveLoopAsync);
+                _lifecycle.StartReceiveLoop(currentEpoch, state, EventDeliveryStage.Source, ReceiveLoopAsync);
             }
             catch
             {
@@ -143,14 +146,13 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         }
 
         var liveTuning = tuning with { NoiseReduction = connectedNoiseReduction };
-        return SendAsync(
-            new RealtimeSourceTranscriptionClientEvent.SessionUpdate(liveTuning, pair),
-            cancellationToken);
+        return SendAsync(new RealtimeSourceTranscriptionClientEvent.SessionUpdate(liveTuning, pair), cancellationToken);
     }
 
     public Task AppendAudioFrameAsync(
         ReadOnlyMemory<byte> pcm16LittleEndian,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         lock (_lifecycle.Sync)
         {
@@ -161,9 +163,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         }
 
         var base64 = Convert.ToBase64String(pcm16LittleEndian.Span);
-        return SendAsync(
-            new RealtimeSourceTranscriptionClientEvent.InputAudioBufferAppend(base64),
-            cancellationToken);
+        return SendAsync(new RealtimeSourceTranscriptionClientEvent.InputAudioBufferAppend(base64), cancellationToken);
     }
 
     public async Task CloseGracefullyAsync(CancellationToken cancellationToken = default)
@@ -199,11 +199,14 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 // 相手が既に落ちている場合も completed 待ちへ進む。
             }
 
-            var completed = await _lifecycle.WaitForCloseSignalAsync(
-                () => _didReceiveCommitOutcome,
-                _closeTimeout,
-                bumpEpochOnCancel: true,
-                cancellationToken).ConfigureAwait(false);
+            var completed = await _lifecycle
+                .WaitForCloseSignalAsync(
+                    () => _didReceiveCommitOutcome,
+                    _closeTimeout,
+                    bumpEpochOnCancel: true,
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
 
             await _lifecycle.TearDownTransportAsync(bumpEpoch: true).ConfigureAwait(false);
             if (!completed)
@@ -242,25 +245,26 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
     private Task<RealtimeSourceTranscriptionServerEvent> ReceiveHandshakeEventAsync(
         EventDeliveryState state,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken
+    ) =>
         _lifecycle.ReceiveHandshakeEventAsync(
             RealtimeSourceTranscriptionCodec.DecodeServerEvent,
             TryClassifyError,
             _handshakeTimeout,
             cancellationToken,
-            _ => state.RecordReceive(RealtimeTranslationLane.Source));
+            _ => state.RecordReceive(RealtimeTranslationLane.Source)
+        );
 
     private static RealtimeServerErrorClassification? TryClassifyError(
-        RealtimeSourceTranscriptionServerEvent serverEvent) =>
-        serverEvent is RealtimeSourceTranscriptionServerEvent.ServerError error
-            ? error.Classification
-            : null;
+        RealtimeSourceTranscriptionServerEvent serverEvent
+    ) => serverEvent is RealtimeSourceTranscriptionServerEvent.ServerError error ? error.Classification : null;
 
     private async Task ReceiveLoopAsync(
         int currentEpoch,
         EventDeliveryWriter writer,
         EventDeliveryState deliveryState,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -290,12 +294,18 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 }
 
                 deliveryState.TryRecordTermination(EventDeliveryTermination.TransportFailure);
-                if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(
-                    RealtimeTranslationLane.Source,
-                    new RealtimeTranslationServerEvent.ServerError(
-                        UserCopy.Current.Text("error.sourceDisconnected"),
-                        "transport"),
-                    currentEpoch)))
+                if (
+                    !writer.TryDeliver(
+                        new RealtimeTranslationStreamEvent(
+                            RealtimeTranslationLane.Source,
+                            new RealtimeTranslationServerEvent.ServerError(
+                                UserCopy.Current.Text("error.sourceDisconnected"),
+                                "transport"
+                            ),
+                            currentEpoch
+                        )
+                    )
+                )
                 {
                     return;
                 }
@@ -307,10 +317,19 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
             switch (serverEvent)
             {
                 case RealtimeSourceTranscriptionServerEvent.InputTranscriptDelta delta:
-                    if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(
-                        RealtimeTranslationLane.Source,
-                        new RealtimeTranslationServerEvent.InputTranscriptDelta(delta.Delta, delta.EventId, null),
-                        currentEpoch)))
+                    if (
+                        !writer.TryDeliver(
+                            new RealtimeTranslationStreamEvent(
+                                RealtimeTranslationLane.Source,
+                                new RealtimeTranslationServerEvent.InputTranscriptDelta(
+                                    delta.Delta,
+                                    delta.EventId,
+                                    null
+                                ),
+                                currentEpoch
+                            )
+                        )
+                    )
                     {
                         return;
                     }
@@ -340,14 +359,20 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                     deliveryState.NoteSourceFailureQueued();
                     if (failed.Classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
                     {
-                        if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(
-                            RealtimeTranslationLane.Source,
-                            new RealtimeTranslationServerEvent.InputTranscriptFailed(
-                                failed.ItemId,
-                                failed.EventId,
-                                failed.Code,
-                                failed.ErrorType),
-                            currentEpoch)))
+                        if (
+                            !writer.TryDeliver(
+                                new RealtimeTranslationStreamEvent(
+                                    RealtimeTranslationLane.Source,
+                                    new RealtimeTranslationServerEvent.InputTranscriptFailed(
+                                        failed.ItemId,
+                                        failed.EventId,
+                                        failed.Code,
+                                        failed.ErrorType
+                                    ),
+                                    currentEpoch
+                                )
+                            )
+                        )
                         {
                             return;
                         }
@@ -356,14 +381,20 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                     }
 
                     deliveryState.TryRecordTermination(failed.Classification);
-                    if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(
-                        RealtimeTranslationLane.Source,
-                        new RealtimeTranslationServerEvent.InputTranscriptFailed(
-                            failed.ItemId,
-                            failed.EventId,
-                            failed.Code,
-                            failed.ErrorType),
-                        currentEpoch)))
+                    if (
+                        !writer.TryDeliver(
+                            new RealtimeTranslationStreamEvent(
+                                RealtimeTranslationLane.Source,
+                                new RealtimeTranslationServerEvent.InputTranscriptFailed(
+                                    failed.ItemId,
+                                    failed.EventId,
+                                    failed.Code,
+                                    failed.ErrorType
+                                ),
+                                currentEpoch
+                            )
+                        )
+                    )
                     {
                         return;
                     }
@@ -379,10 +410,15 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                     }
 
                     deliveryState.TryRecordTermination(classification);
-                    if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(
-                        RealtimeTranslationLane.Source,
-                        streamError,
-                        currentEpoch)))
+                    if (
+                        !writer.TryDeliver(
+                            new RealtimeTranslationStreamEvent(
+                                RealtimeTranslationLane.Source,
+                                streamError,
+                                currentEpoch
+                            )
+                        )
+                    )
                     {
                         return;
                     }

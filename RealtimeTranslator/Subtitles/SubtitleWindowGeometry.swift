@@ -61,7 +61,8 @@ enum SubtitleWindowGeometry {
         guard !screenFrames.isEmpty else { return nil }
 
         if origin.x.isFinite, origin.y.isFinite,
-           let index = screenFrames.firstIndex(where: { contains(origin, in: $0) }) {
+            let index = screenFrames.firstIndex(where: { contains(origin, in: $0) })
+        {
             return index
         }
         if let fallbackIndex, screenFrames.indices.contains(fallbackIndex) {
@@ -80,12 +81,14 @@ enum SubtitleWindowGeometry {
         let candidates: [(index: Int, area: CGFloat)] = screenFrames.indices
             .map { index in
                 let intersection = proposedFrame.intersection(screenFrames[index])
-                let area: CGFloat = intersection.isNull || intersection.isEmpty
+                let area: CGFloat =
+                    intersection.isNull || intersection.isEmpty
                     ? 0
                     : intersection.width * intersection.height
                 return (index: index, area: area)
             }
-        let bestMatch = candidates
+        let bestMatch =
+            candidates
             .filter { $0.area > 0 }
             .max { first, second in
                 if first.area == second.area {
@@ -108,7 +111,8 @@ enum SubtitleWindowGeometry {
         in visibleFrame: CGRect
     ) -> SubtitleWindowLayout {
         let subtitleFrame = CGRect(origin: subtitleOrigin, size: subtitleSize)
-        let controlFrame = showsRecordingControl
+        let controlFrame =
+            showsRecordingControl
             ? controlFrame(for: subtitleFrame)
             : CGRect(origin: subtitleFrame.origin, size: .zero)
         return clamped(
@@ -133,7 +137,8 @@ enum SubtitleWindowGeometry {
         _ layout: SubtitleWindowLayout,
         to visibleFrame: CGRect
     ) -> SubtitleWindowLayout {
-        let frameToClamp = showsRecordingControl
+        let frameToClamp =
+            showsRecordingControl
             ? layout.combinedFrame
             : layout.subtitleFrame
         let dx = offset(

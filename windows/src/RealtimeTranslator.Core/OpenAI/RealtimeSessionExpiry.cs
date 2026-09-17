@@ -17,8 +17,7 @@ public static class RealtimeSessionExpiry
     /// </summary>
     public static long? ParseExpiresAt(JsonNode? session)
     {
-        if (session is not JsonObject sessionObject
-            || sessionObject["expires_at"] is not JsonValue value)
+        if (session is not JsonObject sessionObject || sessionObject["expires_at"] is not JsonValue value)
         {
             return null;
         }
@@ -29,11 +28,13 @@ public static class RealtimeSessionExpiry
             return expiresAt >= 0 ? expiresAt : null;
         }
 
-        if (value.TryGetValue<double>(out var floating)
+        if (
+            value.TryGetValue<double>(out var floating)
             && double.IsFinite(floating)
             && floating >= 0
             && floating <= 9_007_199_254_740_992d
-            && Math.Truncate(floating) == floating)
+            && Math.Truncate(floating) == floating
+        )
         {
             return (long)floating;
         }

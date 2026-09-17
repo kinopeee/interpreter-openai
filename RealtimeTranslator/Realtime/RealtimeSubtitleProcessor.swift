@@ -115,7 +115,8 @@ struct RealtimeSubtitleProcessor: Sendable {
         let deltaStart = assembler.currentSourceLength
         let sourceDelta: String?
         if case .inputTranscriptDelta(let delta, _, _) = streamEvent.event,
-           streamEvent.lane.isSource {
+            streamEvent.lane.isSource
+        {
             sourceDelta = delta
         } else {
             sourceDelta = nil
@@ -152,8 +153,8 @@ struct RealtimeSubtitleProcessor: Sendable {
         )
         var oppositeRun: OppositeScriptRun?
         if pair != .enEs,
-           let currentTarget = selectedTranslationTarget,
-           let currentLanguage = pair.counterpart(of: currentTarget)
+            let currentTarget = selectedTranslationTarget,
+            let currentLanguage = pair.counterpart(of: currentTarget)
         {
             sourceBoundaryTracker.observe(
                 segmentSource: assembler.currentSourceText,

@@ -19,13 +19,16 @@ public sealed class TranslationTargetSelectionFixtureTests
 
         Assert.Equal(
             SharedFixtures.Number(gate["minimumLatinWords"]),
-            TranslationTargetSelector.ScriptSwitchMinimumLatinWords);
+            TranslationTargetSelector.ScriptSwitchMinimumLatinWords
+        );
         Assert.Equal(
             SharedFixtures.Number(gate["minimumLatinScalars"]),
-            TranslationTargetSelector.ScriptSwitchMinimumLatinScalars);
+            TranslationTargetSelector.ScriptSwitchMinimumLatinScalars
+        );
         Assert.Equal(
             SharedFixtures.Number(gate["minimumJapaneseScalars"]),
-            TranslationTargetSelector.ScriptSwitchMinimumJapaneseScalars);
+            TranslationTargetSelector.ScriptSwitchMinimumJapaneseScalars
+        );
     }
 
     // Given: target は出力言語である targetSelection fixture
@@ -50,14 +53,10 @@ public sealed class TranslationTargetSelectionFixtureTests
                 ? new OppositeScriptRun(
                     SharedFixtures.Number(run["latinWords"]),
                     SharedFixtures.Number(run["latinScalars"]),
-                    SharedFixtures.Number(run["japaneseScalars"]))
+                    SharedFixtures.Number(run["japaneseScalars"])
+                )
                 : (OppositeScriptRun?)null;
-            var selection = TranslationTargetSelector.Select(
-                pair,
-                current,
-                reverseCount,
-                evidence,
-                oppositeRun);
+            var selection = TranslationTargetSelector.Select(pair, current, reverseCount, evidence, oppositeRun);
             current = selection.Target;
             reverseCount = selection.ReverseEvidenceCount;
             var expected = step["expectedTarget"] is { } target
@@ -71,13 +70,14 @@ public sealed class TranslationTargetSelectionFixtureTests
         }
     }
 
-    private static SpokenLanguageEvidence ParseEvidence(string value) => value switch
-    {
-        "japanese" => SpokenLanguageEvidence.Japanese,
-        "english" => SpokenLanguageEvidence.English,
-        "spanish" => SpokenLanguageEvidence.Spanish,
-        "ambiguousLatin" => SpokenLanguageEvidence.AmbiguousLatin,
-        "none" => SpokenLanguageEvidence.None,
-        _ => throw new Xunit.Sdk.XunitException("unhandled evidence " + value),
-    };
+    private static SpokenLanguageEvidence ParseEvidence(string value) =>
+        value switch
+        {
+            "japanese" => SpokenLanguageEvidence.Japanese,
+            "english" => SpokenLanguageEvidence.English,
+            "spanish" => SpokenLanguageEvidence.Spanish,
+            "ambiguousLatin" => SpokenLanguageEvidence.AmbiguousLatin,
+            "none" => SpokenLanguageEvidence.None,
+            _ => throw new Xunit.Sdk.XunitException("unhandled evidence " + value),
+        };
 }

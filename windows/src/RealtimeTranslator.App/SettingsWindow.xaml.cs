@@ -48,10 +48,12 @@ public partial class SettingsWindow : Window
         {
             new ComboOption<RealtimeTranslationNoiseReduction>(
                 RealtimeTranslationNoiseReduction.NearField,
-                UiCopy.NoiseName(RealtimeTranslationNoiseReduction.NearField)),
+                UiCopy.NoiseName(RealtimeTranslationNoiseReduction.NearField)
+            ),
             new ComboOption<RealtimeTranslationNoiseReduction>(
                 RealtimeTranslationNoiseReduction.FarField,
-                UiCopy.NoiseName(RealtimeTranslationNoiseReduction.FarField)),
+                UiCopy.NoiseName(RealtimeTranslationNoiseReduction.FarField)
+            ),
         };
         LanguagePairBox.ItemsSource = new[]
         {
@@ -63,36 +65,39 @@ public partial class SettingsWindow : Window
         {
             new ComboOption<RealtimeTranscriptionDelay>(
                 RealtimeTranscriptionDelay.Minimal,
-                UiCopy.DelayName(RealtimeTranscriptionDelay.Minimal)),
+                UiCopy.DelayName(RealtimeTranscriptionDelay.Minimal)
+            ),
             new ComboOption<RealtimeTranscriptionDelay>(
                 RealtimeTranscriptionDelay.Low,
-                UiCopy.DelayName(RealtimeTranscriptionDelay.Low)),
+                UiCopy.DelayName(RealtimeTranscriptionDelay.Low)
+            ),
             new ComboOption<RealtimeTranscriptionDelay>(
                 RealtimeTranscriptionDelay.Medium,
-                UiCopy.DelayName(RealtimeTranscriptionDelay.Medium)),
+                UiCopy.DelayName(RealtimeTranscriptionDelay.Medium)
+            ),
             new ComboOption<RealtimeTranscriptionDelay>(
                 RealtimeTranscriptionDelay.High,
-                UiCopy.DelayName(RealtimeTranscriptionDelay.High)),
+                UiCopy.DelayName(RealtimeTranscriptionDelay.High)
+            ),
             new ComboOption<RealtimeTranscriptionDelay>(
                 RealtimeTranscriptionDelay.XHigh,
-                UiCopy.DelayName(RealtimeTranscriptionDelay.XHigh)),
+                UiCopy.DelayName(RealtimeTranscriptionDelay.XHigh)
+            ),
         };
         UiLanguageBox.ItemsSource = new[]
         {
             new ComboOption<UiLanguagePreference>(
                 UiLanguagePreference.System,
-                UiCopy.Text("settings.uiLanguage.system")),
-            new ComboOption<UiLanguagePreference>(
-                UiLanguagePreference.Ja,
-                UiCopy.Text("settings.uiLanguage.ja")),
-            new ComboOption<UiLanguagePreference>(
-                UiLanguagePreference.En,
-                UiCopy.Text("settings.uiLanguage.en")),
+                UiCopy.Text("settings.uiLanguage.system")
+            ),
+            new ComboOption<UiLanguagePreference>(UiLanguagePreference.Ja, UiCopy.Text("settings.uiLanguage.ja")),
+            new ComboOption<UiLanguagePreference>(UiLanguagePreference.En, UiCopy.Text("settings.uiLanguage.en")),
         };
-        PresetBox.ItemsSource = RealtimeSessionTuning.Preset.All
-            .Select(preset => new ComboOption<RealtimeSessionTuning.Preset>(
+        PresetBox.ItemsSource = RealtimeSessionTuning
+            .Preset.All.Select(preset => new ComboOption<RealtimeSessionTuning.Preset>(
                 preset,
-                UiCopy.PresetName(preset.Id)))
+                UiCopy.PresetName(preset.Id)
+            ))
             .ToArray();
         PresetBox.SelectedIndex = 0;
 
@@ -161,10 +166,7 @@ public partial class SettingsWindow : Window
         }
 
         var accepted = ConsentCheckBox.IsChecked == true;
-        Publish(Settings with
-        {
-            AcceptedConsentVersion = accepted ? AppSettingsData.CurrentConsentVersion : 0,
-        });
+        Publish(Settings with { AcceptedConsentVersion = accepted ? AppSettingsData.CurrentConsentVersion : 0 });
     }
 
     private void OnApiKeyDraftChanged(object sender, RoutedEventArgs e) =>
@@ -248,7 +250,8 @@ public partial class SettingsWindow : Window
             next = next with
             {
                 TranscriptionKeywordsText = RealtimeSessionTuning.KeywordsText(
-                    RealtimeSessionTuning.DefaultKeywordsForPair(value)),
+                    RealtimeSessionTuning.DefaultKeywordsForPair(value)
+                ),
             };
             refreshedHints = true;
         }
@@ -285,12 +288,12 @@ public partial class SettingsWindow : Window
         || prompt == RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.EnEs);
 
     private static bool IsKnownDefaultKeywordsText(string keywordsText) =>
-        keywordsText == RealtimeSessionTuning.KeywordsText(
-            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEn))
-        || keywordsText == RealtimeSessionTuning.KeywordsText(
-            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEs))
-        || keywordsText == RealtimeSessionTuning.KeywordsText(
-            RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.EnEs));
+        keywordsText
+            == RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEn))
+        || keywordsText
+            == RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEs))
+        || keywordsText
+            == RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.EnEs));
 
     private void OnTranscriptionDelayChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -358,10 +361,11 @@ public partial class SettingsWindow : Window
         ApplyHints(preset.Prompt, RealtimeSessionTuning.KeywordsText(preset.Keywords));
     }
 
-    private void OnRestoreDefaults(object sender, RoutedEventArgs e) => ApplyHints(
-        RealtimeSessionTuning.DefaultPromptForPair(Settings.LanguagePair),
-        RealtimeSessionTuning.KeywordsText(
-            RealtimeSessionTuning.DefaultKeywordsForPair(Settings.LanguagePair)));
+    private void OnRestoreDefaults(object sender, RoutedEventArgs e) =>
+        ApplyHints(
+            RealtimeSessionTuning.DefaultPromptForPair(Settings.LanguagePair),
+            RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywordsForPair(Settings.LanguagePair))
+        );
 
     private void ApplyHints(string prompt, string keywordsText)
     {
@@ -370,11 +374,7 @@ public partial class SettingsWindow : Window
         KeywordsBox.Text = keywordsText;
         _loading = false;
 
-        Publish(Settings with
-        {
-            TranscriptionPrompt = prompt,
-            TranscriptionKeywordsText = keywordsText,
-        });
+        Publish(Settings with { TranscriptionPrompt = prompt, TranscriptionKeywordsText = keywordsText });
         UpdateHintCounters();
         ScheduleTuningChange();
     }
@@ -383,37 +383,40 @@ public partial class SettingsWindow : Window
         FontSizeText.Text = UiCopy.Format(
             "settings.fontSize",
             "size",
-            ((int)FontSizeSlider.Value).ToString(CultureInfo.InvariantCulture));
+            ((int)FontSizeSlider.Value).ToString(CultureInfo.InvariantCulture)
+        );
 
     private void UpdateHintCounters()
     {
         // 表示件数・超過警告は送信値と同じ正規化（改行潰し / 書記素クラスタ / 送信対象語）で揃える。
         var promptLength = RealtimeSessionTuning.CountTextElements(
-            RealtimeSessionTuning.SanitizedPrompt(PromptBox.Text));
+            RealtimeSessionTuning.SanitizedPrompt(PromptBox.Text)
+        );
         var isPromptOverLimit = RealtimeSessionTuning.IsPromptOverCharacterLimit(PromptBox.Text);
-        PromptCounterText.Text = UiCopy.Format(
-            "settings.promptCounter",
-            new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["count"] = promptLength.ToString(CultureInfo.InvariantCulture),
-                ["limit"] = RealtimeSessionTuning.PromptCharacterLimit.ToString(CultureInfo.InvariantCulture),
-            })
-            + (isPromptOverLimit ? UiCopy.Text("settings.promptOverLimit") : string.Empty);
+        PromptCounterText.Text =
+            UiCopy.Format(
+                "settings.promptCounter",
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["count"] = promptLength.ToString(CultureInfo.InvariantCulture),
+                    ["limit"] = RealtimeSessionTuning.PromptCharacterLimit.ToString(CultureInfo.InvariantCulture),
+                }
+            ) + (isPromptOverLimit ? UiCopy.Text("settings.promptOverLimit") : string.Empty);
 
         var keywordCount = RealtimeSessionTuning.ParseKeywords(KeywordsBox.Text).Length;
         var isKeywordOverLimit = RealtimeSessionTuning.IsKeywordCountOverLimit(KeywordsBox.Text);
-        KeywordCounterText.Text = UiCopy.Format(
-            "settings.keywordCounter",
-            new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["count"] = keywordCount.ToString(CultureInfo.InvariantCulture),
-                ["limit"] = RealtimeSessionTuning.KeywordLimit.ToString(CultureInfo.InvariantCulture),
-            })
-            + (isKeywordOverLimit ? UiCopy.Text("settings.keywordOverLimit") : string.Empty);
+        KeywordCounterText.Text =
+            UiCopy.Format(
+                "settings.keywordCounter",
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["count"] = keywordCount.ToString(CultureInfo.InvariantCulture),
+                    ["limit"] = RealtimeSessionTuning.KeywordLimit.ToString(CultureInfo.InvariantCulture),
+                }
+            ) + (isKeywordOverLimit ? UiCopy.Text("settings.keywordOverLimit") : string.Empty);
 
-        KeywordWarningText.Text = KeywordsBox.Text.IndexOfAny(['<', '>']) >= 0
-            ? UiCopy.Text("settings.keywordForbidden")
-            : string.Empty;
+        KeywordWarningText.Text =
+            KeywordsBox.Text.IndexOfAny(['<', '>']) >= 0 ? UiCopy.Text("settings.keywordForbidden") : string.Empty;
     }
 
     private void RefreshStoredKeyState()
@@ -431,9 +434,10 @@ public partial class SettingsWindow : Window
             ShowApiKeyStatus(UiCopy.Text("settings.apiKeyStatusUnknown"), isError: true);
         }
 
-        StoredKeyStateText.Text = state == StoredApiKeyState.Valid
-            ? UiCopy.Text("settings.apiKeySaved.windows")
-            : UiCopy.Text("settings.apiKeyNotSaved");
+        StoredKeyStateText.Text =
+            state == StoredApiKeyState.Valid
+                ? UiCopy.Text("settings.apiKeySaved.windows")
+                : UiCopy.Text("settings.apiKeyNotSaved");
         DeleteApiKeyButton.IsEnabled = state != StoredApiKeyState.Missing;
         if (state == StoredApiKeyState.Malformed)
         {
@@ -444,7 +448,9 @@ public partial class SettingsWindow : Window
     private void ShowApiKeyStatus(string message, bool isError)
     {
         ApiKeyStatusText.Text = message;
-        ApiKeyStatusText.Foreground = isError ? System.Windows.Media.Brushes.Firebrick : System.Windows.Media.Brushes.Gray;
+        ApiKeyStatusText.Foreground = isError
+            ? System.Windows.Media.Brushes.Firebrick
+            : System.Windows.Media.Brushes.Gray;
     }
 
     private void ApplyCopy()
@@ -457,8 +463,10 @@ public partial class SettingsWindow : Window
         ModelText.Text = UiCopy.Text("settings.model") + ": gpt-live-transcribe / gpt-realtime-translate";
         LanguagePairLabel.Text = UiCopy.Text("settings.languagePair");
         LanguagePairAppliesNextRecordingText.Text = UiCopy.Text("settings.languagePairAppliesNextRecording");
-        SubtitleDisplayText.Text = UiCopy.Text("settings.subtitleDisplay") + ": " + UiCopy.Text("settings.subtitleDisplayValue");
-        TranslatedAudioText.Text = UiCopy.Text("settings.translatedAudio") + ": " + UiCopy.Text("settings.translatedAudioValue");
+        SubtitleDisplayText.Text =
+            UiCopy.Text("settings.subtitleDisplay") + ": " + UiCopy.Text("settings.subtitleDisplayValue");
+        TranslatedAudioText.Text =
+            UiCopy.Text("settings.translatedAudio") + ": " + UiCopy.Text("settings.translatedAudioValue");
         ConsentCheckBox.Content = UiCopy.Text("settings.consentToggle");
         ConsentHelpText.Text = UiCopy.Text("settings.consentHelp");
         ApiKeySectionTitle.Text = UiCopy.Text("settings.section.apiKey");
@@ -467,7 +475,11 @@ public partial class SettingsWindow : Window
         ApiKeyStorageHelpText.Text = UiCopy.Text("settings.apiKeyStorageHelp.windows");
         UiLanguageLabel.Text = UiCopy.Text("settings.uiLanguage");
         UiLanguageRestartHint.Text = UiCopy.Text("settings.uiLanguageRestartHint");
-        AppVersionText.Text = UiCopy.Format("settings.appVersion", "version", AppReleaseVersionInfo.CurrentDisplayValue());
+        AppVersionText.Text = UiCopy.Format(
+            "settings.appVersion",
+            "version",
+            AppReleaseVersionInfo.CurrentDisplayValue()
+        );
         RecognitionSectionTitle.Text = UiCopy.Text("settings.section.recognition");
         NoiseReductionLabel.Text = UiCopy.Text("settings.noiseReduction");
         TranscriptionDelayLabel.Text = UiCopy.Text("settings.transcriptionDelay");
@@ -487,13 +499,12 @@ public partial class SettingsWindow : Window
     }
 
     private static void SelectOption<T>(Selector box, T value) =>
-        box.SelectedItem = box.ItemsSource
-            ?.OfType<ComboOption<T>>()
+        box.SelectedItem = box
+            .ItemsSource?.OfType<ComboOption<T>>()
             .FirstOrDefault(option => Equals(option.Value, value));
 
     private static T? SelectedEnum<T>(Selector box)
-        where T : struct =>
-        box.SelectedItem is ComboOption<T> option ? option.Value : null;
+        where T : struct => box.SelectedItem is ComboOption<T> option ? option.Value : null;
 
     private sealed record ComboOption<T>(T Value, string DisplayName);
 }

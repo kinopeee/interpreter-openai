@@ -50,9 +50,7 @@ public partial class SubtitleOverlayWindow : Window
         var height = ActualHeight > 0 ? ActualHeight : Math.Min(160, workArea.Height);
 
         var placement = hasCustomOrigin
-            ? SubtitleOverlayGeometry.Clamp(
-                new OverlayRect(originX, originY, Width, height),
-                workArea)
+            ? SubtitleOverlayGeometry.Clamp(new OverlayRect(originX, originY, Width, height), workArea)
             : SubtitleOverlayGeometry.DefaultPlacement(workArea, height);
 
         Left = placement.X;
@@ -63,9 +61,7 @@ public partial class SubtitleOverlayWindow : Window
     public void ClampIntoWorkArea()
     {
         var workArea = CurrentWorkArea();
-        var clamped = SubtitleOverlayGeometry.Clamp(
-            new OverlayRect(Left, Top, ActualWidth, ActualHeight),
-            workArea);
+        var clamped = SubtitleOverlayGeometry.Clamp(new OverlayRect(Left, Top, ActualWidth, ActualHeight), workArea);
         Left = clamped.X;
         Top = clamped.Y;
     }
@@ -118,8 +114,7 @@ public partial class SubtitleOverlayWindow : Window
             : new OverlayRect(workArea.X, workArea.Y, workArea.Width, workArea.Height);
     }
 
-    private static SolidColorBrush CreateEditingBrush() =>
-        CreateFrozenBrush(Color.FromArgb(0xB8, 0xFF, 0xFF, 0xFF));
+    private static SolidColorBrush CreateEditingBrush() => CreateFrozenBrush(Color.FromArgb(0xB8, 0xFF, 0xFF, 0xFF));
 
     private static SolidColorBrush CreateFrozenBrush(Color color)
     {

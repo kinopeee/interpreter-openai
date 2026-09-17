@@ -87,7 +87,8 @@ public sealed class AppSettingsCodecTests
     public void DecodePoisonedApiKeyFieldIsDroppedOnReEncode()
     {
         var restored = AppSettingsCodec.Decode(
-            """{"fontSize":40,"apiKey":"sk-hand-edited-secret","openaiApiKey":"sk-also-secret","languagePair":"en-es"}""");
+            """{"fontSize":40,"apiKey":"sk-hand-edited-secret","openaiApiKey":"sk-also-secret","languagePair":"en-es"}"""
+        );
         var json = AppSettingsCodec.Encode(restored);
 
         Assert.Equal(40, restored.FontSize);
@@ -140,9 +141,7 @@ public sealed class AppSettingsCodecTests
     [Fact]
     public void DecodeMissingUiLanguageDefaultsToSystem()
     {
-        Assert.Equal(
-            UiLanguagePreference.System,
-            AppSettingsCodec.Decode("{\"fontSize\":32}").UiLanguage);
+        Assert.Equal(UiLanguagePreference.System, AppSettingsCodec.Decode("{\"fontSize\":32}").UiLanguage);
     }
 
     // Given: 未知の表示言語を含む settings.json
@@ -151,9 +150,7 @@ public sealed class AppSettingsCodecTests
     [Fact]
     public void DecodeUnknownUiLanguageDefaultsToSystem()
     {
-        Assert.Equal(
-            UiLanguagePreference.System,
-            AppSettingsCodec.Decode("{\"uiLanguage\":\"es\"}").UiLanguage);
+        Assert.Equal(UiLanguagePreference.System, AppSettingsCodec.Decode("{\"uiLanguage\":\"es\"}").UiLanguage);
     }
 
     // Given: 未知の言語ペアを含む settings.json
@@ -162,9 +159,7 @@ public sealed class AppSettingsCodecTests
     [Fact]
     public void DecodeUnknownLanguagePairDefaultsToJaEn()
     {
-        Assert.Equal(
-            LanguagePair.JaEn,
-            AppSettingsCodec.Decode("{\"languagePair\":\"xx-yy\"}").LanguagePair);
+        Assert.Equal(LanguagePair.JaEn, AppSettingsCodec.Decode("{\"languagePair\":\"xx-yy\"}").LanguagePair);
     }
 
     // Given: 型が違う settings.json（数値・真偽が文字列）
@@ -174,7 +169,8 @@ public sealed class AppSettingsCodecTests
     public void DecodeWrongJsonTypesFallBackWithoutEnablingRecording()
     {
         var settings = AppSettingsCodec.Decode(
-            """{"fontSize":"40","recordSubtitles":"true","hasCustomOverlayOrigin":"true","overlayOriginX":"NaN","languagePair":"en-es"}""");
+            """{"fontSize":"40","recordSubtitles":"true","hasCustomOverlayOrigin":"true","overlayOriginX":"NaN","languagePair":"en-es"}"""
+        );
 
         Assert.Equal(AppSettingsData.DefaultFontSize, settings.FontSize);
         Assert.False(settings.RecordSubtitles);
@@ -237,6 +233,7 @@ public sealed class AppSettingsCodecTests
         Assert.Equal(RealtimeSessionTuning.SanitizedPrompt("prompt <tag>"), tuning.TranscriptionPrompt);
         Assert.Equal(
             RealtimeSessionTuning.ParseKeywords("Devin\n<script>\n").ToList(),
-            tuning.TranscriptionKeywords.ToList());
+            tuning.TranscriptionKeywords.ToList()
+        );
     }
 }

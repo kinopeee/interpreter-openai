@@ -17,10 +17,13 @@ public sealed class AppSettingsStore
 
     public AppSettingsStore(string? path = null)
     {
-        _path = path ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            DirectoryName,
-            FileName);
+        _path =
+            path
+            ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                DirectoryName,
+                FileName
+            );
     }
 
     public string FilePath => _path;

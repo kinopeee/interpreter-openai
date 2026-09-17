@@ -11,8 +11,7 @@ namespace RealtimeTranslator.Core.Realtime;
 /// </summary>
 internal sealed class MergedEventBuffer
 {
-    public Channel<RealtimeTranslationStreamEvent> Events { get; private set; } =
-        RealtimeEventChannel.Create();
+    public Channel<RealtimeTranslationStreamEvent> Events { get; private set; } = RealtimeEventChannel.Create();
 
     public EventDeliveryState DeliveryState { get; private set; } = new(0);
 
@@ -45,7 +44,8 @@ internal sealed class MergedEventBuffer
             Events.Writer,
             DeliveryState,
             EventDeliveryStage.Merge,
-            RealtimeEventChannel.Capacity);
+            RealtimeEventChannel.Capacity
+        );
         MergeCts = cts;
         MergeWriter = writer;
         return writer;
@@ -56,7 +56,8 @@ internal sealed class MergedEventBuffer
         CancellationTokenSource? Cts,
         Task? Task,
         EventDeliveryWriter? Writer,
-        EventDeliveryState State) DetachMerge()
+        EventDeliveryState State
+    ) DetachMerge()
     {
         var detached = (MergeCts, MergeTask, MergeWriter, DeliveryState);
         MergeCts = null;

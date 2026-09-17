@@ -7,8 +7,8 @@ enum RealtimeTranslationMessageCodec {
         case .sessionUpdate(let config):
             var audio: [String: Any] = [
                 "output": [
-                    "language": config.outputLanguage.rawValue,
-                ],
+                    "language": config.outputLanguage.rawValue
+                ]
             ]
             var input: [String: Any] = [:]
             if let model = config.inputTranscriptionModel {
@@ -25,7 +25,7 @@ enum RealtimeTranslationMessageCodec {
             object = [
                 "type": "session.update",
                 "session": [
-                    "audio": audio,
+                    "audio": audio
                 ],
             ]
         case .inputAudioBufferAppend(let base64Audio):
@@ -35,7 +35,7 @@ enum RealtimeTranslationMessageCodec {
             ]
         case .sessionClose:
             object = [
-                "type": "session.close",
+                "type": "session.close"
             ]
         }
         return try JSONSerialization.data(withJSONObject: object, options: [])
@@ -50,7 +50,7 @@ enum RealtimeTranslationMessageCodec {
             throw RealtimeTranslationError.invalidMessage
         }
         guard let dictionary = object as? [String: Any],
-              let type = dictionary["type"] as? String
+            let type = dictionary["type"] as? String
         else {
             throw RealtimeTranslationError.invalidMessage
         }
@@ -83,7 +83,8 @@ enum RealtimeTranslationMessageCodec {
             return .sessionClosed
         case "error":
             let errorObject = dictionary["error"] as? [String: Any]
-            let message = (errorObject?["message"] as? String)
+            let message =
+                (errorObject?["message"] as? String)
                 ?? (dictionary["message"] as? String)
                 ?? RealtimeTranslationError.genericServerMessage
             return .error(

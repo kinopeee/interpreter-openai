@@ -403,10 +403,11 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         let updates = try await sessionUpdates(from: sourceTransport)
         XCTAssertGreaterThanOrEqual(updates.count, 2)
         let second = try XCTUnwrap(updates.last)
-        let transcription = try XCTUnwrap(
-            ((second["session"] as? [String: Any])?["audio"] as? [String: Any])?["input"]
-                as? [String: Any]
-        )["transcription"] as? [String: Any]
+        let transcription =
+            try XCTUnwrap(
+                ((second["session"] as? [String: Any])?["audio"] as? [String: Any])?["input"]
+                    as? [String: Any]
+            )["transcription"] as? [String: Any]
         let body = try XCTUnwrap(transcription)
         XCTAssertEqual(body["prompt"] as? String, "Live glossary update")
         XCTAssertEqual(body["keywords"] as? [String], ["Acme", "ロードマップ"])
@@ -770,10 +771,11 @@ final class DualRealtimeTranslationClientTests: XCTestCase {
         let drained = await dual.closeGracefully()
 
         // Then: 音声は drain に載らず、訳文だけが残る
-        XCTAssertFalse(drained.contains { event in
-            if case .outputAudioDelta = event.event { return true }
-            return false
-        })
+        XCTAssertFalse(
+            drained.contains { event in
+                if case .outputAudioDelta = event.event { return true }
+                return false
+            })
         let translations = drained.compactMap { event -> String? in
             guard case .outputTranscriptDelta(let delta, _, _) = event.event else { return nil }
             return delta

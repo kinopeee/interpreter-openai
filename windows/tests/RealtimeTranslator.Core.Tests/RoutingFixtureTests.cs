@@ -77,19 +77,20 @@ public sealed class RoutingFixtureTests
         await using var harness = await RoutingHarness.StartAsync();
         for (var index = 0; index < appendCount; index += 1)
         {
-            await harness.AppendFrameAsync("frame-" + index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            await harness.AppendFrameAsync(
+                "frame-" + index.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            );
         }
 
         await harness.SelectTranslationTargetAsync(
             SharedFixtures.OptionalText(window["thenSelectTranslationTarget"])
-            ?? SharedFixtures.Text(window["thenSetSpokenLanguage"]));
+                ?? SharedFixtures.Text(window["thenSetSpokenLanguage"])
+        );
 
         var flushed = harness.English.AppendedFrameTexts();
         Assert.Equal(expectedCount, flushed.Count);
         Assert.Equal("frame-" + firstIndex.ToString(System.Globalization.CultureInfo.InvariantCulture), flushed[0]);
-        Assert.Equal(
-            "frame-" + lastIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            flushed[^1]);
+        Assert.Equal("frame-" + lastIndex.ToString(System.Globalization.CultureInfo.InvariantCulture), flushed[^1]);
         Assert.Equal(DualRealtimeTranslationClientTuning.DefaultPrerollFrameLimit, expectedCount);
     }
 
@@ -139,10 +140,12 @@ public sealed class RoutingFixtureTests
 
         Assert.Equal(
             SharedFixtures.Number(routing["prerollFrameLimit"]),
-            DualRealtimeTranslationClientTuning.DefaultPrerollFrameLimit);
+            DualRealtimeTranslationClientTuning.DefaultPrerollFrameLimit
+        );
         Assert.Equal(
             SharedFixtures.Number(routing["consecutiveTranslationFailureLimit"]),
-            DualRealtimeTranslationClientTuning.DefaultConsecutiveFailureLimit);
+            DualRealtimeTranslationClientTuning.DefaultConsecutiveFailureLimit
+        );
     }
 
     private static List<string> FrameNames(JsonNode? node)
@@ -167,7 +170,8 @@ public sealed class RoutingFixtureTests
             FakeRealtimeServerTransport english,
             FakeRealtimeServerTransport japanese,
             FakeRealtimeServerTransport spanish,
-            DualRealtimeTranslationClient dual)
+            DualRealtimeTranslationClient dual
+        )
         {
             Source = source;
             English = english;
@@ -201,7 +205,9 @@ public sealed class RoutingFixtureTests
                 spanishConnection: new RealtimeTranslationConnection(
                     RealtimeTranslationOutputLanguage.Spanish,
                     spanish,
-                    "test-safety"));
+                    "test-safety"
+                )
+            );
 
             await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, pair);
             return new RoutingHarness(source, english, japanese, spanish, dual);
@@ -262,9 +268,7 @@ public sealed class RoutingFixtureTests
 
         public async Task SelectTranslationTargetAsync(string? target)
         {
-            SelectedTarget = target is null
-                ? null
-                : RealtimeTranslationWireValues.ParseOutputLanguage(target);
+            SelectedTarget = target is null ? null : RealtimeTranslationWireValues.ParseOutputLanguage(target);
             await Dual.SelectTranslationTargetAsync(SelectedTarget);
             await Dual.WaitForTranslationDrainAsync();
         }
@@ -285,11 +289,12 @@ public sealed class RoutingFixtureTests
 
         public async ValueTask DisposeAsync() => await Dual.ForceCloseAsync();
 
-        private FakeRealtimeServerTransport TargetTransport() => SelectedTarget switch
-        {
-            RealtimeTranslationOutputLanguage.Japanese => Japanese,
-            RealtimeTranslationOutputLanguage.Spanish => Spanish,
-            _ => English,
-        };
+        private FakeRealtimeServerTransport TargetTransport() =>
+            SelectedTarget switch
+            {
+                RealtimeTranslationOutputLanguage.Japanese => Japanese,
+                RealtimeTranslationOutputLanguage.Spanish => Spanish,
+                _ => English,
+            };
     }
 }

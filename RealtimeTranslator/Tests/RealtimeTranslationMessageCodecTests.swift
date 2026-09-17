@@ -66,11 +66,11 @@ final class RealtimeTranslationMessageCodecTests: XCTestCase {
     func testDecodeTranscriptDeltasWithoutInsertingWhitespace() throws {
         // Given: 空白を含まないdelta JSON
         let inputJSON = """
-        {"type":"session.input_transcript.delta","delta":"Hello","event_id":"e1","elapsed_ms":12}
-        """
+            {"type":"session.input_transcript.delta","delta":"Hello","event_id":"e1","elapsed_ms":12}
+            """
         let outputJSON = """
-        {"type":"session.output_transcript.delta","delta":"こんにちは","event_id":"e2"}
-        """
+            {"type":"session.output_transcript.delta","delta":"こんにちは","event_id":"e2"}
+            """
 
         // When: decodeする
         let input = try RealtimeTranslationMessageCodec.decodeServerEvent(
@@ -94,8 +94,8 @@ final class RealtimeTranslationMessageCodecTests: XCTestCase {
     func testDecodeOutputAudioDeltaDoesNotRequirePayload() throws {
         // Given: base64音声付きoutput_audio.delta
         let json = """
-        {"type":"session.output_audio.delta","delta":"AAAA"}
-        """
+            {"type":"session.output_audio.delta","delta":"AAAA"}
+            """
 
         // When: decodeする
         let event = try RealtimeTranslationMessageCodec.decodeServerEvent(from: Data(json.utf8))

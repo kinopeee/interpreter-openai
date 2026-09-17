@@ -6,10 +6,10 @@ namespace RealtimeTranslator.Core.Tests;
 public static class SessionConfigs
 {
     public static RealtimeTranslationSessionConfig EnglishTargetWithoutSourceTranscription(
-        RealtimeTranslationNoiseReduction? noiseReduction = RealtimeTranslationNoiseReduction.FarField) =>
-        new(RealtimeTranslationOutputLanguage.English, null, noiseReduction);
+        RealtimeTranslationNoiseReduction? noiseReduction = RealtimeTranslationNoiseReduction.FarField
+    ) => new(RealtimeTranslationOutputLanguage.English, null, noiseReduction);
 
     public static RealtimeTranslationSessionConfig JapaneseTargetWithoutSourceTranscription(
-        RealtimeTranslationNoiseReduction? noiseReduction = RealtimeTranslationNoiseReduction.FarField) =>
-        new(RealtimeTranslationOutputLanguage.Japanese, null, noiseReduction);
+        RealtimeTranslationNoiseReduction? noiseReduction = RealtimeTranslationNoiseReduction.FarField
+    ) => new(RealtimeTranslationOutputLanguage.Japanese, null, noiseReduction);
 }

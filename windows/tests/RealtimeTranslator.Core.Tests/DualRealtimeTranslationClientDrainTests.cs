@@ -26,7 +26,8 @@ public sealed class DualRealtimeTranslationClientDrainTests
         using var dual = new DualRealtimeTranslationClient(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
             new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
-            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
         // handshake 後に遅延を入れ、接続確立自体はブロックしない。
@@ -38,8 +39,9 @@ public sealed class DualRealtimeTranslationClientDrainTests
 
         // When: 短い timeout で drain を待つ
         // Then: ポンプ待ちでハングせず、TimeoutException になる
-        var error = await Assert.ThrowsAsync<TimeoutException>(
-            () => dual.WaitForTranslationDrainAsync(TimeSpan.FromMilliseconds(50)));
+        var error = await Assert.ThrowsAsync<TimeoutException>(() =>
+            dual.WaitForTranslationDrainAsync(TimeSpan.FromMilliseconds(50))
+        );
         Assert.Equal("translation pump did not drain", error.Message);
         await dual.ForceCloseAsync();
     }
@@ -56,7 +58,8 @@ public sealed class DualRealtimeTranslationClientDrainTests
         using var dual = new DualRealtimeTranslationClient(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
             new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
-            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
         var frameA = Frame(0x55);
@@ -69,7 +72,8 @@ public sealed class DualRealtimeTranslationClientDrainTests
         // When: 翻訳停滞中でも原文へ連続送信できる
         var appendWhileTranslationHangs = Task.WhenAll(
             dual.AppendAudioFrameAsync(frameB),
-            dual.AppendAudioFrameAsync(frameC));
+            dual.AppendAudioFrameAsync(frameC)
+        );
         var winner = await Task.WhenAny(appendWhileTranslationHangs, Task.Delay(TimeSpan.FromSeconds(1)));
         Assert.Same(appendWhileTranslationHangs, winner);
         await appendWhileTranslationHangs;
@@ -109,9 +113,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.True(lastAppendIndex >= 0);
         Assert.True(closeIndex > lastAppendIndex);
         // close 応答で残ったイベントを吸い切ったあと、停止側の WaitToReadAsync が終了できること。
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         Assert.False(await dual.Events.WaitToReadAsync());
     }
@@ -136,7 +138,8 @@ public sealed class DualRealtimeTranslationClientDrainTests
         }
 
         english.EnqueueJson(
-            """{"type":"session.output_transcript.delta","delta":"drain survivor","event_id":"drain-1"}""");
+            """{"type":"session.output_transcript.delta","delta":"drain survivor","event_id":"drain-1"}"""
+        );
 
         // merge が洪水を処理する猶予。購読側は意図的に読まない（Stop 後の世代フェンス相当）。
         await Task.Delay(200);
@@ -173,7 +176,8 @@ public sealed class DualRealtimeTranslationClientDrainTests
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         source.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"pre-force-close-1","event_id":"pre-force-close-event-1","delta":"teardown中の未読原文"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"pre-force-close-1","event_id":"pre-force-close-event-1","delta":"teardown中の未読原文"}"""
+        );
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         Assert.True(await dual.Events.WaitToReadAsync(timeout.Token));
@@ -210,16 +214,13 @@ public sealed class DualRealtimeTranslationClientDrainTests
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
         await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.CloseGracefullyAsync());
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => dual.CloseGracefullyAsync());
 
         Assert.Equal(RealtimeTranslationErrorKind.CloseTimeout, error.Kind);
         Assert.Contains("session.close", SentTypes(english));
         Assert.Contains("session.close", SentTypes(japanese));
         Assert.Contains("input_audio_buffer.commit", SentTypes(source));
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         Assert.False(await dual.Events.WaitToReadAsync());
     }
@@ -237,15 +238,11 @@ public sealed class DualRealtimeTranslationClientDrainTests
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
         await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
-        var closeCountBefore = (
-            Source: source.CloseCount,
-            English: english.CloseCount,
-            Japanese: japanese.CloseCount);
+        var closeCountBefore = (Source: source.CloseCount, English: english.CloseCount, Japanese: japanese.CloseCount);
         // Start 内の初期 ForceClose を避け、ready 後にだけ Close 失敗を注入する。
         english.CloseError = new InvalidOperationException("english close boom");
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => dual.CloseGracefullyAsync());
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => dual.CloseGracefullyAsync());
 
         Assert.Equal("english close boom", error.Message);
         Assert.Contains("session.close", SentTypes(english));
@@ -254,9 +251,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.True(source.CloseCount > closeCountBefore.Source);
         Assert.True(english.CloseCount > closeCountBefore.English);
         Assert.True(japanese.CloseCount > closeCountBefore.Japanese);
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         Assert.False(await dual.Events.WaitToReadAsync());
     }
@@ -274,14 +269,10 @@ public sealed class DualRealtimeTranslationClientDrainTests
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
         await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
-        var closeCountBefore = (
-            Source: source.CloseCount,
-            English: english.CloseCount,
-            Japanese: japanese.CloseCount);
+        var closeCountBefore = (Source: source.CloseCount, English: english.CloseCount, Japanese: japanese.CloseCount);
         source.CloseError = new InvalidOperationException("source close boom");
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => dual.CloseGracefullyAsync());
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => dual.CloseGracefullyAsync());
 
         Assert.Equal("source close boom", error.Message);
         Assert.Contains("session.close", SentTypes(english));
@@ -290,9 +281,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.True(source.CloseCount > closeCountBefore.Source);
         Assert.True(english.CloseCount > closeCountBefore.English);
         Assert.True(japanese.CloseCount > closeCountBefore.Japanese);
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         Assert.False(await dual.Events.WaitToReadAsync());
     }
@@ -312,8 +301,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
         source.CloseError = new InvalidOperationException("source close boom");
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => dual.CloseGracefullyAsync());
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => dual.CloseGracefullyAsync());
         Assert.Equal("source close boom", error.Message);
 
         source.CloseError = null;
@@ -347,7 +335,8 @@ public sealed class DualRealtimeTranslationClientDrainTests
             english,
             japanese,
             ShortCloseTimeout,
-            translationDrainTimeout: TimeSpan.FromMilliseconds(200));
+            translationDrainTimeout: TimeSpan.FromMilliseconds(200)
+        );
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
         await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
@@ -376,18 +365,23 @@ public sealed class DualRealtimeTranslationClientDrainTests
         var baseTimeout = TimeSpan.FromSeconds(5);
         Assert.Equal(
             baseTimeout,
-            DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount: 0));
+            DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount: 0)
+        );
         Assert.Equal(
             TimeSpan.FromMilliseconds(5_000 + (40 * 250)),
-            DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount: 40));
+            DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount: 40)
+        );
         Assert.Equal(
             DualRealtimeTranslationClientTuning.DefaultDrainTimeoutCap,
-            DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount: 200));
+            DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(baseTimeout, pendingFrameCount: 200)
+        );
         Assert.Equal(
             TimeSpan.FromMilliseconds(50),
             DualRealtimeTranslationClientTuning.Default.ResolveDrainTimeout(
                 TimeSpan.FromMilliseconds(50),
-                pendingFrameCount: 0));
+                pendingFrameCount: 0
+            )
+        );
     }
 
     // Given: 翻訳送信が停滞して pending frame が drain できない dual
@@ -404,7 +398,8 @@ public sealed class DualRealtimeTranslationClientDrainTests
             english,
             japanese,
             ShortCloseTimeout,
-            translationDrainTimeout: TimeSpan.FromMilliseconds(50));
+            translationDrainTimeout: TimeSpan.FromMilliseconds(50)
+        );
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
         await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
@@ -420,9 +415,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.Contains("session.close", SentTypes(english));
         Assert.Contains("session.close", SentTypes(japanese));
         Assert.Contains("input_audio_buffer.commit", SentTypes(source));
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         Assert.False(await dual.Events.WaitToReadAsync());
     }
@@ -441,10 +434,12 @@ public sealed class DualRealtimeTranslationClientDrainTests
         using var dual = new DualRealtimeTranslationClient(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
             new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
-            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
 
         var error = await Assert.ThrowsAsync<ArgumentException>(() =>
-            dual.StartAsync("sk-test", RealtimeSessionTuning.Default, pair));
+            dual.StartAsync("sk-test", RealtimeSessionTuning.Default, pair)
+        );
 
         Assert.Equal("pair", error.ParamName);
         Assert.Contains("es", error.Message, StringComparison.Ordinal);
@@ -462,12 +457,14 @@ public sealed class DualRealtimeTranslationClientDrainTests
         using var dual = new DualRealtimeTranslationClient(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
             new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
-            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn);
 
         var error = await Assert.ThrowsAsync<ArgumentException>(() =>
-            dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Spanish));
+            dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Spanish)
+        );
 
         Assert.Equal("target", error.ParamName);
         Assert.Contains("es", error.Message, StringComparison.Ordinal);
@@ -486,22 +483,23 @@ public sealed class DualRealtimeTranslationClientDrainTests
         using var dual = new DualRealtimeTranslationClient(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
             new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
-            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs));
+            dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs)
+        );
 
         Assert.Equal(0, source.ConnectCount);
         Assert.Equal(0, english.ConnectCount);
         Assert.Equal(0, japanese.ConnectCount);
-        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.AppendAudioFrameAsync(Frame(0x11)));
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.AppendAudioFrameAsync(Frame(0x11))
+        );
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
 
         await dual.CloseGracefullyAsync();
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         Assert.False(await dual.Events.WaitToReadAsync(timeout.Token));
@@ -551,9 +549,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.True(closeIndex > lastAppendIndex);
         Assert.Contains("session.close", SentTypes(japanese));
         Assert.DoesNotContain("session.close", SentTypes(english));
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         Assert.False(await dual.Events.WaitToReadAsync());
     }
@@ -589,9 +585,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.True(closeIndex > lastAppendIndex);
         Assert.Contains("session.close", SentTypes(spanish));
         Assert.DoesNotContain("session.close", SentTypes(japanese));
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         Assert.False(await dual.Events.WaitToReadAsync());
     }
@@ -627,9 +621,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.True(closeIndex > lastAppendIndex);
         Assert.Contains("session.close", SentTypes(spanish));
         Assert.DoesNotContain("session.close", SentTypes(english));
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         Assert.False(await dual.Events.WaitToReadAsync());
     }
@@ -666,9 +658,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.True(closeIndex > lastAppendIndex);
         Assert.Contains("session.close", SentTypes(english));
         Assert.DoesNotContain("session.close", SentTypes(japanese));
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         Assert.False(await dual.Events.WaitToReadAsync());
     }
@@ -687,14 +677,10 @@ public sealed class DualRealtimeTranslationClientDrainTests
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs);
         await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Spanish);
-        var closeCountBefore = (
-            Source: source.CloseCount,
-            Japanese: japanese.CloseCount,
-            Spanish: spanish.CloseCount);
+        var closeCountBefore = (Source: source.CloseCount, Japanese: japanese.CloseCount, Spanish: spanish.CloseCount);
         spanish.CloseError = new InvalidOperationException("spanish close boom");
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => dual.CloseGracefullyAsync());
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => dual.CloseGracefullyAsync());
 
         Assert.Equal("spanish close boom", error.Message);
         Assert.Equal(0, english.ConnectCount);
@@ -705,9 +691,7 @@ public sealed class DualRealtimeTranslationClientDrainTests
         Assert.True(source.CloseCount > closeCountBefore.Source);
         Assert.True(japanese.CloseCount > closeCountBefore.Japanese);
         Assert.True(spanish.CloseCount > closeCountBefore.Spanish);
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         Assert.False(await dual.Events.WaitToReadAsync());
     }
@@ -718,19 +702,22 @@ public sealed class DualRealtimeTranslationClientDrainTests
         FakeRealtimeServerTransport japanese,
         TimeSpan closeTimeout,
         TimeSpan? translationDrainTimeout = null,
-        FakeRealtimeServerTransport? spanish = null) =>
+        FakeRealtimeServerTransport? spanish = null
+    ) =>
         new(
             new RealtimeSourceTranscriptionConnection(source, "test-safety", closeTimeout: closeTimeout),
             new RealtimeTranslationConnection(
                 RealtimeTranslationOutputLanguage.English,
                 english,
                 "test-safety",
-                closeTimeout: closeTimeout),
+                closeTimeout: closeTimeout
+            ),
             new RealtimeTranslationConnection(
                 RealtimeTranslationOutputLanguage.Japanese,
                 japanese,
                 "test-safety",
-                closeTimeout: closeTimeout),
+                closeTimeout: closeTimeout
+            ),
             translationDrainTimeout: translationDrainTimeout,
             spanishConnection: spanish is null
                 ? null
@@ -738,7 +725,9 @@ public sealed class DualRealtimeTranslationClientDrainTests
                     RealtimeTranslationOutputLanguage.Spanish,
                     spanish,
                     "test-safety",
-                    closeTimeout: closeTimeout));
+                    closeTimeout: closeTimeout
+                )
+        );
 
     private static byte[] Frame(byte fill)
     {
@@ -748,8 +737,8 @@ public sealed class DualRealtimeTranslationClientDrainTests
     }
 
     private static List<string> SentTypes(FakeRealtimeServerTransport transport) =>
-        transport.Sent
-            .Select(payload => JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>() ?? string.Empty)
+        transport
+            .Sent.Select(payload => JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>() ?? string.Empty)
             .Where(type => type.Length > 0)
             .ToList();
 }

@@ -71,9 +71,8 @@ public sealed class AdaptiveMicrophoneGain
         var nonNegativePeak = MathF.Max(0f, peak);
 
         // 減衰付きピーク追跡 (新しいピークは即反映、減衰は緩やか)。
-        _trackedPeak = nonNegativePeak >= _trackedPeak
-            ? nonNegativePeak
-            : (_trackedPeak * 0.9f) + (nonNegativePeak * 0.1f);
+        _trackedPeak =
+            nonNegativePeak >= _trackedPeak ? nonNegativePeak : (_trackedPeak * 0.9f) + (nonNegativePeak * 0.1f);
 
         if (_trackedPeak * Gain >= ClipThreshold && _trackedPeak > 0f)
         {

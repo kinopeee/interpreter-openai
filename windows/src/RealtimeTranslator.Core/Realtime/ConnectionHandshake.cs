@@ -12,9 +12,7 @@ namespace RealtimeTranslator.Core.Realtime;
 /// </summary>
 internal static class ConnectionHandshake
 {
-    internal static async Task StartAllAsync(
-        IReadOnlyCollection<Task> starts,
-        CancellationTokenSource handshakeCts)
+    internal static async Task StartAllAsync(IReadOnlyCollection<Task> starts, CancellationTokenSource handshakeCts)
     {
         // Swift の throwing TaskGroup と同じく、1 本が失敗したら残り handshake を
         // timeout まで待たずキャンセルし、ready leftover をすぐ ForceClose する。

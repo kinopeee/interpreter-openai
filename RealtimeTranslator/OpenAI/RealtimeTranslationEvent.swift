@@ -96,7 +96,9 @@ enum RealtimeTranslationServerEvent: Sendable, Equatable {
     case unknown(type: String)
 }
 
-enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, CustomStringConvertible,
+    CustomDebugStringConvertible
+{
     /// 正規化済みのサーバー文言。生の資格情報は保持できない。
     struct SanitizedMessage: Sendable, Equatable, Hashable {
         let value: String

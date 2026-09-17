@@ -142,7 +142,6 @@ struct SessionHealthMonitor: Sendable {
         connectedAt + thresholds.connectGrace
     }
 
-
     /// 全 timestamp・selectedLane・expiry・emitted をクリアする
     /// （再接続で言語判定がリセットされる既存契約に合わせる）。
     mutating func beginGeneration(generation: Int, epoch: Int, isRecovery: Bool, now: Duration) {
@@ -282,7 +281,8 @@ struct SessionHealthMonitor: Sendable {
                 // send が in-flight の間は capture が記録されないのは直列 send の待ち
                 // によるもので capture 停止ではない。
                 if sendInFlightSince == nil,
-                   now - (lastCapture ?? connectedAt) >= thresholds.captureStall {
+                    now - (lastCapture ?? connectedAt) >= thresholds.captureStall
+                {
                     emit(&detections, kind: kind, lane: nil, now: now)
                 }
             case .sendStalled:
@@ -296,35 +296,36 @@ struct SessionHealthMonitor: Sendable {
                 // in-flight 中は直列 send が capture 記録を止めるため、
                 // in-flight 自体を capture 生存の証拠とする。
                 if now >= graceEnd,
-                   sendInFlightSince != nil || sinceCapture < thresholds.captureStall,
-                   sinceSend >= thresholds.sendStall
+                    sendInFlightSince != nil || sinceCapture < thresholds.captureStall,
+                    sinceSend >= thresholds.sendStall
                 {
                     emit(&detections, kind: kind, lane: nil, now: now)
                 }
             case .receiveStalled:
                 if now >= graceEnd,
-                   let first = firstActivityAfterLastReceive,
-                   now - first >= thresholds.receiveStall
+                    let first = firstActivityAfterLastReceive,
+                    now - first >= thresholds.receiveStall
                 {
                     emit(&detections, kind: kind, lane: nil, now: now)
                 }
             case .sourceStalled:
-                let receiveStalled = firstActivityAfterLastReceive != nil
+                let receiveStalled =
+                    firstActivityAfterLastReceive != nil
                     && now - firstActivityAfterLastReceive! >= thresholds.receiveStall
                 if now >= graceEnd,
-                   !receiveStalled,
-                   let first = firstActivityAfterLastSourceProgress,
-                   now - first >= thresholds.sourceStall
+                    !receiveStalled,
+                    let first = firstActivityAfterLastSourceProgress,
+                    now - first >= thresholds.sourceStall
                 {
                     emit(&detections, kind: kind, lane: nil, now: now)
                 }
             case .translationStalled:
                 guard now >= graceEnd,
-                      let selectedLane,
-                      let selectedAt,
-                      let lastSourceProgress,
-                      lastSourceProgress >= selectedAt,
-                      now - lastSourceProgress >= thresholds.translationStall
+                    let selectedLane,
+                    let selectedAt,
+                    let lastSourceProgress,
+                    lastSourceProgress >= selectedAt,
+                    now - lastSourceProgress >= thresholds.translationStall
                 else {
                     break
                 }
@@ -449,7 +450,8 @@ extension SessionHealthSnapshot: CustomStringConvertible {
         return laneExpiryRemaining.keys
             .sorted { laneOrder($0) < laneOrder($1) }
             .map { lane in
-                let value = laneExpiryRemaining[lane].flatMap { $0 }
+                let value =
+                    laneExpiryRemaining[lane].flatMap { $0 }
                     .map { String($0.wholeMillisecondsTruncated) } ?? "-"
                 return "\(lane.healthLogName):\(value)"
             }

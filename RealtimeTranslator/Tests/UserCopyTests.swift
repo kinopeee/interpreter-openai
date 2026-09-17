@@ -187,10 +187,12 @@ final class UserCopyTests: XCTestCase {
         let copy = try UserCopy.parse(json: json, locale: .ja)
 
         XCTAssertEqual(
-            copy.text("banner.reconnectingProgress", [
-                "detail": "",
-                "max": "3",
-            ]),
+            copy.text(
+                "banner.reconnectingProgress",
+                [
+                    "detail": "",
+                    "max": "3",
+                ]),
             " 再接続中… ({attempt}/3)"
         )
     }

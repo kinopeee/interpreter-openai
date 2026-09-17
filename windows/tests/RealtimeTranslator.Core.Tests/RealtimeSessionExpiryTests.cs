@@ -7,12 +7,13 @@ namespace RealtimeTranslator.Core.Tests;
 
 public sealed class RealtimeSessionExpiryTests
 {
-    private static JsonObject Session(JsonNode? expiresAt) => new()
-    {
-        ["id"] = "sess_x",
-        ["type"] = "translation",
-        ["expires_at"] = expiresAt,
-    };
+    private static JsonObject Session(JsonNode? expiresAt) =>
+        new()
+        {
+            ["id"] = "sess_x",
+            ["type"] = "translation",
+            ["expires_at"] = expiresAt,
+        };
 
     // Given: 整数値の expires_at を持つ session
     // When: ParseExpiresAt で読む
@@ -20,9 +21,7 @@ public sealed class RealtimeSessionExpiryTests
     [Fact]
     public void ParseValidIntegerExpiresAt()
     {
-        Assert.Equal(
-            1756324625L,
-            RealtimeSessionExpiry.ParseExpiresAt(Session(JsonValue.Create(1756324625L))));
+        Assert.Equal(1756324625L, RealtimeSessionExpiry.ParseExpiresAt(Session(JsonValue.Create(1756324625L))));
     }
 
     // Given: expires_at が数字文字列の session
@@ -58,9 +57,7 @@ public sealed class RealtimeSessionExpiryTests
     [Fact]
     public void ParseIntegralFloatingExpiresAt()
     {
-        Assert.Equal(
-            1756324625L,
-            RealtimeSessionExpiry.ParseExpiresAt(Session(JsonValue.Create(1756324625.0))));
+        Assert.Equal(1756324625L, RealtimeSessionExpiry.ParseExpiresAt(Session(JsonValue.Create(1756324625.0))));
     }
 
     // Given: double 表現可能だが 2^53 を超える・または非有限の expires_at
@@ -111,8 +108,9 @@ public sealed class RealtimeSessionExpiryTests
     [Fact]
     public void ParseMissingExpiresAtIsUnknown()
     {
-        Assert.Null(RealtimeSessionExpiry.ParseExpiresAt(
-            new JsonObject { ["id"] = "sess_x", ["type"] = "translation" }));
+        Assert.Null(
+            RealtimeSessionExpiry.ParseExpiresAt(new JsonObject { ["id"] = "sess_x", ["type"] = "translation" })
+        );
     }
 
     // Given: expires_at が 0 の session
@@ -130,9 +128,7 @@ public sealed class RealtimeSessionExpiryTests
     [Fact]
     public void RemainingSecondsReturnsNormalDifference()
     {
-        Assert.Equal(
-            130L,
-            RealtimeSessionExpiry.RemainingSeconds(1_756_324_625L + 130L, 1_756_324_625L));
+        Assert.Equal(130L, RealtimeSessionExpiry.RemainingSeconds(1_756_324_625L + 130L, 1_756_324_625L));
     }
 
     // Given: long.MaxValue 相当の巨大な expires_at / 壁時計
@@ -169,8 +165,8 @@ public sealed class EventDeliveryStateReceiveAndExpiryTests
         Assert.Equal(1, state.ReceiveCount(enLane));
         Assert.Equal(
             0,
-            state.ReceiveCount(RealtimeTranslationLane.Translation(
-                RealtimeTranslationOutputLanguage.Japanese)));
+            state.ReceiveCount(RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.Japanese))
+        );
     }
 
     // Given: EventDeliveryState

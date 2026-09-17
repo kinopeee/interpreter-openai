@@ -13,8 +13,7 @@ namespace RealtimeTranslator.Core.Tests;
 /// </summary>
 public sealed class SourceTranscriptionCodecRobustnessTests
 {
-    public static TheoryData<string> DecodeFailureCases =>
-        SharedFixtures.CaseNames("codec", "decodeFailures");
+    public static TheoryData<string> DecodeFailureCases => SharedFixtures.CaseNames("codec", "decodeFailures");
 
     // Given: 翻訳 codec と同じ decodeFailures fixture
     // When: 原文専用 codec でデコードする
@@ -26,8 +25,9 @@ public sealed class SourceTranscriptionCodecRobustnessTests
         var fixture = SharedFixtures.Case("codec", "decodeFailures", name);
         var utf8 = Encoding.UTF8.GetBytes(SharedFixtures.Text(fixture["json"]));
 
-        var error = Assert.Throws<RealtimeTranslationException>(
-            () => RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8));
+        var error = Assert.Throws<RealtimeTranslationException>(() =>
+            RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8)
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.InvalidMessage, error.Kind);
     }
@@ -39,7 +39,8 @@ public sealed class SourceTranscriptionCodecRobustnessTests
     public void MissingDeltaIsIgnored()
     {
         var utf8 = Encoding.UTF8.GetBytes(
-            """{"type":"conversation.item.input_audio_transcription.delta","event_id":"evt_missing"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","event_id":"evt_missing"}"""
+        );
 
         var actual = RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8);
 
@@ -66,8 +67,7 @@ public sealed class SourceTranscriptionCodecRobustnessTests
     [Fact]
     public void ErrorWithoutBodyIsSourceGenericServerError()
     {
-        var actual = RealtimeSourceTranscriptionCodec.DecodeServerEvent(
-            Encoding.UTF8.GetBytes("""{"type":"error"}"""));
+        var actual = RealtimeSourceTranscriptionCodec.DecodeServerEvent(Encoding.UTF8.GetBytes("""{"type":"error"}"""));
         var error = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
 
         Assert.Null(error.Code);
@@ -81,7 +81,8 @@ public sealed class SourceTranscriptionCodecRobustnessTests
     public void ErrorWithNonObjectBodyIsSourceGenericServerError()
     {
         var actual = RealtimeSourceTranscriptionCodec.DecodeServerEvent(
-            Encoding.UTF8.GetBytes("""{"type":"error","error":"boom"}"""));
+            Encoding.UTF8.GetBytes("""{"type":"error","error":"boom"}""")
+        );
         var error = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
 
         Assert.Null(error.Code);
@@ -95,7 +96,8 @@ public sealed class SourceTranscriptionCodecRobustnessTests
     public void EmptyErrorMessageBecomesGenericServerMessage()
     {
         var actual = RealtimeSourceTranscriptionCodec.DecodeServerEvent(
-            Encoding.UTF8.GetBytes("""{"type":"error","error":{"message":"","code":"upstream_failure"}}"""));
+            Encoding.UTF8.GetBytes("""{"type":"error","error":{"message":"","code":"upstream_failure"}}""")
+        );
         var error = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
 
         Assert.Equal("upstream_failure", error.Code);

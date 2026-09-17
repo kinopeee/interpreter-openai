@@ -22,9 +22,7 @@ public sealed class ClientWebSocketTransportTests
     [Fact]
     public void AcceptsFragmentThatExactlyFillsMessageLimit()
     {
-        ClientWebSocketTransport.EnsureWithinMessageLimit(
-            ClientWebSocketTransport.MaxMessageBytes - 1024,
-            1024);
+        ClientWebSocketTransport.EnsureWithinMessageLimit(ClientWebSocketTransport.MaxMessageBytes - 1024, 1024);
     }
 
     // Given: 上限直下まで累積した受信状態
@@ -34,9 +32,8 @@ public sealed class ClientWebSocketTransportTests
     public void RejectsFragmentThatExceedsMessageLimit()
     {
         var exception = Assert.Throws<RealtimeTranslationException>(() =>
-            ClientWebSocketTransport.EnsureWithinMessageLimit(
-                ClientWebSocketTransport.MaxMessageBytes - 1024,
-                1025));
+            ClientWebSocketTransport.EnsureWithinMessageLimit(ClientWebSocketTransport.MaxMessageBytes - 1024, 1025)
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.RecoverableTransportFailure, exception.Kind);
     }
@@ -48,9 +45,8 @@ public sealed class ClientWebSocketTransportTests
     public void RejectsSingleOversizedFrame()
     {
         Assert.Throws<RealtimeTranslationException>(() =>
-            ClientWebSocketTransport.EnsureWithinMessageLimit(
-                0,
-                ClientWebSocketTransport.MaxMessageBytes + 1));
+            ClientWebSocketTransport.EnsureWithinMessageLimit(0, ClientWebSocketTransport.MaxMessageBytes + 1)
+        );
     }
 
     // Given: TCP は受けるが WebSocket ハンドシェイクを返さない loopback listener
@@ -69,12 +65,15 @@ public sealed class ClientWebSocketTransportTests
 
             using var transport = new ClientWebSocketTransport(
                 sendTimeout: TimeSpan.FromSeconds(5),
-                connectTimeout: TimeSpan.FromMilliseconds(200));
-            var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-                () => transport.ConnectAsync(
+                connectTimeout: TimeSpan.FromMilliseconds(200)
+            );
+            var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+                transport.ConnectAsync(
                     new Uri($"ws://127.0.0.1:{port}/"),
                     new Dictionary<string, string>(StringComparer.Ordinal),
-                    CancellationToken.None));
+                    CancellationToken.None
+                )
+            );
 
             Assert.Equal(RealtimeTranslationErrorKind.RecoverableTransportFailure, error.Kind);
             await accepted.CancelAsync();
@@ -101,10 +100,12 @@ public sealed class ClientWebSocketTransportTests
     {
         using var transport = new ClientWebSocketTransport();
 
-        var sendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => transport.SendAsync("{"u8.ToArray(), CancellationToken.None));
-        var receiveError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => transport.ReceiveAsync(CancellationToken.None));
+        var sendError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            transport.SendAsync("{"u8.ToArray(), CancellationToken.None)
+        );
+        var receiveError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            transport.ReceiveAsync(CancellationToken.None)
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, sendError.Kind);
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, receiveError.Kind);
@@ -137,12 +138,14 @@ public sealed class ClientWebSocketTransportTests
 
             using var transport = new ClientWebSocketTransport(
                 sendTimeout: TimeSpan.FromSeconds(5),
-                connectTimeout: TimeSpan.FromSeconds(30));
+                connectTimeout: TimeSpan.FromSeconds(30)
+            );
             using var caller = new CancellationTokenSource();
             var connectTask = transport.ConnectAsync(
                 new Uri($"ws://127.0.0.1:{port}/"),
                 new Dictionary<string, string>(StringComparer.Ordinal),
-                caller.Token);
+                caller.Token
+            );
 
             await tcpAccepted.Task.WaitAsync(TimeSpan.FromSeconds(2));
             await caller.CancelAsync();
@@ -168,7 +171,8 @@ public sealed class ClientWebSocketTransportTests
     private static async Task AcceptAndHoldAsync(
         TcpListener listener,
         CancellationToken cancellationToken,
-        TaskCompletionSource? tcpAccepted = null)
+        TaskCompletionSource? tcpAccepted = null
+    )
     {
         using var client = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
         tcpAccepted?.TrySetResult();

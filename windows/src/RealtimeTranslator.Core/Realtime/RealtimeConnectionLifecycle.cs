@@ -111,7 +111,8 @@ internal sealed class RealtimeConnectionLifecycle : IDisposable
         int currentEpoch,
         EventDeliveryState deliveryState,
         EventDeliveryStage stage,
-        Func<int, EventDeliveryWriter, EventDeliveryState, CancellationToken, Task> receiveLoop)
+        Func<int, EventDeliveryWriter, EventDeliveryState, CancellationToken, Task> receiveLoop
+    )
     {
         var cts = new CancellationTokenSource();
 
@@ -125,16 +126,15 @@ internal sealed class RealtimeConnectionLifecycle : IDisposable
         }
 
         _receiveTask = Task.Run(
-            () => receiveLoop(
-                currentEpoch,
-                new EventDeliveryWriter(
-                    writer,
+            () =>
+                receiveLoop(
+                    currentEpoch,
+                    new EventDeliveryWriter(writer, deliveryState, stage, RealtimeEventChannel.Capacity),
                     deliveryState,
-                    stage,
-                    RealtimeEventChannel.Capacity),
-                deliveryState,
-                token),
-            CancellationToken.None);
+                    token
+                ),
+            CancellationToken.None
+        );
     }
 
     /// <summary>handshake / close 直読み用の 1 イベント受信。期限切れは SessionUpdateTimeout として扱う。</summary>
@@ -142,7 +142,8 @@ internal sealed class RealtimeConnectionLifecycle : IDisposable
         ServerEventDecoder<TServerEvent> decode,
         TimeSpan timeout,
         CancellationToken cancellationToken,
-        TimeSpan? remaining = null)
+        TimeSpan? remaining = null
+    )
     {
         var budget = remaining ?? timeout;
         if (budget <= TimeSpan.Zero)
@@ -174,7 +175,8 @@ internal sealed class RealtimeConnectionLifecycle : IDisposable
         Func<TServerEvent, RealtimeServerErrorClassification?> tryClassifyError,
         TimeSpan timeout,
         CancellationToken cancellationToken,
-        Action<TServerEvent>? onDecoded = null)
+        Action<TServerEvent>? onDecoded = null
+    )
     {
         var started = Stopwatch.GetTimestamp();
         while (true)
@@ -210,7 +212,8 @@ internal sealed class RealtimeConnectionLifecycle : IDisposable
         Func<bool> isSignaled,
         TimeSpan closeTimeout,
         bool bumpEpochOnCancel,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var elapsed = Stopwatch.StartNew();
         while (elapsed.Elapsed < closeTimeout)

@@ -22,7 +22,8 @@ public sealed class LanguageFixtureTests
         // When/Then: detector の窓サイズが一致する
         Assert.Equal(
             SharedFixtures.Number(SharedFixtures.Load("language")["recentEvidenceWindow"]),
-            SpokenLanguageDetector.RecentEvidenceWindow);
+            SpokenLanguageDetector.RecentEvidenceWindow
+        );
     }
 
     // Given: en-es 判定の契約定数
@@ -35,10 +36,12 @@ public sealed class LanguageFixtureTests
         Assert.Equal(SharedFixtures.Number(fixture["enEsWindow"]), SpokenLanguageDetector.EnEsWindow);
         Assert.Equal(
             fixture["exclusiveWords"]!["es"]!.AsArray().Select(SharedFixtures.Text),
-            SpokenLanguageDetector.SpanishExclusiveWords);
+            SpokenLanguageDetector.SpanishExclusiveWords
+        );
         Assert.Equal(
             fixture["exclusiveWords"]!["en"]!.AsArray().Select(SharedFixtures.Text),
-            SpokenLanguageDetector.EnglishExclusiveWords);
+            SpokenLanguageDetector.EnglishExclusiveWords
+        );
     }
 
     // Given: 長い英語列の後ろにスペイン語の逆疑問文がある
@@ -52,7 +55,9 @@ public sealed class LanguageFixtureTests
             SpokenLanguageDetector.RecentEvidence(
                 "the and is are this with for ¿Dónde estás?",
                 LanguagePair.EnEs,
-                SpokenLanguageDetector.EnEsWindow));
+                SpokenLanguageDetector.EnEsWindow
+            )
+        );
     }
 
     // Given: 8語窓の先頭語の直前に空白付きの逆疑問符がある
@@ -66,7 +71,9 @@ public sealed class LanguageFixtureTests
             SpokenLanguageDetector.RecentEvidence(
                 "aaa bbb ccc ¿ Hello there friend people world today extra more",
                 LanguagePair.EnEs,
-                SpokenLanguageDetector.EnEsWindow));
+                SpokenLanguageDetector.EnEsWindow
+            )
+        );
     }
 
     // Given: 8語窓より前に ¿ があり、その間にラテン語がある
@@ -79,13 +86,10 @@ public sealed class LanguageFixtureTests
 
         Assert.Equal(
             SpokenLanguageEvidence.AmbiguousLatin,
-            SpokenLanguageDetector.RecentEvidence(
-                text,
-                LanguagePair.EnEs,
-                SpokenLanguageDetector.EnEsWindow));
+            SpokenLanguageDetector.RecentEvidence(text, LanguagePair.EnEs, SpokenLanguageDetector.EnEsWindow)
+        );
         Assert.Equal(SpokenLanguageEvidence.Spanish, SpokenLanguageDetector.Evidence(text, LanguagePair.EnEs));
-        Assert.True(
-            SpokenLanguageDetector.RecentWordWindowStart(text) > text.IndexOf('¿'));
+        Assert.True(SpokenLanguageDetector.RecentWordWindowStart(text) > text.IndexOf('¿'));
     }
 
     // Given: 8語窓の先頭語の直前に TAB / 改行付きの逆疑問符がある
@@ -95,8 +99,7 @@ public sealed class LanguageFixtureTests
     [InlineData("\t")]
     [InlineData("\n")]
     [InlineData("\r")]
-    public void EnEsRecentWordWindowStartIncludesInvertedPunctuationAcrossControlWhitespace(
-        string separator)
+    public void EnEsRecentWordWindowStartIncludesInvertedPunctuationAcrossControlWhitespace(string separator)
     {
         var text = $"aaa bbb ccc ¿{separator}Hello there friend people world today extra more";
 
@@ -106,13 +109,9 @@ public sealed class LanguageFixtureTests
         Assert.StartsWith("¿", window, StringComparison.Ordinal);
         Assert.Equal(
             SpokenLanguageEvidence.Spanish,
-            SpokenLanguageDetector.RecentEvidence(
-                text,
-                LanguagePair.EnEs,
-                SpokenLanguageDetector.EnEsWindow));
-        Assert.Equal(
-            SpokenLanguageEvidence.Spanish,
-            SpokenLanguageDetector.Evidence(window, LanguagePair.EnEs));
+            SpokenLanguageDetector.RecentEvidence(text, LanguagePair.EnEs, SpokenLanguageDetector.EnEsWindow)
+        );
+        Assert.Equal(SpokenLanguageEvidence.Spanish, SpokenLanguageDetector.Evidence(window, LanguagePair.EnEs));
     }
 
     // Given: 8語窓の先頭語の直前に ¿ と ¡ が空白区切りである
@@ -129,10 +128,8 @@ public sealed class LanguageFixtureTests
         Assert.Contains("¡", window, StringComparison.Ordinal);
         Assert.Equal(
             SpokenLanguageEvidence.Spanish,
-            SpokenLanguageDetector.RecentEvidence(
-                text,
-                LanguagePair.EnEs,
-                SpokenLanguageDetector.EnEsWindow));
+            SpokenLanguageDetector.RecentEvidence(text, LanguagePair.EnEs, SpokenLanguageDetector.EnEsWindow)
+        );
     }
 
     // Given: 非 BMP 文字を含む単語境界
@@ -141,10 +138,7 @@ public sealed class LanguageFixtureTests
     [Fact]
     public void RecentEvidenceHandlesNonBmpTextBeforeWord()
     {
-        var evidence = SpokenLanguageDetector.RecentEvidence(
-            "😀hola",
-            LanguagePair.EnEs,
-            window: 1);
+        var evidence = SpokenLanguageDetector.RecentEvidence("😀hola", LanguagePair.EnEs, window: 1);
 
         Assert.Equal(SpokenLanguageEvidence.AmbiguousLatin, evidence);
     }
@@ -161,7 +155,8 @@ public sealed class LanguageFixtureTests
 
         Assert.Equal(
             SpokenLanguageEvidence.English,
-            SpokenLanguageDetector.Evidence("Is This With It", LanguagePair.EnEs));
+            SpokenLanguageDetector.Evidence("Is This With It", LanguagePair.EnEs)
+        );
     }
 
     // Given: ラテン語が 0 語の en-es 原文（句読点 / 空白 / 空文字）
@@ -174,12 +169,8 @@ public sealed class LanguageFixtureTests
     [InlineData("")]
     public void EnEsZeroLatinWordsIsAmbiguousLatin(string text)
     {
-        Assert.Equal(
-            SpokenLanguageEvidence.AmbiguousLatin,
-            SpokenLanguageDetector.Evidence(text, LanguagePair.EnEs));
-        Assert.Equal(
-            SpokenLanguageEvidence.None,
-            SpokenLanguageDetector.Evidence(text, LanguagePair.JaEn));
+        Assert.Equal(SpokenLanguageEvidence.AmbiguousLatin, SpokenLanguageDetector.Evidence(text, LanguagePair.EnEs));
+        Assert.Equal(SpokenLanguageEvidence.None, SpokenLanguageDetector.Evidence(text, LanguagePair.JaEn));
     }
 
     // Given: アクセント付きスペイン語の複数語
@@ -188,9 +179,7 @@ public sealed class LanguageFixtureTests
     [Fact]
     public void JaEsEvidenceTreatsAccentedLatinAsSpanishWords()
     {
-        Assert.Equal(
-            SpokenLanguageEvidence.Spanish,
-            SpokenLanguageDetector.Evidence("está aquí", LanguagePair.JaEs));
+        Assert.Equal(SpokenLanguageEvidence.Spanish, SpokenLanguageDetector.Evidence("está aquí", LanguagePair.JaEs));
     }
 
     // Given: fixture の日英混在・曖昧・不明テキスト
@@ -208,7 +197,10 @@ public sealed class LanguageFixtureTests
             : LanguagePair.JaEn;
 
         // When/Then: evidence と detect が一致する
-        Assert.Equal(ParseEvidence(SharedFixtures.Text(fixture["evidence"])), SpokenLanguageDetector.Evidence(input, pair));
+        Assert.Equal(
+            ParseEvidence(SharedFixtures.Text(fixture["evidence"])),
+            SpokenLanguageDetector.Evidence(input, pair)
+        );
         Assert.Equal(ParseLanguage(SharedFixtures.Text(fixture["detect"])), SpokenLanguageDetector.Detect(input, pair));
     }
 
@@ -229,13 +221,12 @@ public sealed class LanguageFixtureTests
         // When/Then: 末尾窓と全文 evidence が一致する
         Assert.Equal(
             ParseEvidence(SharedFixtures.Text(fixture["expected"])),
-            SpokenLanguageDetector.RecentEvidence(
-                input,
-                pair,
-                SharedFixtures.Number(fixture["window"])));
+            SpokenLanguageDetector.RecentEvidence(input, pair, SharedFixtures.Number(fixture["window"]))
+        );
         Assert.Equal(
             ParseEvidence(SharedFixtures.Text(fixture["fullEvidence"])),
-            SpokenLanguageDetector.Evidence(input, pair));
+            SpokenLanguageDetector.Evidence(input, pair)
+        );
     }
 
     // Given: fixture の言語→翻訳先対応表
@@ -256,7 +247,8 @@ public sealed class LanguageFixtureTests
             // When/Then: TranslationTarget() と Counterpart(language) が一致する
             Assert.Equal(
                 expectedTarget is null ? null : RealtimeTranslationWireValues.ParseOutputLanguage(expectedTarget),
-                pair.TranslationTarget(language));
+                pair.TranslationTarget(language)
+            );
             Assert.Equal(expectedCounterpart, pair.Counterpart(language));
 
             // When/Then: Counterpart(target) は「その target を選ぶ話者言語」を返す
@@ -268,28 +260,31 @@ public sealed class LanguageFixtureTests
         }
     }
 
-    private static SpokenLanguageEvidence ParseEvidence(string value) => value switch
-    {
-        "japanese" => SpokenLanguageEvidence.Japanese,
-        "english" => SpokenLanguageEvidence.English,
-        "spanish" => SpokenLanguageEvidence.Spanish,
-        "ambiguousLatin" => SpokenLanguageEvidence.AmbiguousLatin,
-        "none" => SpokenLanguageEvidence.None,
-        _ => throw new Xunit.Sdk.XunitException("unhandled evidence " + value),
-    };
+    private static SpokenLanguageEvidence ParseEvidence(string value) =>
+        value switch
+        {
+            "japanese" => SpokenLanguageEvidence.Japanese,
+            "english" => SpokenLanguageEvidence.English,
+            "spanish" => SpokenLanguageEvidence.Spanish,
+            "ambiguousLatin" => SpokenLanguageEvidence.AmbiguousLatin,
+            "none" => SpokenLanguageEvidence.None,
+            _ => throw new Xunit.Sdk.XunitException("unhandled evidence " + value),
+        };
 
-    private static SpokenLanguage ParseLanguage(string value) => value switch
-    {
-        "japanese" => SpokenLanguage.Japanese,
-        "english" => SpokenLanguage.English,
-        "spanish" => SpokenLanguage.Spanish,
-        "unknown" => SpokenLanguage.Unknown,
-        _ => throw new Xunit.Sdk.XunitException("unhandled language " + value),
-    };
+    private static SpokenLanguage ParseLanguage(string value) =>
+        value switch
+        {
+            "japanese" => SpokenLanguage.Japanese,
+            "english" => SpokenLanguage.English,
+            "spanish" => SpokenLanguage.Spanish,
+            "unknown" => SpokenLanguage.Unknown,
+            _ => throw new Xunit.Sdk.XunitException("unhandled language " + value),
+        };
 
-    private static SpokenLanguage? ParseOptionalLanguage(string value) => value switch
-    {
-        "unknown" => null,
-        _ => ParseLanguage(value),
-    };
+    private static SpokenLanguage? ParseOptionalLanguage(string value) =>
+        value switch
+        {
+            "unknown" => null,
+            _ => ParseLanguage(value),
+        };
 }

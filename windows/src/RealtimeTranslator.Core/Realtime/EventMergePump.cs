@@ -20,7 +20,10 @@ internal sealed class EventMergePump
     private readonly MergedEventBuffer _eventBuffer;
     private readonly Func<int> _connectionEpochProvider;
     private readonly Func<ChannelReader<RealtimeTranslationStreamEvent>> _sourceReaderProvider;
-    private readonly Func<RealtimeTranslationOutputLanguage, ChannelReader<RealtimeTranslationStreamEvent>> _translationReaderProvider;
+    private readonly Func<
+        RealtimeTranslationOutputLanguage,
+        ChannelReader<RealtimeTranslationStreamEvent>
+    > _translationReaderProvider;
     private readonly Func<RealtimeTranslationOutputLanguage[]> _startedTargetsProvider;
 
     internal EventMergePump(
@@ -28,8 +31,12 @@ internal sealed class EventMergePump
         MergedEventBuffer eventBuffer,
         Func<int> connectionEpochProvider,
         Func<ChannelReader<RealtimeTranslationStreamEvent>> sourceReaderProvider,
-        Func<RealtimeTranslationOutputLanguage, ChannelReader<RealtimeTranslationStreamEvent>> translationReaderProvider,
-        Func<RealtimeTranslationOutputLanguage[]> startedTargetsProvider)
+        Func<
+            RealtimeTranslationOutputLanguage,
+            ChannelReader<RealtimeTranslationStreamEvent>
+        > translationReaderProvider,
+        Func<RealtimeTranslationOutputLanguage[]> startedTargetsProvider
+    )
     {
         _sync = sync;
         _eventBuffer = eventBuffer;
@@ -60,22 +67,22 @@ internal sealed class EventMergePump
                 // 原文 connection だけ input transcript を通し、翻訳側は接続フィルタと二重化する。
                 var pumps = new List<Task>
                 {
-                    MergeOneAsync(
-                        _sourceReaderProvider(),
-                        writer,
-                        epoch,
-                        acceptInputTranscript: true,
-                        token),
+                    MergeOneAsync(_sourceReaderProvider(), writer, epoch, acceptInputTranscript: true, token),
                 };
                 // コンストラクタで用意した未使用 leftover lane は merge しない。
                 // ForceClose が epoch を先に進めると merge が残りを読まず、
                 // 完了済み Channel に残った訳文 / transport error が次世代へ混線する。
-                pumps.AddRange(startedTargets.Select(target => MergeOneAsync(
-                        _translationReaderProvider(target),
-                        writer,
-                        epoch,
-                        acceptInputTranscript: false,
-                        token)));
+                pumps.AddRange(
+                    startedTargets.Select(target =>
+                        MergeOneAsync(
+                            _translationReaderProvider(target),
+                            writer,
+                            epoch,
+                            acceptInputTranscript: false,
+                            token
+                        )
+                    )
+                );
 
                 await Task.WhenAll(pumps).ConfigureAwait(false);
 
@@ -86,7 +93,8 @@ internal sealed class EventMergePump
                     deliveryState.CompleteNormally();
                 }
             },
-            CancellationToken.None);
+            CancellationToken.None
+        );
     }
 
     private async Task MergeOneAsync(
@@ -94,7 +102,8 @@ internal sealed class EventMergePump
         EventDeliveryWriter writer,
         int epoch,
         bool acceptInputTranscript,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         try
         {
@@ -112,8 +121,7 @@ internal sealed class EventMergePump
                 }
 
                 // 翻訳接続の input_transcript は原文 authority にしない。
-                if (!acceptInputTranscript
-                    && streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta)
+                if (!acceptInputTranscript && streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta)
                 {
                     continue;
                 }

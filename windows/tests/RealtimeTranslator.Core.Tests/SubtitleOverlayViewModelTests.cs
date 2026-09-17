@@ -50,7 +50,8 @@ public sealed class SubtitleOverlayViewModelTests
         Assert.Equal(AppSettingsData.MaximumFontSize, viewModel.FontSize);
         Assert.Equal(
             AppSettingsData.MaximumFontSize * SubtitleOverlayViewModel.SourceFontScale,
-            viewModel.SourceFontSize);
+            viewModel.SourceFontSize
+        );
 
         viewModel.FontSize = 0;
 
@@ -105,7 +106,8 @@ public sealed class SubtitleOverlayViewModelTests
     {
         Assert.Equal(
             SubtitleOverlayViewModel.DefaultLineSpacingRatio + SubtitleOverlayViewModel.AddedLineSpacingRatio,
-            SubtitleOverlayViewModel.LineHeightRatio);
+            SubtitleOverlayViewModel.LineHeightRatio
+        );
         Assert.Equal(1.4333, SubtitleOverlayViewModel.LineHeightRatio, precision: 4);
         Assert.True(SubtitleOverlayViewModel.LineHeightRatio > SubtitleOverlayViewModel.DefaultLineSpacingRatio);
         Assert.True(SubtitleOverlayViewModel.LineHeightRatio > 1.1);
@@ -153,12 +155,11 @@ public sealed class SubtitleOverlayViewModelTests
         string sourceText,
         string translatedText,
         bool isFinalized,
-        bool expected)
+        bool expected
+    )
     {
         var viewModel = new SubtitleOverlayViewModel();
-        viewModel.Apply(new SubtitleSnapshot(
-            new LiveSubtitle(sourceText, translatedText, isFinalized),
-            null));
+        viewModel.Apply(new SubtitleSnapshot(new LiveSubtitle(sourceText, translatedText, isFinalized), null));
 
         Assert.Equal(expected, viewModel.ShowsPendingMarker);
         Assert.Equal(expected ? SubtitleOverlayViewModel.PendingMarker : string.Empty, viewModel.PendingMarkerText);

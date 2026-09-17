@@ -118,8 +118,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => client.StartCount == 1);
 
         var stopTask = session.StopAsync();
-        await WaitUntilAsync(() =>
-            session.State is TranslationState.Closing or TranslationState.Idle);
+        await WaitUntilAsync(() => session.State is TranslationState.Closing or TranslationState.Idle);
         client.StartGate = null;
         gate.SetResult();
         await stopTask;
@@ -142,13 +141,11 @@ public sealed class InterpretationSessionTests
         using var session = NewSession(client, audio: audio);
 
         var startTask = session.StartAsync();
-        await WaitUntilAsync(() =>
-            client.StartCount == 1 && audio.StartCallCount == 1);
+        await WaitUntilAsync(() => client.StartCount == 1 && audio.StartCallCount == 1);
         Assert.Equal(TranslationState.Connecting, session.State);
 
         var stopTask = session.StopAsync();
-        await WaitUntilAsync(() =>
-            session.State is TranslationState.Closing or TranslationState.Idle);
+        await WaitUntilAsync(() => session.State is TranslationState.Closing or TranslationState.Idle);
         audio.StartGate = null;
         gate.TrySetResult();
         await stopTask;
@@ -170,29 +167,24 @@ public sealed class InterpretationSessionTests
         var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
         using var dual = new DualRealtimeTranslationClient(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.English,
-                english,
-                "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.Japanese,
-                japanese,
-                "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
         var keyStore = new GatedApiKeyStore();
         using var session = new InterpretationSession(
             keyStore,
             new FakeAudioCapture(),
             dual,
             initialReconnectDelay: TimeSpan.FromMilliseconds(1),
-            tickInterval: TimeSpan.FromMilliseconds(20));
+            tickInterval: TimeSpan.FromMilliseconds(20)
+        );
 
         var startTask = session.StartAsync();
         await keyStore.LoadStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(TranslationState.Connecting, session.State);
 
         var stopTask = session.StopAsync();
-        await WaitUntilAsync(() =>
-            session.State is TranslationState.Closing or TranslationState.Idle);
+        await WaitUntilAsync(() => session.State is TranslationState.Closing or TranslationState.Idle);
         keyStore.Release(null);
 
         await stopTask.WaitAsync(TimeSpan.FromSeconds(2));
@@ -298,8 +290,7 @@ public sealed class InterpretationSessionTests
         using var session = NewSession(client);
 
         var firstStart = session.StartAsync();
-        await WaitUntilAsync(() =>
-            client.StartCount == 1 && session.State == TranslationState.Connecting);
+        await WaitUntilAsync(() => client.StartCount == 1 && session.State == TranslationState.Connecting);
 
         await session.StartAsync();
         Assert.Equal(1, client.StartCount);
@@ -326,8 +317,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => client.StartCount == 1);
 
         var stopTask = session.StopAsync();
-        await WaitUntilAsync(() =>
-            session.State is TranslationState.Closing or TranslationState.Idle);
+        await WaitUntilAsync(() => session.State is TranslationState.Closing or TranslationState.Idle);
         client.StartGate = null;
         gate.SetResult();
         await stopTask;
@@ -517,9 +507,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
         client.PublishSourceDelta("今日は会議です");
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
-        client.PublishTranslationDelta(
-            RealtimeTranslationOutputLanguage.English,
-            "Today is a meeting");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Today is a meeting");
         await WaitUntilAsync(() =>
         {
             lock (updates)
@@ -538,7 +526,8 @@ public sealed class InterpretationSessionTests
                 finalized = updates.Find(update =>
                     update.ShouldFinalize
                     && update.SourceText.Trim() == "今日は会議です"
-                    && update.TranslatedText == "Today is a meeting");
+                    && update.TranslatedText == "Today is a meeting"
+                );
                 return finalized.ShouldFinalize;
             }
         });
@@ -583,8 +572,8 @@ public sealed class InterpretationSessionTests
             lock (updates)
             {
                 return updates.Exists(update =>
-                    update.SourceText.Contains("続きです", StringComparison.Ordinal)
-                    && !update.IsTranslationCurrent);
+                    update.SourceText.Contains("続きです", StringComparison.Ordinal) && !update.IsTranslationCurrent
+                );
             }
         });
         var resetsAfterJapanese = client.ResetAudioRoutingCount;
@@ -623,9 +612,7 @@ public sealed class InterpretationSessionTests
         client.PublishSourceDelta("今日は晴れです。");
         await WaitUntilAsync(() => client.SpokenLanguages.Count == 1);
         var resetsBeforeSwitch = client.ResetAudioRoutingCount;
-        client.PublishTranslationDelta(
-            RealtimeTranslationOutputLanguage.English,
-            "It is sunny today.");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "It is sunny today.");
         await WaitUntilAsync(() =>
         {
             lock (updates)
@@ -637,28 +624,26 @@ public sealed class InterpretationSessionTests
         client.PublishSourceDelta("day it is sunny outside");
 
         await WaitUntilAsync(() => client.SpokenLanguages.Count == 2);
-        Assert.Equal(
-            [SpokenLanguage.Japanese, SpokenLanguage.English],
-            client.SpokenLanguages);
+        Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.English], client.SpokenLanguages);
         Assert.Equal(
             [RealtimeTranslationOutputLanguage.English, RealtimeTranslationOutputLanguage.Japanese],
-            client.SelectedTargets);
+            client.SelectedTargets
+        );
         Assert.Equal(resetsBeforeSwitch + 1, client.ResetAudioRoutingCount);
         await WaitUntilAsync(() =>
         {
             lock (updates)
             {
                 return updates.Count(update =>
-                    update.ShouldFinalize
-                    && update.SourceText == "今日は晴れです。"
-                    && update.TranslatedText == "It is sunny today.") == 1;
+                        update.ShouldFinalize
+                        && update.SourceText == "今日は晴れです。"
+                        && update.TranslatedText == "It is sunny today."
+                    ) == 1;
             }
         });
         lock (updates)
         {
-            Assert.Contains(
-                updates,
-                update => update.SourceText == "Today it is sunny outside");
+            Assert.Contains(updates, update => update.SourceText == "Today it is sunny outside");
         }
         await session.StopAsync();
     }
@@ -689,20 +674,17 @@ public sealed class InterpretationSessionTests
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.SourceText.Contains("OpenAI", StringComparison.Ordinal));
+                return updates.Exists(update => update.SourceText.Contains("OpenAI", StringComparison.Ordinal));
             }
         });
-        client.PublishTranslationDelta(
-            RealtimeTranslationOutputLanguage.English,
-            "Today it is OpenAI");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Today it is OpenAI");
         await WaitUntilAsync(() =>
         {
             lock (updates)
             {
                 return updates.Exists(update =>
-                    update.TranslatedText.Contains("OpenAI", StringComparison.Ordinal)
-                    && !update.ShouldFinalize);
+                    update.TranslatedText.Contains("OpenAI", StringComparison.Ordinal) && !update.ShouldFinalize
+                );
             }
         });
 
@@ -713,9 +695,11 @@ public sealed class InterpretationSessionTests
         {
             Assert.Contains(
                 updates,
-                update => update.ShouldFinalize
+                update =>
+                    update.ShouldFinalize
                     && update.SourceText == "今日は OpenAI"
-                    && update.TranslatedText == "Today it is OpenAI");
+                    && update.TranslatedText == "Today it is OpenAI"
+            );
         }
     }
 
@@ -740,9 +724,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
         client.PublishSourceDelta("今日は晴れです。");
         await WaitUntilAsync(() => client.SpokenLanguages.Count == 1);
-        client.PublishTranslationDelta(
-            RealtimeTranslationOutputLanguage.English,
-            "It is sunny today.");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "It is sunny today.");
         await WaitUntilAsync(() =>
         {
             lock (updates)
@@ -762,17 +744,16 @@ public sealed class InterpretationSessionTests
 
         client.RecordLoss();
 
-        await WaitUntilAsync(() =>
-            session.State == TranslationState.Listening
-            && client.StartCount > startsBeforeLoss);
+        await WaitUntilAsync(() => session.State == TranslationState.Listening && client.StartCount > startsBeforeLoss);
         lock (updates)
         {
             Assert.Equal(1, updates.Count(update => update.IsInvalidation));
             Assert.DoesNotContain(
                 updates,
-                update => update.ShouldFinalize
-                    && (update.SourceText.Contains("今日は晴れです。")
-                        || update.SourceText.Contains(" To")));
+                update =>
+                    update.ShouldFinalize
+                    && (update.SourceText.Contains("今日は晴れです。") || update.SourceText.Contains(" To"))
+            );
         }
         await session.StopAsync();
     }
@@ -798,9 +779,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
         client.PublishSourceDelta("今日は晴れです。");
         await WaitUntilAsync(() => client.SpokenLanguages.Count == 1);
-        client.PublishTranslationDelta(
-            RealtimeTranslationOutputLanguage.English,
-            "It is sunny today.");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "It is sunny today.");
         await WaitUntilAsync(() =>
         {
             lock (updates)
@@ -821,11 +800,7 @@ public sealed class InterpretationSessionTests
         Assert.Equal(TranslationState.Idle, session.State);
         lock (updates)
         {
-            Assert.Equal(
-                1,
-                updates.Count(update =>
-                    update.ShouldFinalize
-                    && update.SourceText == "今日は晴れです。"));
+            Assert.Equal(1, updates.Count(update => update.ShouldFinalize && update.SourceText == "今日は晴れです。"));
         }
         Assert.Equal(selectedBeforeDrain, client.SelectedTargets.Count);
         Assert.Equal(resetsBeforeDrain, client.ResetAudioRoutingCount);
@@ -872,7 +847,8 @@ public sealed class InterpretationSessionTests
         // Then: 言語切替で再ルーティングし、前セグメントが確定する
         Assert.Equal(
             [RealtimeTranslationOutputLanguage.Spanish, RealtimeTranslationOutputLanguage.Japanese],
-            client.SelectedTargets);
+            client.SelectedTargets
+        );
         Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.Spanish], client.SpokenLanguages);
         Assert.True(client.ResetAudioRoutingCount > resetsAfterJapanese);
         lock (updates)
@@ -892,7 +868,8 @@ public sealed class InterpretationSessionTests
         using var session = NewSession(
             client,
             tuningProvider: () => RealtimeSessionTuning.Default,
-            languagePairProvider: () => LanguagePair.JaEs);
+            languagePairProvider: () => LanguagePair.JaEs
+        );
 
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
@@ -900,20 +877,24 @@ public sealed class InterpretationSessionTests
         Assert.Equal(LanguagePair.JaEs, client.LastStartedPair);
         Assert.Equal(
             RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEs),
-            client.LastStartedTuning?.TranscriptionPrompt);
+            client.LastStartedTuning?.TranscriptionPrompt
+        );
         Assert.Equal(
             RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEs).ToArray(),
-            client.LastStartedTuning?.TranscriptionKeywords.ToArray());
+            client.LastStartedTuning?.TranscriptionKeywords.ToArray()
+        );
 
         await session.ApplyTuningChangeAsync();
 
         Assert.Equal(1, client.UpdateTranscriptionTuningCount);
         Assert.Equal(
             RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEs),
-            client.LastTuning?.TranscriptionPrompt);
+            client.LastTuning?.TranscriptionPrompt
+        );
         Assert.Equal(
             RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEs).ToArray(),
-            client.LastTuning?.TranscriptionKeywords.ToArray());
+            client.LastTuning?.TranscriptionKeywords.ToArray()
+        );
         await session.StopAsync();
     }
 
@@ -928,7 +909,8 @@ public sealed class InterpretationSessionTests
         using var session = NewSession(
             client,
             tuningProvider: () => RealtimeSessionTuning.Default,
-            languagePairProvider: () => pair);
+            languagePairProvider: () => pair
+        );
 
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
@@ -940,13 +922,16 @@ public sealed class InterpretationSessionTests
         Assert.Equal(1, client.UpdateTranscriptionTuningCount);
         Assert.Equal(
             RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEn),
-            client.LastTuning?.TranscriptionPrompt);
+            client.LastTuning?.TranscriptionPrompt
+        );
         Assert.Equal(
             RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEn).ToArray(),
-            client.LastTuning?.TranscriptionKeywords.ToArray());
+            client.LastTuning?.TranscriptionKeywords.ToArray()
+        );
         Assert.NotEqual(
             RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEs),
-            client.LastTuning?.TranscriptionPrompt);
+            client.LastTuning?.TranscriptionPrompt
+        );
         await session.StopAsync();
     }
 
@@ -960,7 +945,8 @@ public sealed class InterpretationSessionTests
         using var session = NewSession(
             client,
             tuningProvider: () => RealtimeSessionTuning.Default,
-            languagePairProvider: () => LanguagePair.EnEs);
+            languagePairProvider: () => LanguagePair.EnEs
+        );
 
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
@@ -968,20 +954,24 @@ public sealed class InterpretationSessionTests
         Assert.Equal(LanguagePair.EnEs, client.LastStartedPair);
         Assert.Equal(
             RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.EnEs),
-            client.LastStartedTuning?.TranscriptionPrompt);
+            client.LastStartedTuning?.TranscriptionPrompt
+        );
         Assert.Equal(
             RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.EnEs).ToArray(),
-            client.LastStartedTuning?.TranscriptionKeywords.ToArray());
+            client.LastStartedTuning?.TranscriptionKeywords.ToArray()
+        );
 
         await session.ApplyTuningChangeAsync();
 
         Assert.Equal(1, client.UpdateTranscriptionTuningCount);
         Assert.Equal(
             RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.EnEs),
-            client.LastTuning?.TranscriptionPrompt);
+            client.LastTuning?.TranscriptionPrompt
+        );
         Assert.Equal(
             RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.EnEs).ToArray(),
-            client.LastTuning?.TranscriptionKeywords.ToArray());
+            client.LastTuning?.TranscriptionKeywords.ToArray()
+        );
         await session.StopAsync();
     }
 
@@ -1037,16 +1027,15 @@ public sealed class InterpretationSessionTests
         session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
         client.PublishTranslationLaneInputTranscript(
             RealtimeTranslationOutputLanguage.English,
-            "polluting source that should never become authority");
+            "polluting source that should never become authority"
+        );
         await WaitUntilAsync(() => Volatile.Read(ref processedDeltaCount) >= 1);
 
         Assert.Empty(client.SelectedTargets);
         Assert.Empty(client.SpokenLanguages);
         lock (updates)
         {
-            Assert.DoesNotContain(
-                updates,
-                update => update.SourceText.Contains("polluting", StringComparison.Ordinal));
+            Assert.DoesNotContain(updates, update => update.SourceText.Contains("polluting", StringComparison.Ordinal));
         }
 
         client.PublishSourceDelta("こんにちは");
@@ -1063,39 +1052,31 @@ public sealed class InterpretationSessionTests
     public async Task EnEsLongWordWindowIsPreservedForRouting()
     {
         var client = new FakeDualClient();
-        using var session = NewSession(
-            client,
-            languagePairProvider: () => LanguagePair.EnEs);
+        using var session = NewSession(client, languagePairProvider: () => LanguagePair.EnEs);
 
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
         client.PublishSourceDelta("the and is are of to it that");
-        await WaitUntilAsync(() =>
-            client.SelectedTargets.SequenceEqual(
-                [RealtimeTranslationOutputLanguage.Spanish]));
+        await WaitUntilAsync(() => client.SelectedTargets.SequenceEqual([RealtimeTranslationOutputLanguage.Spanish]));
 
         // 先頭側にだけスペイン語証拠があり、後ろは長い filler。scalar 切り詰めだと証拠が消える。
         var longToken = new string('x', 40);
-        var filler = string.Join(
-            ' ',
-            Enumerable.Repeat(longToken, SpokenLanguageDetector.EnEsWindow - 2));
+        var filler = string.Join(' ', Enumerable.Repeat(longToken, SpokenLanguageDetector.EnEsWindow - 2));
         var spanishWindow = "está aquí " + filler;
         client.PublishSourceDelta(spanishWindow);
         client.PublishSourceDelta(" " + spanishWindow);
         await WaitUntilAsync(() =>
-            client.SelectedTargets.SequenceEqual(
-            [
+            client.SelectedTargets.SequenceEqual([
                 RealtimeTranslationOutputLanguage.Spanish,
                 RealtimeTranslationOutputLanguage.English,
-            ]));
+            ])
+        );
 
         Assert.Equal(
-            [
-                RealtimeTranslationOutputLanguage.Spanish,
-                RealtimeTranslationOutputLanguage.English,
-            ],
-            client.SelectedTargets);
+            [RealtimeTranslationOutputLanguage.Spanish, RealtimeTranslationOutputLanguage.English],
+            client.SelectedTargets
+        );
         await session.StopAsync();
     }
 
@@ -1162,7 +1143,8 @@ public sealed class InterpretationSessionTests
             lock (updates)
             {
                 return updates.Exists(update =>
-                    update.SourceText.Contains("now we continue", StringComparison.Ordinal));
+                    update.SourceText.Contains("now we continue", StringComparison.Ordinal)
+                );
             }
         });
         // Finalize が遅延して走っても拾えるよう少し待つ。
@@ -1216,15 +1198,15 @@ public sealed class InterpretationSessionTests
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.SourceText.Contains("mundo ahora", StringComparison.Ordinal));
+                return updates.Exists(update => update.SourceText.Contains("mundo ahora", StringComparison.Ordinal));
             }
         });
         await Task.Delay(100);
 
         Assert.Equal(
             [RealtimeTranslationOutputLanguage.Spanish, RealtimeTranslationOutputLanguage.Japanese],
-            client.SelectedTargets);
+            client.SelectedTargets
+        );
         Assert.True(client.ResetAudioRoutingCount > resetsAfterJapanese);
         lock (updates)
         {
@@ -1272,8 +1254,8 @@ public sealed class InterpretationSessionTests
             lock (updates)
             {
                 return updates.Exists(update =>
-                    update.SourceText.Contains("the and is are", StringComparison.Ordinal)
-                    && !update.ShouldFinalize);
+                    update.SourceText.Contains("the and is are", StringComparison.Ordinal) && !update.ShouldFinalize
+                );
             }
         });
         Assert.Equal([RealtimeTranslationOutputLanguage.English], client.SelectedTargets);
@@ -1289,14 +1271,16 @@ public sealed class InterpretationSessionTests
             lock (updates)
             {
                 return updates.Exists(update =>
-                    update.SourceText.Contains("this with for you", StringComparison.Ordinal));
+                    update.SourceText.Contains("this with for you", StringComparison.Ordinal)
+                );
             }
         });
         await Task.Delay(100);
 
         Assert.Equal(
             [RealtimeTranslationOutputLanguage.English, RealtimeTranslationOutputLanguage.Spanish],
-            client.SelectedTargets);
+            client.SelectedTargets
+        );
         Assert.True(client.ResetAudioRoutingCount > resetsAfterSpanish);
         lock (updates)
         {
@@ -1405,7 +1389,8 @@ public sealed class InterpretationSessionTests
         pair = LanguagePair.EnEs;
         client.PublishTransportError();
         await WaitUntilAsync(() =>
-            session.State == TranslationState.Listening && client.StartCount > startCountAtListening);
+            session.State == TranslationState.Listening && client.StartCount > startCountAtListening
+        );
 
         Assert.Equal(LanguagePair.JaEn, client.LastStartedPair);
         client.PublishSourceDelta("これは再接続後も同じペアです");
@@ -1444,7 +1429,8 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => client.SelectedTargets.Count == 2);
         Assert.Equal(
             [RealtimeTranslationOutputLanguage.Spanish, RealtimeTranslationOutputLanguage.Japanese],
-            client.SelectedTargets);
+            client.SelectedTargets
+        );
         Assert.Equal([SpokenLanguage.Japanese, SpokenLanguage.Spanish], client.SpokenLanguages);
         await session.StopAsync();
     }
@@ -1482,7 +1468,8 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => client.SelectedTargets.Count == 2);
         Assert.Equal(
             [RealtimeTranslationOutputLanguage.English, RealtimeTranslationOutputLanguage.Spanish],
-            client.SelectedTargets);
+            client.SelectedTargets
+        );
         await session.StopAsync();
     }
 
@@ -1526,8 +1513,8 @@ public sealed class InterpretationSessionTests
             lock (updates)
             {
                 return updates.Exists(update =>
-                    update.SourceText.Contains("the and is are", StringComparison.Ordinal)
-                    && !update.ShouldFinalize);
+                    update.SourceText.Contains("the and is are", StringComparison.Ordinal) && !update.ShouldFinalize
+                );
             }
         });
         Assert.Equal([RealtimeTranslationOutputLanguage.English], client.SelectedTargets);
@@ -1543,7 +1530,8 @@ public sealed class InterpretationSessionTests
         // Then: 英語話者の target=es へ切り替わり、前セグメントが確定する
         Assert.Equal(
             [RealtimeTranslationOutputLanguage.English, RealtimeTranslationOutputLanguage.Spanish],
-            client.SelectedTargets);
+            client.SelectedTargets
+        );
         Assert.Equal([SpokenLanguage.Spanish, SpokenLanguage.English], client.SpokenLanguages);
         Assert.True(client.ResetAudioRoutingCount > resetsAfterSpanish);
         lock (updates)
@@ -1648,14 +1636,18 @@ public sealed class InterpretationSessionTests
         client.PublishTranslationDelta(
             RealtimeTranslationOutputLanguage.Japanese,
             "これは古い接続です",
-            epoch: staleEpoch);
+            epoch: staleEpoch
+        );
         await Task.Delay(80);
 
         RealtimeSubtitleUpdate latest;
         lock (updates)
         {
             latest = updates.FindLast(update => update.TranslatedText.Length > 0);
-            Assert.DoesNotContain(updates, update => update.TranslatedText.Contains("古い接続", StringComparison.Ordinal));
+            Assert.DoesNotContain(
+                updates,
+                update => update.TranslatedText.Contains("古い接続", StringComparison.Ordinal)
+            );
         }
 
         Assert.Equal("おはようございます", latest.TranslatedText);
@@ -1679,7 +1671,8 @@ public sealed class InterpretationSessionTests
             RealtimeTranslationNoiseReduction.NearField,
             RealtimeTranscriptionDelay.High,
             "Updated glossary",
-            ImmutableArray.Create("Acme"));
+            ImmutableArray.Create("Acme")
+        );
         await session.ApplyTuningChangeAsync();
 
         Assert.Equal(1, client.UpdateTranscriptionTuningCount);
@@ -1772,8 +1765,7 @@ public sealed class InterpretationSessionTests
         using var session = NewSession(client);
 
         var startTask = session.StartAsync();
-        await WaitUntilAsync(() =>
-            session.State == TranslationState.Connecting && client.StartCount == 1);
+        await WaitUntilAsync(() => session.State == TranslationState.Connecting && client.StartCount == 1);
 
         await session.ApplyTuningChangeAsync();
 
@@ -1839,10 +1831,7 @@ public sealed class InterpretationSessionTests
     {
         var client = new FakeDualClient();
         var audio = new FakeAudioCapture();
-        using var session = NewSession(
-            client,
-            audio: audio,
-            initialReconnectDelay: TimeSpan.FromSeconds(2));
+        using var session = NewSession(client, audio: audio, initialReconnectDelay: TimeSpan.FromSeconds(2));
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
         Assert.Equal(1, client.StartCount);
@@ -1887,9 +1876,7 @@ public sealed class InterpretationSessionTests
         client.PublishAtomically(() =>
         {
             client.PublishTransportError();
-            client.PublishTranslationDelta(
-                RealtimeTranslationOutputLanguage.English,
-                "Unread translation after error");
+            client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Unread translation after error");
         });
         await WaitUntilAsync(() => session.State == TranslationState.Reconnecting);
         Assert.Equal(1, client.StartCount);
@@ -1936,7 +1923,8 @@ public sealed class InterpretationSessionTests
             client.OnForceCloseBeforeComplete = null;
             client.PublishTranslationDelta(
                 RealtimeTranslationOutputLanguage.English,
-                "Late merged translation during ForceClose");
+                "Late merged translation during ForceClose"
+            );
         };
         client.PublishTransportError();
         await WaitUntilAsync(() =>
@@ -1980,15 +1968,12 @@ public sealed class InterpretationSessionTests
 
         client.PublishSourceDelta("今日は会議です");
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
-        client.PublishTranslationDelta(
-            RealtimeTranslationOutputLanguage.English,
-            "Today is a meeting");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Today is a meeting");
         await WaitUntilAsync(() =>
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.TranslatedText.Contains("Today", StringComparison.Ordinal));
+                return updates.Exists(update => update.TranslatedText.Contains("Today", StringComparison.Ordinal));
             }
         });
         var resetsBeforeError = client.ResetAudioRoutingCount;
@@ -2008,7 +1993,8 @@ public sealed class InterpretationSessionTests
                 finalized = updates.Find(update =>
                     update.ShouldFinalize
                     && update.SourceText.Trim() == "今日は会議です"
-                    && update.TranslatedText == "Today is a meeting");
+                    && update.TranslatedText == "Today is a meeting"
+                );
                 return finalized.ShouldFinalize;
             }
         });
@@ -2137,15 +2123,12 @@ public sealed class InterpretationSessionTests
 
         client.PublishSourceDelta("再接続上限前の完全ペア");
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
-        client.PublishTranslationDelta(
-            RealtimeTranslationOutputLanguage.English,
-            "Complete pair before max reconnect");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Complete pair before max reconnect");
         await WaitUntilAsync(() =>
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+                return updates.Exists(update => update.TranslatedText.Length > 0 && !update.ShouldFinalize);
             }
         });
 
@@ -2165,9 +2148,7 @@ public sealed class InterpretationSessionTests
         {
             Assert.Contains("ShouldFinalize", notificationOrder);
             Assert.Contains("Error", notificationOrder);
-            Assert.True(
-                notificationOrder.IndexOf("ShouldFinalize") <
-                notificationOrder.IndexOf("Error"));
+            Assert.True(notificationOrder.IndexOf("ShouldFinalize") < notificationOrder.IndexOf("Error"));
             finalized = updates.Find(update => update.ShouldFinalize);
         }
 
@@ -2197,7 +2178,8 @@ public sealed class InterpretationSessionTests
             client.PublishTransportError();
             expectedStarts += 1;
             await WaitUntilAsync(() =>
-                client.StartCount >= expectedStarts && session.State == TranslationState.Listening);
+                client.StartCount >= expectedStarts && session.State == TranslationState.Listening
+            );
         }
 
         clock.Advance(TimeSpan.FromSeconds(5));
@@ -2231,7 +2213,8 @@ public sealed class InterpretationSessionTests
             client.PublishTransportError();
             expectedStarts += 1;
             await WaitUntilAsync(() =>
-                client.StartCount >= expectedStarts && session.State == TranslationState.Listening);
+                client.StartCount >= expectedStarts && session.State == TranslationState.Listening
+            );
             Assert.NotEqual(TranslationState.Error, session.State);
         }
 
@@ -2293,7 +2276,8 @@ public sealed class InterpretationSessionTests
             client.PublishTransportError();
             expectedStarts += 1;
             await WaitUntilAsync(() =>
-                client.StartCount >= expectedStarts && session.State == TranslationState.Listening);
+                client.StartCount >= expectedStarts && session.State == TranslationState.Listening
+            );
         }
 
         clock.AdvanceWallClockOnly(TimeSpan.FromHours(1));
@@ -2432,9 +2416,7 @@ public sealed class InterpretationSessionTests
         client.OnCloseGracefully = () =>
         {
             client.PublishSourceDelta("停止時の最終原文");
-            client.PublishTranslationDelta(
-                RealtimeTranslationOutputLanguage.English,
-                "Final source at stop");
+            client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Final source at stop");
             client.Complete();
             return Task.CompletedTask;
         };
@@ -2478,9 +2460,7 @@ public sealed class InterpretationSessionTests
         {
             client.PublishServerError("close drain transport glitch", "server_error");
             client.PublishSourceDelta("停止時の最終原文");
-            client.PublishTranslationDelta(
-                RealtimeTranslationOutputLanguage.English,
-                "Final source at stop");
+            client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Final source at stop");
             client.Complete();
             return Task.CompletedTask;
         };
@@ -2522,9 +2502,7 @@ public sealed class InterpretationSessionTests
         client.OnCloseGracefully = () =>
         {
             client.PublishSourceDelta("失敗経路の最終原文");
-            client.PublishTranslationDelta(
-                RealtimeTranslationOutputLanguage.English,
-                "Final source on close failure");
+            client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Final source on close failure");
             // Complete せずに失敗させる。ForceClose が channel を閉じる前提。
             throw new InvalidOperationException("graceful close failed");
         };
@@ -2571,8 +2549,7 @@ public sealed class InterpretationSessionTests
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+                return updates.Exists(update => update.TranslatedText.Length > 0 && !update.ShouldFinalize);
             }
         });
 
@@ -2615,8 +2592,7 @@ public sealed class InterpretationSessionTests
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+                return updates.Exists(update => update.TranslatedText.Length > 0 && !update.ShouldFinalize);
             }
         });
 
@@ -2646,7 +2622,8 @@ public sealed class InterpretationSessionTests
             finalized = updates.Find(update => update.ShouldFinalize);
             Assert.DoesNotContain(
                 updates,
-                update => update.SourceText.Contains("取り込ませない", StringComparison.Ordinal));
+                update => update.SourceText.Contains("取り込ませない", StringComparison.Ordinal)
+            );
         }
 
         Assert.Equal("フェンス前の完全ペア", finalized.SourceText);
@@ -2680,8 +2657,7 @@ public sealed class InterpretationSessionTests
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+                return updates.Exists(update => update.TranslatedText.Length > 0 && !update.ShouldFinalize);
             }
         });
 
@@ -2712,7 +2688,8 @@ public sealed class InterpretationSessionTests
             finalized = updates.Find(update => update.ShouldFinalize);
             Assert.DoesNotContain(
                 updates,
-                update => update.SourceText.Contains("取り込ませない", StringComparison.Ordinal));
+                update => update.SourceText.Contains("取り込ませない", StringComparison.Ordinal)
+            );
         }
 
         Assert.Equal("停止フェンス前の完全ペア", finalized.SourceText);
@@ -2785,8 +2762,7 @@ public sealed class InterpretationSessionTests
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+                return updates.Exists(update => update.TranslatedText.Length > 0 && !update.ShouldFinalize);
             }
         });
 
@@ -2869,8 +2845,7 @@ public sealed class InterpretationSessionTests
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+                return updates.Exists(update => update.TranslatedText.Length > 0 && !update.ShouldFinalize);
             }
         });
 
@@ -2882,7 +2857,8 @@ public sealed class InterpretationSessionTests
                 return updates.Exists(update =>
                     update.SourceText.Contains("続きです", StringComparison.Ordinal)
                     && !update.IsTranslationCurrent
-                    && !update.ShouldFinalize);
+                    && !update.ShouldFinalize
+                );
             }
         });
 
@@ -2922,8 +2898,7 @@ public sealed class InterpretationSessionTests
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+                return updates.Exists(update => update.TranslatedText.Length > 0 && !update.ShouldFinalize);
             }
         });
 
@@ -2975,8 +2950,7 @@ public sealed class InterpretationSessionTests
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+                return updates.Exists(update => update.TranslatedText.Length > 0 && !update.ShouldFinalize);
             }
         });
 
@@ -3157,9 +3131,7 @@ public sealed class InterpretationSessionTests
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
-        client.PublishServerError(
-            "certificate authority rejected the peer (code 4010)",
-            "authority_mismatch");
+        client.PublishServerError("certificate authority rejected the peer (code 4010)", "authority_mismatch");
         await WaitUntilAsync(() => session.State == TranslationState.Error);
         await WaitUntilAsync(() => message is not null);
 
@@ -3240,15 +3212,12 @@ public sealed class InterpretationSessionTests
         await Task.Delay(100);
         clock.Advance(TimeSpan.FromMilliseconds(2_100));
 
-        await WaitUntilAsync(
-            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
+        await WaitUntilAsync(() => detections.Any(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
 
         clock.Advance(TimeSpan.FromMilliseconds(31_000));
         await Task.Delay(200);
 
-        Assert.Equal(
-            1,
-            detections.Count(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
+        Assert.Equal(1, detections.Count(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
         await session.StopAsync();
     }
 
@@ -3285,12 +3254,9 @@ public sealed class InterpretationSessionTests
         await Task.Delay(100);
         clock.Advance(TimeSpan.FromMilliseconds(2_500));
 
-        await WaitUntilAsync(
-            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.TranslationStalled));
+        await WaitUntilAsync(() => detections.Any(d => d.Kind == SessionHealthDetectionKind.TranslationStalled));
         var detection = detections.First(d => d.Kind == SessionHealthDetectionKind.TranslationStalled);
-        Assert.Equal(
-            RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
-            detection.Lane);
+        Assert.Equal(RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English), detection.Lane);
         await session.StopAsync();
     }
 
@@ -3348,7 +3314,8 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => audio.StartCallCount == 1);
         client.SetSessionExpiry(
             clock.GetUtcNow().ToUnixTimeSeconds() + 130,
-            RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English));
+            RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English)
+        );
         audio.StartGate.TrySetResult();
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
@@ -3362,19 +3329,15 @@ public sealed class InterpretationSessionTests
         clock.AdvanceWallClockOnly(TimeSpan.FromHours(1));
         clock.Advance(TimeSpan.FromMilliseconds(10_100));
 
-        await WaitUntilAsync(
-            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.ExpiryNear));
+        await WaitUntilAsync(() => detections.Any(d => d.Kind == SessionHealthDetectionKind.ExpiryNear));
         var near = detections.First(d => d.Kind == SessionHealthDetectionKind.ExpiryNear);
-        Assert.Equal(
-            RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
-            near.Lane);
+        Assert.Equal(RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English), near.Lane);
         Assert.Equal(TimeSpan.FromMilliseconds(10_100), near.Elapsed);
         // remaining は接続時に確定した期限への残りで、壁時計のずれを含まない。
         Assert.Equal(TimeSpan.FromMilliseconds(119_900), near.Remaining);
 
         clock.Advance(TimeSpan.FromMilliseconds(120_000));
-        await WaitUntilAsync(
-            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.Expired));
+        await WaitUntilAsync(() => detections.Any(d => d.Kind == SessionHealthDetectionKind.Expired));
         await session.StopAsync();
     }
 
@@ -3414,8 +3377,8 @@ public sealed class InterpretationSessionTests
         var monitor = new SessionHealthMonitor();
         monitor.BeginGeneration(1, 1, false, TimeSpan.Zero);
         diagnostics.Add(
-            monitor.RecordTermination(SessionTerminationKind.FatalServerError, TimeSpan.FromSeconds(5))
-                .ToString());
+            monitor.RecordTermination(SessionTerminationKind.FatalServerError, TimeSpan.FromSeconds(5)).ToString()
+        );
 
         foreach (var diagnostic in diagnostics)
         {
@@ -3455,8 +3418,7 @@ public sealed class InterpretationSessionTests
         await Task.Delay(100);
         clock.Advance(TimeSpan.FromMilliseconds(15_100));
 
-        await WaitUntilAsync(
-            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
+        await WaitUntilAsync(() => detections.Any(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
         Assert.DoesNotContain(detections, d => d.Kind == SessionHealthDetectionKind.SourceStalled);
         await session.StopAsync();
     }
@@ -3470,8 +3432,7 @@ public sealed class InterpretationSessionTests
         var clock = new MonotonicClock();
         var client = new FakeDualClient
         {
-            StartException = new RealtimeTranslationException(
-                RealtimeTranslationErrorKind.AuthenticationFailed),
+            StartException = new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed),
         };
         using var session = NewSession(client, timeProvider: clock);
 
@@ -3501,7 +3462,8 @@ public sealed class InterpretationSessionTests
 
         client.StartException = new RealtimeTranslationException(
             RealtimeTranslationErrorKind.FatalServerError,
-            "upstream boom");
+            "upstream boom"
+        );
         client.PublishServerError("transport glitch", "server_error");
         await WaitUntilAsync(() => session.State == TranslationState.Error);
 
@@ -3520,10 +3482,7 @@ public sealed class InterpretationSessionTests
     public async Task MissingApiKeyEmitsAttemptTermination()
     {
         var client = new FakeDualClient();
-        using var session = NewSession(
-            client,
-            apiKey: null,
-            timeProvider: new MonotonicClock());
+        using var session = NewSession(client, apiKey: null, timeProvider: new MonotonicClock());
 
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Error);
@@ -3548,8 +3507,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
         client.PublishTransportError();
-        await WaitUntilAsync(
-            () => client.StartCount >= 2 && session.State == TranslationState.Listening);
+        await WaitUntilAsync(() => client.StartCount >= 2 && session.State == TranslationState.Listening);
 
         var diagnostic = session.LatestTerminationDiagnostic;
         Assert.NotNull(diagnostic);
@@ -3575,7 +3533,8 @@ public sealed class InterpretationSessionTests
 
         client.StartException = new RealtimeTranslationException(
             RealtimeTranslationErrorKind.FatalServerError,
-            "upstream boom");
+            "upstream boom"
+        );
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Error);
 
@@ -3601,8 +3560,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Idle);
 
         session.BeforeHealthGenerationBeginForTests = null;
-        client.StartException = new RealtimeTranslationException(
-            RealtimeTranslationErrorKind.FatalServerError);
+        client.StartException = new RealtimeTranslationException(RealtimeTranslationErrorKind.FatalServerError);
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Error);
 
@@ -3662,16 +3620,15 @@ public sealed class InterpretationSessionTests
             client.PublishTransportError();
             expectedStarts += 1;
             await WaitUntilAsync(() =>
-                client.StartCount >= expectedStarts && session.State == TranslationState.Listening);
+                client.StartCount >= expectedStarts && session.State == TranslationState.Listening
+            );
         }
 
         clock.Advance(TimeSpan.FromSeconds(5));
         client.PublishTransportError();
         await WaitUntilAsync(() => session.State == TranslationState.Error);
 
-        Assert.Equal(
-            SessionTerminationKind.ReconnectAttemptLimit,
-            session.LatestTerminationDiagnostic?.Kind);
+        Assert.Equal(SessionTerminationKind.ReconnectAttemptLimit, session.LatestTerminationDiagnostic?.Kind);
     }
 
     // Given: 受信が一度もないセッション
@@ -3755,8 +3712,7 @@ public sealed class InterpretationSessionTests
         audio.Write(new CapturedAudioFrame(1, 9, new byte[4_800], 0, 900));
 
         await WaitUntilAsync(() => session.AudioLossMetrics.LostMilliseconds == 800);
-        await WaitUntilAsync(
-            () => client.ResetAudioRoutingCount == resetCountBeforeLoss + 1);
+        await WaitUntilAsync(() => client.ResetAudioRoutingCount == resetCountBeforeLoss + 1);
 
         Assert.Equal(resetCountBeforeLoss + 1, client.ResetAudioRoutingCount);
         Assert.Equal(1, client.StartCount);
@@ -3772,8 +3728,7 @@ public sealed class InterpretationSessionTests
         var client = new FakeDualClient();
         var audio = new FakeAudioCapture();
         using var session = NewSession(client, audio: audio);
-        var sourceObserved = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var sourceObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         session.SubtitleUpdated += (_, update) =>
         {
             if (update.SourceText == "こんにちは")
@@ -3881,8 +3836,8 @@ public sealed class InterpretationSessionTests
             lock (updates)
             {
                 return updates.Exists(update =>
-                    update.TranslatedText.Contains("Hello", StringComparison.Ordinal)
-                    && !update.ShouldFinalize);
+                    update.TranslatedText.Contains("Hello", StringComparison.Ordinal) && !update.ShouldFinalize
+                );
             }
         });
 
@@ -3893,9 +3848,8 @@ public sealed class InterpretationSessionTests
         {
             Assert.DoesNotContain(
                 updates,
-                update => update.ShouldFinalize
-                    && update.SourceText == "こんにちは"
-                    && update.TranslatedText == "Hello");
+                update => update.ShouldFinalize && update.SourceText == "こんにちは" && update.TranslatedText == "Hello"
+            );
         }
 
         await session.StopAsync();
@@ -3909,7 +3863,8 @@ public sealed class InterpretationSessionTests
         Func<LanguagePair>? languagePairProvider = null,
         TimeSpan? initialReconnectDelay = null,
         TimeProvider? timeProvider = null,
-        ReconnectPolicy? reconnectPolicy = null) =>
+        ReconnectPolicy? reconnectPolicy = null
+    ) =>
         new(
             new FakeApiKeyStore(apiKey),
             audio ?? new FakeAudioCapture(),
@@ -3920,7 +3875,8 @@ public sealed class InterpretationSessionTests
             tickInterval: TimeSpan.FromMilliseconds(20),
             languagePairProvider: languagePairProvider,
             reconnectPolicy: reconnectPolicy,
-            reconnectJitter: _ => TimeSpan.Zero);
+            reconnectJitter: _ => TimeSpan.Zero
+        );
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
@@ -3946,11 +3902,9 @@ public sealed class InterpretationSessionTests
     /// <summary>Load をゲートし、Stop が generation を進めたあと欠落キーを返す。</summary>
     private sealed class GatedApiKeyStore : IApiKeyStore
     {
-        private readonly TaskCompletionSource<string?> _load =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<string?> _load = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public TaskCompletionSource LoadStarted { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource LoadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public void Release(string? apiKey) => _load.TrySetResult(apiKey);
 
@@ -3964,8 +3918,7 @@ public sealed class InterpretationSessionTests
     private sealed class FakeAudioCapture : IRealtimeAudioCapture
     {
         private readonly object _sync = new();
-        private Channel<CapturedAudioFrame> _frames =
-            Channel.CreateUnbounded<CapturedAudioFrame>();
+        private Channel<CapturedAudioFrame> _frames = Channel.CreateUnbounded<CapturedAudioFrame>();
 
         public int StartCallCount { get; private set; }
 
@@ -4065,8 +4018,7 @@ public sealed class InterpretationSessionTests
             lock (_sync)
             {
                 _emitSequence += 1;
-                _frames.Writer.TryWrite(
-                    new CapturedAudioFrame(1, _emitSequence, frame, 0, _emitSequence * 100));
+                _frames.Writer.TryWrite(new CapturedAudioFrame(1, _emitSequence, frame, 0, _emitSequence * 100));
             }
         }
     }
@@ -4190,7 +4142,8 @@ public sealed class InterpretationSessionTests
             string apiKey,
             RealtimeSessionTuning tuning,
             LanguagePair pair = LanguagePair.JaEn,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             Task? gateTask;
             lock (_sync)
@@ -4246,17 +4199,17 @@ public sealed class InterpretationSessionTests
 
         public Task AppendAudioFrameAsync(
             ReadOnlyMemory<byte> pcm16LittleEndian,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             Interlocked.Increment(ref _appendAudioFrameCount);
-            return AppendAudioFrameGate is { } gate
-                ? gate.Task.WaitAsync(cancellationToken)
-                : Task.CompletedTask;
+            return AppendAudioFrameGate is { } gate ? gate.Task.WaitAsync(cancellationToken) : Task.CompletedTask;
         }
 
         public Task SelectTranslationTargetAsync(
             RealtimeTranslationOutputLanguage? target,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             lock (_sync)
             {
@@ -4271,8 +4224,7 @@ public sealed class InterpretationSessionTests
                     _selectedTargets.Add(selected);
 
                     // Swift FakeDualClient と同じく pair.counterpart(target) で話者言語を復元する。
-                    if (LastStartedPair is { } pair
-                        && pair.Counterpart(selected) is { } spoken)
+                    if (LastStartedPair is { } pair && pair.Counterpart(selected) is { } spoken)
                     {
                         _spokenLanguages.Add(spoken);
                     }
@@ -4284,15 +4236,15 @@ public sealed class InterpretationSessionTests
 
         public Task UpdateTranscriptionTuningAsync(
             RealtimeSessionTuning tuning,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             lock (_sync)
             {
                 UpdateTranscriptionTuningCount += 1;
                 if (ThrowRealtimeOnUpdateTuning)
                 {
-                    throw new RealtimeTranslationException(
-                        RealtimeTranslationErrorKind.SessionUpdateTimeout);
+                    throw new RealtimeTranslationException(RealtimeTranslationErrorKind.SessionUpdateTimeout);
                 }
 
                 LastTuning = tuning;
@@ -4331,27 +4283,34 @@ public sealed class InterpretationSessionTests
             return Task.CompletedTask;
         }
 
-        public void PublishSourceDelta(string delta, int? epoch = null) => PublishLane(
-            RealtimeTranslationLane.Source,
-            new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
-            epoch);
+        public void PublishSourceDelta(string delta, int? epoch = null) =>
+            PublishLane(
+                RealtimeTranslationLane.Source,
+                new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
+                epoch
+            );
 
         public void PublishTranslationLaneInputTranscript(
             RealtimeTranslationOutputLanguage target,
             string delta,
-            int? epoch = null) =>
+            int? epoch = null
+        ) =>
             Publish(
                 target,
                 new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
-                epoch);
+                epoch
+            );
 
         public void PublishTranslationDelta(
             RealtimeTranslationOutputLanguage target,
             string delta,
-            int? epoch = null) => Publish(
-            target,
-            new RealtimeTranslationServerEvent.OutputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
-            epoch);
+            int? epoch = null
+        ) =>
+            Publish(
+                target,
+                new RealtimeTranslationServerEvent.OutputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
+                epoch
+            );
 
         /// <summary>
         /// 複数イベントを Complete と排他の同一 lock で積む。
@@ -4366,19 +4325,22 @@ public sealed class InterpretationSessionTests
             }
         }
 
-        public void PublishTransportError() => Publish(
-            RealtimeTranslationOutputLanguage.English,
-            new RealtimeTranslationServerEvent.ServerError(
-                DualRealtimeTranslationClient.TransportErrorMessage,
-                DualRealtimeTranslationClient.TransportErrorCode));
+        public void PublishTransportError() =>
+            Publish(
+                RealtimeTranslationOutputLanguage.English,
+                new RealtimeTranslationServerEvent.ServerError(
+                    DualRealtimeTranslationClient.TransportErrorMessage,
+                    DualRealtimeTranslationClient.TransportErrorCode
+                )
+            );
 
-        public void PublishServerError(string message, string code) => Publish(
-            RealtimeTranslationOutputLanguage.English,
-            new RealtimeTranslationServerEvent.ServerError(message, code));
+        public void PublishServerError(string message, string code) =>
+            Publish(
+                RealtimeTranslationOutputLanguage.English,
+                new RealtimeTranslationServerEvent.ServerError(message, code)
+            );
 
-        public void RecordLoss(
-            EventDeliveryStage stage = EventDeliveryStage.Merge,
-            int capacity = 512)
+        public void RecordLoss(EventDeliveryStage stage = EventDeliveryStage.Merge, int capacity = 512)
         {
             lock (_sync)
             {
@@ -4398,8 +4360,8 @@ public sealed class InterpretationSessionTests
         private void Publish(
             RealtimeTranslationOutputLanguage target,
             RealtimeTranslationServerEvent serverEvent,
-            int? epoch = null)
-            => PublishLane(RealtimeTranslationLane.Translation(target), serverEvent, epoch);
+            int? epoch = null
+        ) => PublishLane(RealtimeTranslationLane.Translation(target), serverEvent, epoch);
 
         /// <summary>handshake が届いたことにして session.expires_at を記録する。</summary>
         public void SetSessionExpiry(long? expiresAtUnixSeconds, RealtimeTranslationLane lane)
@@ -4413,14 +4375,14 @@ public sealed class InterpretationSessionTests
         private void PublishLane(
             RealtimeTranslationLane lane,
             RealtimeTranslationServerEvent serverEvent,
-            int? epoch = null)
+            int? epoch = null
+        )
         {
             lock (_sync)
             {
                 // 実接続では decode 済みメッセージごとに受信数を数える。fake も同じ面を再現する。
                 DeliveryState.RecordReceive(lane);
-                _events.Writer.TryWrite(
-                    new RealtimeTranslationStreamEvent(lane, serverEvent, epoch ?? _epoch));
+                _events.Writer.TryWrite(new RealtimeTranslationStreamEvent(lane, serverEvent, epoch ?? _epoch));
             }
         }
     }

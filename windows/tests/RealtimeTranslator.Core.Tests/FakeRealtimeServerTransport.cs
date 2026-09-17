@@ -69,8 +69,7 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
     {
         lock (_sync)
         {
-            return _heldAudioAppends.Count > 0
-                && _heldAudioAppends.Dequeue().TrySetResult(true);
+            return _heldAudioAppends.Count > 0 && _heldAudioAppends.Dequeue().TrySetResult(true);
         }
     }
 
@@ -79,16 +78,13 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
         lock (_sync)
         {
             return _heldAudioAppends.Count > 0
-                && _heldAudioAppends.Dequeue().TrySetException(
-                    new InvalidOperationException("injected send failure"));
+                && _heldAudioAppends.Dequeue().TrySetException(new InvalidOperationException("injected send failure"));
         }
     }
 
     public void ReleaseAllAudioAppends()
     {
-        while (ReleaseOneAudioAppend())
-        {
-        }
+        while (ReleaseOneAudioAppend()) { }
     }
 
     /// <summary>
@@ -163,8 +159,7 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
         var type = TypeOf(payload);
         if (HoldAudioAppends && IsAudioAppendType(type))
         {
-            var held = new TaskCompletionSource<bool>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
+            var held = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             lock (_sync)
             {
                 _heldAudioAppends.Enqueue(held);
@@ -215,8 +210,7 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
             }
             else if (type == "input_audio_buffer.commit")
             {
-                EnqueueJson(
-                    """{"type":"conversation.item.input_audio_transcription.completed"}""");
+                EnqueueJson("""{"type":"conversation.item.input_audio_transcription.completed"}""");
             }
         }
 
@@ -269,8 +263,7 @@ internal sealed class FakeRealtimeServerTransport : IRealtimeWebSocketTransport
         return frames;
     }
 
-    private static string? TypeOf(byte[] payload) =>
-        JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>();
+    private static string? TypeOf(byte[] payload) => JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>();
 
     private static bool IsAudioAppendType(string? type) =>
         type is "input_audio_buffer.append" or "session.input_audio_buffer.append";

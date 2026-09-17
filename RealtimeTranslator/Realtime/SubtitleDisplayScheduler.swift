@@ -56,7 +56,8 @@ final class SubtitleDisplayScheduler {
         let elapsed = max(0, nowProvider().timeIntervalSince(lastRenderedAt))
         let intervalSeconds = Double(renderIntervalNanoseconds) / 1_000_000_000
         let delaySeconds = max(0, intervalSeconds - elapsed)
-        let delayNanoseconds = delaySeconds > 0
+        let delayNanoseconds =
+            delaySeconds > 0
             ? UInt64(delaySeconds * 1_000_000_000)
             : 0
         renderTask = Task { @MainActor [weak self] in

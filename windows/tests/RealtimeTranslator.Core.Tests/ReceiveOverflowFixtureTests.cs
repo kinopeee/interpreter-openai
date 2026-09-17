@@ -28,7 +28,8 @@ public sealed class ReceiveOverflowFixtureTests
                     data.Add(
                         stage,
                         SharedFixtures.Number(item["eventCount"]),
-                        SharedFixtures.Flag(item["expectedLoss"]));
+                        SharedFixtures.Flag(item["expectedLoss"])
+                    );
                 }
             }
 
@@ -44,9 +45,7 @@ public sealed class ReceiveOverflowFixtureTests
 
         // When: Windowsの容量と終了優先順位を読み取る
         var windows = fixture["capacities"]!["windows"]!;
-        var precedence = fixture["terminationPrecedence"]!.AsArray()
-            .Select(ParseTermination)
-            .ToArray();
+        var precedence = fixture["terminationPrecedence"]!.AsArray().Select(ParseTermination).ToArray();
 
         // Then: 接続とマージの容量は名前付き定数と一致する
         Assert.Equal(RealtimeEventChannel.Capacity, SharedFixtures.Number(windows["connection"]));
@@ -55,35 +54,30 @@ public sealed class ReceiveOverflowFixtureTests
             Enum.GetValues<EventDeliveryTermination>()
                 .Where(value => value != EventDeliveryTermination.None)
                 .OrderByDescending(value => value),
-            precedence);
+            precedence
+        );
     }
 
     [Theory]
     [MemberData(nameof(BoundaryCases))]
-    public void WindowsBoundaryRecordsLossOnlyAboveCapacity(
-        string stageName,
-        int count,
-        bool expectedLoss)
+    public void WindowsBoundaryRecordsLossOnlyAboveCapacity(string stageName, int count, bool expectedLoss)
     {
         // Given: Waitモードの有限チャネルとWindowsの容量
         var channel = RealtimeEventChannel.Create();
         var state = new EventDeliveryState(7);
-        var stage = stageName == "connection"
-            ? EventDeliveryStage.Source
-            : EventDeliveryStage.Merge;
-        var writer = new EventDeliveryWriter(
-            channel.Writer,
-            state,
-            stage,
-            RealtimeEventChannel.Capacity);
+        var stage = stageName == "connection" ? EventDeliveryStage.Source : EventDeliveryStage.Merge;
+        var writer = new EventDeliveryWriter(channel.Writer, state, stage, RealtimeEventChannel.Capacity);
 
         // When: 本文を含まないイベントを境界数だけ配送する
         for (var index = 0; index < count; index++)
         {
-            writer.TryDeliver(new RealtimeTranslationStreamEvent(
-                RealtimeTranslationLane.Source,
-                new RealtimeTranslationServerEvent.SessionCreated(null),
-                state.Epoch));
+            writer.TryDeliver(
+                new RealtimeTranslationStreamEvent(
+                    RealtimeTranslationLane.Source,
+                    new RealtimeTranslationServerEvent.SessionCreated(null),
+                    state.Epoch
+                )
+            );
         }
 
         // Then: 容量超過だけがイベント損失になる
@@ -127,8 +121,7 @@ public sealed class ReceiveOverflowFixtureTests
         Assert.False(state.TryRecordTermination(EventDeliveryTermination.None));
     }
 
-    private static EventDeliveryTermination ParseTermination(
-        System.Text.Json.Nodes.JsonNode? value) =>
+    private static EventDeliveryTermination ParseTermination(System.Text.Json.Nodes.JsonNode? value) =>
         SharedFixtures.Text(value) switch
         {
             "authenticationFailed" => EventDeliveryTermination.AuthenticationFailed,

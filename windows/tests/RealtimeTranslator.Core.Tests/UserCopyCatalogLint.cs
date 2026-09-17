@@ -10,7 +10,8 @@ internal static class UserCopyCatalogLint
 {
     private static readonly Regex PlaceholderPattern = new(
         @"\{([A-Za-z_][A-Za-z0-9_]*)\}",
-        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+        RegexOptions.CultureInvariant | RegexOptions.Compiled
+    );
 
     public static IReadOnlyList<string> DuplicateKeys(string json)
     {

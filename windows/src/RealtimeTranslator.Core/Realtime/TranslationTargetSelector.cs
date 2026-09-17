@@ -5,7 +5,8 @@ namespace RealtimeTranslator.Core.Realtime;
 
 public readonly record struct TranslationTargetSelection(
     RealtimeTranslationOutputLanguage? Target,
-    int ReverseEvidenceCount);
+    int ReverseEvidenceCount
+);
 
 /// <summary>pair と evidence から翻訳出力 target を調停する純粋な状態遷移。</summary>
 public static class TranslationTargetSelector
@@ -19,7 +20,8 @@ public static class TranslationTargetSelector
         RealtimeTranslationOutputLanguage? currentTarget,
         int reverseEvidenceCount,
         SpokenLanguageEvidence evidence,
-        OppositeScriptRun? oppositeRun = null)
+        OppositeScriptRun? oppositeRun = null
+    )
     {
         var candidate = CandidateTarget(pair, evidence, currentTarget is null);
         if (candidate is null)
@@ -39,38 +41,33 @@ public static class TranslationTargetSelector
 
         if (pair != LanguagePair.EnEs)
         {
-            var shouldSwitch = oppositeRun is { } run
+            var shouldSwitch =
+                oppositeRun is { } run
                 && evidence switch
                 {
-                    SpokenLanguageEvidence.English or SpokenLanguageEvidence.Spanish =>
-                        run.LatinWordCount >= ScriptSwitchMinimumLatinWords
+                    SpokenLanguageEvidence.English or SpokenLanguageEvidence.Spanish => run.LatinWordCount
+                        >= ScriptSwitchMinimumLatinWords
                         && run.LatinScalarCount >= ScriptSwitchMinimumLatinScalars,
-                    SpokenLanguageEvidence.Japanese =>
-                        run.JapaneseScalarCount >= ScriptSwitchMinimumJapaneseScalars,
+                    SpokenLanguageEvidence.Japanese => run.JapaneseScalarCount >= ScriptSwitchMinimumJapaneseScalars,
                     _ => false,
                 };
             return new(shouldSwitch ? candidate : currentTarget, 0);
         }
 
         var nextCount = reverseEvidenceCount + 1;
-        return nextCount >= 2
-            ? new(candidate, 0)
-            : new(currentTarget, nextCount);
+        return nextCount >= 2 ? new(candidate, 0) : new(currentTarget, nextCount);
     }
 
     private static RealtimeTranslationOutputLanguage? CandidateTarget(
         LanguagePair pair,
         SpokenLanguageEvidence evidence,
-        bool isInitial)
+        bool isInitial
+    )
     {
-        if (evidence == SpokenLanguageEvidence.AmbiguousLatin
-            && isInitial
-            && pair != LanguagePair.EnEs)
+        if (evidence == SpokenLanguageEvidence.AmbiguousLatin && isInitial && pair != LanguagePair.EnEs)
         {
             var latinLanguage = pair.Counterpart(SpokenLanguage.Japanese);
-            return latinLanguage is { } language
-                ? pair.TranslationTarget(language)
-                : null;
+            return latinLanguage is { } language ? pair.TranslationTarget(language) : null;
         }
 
         return evidence switch

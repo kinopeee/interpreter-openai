@@ -23,9 +23,7 @@ public sealed class SubtitleTailClipperTests
         Assert.StartsWith(SubtitleTailClipper.Ellipsis, clipped, StringComparison.Ordinal);
         var body = clipped[SubtitleTailClipper.Ellipsis.Length..];
         Assert.Equal(SubtitleTailClipper.EnglishCharacterLimit, CountTextElements(body));
-        Assert.False(
-            IsCombiningMark(Rune.GetRuneAt(body, 0)),
-            "suffix must not start with a combining mark");
+        Assert.False(IsCombiningMark(Rune.GetRuneAt(body, 0)), "suffix must not start with a combining mark");
         Assert.StartsWith(unit, body, StringComparison.Ordinal);
         Assert.EndsWith(unit, body, StringComparison.Ordinal);
     }
@@ -56,7 +54,8 @@ public sealed class SubtitleTailClipperTests
 
             Assert.True(
                 index == 0 || clipped[index - 1] is ' ' or '…',
-                "inverted punctuation must sit on a character boundary, not mid-word");
+                "inverted punctuation must sit on a character boundary, not mid-word"
+            );
         }
     }
 
@@ -93,7 +92,8 @@ public sealed class SubtitleTailClipperTests
     }
 
     private static bool IsCombiningMark(Rune rune) =>
-        Rune.GetUnicodeCategory(rune) is UnicodeCategory.NonSpacingMark
-            or UnicodeCategory.SpacingCombiningMark
-            or UnicodeCategory.EnclosingMark;
+        Rune.GetUnicodeCategory(rune)
+            is UnicodeCategory.NonSpacingMark
+                or UnicodeCategory.SpacingCombiningMark
+                or UnicodeCategory.EnclosingMark;
 }

@@ -58,10 +58,12 @@ final class CapturedAudioBufferPool: @unchecked Sendable {
         buffers.reserveCapacity(capacity)
 
         for index in 0..<capacity {
-            guard let buffer = AVAudioPCMBuffer(
-                pcmFormat: format,
-                frameCapacity: frameCapacity
-            ) else {
+            guard
+                let buffer = AVAudioPCMBuffer(
+                    pcmFormat: format,
+                    frameCapacity: frameCapacity
+                )
+            else {
                 return nil
             }
             buffers.append(
@@ -76,8 +78,8 @@ final class CapturedAudioBufferPool: @unchecked Sendable {
 
     func capture(_ source: AVAudioPCMBuffer) -> CapturedAudioBuffer? {
         guard source.frameLength <= frameCapacity,
-              formatsMatch(source.format, format),
-              let index = availableIndices.withLock({ $0.popLast() })
+            formatsMatch(source.format, format),
+            let index = availableIndices.withLock({ $0.popLast() })
         else {
             return nil
         }
@@ -127,7 +129,7 @@ final class CapturedAudioBufferPool: @unchecked Sendable {
             }
             if sourceByteCount > 0 {
                 guard let sourceData = sourceBuffer.mData,
-                      let destinationData = destinationBuffers[index].mData
+                    let destinationData = destinationBuffers[index].mData
                 else {
                     return false
                 }

@@ -40,7 +40,11 @@ public sealed class DualRealtimeTranslationClientTuningTests
     public void ZeroPrerollLimitDisablesRetention()
     {
         var queues = new TranslationFrameQueues(
-            DualRealtimeTranslationClientTuning.Default with { PrerollFrameLimit = 0 });
+            DualRealtimeTranslationClientTuning.Default with
+            {
+                PrerollFrameLimit = 0,
+            }
+        );
         queues.AppendPreroll(new byte[] { 0x11 });
         Assert.Empty(queues.PrerollFrames);
     }
@@ -53,11 +57,7 @@ public sealed class DualRealtimeTranslationClientTuningTests
     [InlineData(40, -1, 3, 250)]
     [InlineData(40, 80, -1, 250)]
     [InlineData(40, 80, 3, -1)]
-    public void NegativeCapacityAndBudgetAreRejected(
-        int preroll,
-        int pending,
-        int failures,
-        int drainMs)
+    public void NegativeCapacityAndBudgetAreRejected(int preroll, int pending, int failures, int drainMs)
     {
         var tuning = DualRealtimeTranslationClientTuning.Default with
         {
@@ -106,17 +106,19 @@ public sealed class DualRealtimeTranslationClientTuningTests
         Assert.Throws<ArgumentOutOfRangeException>(() => CreateDual(tuning));
     }
 
-    private static DualRealtimeTranslationClient CreateDual(
-        DualRealtimeTranslationClientTuning? tuning = null) =>
+    private static DualRealtimeTranslationClient CreateDual(DualRealtimeTranslationClientTuning? tuning = null) =>
         new(
             new RealtimeSourceTranscriptionConnection(new FakeRealtimeServerTransport(), "test-safety"),
             new RealtimeTranslationConnection(
                 RealtimeTranslationOutputLanguage.English,
                 new FakeRealtimeServerTransport(),
-                "test-safety"),
+                "test-safety"
+            ),
             new RealtimeTranslationConnection(
                 RealtimeTranslationOutputLanguage.Japanese,
                 new FakeRealtimeServerTransport(),
-                "test-safety"),
-            clientTuning: tuning);
+                "test-safety"
+            ),
+            clientTuning: tuning
+        );
 }

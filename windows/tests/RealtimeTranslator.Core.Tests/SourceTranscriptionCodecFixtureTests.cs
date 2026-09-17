@@ -3,8 +3,8 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using System.Text.Json.Nodes;
-using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.OpenAI;
 using Xunit;
 
 namespace RealtimeTranslator.Core.Tests;
@@ -33,7 +33,8 @@ public sealed class SourceTranscriptionCodecFixtureTests
         var expected = fixture["expected"];
         Assert.True(
             SharedFixtures.JsonEquals(actual, expected),
-            $"expected {SharedFixtures.Canonical(expected)} but encoded {SharedFixtures.Canonical(actual)}");
+            $"expected {SharedFixtures.Canonical(expected)} but encoded {SharedFixtures.Canonical(actual)}"
+        );
     }
 
     // Given: fixture の文字起こし接続からのサーバーメッセージ
@@ -57,9 +58,7 @@ public sealed class SourceTranscriptionCodecFixtureTests
             case "sessionCreated":
             {
                 var typed = Assert.IsType<RealtimeSourceTranscriptionServerEvent.SessionCreated>(actual);
-                Assert.Equal(
-                    SharedFixtures.OptionalLong(expected["expiresAt"]),
-                    typed.ExpiresAtUnixSeconds);
+                Assert.Equal(SharedFixtures.OptionalLong(expected["expiresAt"]), typed.ExpiresAtUnixSeconds);
                 break;
             }
 
@@ -118,7 +117,8 @@ public sealed class SourceTranscriptionCodecFixtureTests
     public void AuthErrorIsTaggedTranscriptionAndRedactsKeyMaterial()
     {
         var utf8 = Encoding.UTF8.GetBytes(
-            """{"type":"error","error":{"message":"Incorrect API key sk-codec-xyz","code":"invalid_api_key"}}""");
+            """{"type":"error","error":{"message":"Incorrect API key sk-codec-xyz","code":"invalid_api_key"}}"""
+        );
 
         var actual = RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8);
         var error = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
@@ -136,10 +136,10 @@ public sealed class SourceTranscriptionCodecFixtureTests
     public void FatalRuntimeErrorIsTaggedTranscriptionAndRedactsKeyMaterial()
     {
         var utf8 = Encoding.UTF8.GetBytes(
-            """{"type":"error","error":{"message":"upstream echo sk-codec-fatal","code":"upstream_failure"}}""");
+            """{"type":"error","error":{"message":"upstream echo sk-codec-fatal","code":"upstream_failure"}}"""
+        );
 
-        var classified = RealtimeSourceTranscriptionCodec.ClassifyError(
-            JsonNode.Parse(utf8)!.AsObject());
+        var classified = RealtimeSourceTranscriptionCodec.ClassifyError(JsonNode.Parse(utf8)!.AsObject());
         var actual = RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8);
         var error = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
 
@@ -159,8 +159,9 @@ public sealed class SourceTranscriptionCodecFixtureTests
     {
         // Given: 壊れた JSON
         // When: 復号を試みる
-        var error = Assert.Throws<RealtimeTranslationException>(
-            () => RealtimeSourceTranscriptionCodec.DecodeServerEvent(Encoding.UTF8.GetBytes("{\"type\":")));
+        var error = Assert.Throws<RealtimeTranslationException>(() =>
+            RealtimeSourceTranscriptionCodec.DecodeServerEvent(Encoding.UTF8.GetBytes("{\"type\":"))
+        );
 
         // Then: InvalidMessage に正規化される
         Assert.Equal(RealtimeTranslationErrorKind.InvalidMessage, error.Kind);
@@ -169,17 +170,20 @@ public sealed class SourceTranscriptionCodecFixtureTests
     private static RealtimeSourceTranscriptionClientEvent ClientEvent(JsonObject fixture) =>
         SharedFixtures.Text(fixture["kind"]) switch
         {
-        "sessionUpdate" => new RealtimeSourceTranscriptionClientEvent.SessionUpdate(
+            "sessionUpdate" => new RealtimeSourceTranscriptionClientEvent.SessionUpdate(
                 new RealtimeSessionTuning(
-                    RealtimeTranslationWireValues.ParseNoiseReduction(
-                        SharedFixtures.Text(fixture["noiseReduction"])),
+                    RealtimeTranslationWireValues.ParseNoiseReduction(SharedFixtures.Text(fixture["noiseReduction"])),
                     RealtimeTranslationWireValues.ParseTranscriptionDelay(
-                        SharedFixtures.Text(fixture["transcriptionDelay"])),
+                        SharedFixtures.Text(fixture["transcriptionDelay"])
+                    ),
                     SharedFixtures.Text(fixture["prompt"]),
-                    Keywords(fixture["keywords"]!.AsArray())),
-                PairFromLanguages(fixture["languages"])),
+                    Keywords(fixture["keywords"]!.AsArray())
+                ),
+                PairFromLanguages(fixture["languages"])
+            ),
             "inputAudioBufferAppend" => new RealtimeSourceTranscriptionClientEvent.InputAudioBufferAppend(
-                SharedFixtures.Text(fixture["base64Audio"])),
+                SharedFixtures.Text(fixture["base64Audio"])
+            ),
             "commit" => new RealtimeSourceTranscriptionClientEvent.Commit(),
             _ => throw new Xunit.Sdk.XunitException("unhandled client event kind"),
         };

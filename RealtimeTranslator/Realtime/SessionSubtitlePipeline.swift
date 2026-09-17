@@ -173,7 +173,7 @@ final class SessionSubtitlePipeline {
     /// 停止・再接続・致命エラーで epoch/buffer を捨てる直前に呼び、字幕記録の欠落を防ぐ。
     func flushPendingFinalizeIfNeeded() {
         if let feed = activeFeedProvider(),
-           checkEventLoss(feed, generation: lifecycleGenerationProvider())
+            checkEventLoss(feed, generation: lifecycleGenerationProvider())
         {
             return
         }
@@ -218,7 +218,7 @@ final class SessionSubtitlePipeline {
 
     func enqueueRender(_ update: RealtimeSubtitleUpdate) {
         if let feed = activeFeedProvider(),
-           checkEventLoss(feed, generation: lifecycleGenerationProvider())
+            checkEventLoss(feed, generation: lifecycleGenerationProvider())
         {
             return
         }
@@ -236,7 +236,7 @@ final class SessionSubtitlePipeline {
         isReplay: Bool = false
     ) -> RealtimeSubtitleProcessingResult? {
         if let feed = activeFeedProvider(),
-           checkEventLoss(feed, generation: lifecycleGenerationProvider())
+            checkEventLoss(feed, generation: lifecycleGenerationProvider())
         {
             return nil
         }

@@ -25,16 +25,15 @@ public static class SubtitleTranscriptFormatter
 
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"--- {timestamp}\n原文: {sourceText}\n訳文: {translatedText}\n\n");
+            $"--- {timestamp}\n原文: {sourceText}\n訳文: {translatedText}\n\n"
+        );
     }
 
     public static string FormatSessionStart(string timestamp)
     {
         ArgumentNullException.ThrowIfNull(timestamp);
 
-        return string.Create(
-            CultureInfo.InvariantCulture,
-            $"=== 録音開始 {timestamp}\n\n");
+        return string.Create(CultureInfo.InvariantCulture, $"=== 録音開始 {timestamp}\n\n");
     }
 
     /// <summary>ローカルオフセット付き ISO8601。UTC は macOS の <c>XXXXX</c> と同様に <c>Z</c>。</summary>
@@ -42,9 +41,7 @@ public static class SubtitleTranscriptFormatter
     {
         if (timestamp.Offset == TimeSpan.Zero)
         {
-            return timestamp.UtcDateTime.ToString(
-                "yyyy-MM-dd'T'HH:mm:ss'Z'",
-                CultureInfo.InvariantCulture);
+            return timestamp.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
         }
 
         return timestamp.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);

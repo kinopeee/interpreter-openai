@@ -22,7 +22,8 @@ public sealed class PrivacyFixtureTests
         // When/Then: GenericServerMessage が一致する
         Assert.Equal(
             SharedFixtures.Text(SharedFixtures.Load("privacy")["genericErrorMessage"]),
-            RealtimeTranslationException.GenericServerMessage);
+            RealtimeTranslationException.GenericServerMessage
+        );
     }
 
     // Given: ui.json の error.genericServer ja
@@ -34,7 +35,8 @@ public sealed class PrivacyFixtureTests
         var ja = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.Ja);
         Assert.Equal(
             SharedFixtures.Text(SharedFixtures.Load("privacy")["genericErrorMessage"]),
-            ja.Text("error.genericServer"));
+            ja.Text("error.genericServer")
+        );
     }
 
     // Given: 資格情報や内部情報を含みうるサーバーメッセージ
@@ -50,7 +52,8 @@ public sealed class PrivacyFixtureTests
         // When/Then: 資格情報を含む文言は汎用メッセージへ落ちる
         Assert.Equal(
             SharedFixtures.Text(fixture["expected"]),
-            RealtimeTranslationException.SanitizeServerMessage(SharedFixtures.Text(fixture["input"])));
+            RealtimeTranslationException.SanitizeServerMessage(SharedFixtures.Text(fixture["input"]))
+        );
     }
 
     // Given: fixture の認証失敗・非認証エラー
@@ -68,7 +71,9 @@ public sealed class PrivacyFixtureTests
             SharedFixtures.Flag(fixture["expected"]),
             RealtimeTranslationException.IsAuthenticationFailure(
                 SharedFixtures.OptionalText(fixture["code"]),
-                SharedFixtures.Text(fixture["message"])));
+                SharedFixtures.Text(fixture["message"])
+            )
+        );
     }
 
     // Given: fixture のエラー種別と回復可否対応表
@@ -86,7 +91,8 @@ public sealed class PrivacyFixtureTests
             // When/Then: IsRecoverable が一致する
             Assert.Equal(
                 SharedFixtures.Flag(fixture["isRecoverable"]),
-                new RealtimeTranslationException(kind).IsRecoverable);
+                new RealtimeTranslationException(kind).IsRecoverable
+            );
         }
     }
 
@@ -101,7 +107,8 @@ public sealed class PrivacyFixtureTests
         // When: FatalServerError を作る
         var error = new RealtimeTranslationException(
             RealtimeTranslationErrorKind.FatalServerError,
-            "Bearer sk-should-never-surface");
+            "Bearer sk-should-never-surface"
+        );
 
         // Then: 表示用 Message は汎用文言になる
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
@@ -118,7 +125,8 @@ public sealed class PrivacyFixtureTests
     {
         var error = new RealtimeTranslationException(
             RealtimeTranslationErrorKind.AuthenticationFailed,
-            "Incorrect API key provided: sk-should-never-surface");
+            "Incorrect API key provided: sk-should-never-surface"
+        );
 
         Assert.Null(error.ServerMessage);
         Assert.DoesNotContain("sk-", error.Message, StringComparison.OrdinalIgnoreCase);
@@ -133,22 +141,28 @@ public sealed class PrivacyFixtureTests
     {
         Assert.Equal(
             RealtimeTranslationException.GenericServerMessage,
-            RealtimeTranslationException.SanitizeServerMessage("invalid key s\u200bk-abcdef"));
+            RealtimeTranslationException.SanitizeServerMessage("invalid key s\u200bk-abcdef")
+        );
         Assert.Equal(
             RealtimeTranslationException.GenericServerMessage,
-            RealtimeTranslationException.SanitizeServerMessage("Incorrect API\u00a0key provided"));
+            RealtimeTranslationException.SanitizeServerMessage("Incorrect API\u00a0key provided")
+        );
         Assert.Equal(
             RealtimeTranslationException.GenericServerMessage,
-            RealtimeTranslationException.SanitizeServerMessage("Missing bearer\u00a0or basic authentication"));
+            RealtimeTranslationException.SanitizeServerMessage("Missing bearer\u00a0or basic authentication")
+        );
         Assert.Equal(
             RealtimeTranslationException.GenericServerMessage,
-            RealtimeTranslationException.SanitizeServerMessage("invalid key s\tk-abcdef"));
+            RealtimeTranslationException.SanitizeServerMessage("invalid key s\tk-abcdef")
+        );
         Assert.Equal(
             RealtimeTranslationException.GenericServerMessage,
-            RealtimeTranslationException.SanitizeServerMessage("Incorrect API\tkey provided"));
+            RealtimeTranslationException.SanitizeServerMessage("Incorrect API\tkey provided")
+        );
         Assert.Equal(
             RealtimeTranslationException.GenericServerMessage,
-            RealtimeTranslationException.SanitizeServerMessage("Bearer\tabc123 is not valid"));
+            RealtimeTranslationException.SanitizeServerMessage("Bearer\tabc123 is not valid")
+        );
         Assert.Equal("bearerless request", RealtimeTranslationException.SanitizeServerMessage("bearerless request"));
     }
 
@@ -158,30 +172,12 @@ public sealed class PrivacyFixtureTests
     [Fact]
     public void AuthenticationDetectionSurvivesUnicodeObfuscationWithoutFalsePositives()
     {
-        Assert.True(
-            RealtimeTranslationException.IsAuthenticationFailure(
-                null,
-                "Incorrect API\u00a0key provided"));
-        Assert.True(
-            RealtimeTranslationException.IsAuthenticationFailure(
-                "invalid_api\u200b_key",
-                string.Empty));
-        Assert.True(
-            RealtimeTranslationException.IsAuthenticationFailure(
-                "invalid_api\t_key",
-                string.Empty));
-        Assert.False(
-            RealtimeTranslationException.IsAuthenticationFailure(
-                "authority_error",
-                "authority mismatch"));
-        Assert.False(
-            RealtimeTranslationException.IsAuthenticationFailure(
-                null,
-                "error 4010 occurred"));
-        Assert.False(
-            RealtimeTranslationException.IsAuthenticationFailure(
-                null,
-                "error 4\t01 occurred"));
+        Assert.True(RealtimeTranslationException.IsAuthenticationFailure(null, "Incorrect API\u00a0key provided"));
+        Assert.True(RealtimeTranslationException.IsAuthenticationFailure("invalid_api\u200b_key", string.Empty));
+        Assert.True(RealtimeTranslationException.IsAuthenticationFailure("invalid_api\t_key", string.Empty));
+        Assert.False(RealtimeTranslationException.IsAuthenticationFailure("authority_error", "authority mismatch"));
+        Assert.False(RealtimeTranslationException.IsAuthenticationFailure(null, "error 4010 occurred"));
+        Assert.False(RealtimeTranslationException.IsAuthenticationFailure(null, "error 4\t01 occurred"));
     }
 
     // Given: 各エラー種別
@@ -214,10 +210,12 @@ public sealed class PrivacyFixtureTests
     {
         Assert.Equal(
             RealtimeTranslationException.GenericServerMessage,
-            RealtimeTranslationException.SanitizeServerMessage(string.Empty));
+            RealtimeTranslationException.SanitizeServerMessage(string.Empty)
+        );
         Assert.Equal(
             RealtimeTranslationException.GenericServerMessage,
-            new RealtimeTranslationException(RealtimeTranslationErrorKind.FatalServerError, string.Empty).Message);
+            new RealtimeTranslationException(RealtimeTranslationErrorKind.FatalServerError, string.Empty).Message
+        );
 
         var en = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.En);
         (RealtimeTranslationErrorKind Kind, string Key)[] cases =
@@ -231,26 +229,26 @@ public sealed class PrivacyFixtureTests
             Assert.Contains("API key", catalogText, StringComparison.OrdinalIgnoreCase);
             Assert.Equal(
                 RealtimeTranslationException.GenericServerMessage,
-                RealtimeTranslationException.SanitizeServerMessage(catalogText));
-            Assert.Equal(
-                catalogText,
-                new RealtimeTranslationException(kind, serverMessage: null, en).Message);
+                RealtimeTranslationException.SanitizeServerMessage(catalogText)
+            );
+            Assert.Equal(catalogText, new RealtimeTranslationException(kind, serverMessage: null, en).Message);
         }
     }
 
-    private static RealtimeTranslationErrorKind ParseKind(string value) => value switch
-    {
-        "missingAPIKey" => RealtimeTranslationErrorKind.MissingApiKey,
-        "notConnected" => RealtimeTranslationErrorKind.NotConnected,
-        "invalidMessage" => RealtimeTranslationErrorKind.InvalidMessage,
-        "authenticationFailed" => RealtimeTranslationErrorKind.AuthenticationFailed,
-         "fatalServerError" => RealtimeTranslationErrorKind.FatalServerError,
-         "recoverableTransportFailure" => RealtimeTranslationErrorKind.RecoverableTransportFailure,
-         "receiveOverflow" => RealtimeTranslationErrorKind.ReceiveOverflow,
-         "recoverableServerError" => RealtimeTranslationErrorKind.RecoverableServerError,
-        "sessionUpdateTimeout" => RealtimeTranslationErrorKind.SessionUpdateTimeout,
-        "closeTimeout" => RealtimeTranslationErrorKind.CloseTimeout,
-        "cancelled" => RealtimeTranslationErrorKind.Cancelled,
-        _ => throw new Xunit.Sdk.XunitException("unhandled error kind " + value),
-    };
+    private static RealtimeTranslationErrorKind ParseKind(string value) =>
+        value switch
+        {
+            "missingAPIKey" => RealtimeTranslationErrorKind.MissingApiKey,
+            "notConnected" => RealtimeTranslationErrorKind.NotConnected,
+            "invalidMessage" => RealtimeTranslationErrorKind.InvalidMessage,
+            "authenticationFailed" => RealtimeTranslationErrorKind.AuthenticationFailed,
+            "fatalServerError" => RealtimeTranslationErrorKind.FatalServerError,
+            "recoverableTransportFailure" => RealtimeTranslationErrorKind.RecoverableTransportFailure,
+            "receiveOverflow" => RealtimeTranslationErrorKind.ReceiveOverflow,
+            "recoverableServerError" => RealtimeTranslationErrorKind.RecoverableServerError,
+            "sessionUpdateTimeout" => RealtimeTranslationErrorKind.SessionUpdateTimeout,
+            "closeTimeout" => RealtimeTranslationErrorKind.CloseTimeout,
+            "cancelled" => RealtimeTranslationErrorKind.Cancelled,
+            _ => throw new Xunit.Sdk.XunitException("unhandled error kind " + value),
+        };
 }

@@ -110,19 +110,23 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
             self.connections = injected
         } else {
             let safetyIdentifier = OpenAISafetyIdentifier.hashedValue()
-            self.sourceConnection = sourceConnection
+            self.sourceConnection =
+                sourceConnection
                 ?? RealtimeSourceTranscriptionConnection(safetyIdentifier: safetyIdentifier)
-            let english = englishConnection
+            let english =
+                englishConnection
                 ?? RealtimeTranslationConnection(
                     target: .english,
                     safetyIdentifier: safetyIdentifier
                 )
-            let japanese = japaneseConnection
+            let japanese =
+                japaneseConnection
                 ?? RealtimeTranslationConnection(
                     target: .japanese,
                     safetyIdentifier: safetyIdentifier
                 )
-            let spanish = spanishConnection
+            let spanish =
+                spanishConnection
                 ?? RealtimeTranslationConnection(
                     target: .spanish,
                     safetyIdentifier: safetyIdentifier
@@ -497,8 +501,8 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
                         if case .inputTranscriptDelta = event.event {
                             await self.noteSourceDelta()
                         }
-                            await self.forwardMergedEvent(
-                                RealtimeTranslationStreamEvent(
+                        await self.forwardMergedEvent(
+                            RealtimeTranslationStreamEvent(
                                 lane: event.lane,
                                 event: event.event,
                                 epoch: epoch

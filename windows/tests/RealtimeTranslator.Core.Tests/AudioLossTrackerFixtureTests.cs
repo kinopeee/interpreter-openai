@@ -34,18 +34,13 @@ public sealed class AudioLossTrackerFixtureTests
         var policy = AudioLossPolicy.Default;
 
         Assert.Equal(SharedFixtures.Number(loss["frameDurationMs"]), policy.FrameDurationMilliseconds);
-        Assert.Equal(
-            SharedFixtures.Number(reconnect["lostMsThreshold"]),
-            policy.ReconnectLostMillisecondsThreshold);
-        Assert.Equal(
-            SharedFixtures.Number(reconnect["windowMs"]),
-            policy.ReconnectWindowMilliseconds);
-        Assert.Equal(
-            SharedFixtures.Number(loss["sendQueueFrameCapacity"]),
-            AudioLossPolicy.SendQueueFrameCapacity);
+        Assert.Equal(SharedFixtures.Number(reconnect["lostMsThreshold"]), policy.ReconnectLostMillisecondsThreshold);
+        Assert.Equal(SharedFixtures.Number(reconnect["windowMs"]), policy.ReconnectWindowMilliseconds);
+        Assert.Equal(SharedFixtures.Number(loss["sendQueueFrameCapacity"]), AudioLossPolicy.SendQueueFrameCapacity);
         Assert.Equal(
             SharedFixtures.Number(loss["taintedSegmentWindowMs"]),
-            RealtimeSubtitleAssembler.AudioLossTaintWindow.TotalMilliseconds);
+            RealtimeSubtitleAssembler.AudioLossTaintWindow.TotalMilliseconds
+        );
     }
 
     // Given: すべての値が 0 の default(AudioLossPolicy)
@@ -54,8 +49,7 @@ public sealed class AudioLossTrackerFixtureTests
     [Fact]
     public void RejectsZeroInitializedPolicy()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(
-            () => new AudioLossTracker(default(AudioLossPolicy)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new AudioLossTracker(default(AudioLossPolicy)));
 
         _ = new AudioLossTracker();
         _ = new AudioLossTracker(AudioLossPolicy.Default);
@@ -85,7 +79,8 @@ public sealed class AudioLossTrackerFixtureTests
                 frame["sequence"]!.GetValue<long>(),
                 SharedFixtures.Number(frame["discardedMs"]),
                 SharedFixtures.Number(frame["queueWaitMs"]),
-                atMilliseconds);
+                atMilliseconds
+            );
 
             if (observation.ShouldReconnect)
             {
@@ -97,9 +92,7 @@ public sealed class AudioLossTrackerFixtureTests
         Assert.Equal(SharedFixtures.Number(expected["droppedFrames"]), tracker.Metrics.DroppedFrames);
         Assert.Equal(SharedFixtures.Number(expected["lostMs"]), tracker.Metrics.LostMilliseconds);
         Assert.Equal(SharedFixtures.Number(expected["lossEvents"]), tracker.Metrics.LossEvents);
-        Assert.Equal(
-            SharedFixtures.Number(expected["maxQueueWaitMs"]),
-            tracker.Metrics.MaxQueueWaitMilliseconds);
+        Assert.Equal(SharedFixtures.Number(expected["maxQueueWaitMs"]), tracker.Metrics.MaxQueueWaitMilliseconds);
         Assert.Equal(reconnectAt, observedReconnectAt);
     }
 }

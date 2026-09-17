@@ -18,7 +18,8 @@ public sealed class SubtitleSnapshotBuilderClosingTests
         var builder = new SubtitleSnapshotBuilder();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
-            TranslationState.Listening);
+            TranslationState.Listening
+        );
 
         var snapshot = builder.Apply(TranslationState.Closing);
 

@@ -30,14 +30,17 @@ public sealed class DualRealtimeTranslationClientSourceIgnoredDeltaTests
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         source.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","delta":"","event_id":"empty-1"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","delta":"","event_id":"empty-1"}"""
+        );
         source.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"alive","event_id":"alive-1"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"alive","event_id":"alive-1"}"""
+        );
 
         Assert.Equal(["alive"], await CollectSourceDeltasAsync(dual, 1));
 
         source.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"still","event_id":"alive-2"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"still","event_id":"alive-2"}"""
+        );
 
         Assert.Equal(["still"], await CollectSourceDeltasAsync(dual, 1));
         await dual.ForceCloseAsync();
@@ -58,7 +61,8 @@ public sealed class DualRealtimeTranslationClientSourceIgnoredDeltaTests
 
         source.EnqueueJson("""{"type":"session.input_transcript.delta","delta":"pollute"}""");
         source.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"kept","event_id":"kept-1"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"kept","event_id":"kept-1"}"""
+        );
 
         Assert.Equal(["kept"], await CollectSourceDeltasAsync(dual, 1));
         await dual.ForceCloseAsync();
@@ -91,7 +95,8 @@ public sealed class DualRealtimeTranslationClientSourceIgnoredDeltaTests
         Assert.Equal(UserCopy.Current.Text("error.sourceSessionGeneric"), error.Message);
 
         source.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"after-error","event_id":"after-1"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"after-error","event_id":"after-1"}"""
+        );
 
         Assert.Equal(["after-error"], await CollectSourceDeltasAsync(dual, 1));
         await dual.ForceCloseAsync();
@@ -100,21 +105,15 @@ public sealed class DualRealtimeTranslationClientSourceIgnoredDeltaTests
     private static DualRealtimeTranslationClient CreateDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,
-        FakeRealtimeServerTransport japanese) =>
+        FakeRealtimeServerTransport japanese
+    ) =>
         new(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.English,
-                english,
-                "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.Japanese,
-                japanese,
-                "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
 
-    private static async Task<List<string>> CollectSourceDeltasAsync(
-        DualRealtimeTranslationClient dual,
-        int count)
+    private static async Task<List<string>> CollectSourceDeltasAsync(DualRealtimeTranslationClient dual, int count)
     {
         var deltas = new List<string>(count);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));

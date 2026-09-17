@@ -27,12 +27,11 @@ public sealed class TuningFixtureTests
     {
         var jaEs = RealtimeSessionTuning.Default.ForPair(LanguagePair.JaEs);
 
-        Assert.Equal(
-            RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEs),
-            jaEs.TranscriptionPrompt);
+        Assert.Equal(RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEs), jaEs.TranscriptionPrompt);
         Assert.Equal(
             RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEs).ToArray(),
-            jaEs.TranscriptionKeywords.ToArray());
+            jaEs.TranscriptionKeywords.ToArray()
+        );
 
         var custom = RealtimeSessionTuning.Default with
         {
@@ -59,7 +58,8 @@ public sealed class TuningFixtureTests
         Assert.Equal(RealtimeSessionTuning.DefaultPromptForPair(to), migrated.TranscriptionPrompt);
         Assert.Equal(
             RealtimeSessionTuning.DefaultKeywordsForPair(to).ToArray(),
-            migrated.TranscriptionKeywords.ToArray());
+            migrated.TranscriptionKeywords.ToArray()
+        );
 
         var customPromptOnly = RealtimeSessionTuning.Default.ForPair(from) with
         {
@@ -69,7 +69,8 @@ public sealed class TuningFixtureTests
         Assert.Equal("Keep this prompt", promptPreserved.TranscriptionPrompt);
         Assert.Equal(
             RealtimeSessionTuning.DefaultKeywordsForPair(to).ToArray(),
-            promptPreserved.TranscriptionKeywords.ToArray());
+            promptPreserved.TranscriptionKeywords.ToArray()
+        );
 
         var customKeywordsOnly = RealtimeSessionTuning.Default.ForPair(from) with
         {
@@ -89,12 +90,11 @@ public sealed class TuningFixtureTests
         var limits = SharedFixtures.Load("tuning")["limits"]!.AsObject();
 
         Assert.Equal(SharedFixtures.Number(limits["keywordLimit"]), RealtimeSessionTuning.KeywordLimit);
-        Assert.Equal(
-            SharedFixtures.Number(limits["promptCharacterLimit"]),
-            RealtimeSessionTuning.PromptCharacterLimit);
+        Assert.Equal(SharedFixtures.Number(limits["promptCharacterLimit"]), RealtimeSessionTuning.PromptCharacterLimit);
         Assert.Equal(
             SharedFixtures.Text(limits["forbiddenKeywordCharacters"]),
-            RealtimeSessionTuning.ForbiddenKeywordCharacters);
+            RealtimeSessionTuning.ForbiddenKeywordCharacters
+        );
     }
 
     // Given: 1 行 1 語のキーワードテキスト
@@ -122,10 +122,12 @@ public sealed class TuningFixtureTests
 
         var input = string.Join(
             "\n",
-            Enumerable.Range(0, lineCount).Select(index => template.Replace(
-                "{index}",
-                index.ToString(CultureInfo.InvariantCulture),
-                StringComparison.Ordinal)));
+            Enumerable
+                .Range(0, lineCount)
+                .Select(index =>
+                    template.Replace("{index}", index.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                )
+        );
 
         var keywords = RealtimeSessionTuning.ParseKeywords(input, SharedFixtures.Number(fixture["limit"]));
 
@@ -156,7 +158,8 @@ public sealed class TuningFixtureTests
 
         Assert.Equal(
             SharedFixtures.Text(fixture["expected"]),
-            RealtimeSessionTuning.SanitizedPrompt(SharedFixtures.Text(fixture["input"])));
+            RealtimeSessionTuning.SanitizedPrompt(SharedFixtures.Text(fixture["input"]))
+        );
     }
 
     // Given: 上限を超える長さの ASCII prompt
@@ -168,11 +171,13 @@ public sealed class TuningFixtureTests
         var fixture = SharedFixtures.Load("tuning")["sanitizedPromptLimit"]!.AsObject();
         var input = new string(
             SharedFixtures.Text(fixture["repeatedCharacter"])[0],
-            SharedFixtures.Number(fixture["inputLength"]));
+            SharedFixtures.Number(fixture["inputLength"])
+        );
 
         Assert.Equal(
             SharedFixtures.Number(fixture["expectedLength"]),
-            RealtimeSessionTuning.SanitizedPrompt(input).Length);
+            RealtimeSessionTuning.SanitizedPrompt(input).Length
+        );
     }
 
     // Given: サロゲートペアで表される絵文字だけで上限を超える prompt
@@ -212,14 +217,13 @@ public sealed class TuningFixtureTests
     public void IsPromptOverCharacterLimitMatchesFixture(string name)
     {
         var fixture = SharedFixtures.Case("tuning", "isPromptOverCharacterLimit", name);
-        var input = new string(
-            SharedFixtures.Text(fixture["repeatedCharacter"])[0],
-            SharedFixtures.Number(fixture["inputLength"]))
-            + SharedFixtures.Text(fixture["suffix"]);
+        var input =
+            new string(
+                SharedFixtures.Text(fixture["repeatedCharacter"])[0],
+                SharedFixtures.Number(fixture["inputLength"])
+            ) + SharedFixtures.Text(fixture["suffix"]);
 
-        Assert.Equal(
-            SharedFixtures.Flag(fixture["expected"]),
-            RealtimeSessionTuning.IsPromptOverCharacterLimit(input));
+        Assert.Equal(SharedFixtures.Flag(fixture["expected"]), RealtimeSessionTuning.IsPromptOverCharacterLimit(input));
     }
 
     // Given: shared fixture の keyword 上限判定ケース
@@ -232,16 +236,20 @@ public sealed class TuningFixtureTests
         var fixture = SharedFixtures.Case("tuning", "isKeywordCountOverLimit", name);
         var template = SharedFixtures.Text(fixture["lineTemplate"]);
         var lineCount = SharedFixtures.Number(fixture["lineCount"]);
-        var input = string.Join(
-            "\n",
-            Enumerable.Range(0, lineCount).Select(index => template.Replace(
-                "{index}",
-                index.ToString(CultureInfo.InvariantCulture),
-                StringComparison.Ordinal)))
-            + SharedFixtures.Text(fixture["suffix"]);
+        var input =
+            string.Join(
+                "\n",
+                Enumerable
+                    .Range(0, lineCount)
+                    .Select(index =>
+                        template.Replace(
+                            "{index}",
+                            index.ToString(CultureInfo.InvariantCulture),
+                            StringComparison.Ordinal
+                        )
+                    )
+            ) + SharedFixtures.Text(fixture["suffix"]);
 
-        Assert.Equal(
-            SharedFixtures.Flag(fixture["expected"]),
-            RealtimeSessionTuning.IsKeywordCountOverLimit(input));
+        Assert.Equal(SharedFixtures.Flag(fixture["expected"]), RealtimeSessionTuning.IsKeywordCountOverLimit(input));
     }
 }

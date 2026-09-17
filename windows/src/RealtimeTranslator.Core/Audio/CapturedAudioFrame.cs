@@ -7,4 +7,5 @@ public readonly record struct CapturedAudioFrame(
     long Sequence,
     ReadOnlyMemory<byte> Pcm16,
     int DiscardedMilliseconds,
-    long CapturedAtTimestamp);
+    long CapturedAtTimestamp
+);

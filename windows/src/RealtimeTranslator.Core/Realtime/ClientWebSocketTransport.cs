@@ -33,7 +33,8 @@ public sealed class ClientWebSocketTransport : IRealtimeWebSocketTransport, IDis
     public async Task ConnectAsync(
         Uri url,
         IReadOnlyDictionary<string, string> headers,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(headers);
@@ -60,14 +61,12 @@ public sealed class ClientWebSocketTransport : IRealtimeWebSocketTransport, IDis
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             await CloseAsync().ConfigureAwait(false);
-            throw new RealtimeTranslationException(
-                RealtimeTranslationErrorKind.RecoverableTransportFailure);
+            throw new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableTransportFailure);
         }
         catch (WebSocketException)
         {
             await CloseAsync().ConfigureAwait(false);
-            throw new RealtimeTranslationException(
-                RealtimeTranslationErrorKind.RecoverableTransportFailure);
+            throw new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableTransportFailure);
         }
     }
 
@@ -81,19 +80,16 @@ public sealed class ClientWebSocketTransport : IRealtimeWebSocketTransport, IDis
             timeout.CancelAfter(_sendTimeout);
             try
             {
-                await socket.SendAsync(utf8Json, WebSocketMessageType.Text, true, timeout.Token)
-                    .ConfigureAwait(false);
+                await socket.SendAsync(utf8Json, WebSocketMessageType.Text, true, timeout.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                throw new RealtimeTranslationException(
-                    RealtimeTranslationErrorKind.RecoverableTransportFailure);
+                throw new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableTransportFailure);
             }
             catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException)
             {
                 // CloseAsync と並行すると Abort/Dispose 済み socket へ触り得る。
-                throw new RealtimeTranslationException(
-                    RealtimeTranslationErrorKind.RecoverableTransportFailure);
+                throw new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableTransportFailure);
             }
         }
         finally
@@ -119,14 +115,12 @@ public sealed class ClientWebSocketTransport : IRealtimeWebSocketTransport, IDis
                 catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException)
                 {
                     // CloseAsync と並行すると Abort/Dispose 済み socket へ触り得る。
-                    throw new RealtimeTranslationException(
-                        RealtimeTranslationErrorKind.RecoverableTransportFailure);
+                    throw new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableTransportFailure);
                 }
 
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
-                    throw new RealtimeTranslationException(
-                        RealtimeTranslationErrorKind.RecoverableTransportFailure);
+                    throw new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableTransportFailure);
                 }
 
                 EnsureWithinMessageLimit(message.WrittenCount, result.Count);
@@ -180,8 +174,7 @@ public sealed class ClientWebSocketTransport : IRealtimeWebSocketTransport, IDis
     {
         if (incomingCount > MaxMessageBytes - writtenCount)
         {
-            throw new RealtimeTranslationException(
-                RealtimeTranslationErrorKind.RecoverableTransportFailure);
+            throw new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableTransportFailure);
         }
     }
 

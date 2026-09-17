@@ -45,9 +45,10 @@ public sealed class CapturedAudioFramePipeline
         };
 
         var samples = new MonoDownmixSampleProvider(_buffered.ToSampleProvider());
-        _resampled = samples.WaveFormat.SampleRate == Pcm16FramePacketizer.SampleRate
-            ? samples
-            : new WdlResamplingSampleProvider(samples, Pcm16FramePacketizer.SampleRate);
+        _resampled =
+            samples.WaveFormat.SampleRate == Pcm16FramePacketizer.SampleRate
+                ? samples
+                : new WdlResamplingSampleProvider(samples, Pcm16FramePacketizer.SampleRate);
     }
 
     public float CurrentGain => _gain.Gain;
@@ -98,8 +99,7 @@ public sealed class CapturedAudioFramePipeline
             if (count >= capacity)
             {
                 // 1 チャンクがバッファ全体以上なら、最新の capacity バイトだけ残す。
-                AddDiscardedBytesLocked(
-                    (long)_buffered.BufferedBytes + count - capacity);
+                AddDiscardedBytesLocked((long)_buffered.BufferedBytes + count - capacity);
                 _buffered.ClearBuffer();
                 _buffered.AddSamples(deviceBytes, count - capacity, capacity);
                 return;
@@ -253,8 +253,7 @@ public sealed class CapturedAudioFramePipeline
         return _packetizer.Append(Pcm16LittleEndianEncoder.Encode(samples, gain));
     }
 
-    private bool HasUnsentAudioLocked() =>
-        _packetizer.PendingByteCount > 0 || _buffered.BufferedBytes > 0;
+    private bool HasUnsentAudioLocked() => _packetizer.PendingByteCount > 0 || _buffered.BufferedBytes > 0;
 
     private int BytesRequiredForOutputSamples(int outputSamples)
     {

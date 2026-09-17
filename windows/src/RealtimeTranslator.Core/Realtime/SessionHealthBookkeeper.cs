@@ -35,7 +35,8 @@ internal sealed class SessionHealthBookkeeper
     public SessionHealthBookkeeper(
         SessionHealthThresholds? thresholds,
         Func<TimeSpan> nowProvider,
-        Func<long> wallNowUnixSecondsProvider)
+        Func<long> wallNowUnixSecondsProvider
+    )
     {
         ArgumentNullException.ThrowIfNull(nowProvider);
         ArgumentNullException.ThrowIfNull(wallNowUnixSecondsProvider);
@@ -76,11 +77,7 @@ internal sealed class SessionHealthBookkeeper
         ArgumentNullException.ThrowIfNull(deliveryState);
 
         var monitorNow = _nowProvider();
-        _monitor.BeginGeneration(
-            generation,
-            epoch,
-            _connectionCountInGeneration > 1,
-            monitorNow);
+        _monitor.BeginGeneration(generation, epoch, _connectionCountInGeneration > 1, monitorNow);
         _generationEnded = false;
         // handshake の受信を初回 tick で「新規受信」と誤認しないよう現数でシードする。
         _receiveCounts.Clear();
@@ -98,11 +95,11 @@ internal sealed class SessionHealthBookkeeper
             var expiry = deliveryState.SessionExpiry(lane);
             _monitor.RecordSessionExpiry(
                 lane,
-                expiry is { } value
-                    && RealtimeSessionExpiry.RemainingSeconds(value, wallNow) is { } seconds
+                expiry is { } value && RealtimeSessionExpiry.RemainingSeconds(value, wallNow) is { } seconds
                     ? TimeSpan.FromSeconds(seconds)
                     : null,
-                monitorNow);
+                monitorNow
+            );
         }
     }
 
@@ -163,7 +160,8 @@ internal sealed class SessionHealthBookkeeper
                 kind,
                 duration < TimeSpan.Zero ? TimeSpan.Zero : duration,
                 _attemptGeneration,
-                reservedEpoch);
+                reservedEpoch
+            );
         }
         else
         {
@@ -189,8 +187,7 @@ internal sealed class SessionHealthBookkeeper
 
     // 以下は monitor 記録の直通 forward。now はここで単調時計から読む。
 
-    public void RecordCapture(bool hasAudioActivity) =>
-        _monitor.RecordCapture(_nowProvider(), hasAudioActivity);
+    public void RecordCapture(bool hasAudioActivity) => _monitor.RecordCapture(_nowProvider(), hasAudioActivity);
 
     public void RecordSendStart() => _monitor.RecordSendStart(_nowProvider());
 
@@ -201,6 +198,5 @@ internal sealed class SessionHealthBookkeeper
     public void RecordTranslationProgress(RealtimeTranslationLane lane) =>
         _monitor.RecordTranslationProgress(lane, _nowProvider());
 
-    public void SetSelectedLane(RealtimeTranslationLane? lane) =>
-        _monitor.SetSelectedLane(lane, _nowProvider());
+    public void SetSelectedLane(RealtimeTranslationLane? lane) => _monitor.SetSelectedLane(lane, _nowProvider());
 }

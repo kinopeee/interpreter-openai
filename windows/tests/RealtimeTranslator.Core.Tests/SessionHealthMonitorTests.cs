@@ -32,10 +32,7 @@ public sealed class SessionHealthMonitorTests
         Assert.Equal(Ms(thresholds, "silenceMs"), defaults.Silence);
         Assert.Equal(Ms(thresholds, "connectGraceMs"), defaults.ConnectGrace);
         Assert.Equal(Ms(thresholds, "expiryNearMs"), defaults.ExpiryNear);
-        Assert.Equal(
-            thresholds["audioActivityPeakFloor"]!.GetValue<double>(),
-            defaults.AudioActivityPeakFloor,
-            9);
+        Assert.Equal(thresholds["audioActivityPeakFloor"]!.GetValue<double>(), defaults.AudioActivityPeakFloor, 9);
     }
 
     // Given: health.json の各 scenario（単調時刻 ms の op 列）
@@ -49,7 +46,8 @@ public sealed class SessionHealthMonitorTests
         var monitor = new SessionHealthMonitor();
 
         // steps は op ごとにまとまって並ぶため、単調時刻で安定ソートする。
-        var steps = scenario["steps"]!.AsArray()
+        var steps = scenario["steps"]!
+            .AsArray()
             .Select((step, index) => (step: step!.AsObject(), index))
             .OrderBy(entry => At(entry.step))
             .ThenBy(entry => entry.index)
@@ -65,7 +63,8 @@ public sealed class SessionHealthMonitorTests
                         At(step, "generation"),
                         At(step, "epoch"),
                         step["isRecovery"]?.GetValue<bool>() ?? false,
-                        at);
+                        at
+                    );
                     break;
                 case "capture":
                     monitor.RecordCapture(at, step["active"]?.GetValue<bool>() ?? false);
@@ -86,9 +85,7 @@ public sealed class SessionHealthMonitorTests
                     monitor.RecordTranslationProgress(Lane(step["lane"]), at);
                     break;
                 case "select":
-                    monitor.SetSelectedLane(
-                        step["lane"] is null ? null : Lane(step["lane"]),
-                        at);
+                    monitor.SetSelectedLane(step["lane"] is null ? null : Lane(step["lane"]), at);
                     break;
                 case "expiry":
                     monitor.RecordSessionExpiry(
@@ -96,25 +93,29 @@ public sealed class SessionHealthMonitorTests
                         step["remainingMs"] is { } remaining
                             ? TimeSpan.FromMilliseconds(remaining.GetValue<int>())
                             : null,
-                        at);
+                        at
+                    );
                     break;
                 case "evaluate":
                 {
                     var (snapshot, detections) = monitor.Evaluate(at);
                     var expect = step["expect"]!.AsObject();
-                    Assert.Equal(
-                        SharedFixtures.Text(expect["phase"]),
-                        PhaseName(snapshot.Phase));
-                    var expected = expect["detections"]!.AsArray()
-                        .Select(entry => entry is JsonValue
-                            ? (Kind: entry!.GetValue<string>(), Lane: (string?)null)
-                            : (
-                                Kind: SharedFixtures.Text(entry!["kind"]),
-                                Lane: (string?)entry!["lane"]?.GetValue<string>()))
+                    Assert.Equal(SharedFixtures.Text(expect["phase"]), PhaseName(snapshot.Phase));
+                    var expected = expect["detections"]!
+                        .AsArray()
+                        .Select(entry =>
+                            entry is JsonValue
+                                ? (Kind: entry!.GetValue<string>(), Lane: (string?)null)
+                                : (
+                                    Kind: SharedFixtures.Text(entry!["kind"]),
+                                    Lane: (string?)entry!["lane"]?.GetValue<string>()
+                                )
+                        )
                         .ToList();
                     Assert.Equal(
                         expected.Select(e => e.Kind).ToList(),
-                        detections.Select(d => DetectionName(d.Kind)).ToList());
+                        detections.Select(d => DetectionName(d.Kind)).ToList()
+                    );
                     // lane が fixture 側で指定されている検知だけ lane を照合する。
                     foreach (var (detection, expectedLane) in detections.Zip(expected))
                     {
@@ -192,7 +193,8 @@ public sealed class SessionHealthMonitorTests
         monitor.RecordSessionExpiry(
             RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
             TimeSpan.FromSeconds(130),
-            TimeSpan.Zero);
+            TimeSpan.Zero
+        );
 
         var (snapshot, _) = monitor.Evaluate(TimeSpan.Zero);
         var text = snapshot.ToString();
@@ -241,25 +243,27 @@ public sealed class SessionHealthMonitorTests
             var other => throw new InvalidOperationException($"unknown lane {other}"),
         };
 
-    private static string PhaseName(SessionHealthPhase phase) => phase switch
-    {
-        SessionHealthPhase.Idle => "idle",
-        SessionHealthPhase.CatchingUp => "catchingUp",
-        SessionHealthPhase.Silence => "silence",
-        SessionHealthPhase.AwaitingLanguageDetection => "awaitingLanguageDetection",
-        SessionHealthPhase.Active => "active",
-        _ => throw new ArgumentOutOfRangeException(nameof(phase)),
-    };
+    private static string PhaseName(SessionHealthPhase phase) =>
+        phase switch
+        {
+            SessionHealthPhase.Idle => "idle",
+            SessionHealthPhase.CatchingUp => "catchingUp",
+            SessionHealthPhase.Silence => "silence",
+            SessionHealthPhase.AwaitingLanguageDetection => "awaitingLanguageDetection",
+            SessionHealthPhase.Active => "active",
+            _ => throw new ArgumentOutOfRangeException(nameof(phase)),
+        };
 
-    private static string DetectionName(SessionHealthDetectionKind kind) => kind switch
-    {
-        SessionHealthDetectionKind.CaptureStalled => "captureStalled",
-        SessionHealthDetectionKind.SendStalled => "sendStalled",
-        SessionHealthDetectionKind.ReceiveStalled => "receiveStalled",
-        SessionHealthDetectionKind.SourceStalled => "sourceStalled",
-        SessionHealthDetectionKind.TranslationStalled => "translationStalled",
-        SessionHealthDetectionKind.ExpiryNear => "expiryNear",
-        SessionHealthDetectionKind.Expired => "expired",
-        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
-    };
+    private static string DetectionName(SessionHealthDetectionKind kind) =>
+        kind switch
+        {
+            SessionHealthDetectionKind.CaptureStalled => "captureStalled",
+            SessionHealthDetectionKind.SendStalled => "sendStalled",
+            SessionHealthDetectionKind.ReceiveStalled => "receiveStalled",
+            SessionHealthDetectionKind.SourceStalled => "sourceStalled",
+            SessionHealthDetectionKind.TranslationStalled => "translationStalled",
+            SessionHealthDetectionKind.ExpiryNear => "expiryNear",
+            SessionHealthDetectionKind.Expired => "expired",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
 }

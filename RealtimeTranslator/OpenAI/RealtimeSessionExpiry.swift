@@ -9,9 +9,9 @@ enum RealtimeSessionExpiry {
     /// すべて「不明」として nil を返し、codec エラーにしない。
     static func parseExpiresAt(fromSessionPayload session: [String: Any]?) -> Int? {
         guard let session,
-              let raw = session["expires_at"],
-              !(raw is NSNull),
-              let number = raw as? NSNumber
+            let raw = session["expires_at"],
+            !(raw is NSNull),
+            let number = raw as? NSNumber
         else {
             return nil
         }
@@ -32,9 +32,9 @@ enum RealtimeSessionExpiry {
         case "f", "d":
             let value = number.doubleValue
             guard value.isFinite,
-                  value >= 0,
-                  value <= 9_007_199_254_740_992,
-                  value.truncatingRemainder(dividingBy: 1) == 0
+                value >= 0,
+                value <= 9_007_199_254_740_992,
+                value.truncatingRemainder(dividingBy: 1) == 0
             else {
                 return nil
             }

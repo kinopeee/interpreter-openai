@@ -31,7 +31,7 @@ final class PrivacyFixtureTests: XCTestCase {
     // Then: fixture が許容する文言だけが残る
     func testSanitizeMatchesFixture() throws {
         for name in try SharedFixtures.caseNames("privacy", "sanitizedServerMessage") {
-                        let fixture = try SharedFixtures.case("privacy", "sanitizedServerMessage", name)
+            let fixture = try SharedFixtures.case("privacy", "sanitizedServerMessage", name)
             XCTAssertEqual(
                 SharedFixtures.text(fixture["expected"]),
                 RealtimeTranslationError.sanitizedServerMessage(
@@ -46,7 +46,7 @@ final class PrivacyFixtureTests: XCTestCase {
     // Then: 期待どおりに認証失敗だけを検出する
     func testAuthenticationDetectionMatchesFixture() throws {
         for name in try SharedFixtures.caseNames("privacy", "isAuthenticationFailure") {
-                        let fixture = try SharedFixtures.case("privacy", "isAuthenticationFailure", name)
+            let fixture = try SharedFixtures.case("privacy", "isAuthenticationFailure", name)
             XCTAssertEqual(
                 SharedFixtures.flag(fixture["expected"]),
                 RealtimeTranslationError.isAuthenticationFailure(
