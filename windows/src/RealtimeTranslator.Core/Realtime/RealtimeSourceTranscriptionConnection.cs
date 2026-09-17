@@ -20,7 +20,9 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
     private readonly RealtimeConnectionLifecycle _lifecycle;
 
     private bool _isReady;
-    private bool _didReceiveCompleted;
+    private bool _didReceiveCommitOutcome;
+    /// <summary>commit 送信完了後だけ立てる。送信待ち中の録音時 outcome を commit 結果にしない。</summary>
+    private bool _isAwaitingCommitOutcome;
     private LanguagePair _pair = LanguagePair.JaEn;
 
     /// <summary>接続開始時の noise_reduction。live update では変更しない。</summary>
@@ -64,7 +66,8 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
             {
                 currentEpoch = _lifecycle.ResetForReconnect();
                 _isReady = false;
-                _didReceiveCompleted = false;
+                _didReceiveCommitOutcome = false;
+                _isAwaitingCommitOutcome = false;
                 _connectedNoiseReduction = tuning.NoiseReduction;
                 _pair = pair;
             }
@@ -168,6 +171,9 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
             {
                 wasReady = _isReady;
                 _isReady = false;
+                // 録音中の failed / completed を、この commit の結果として使わない。
+                _didReceiveCommitOutcome = false;
+                _isAwaitingCommitOutcome = true;
             }
 
             if (!wasReady)
@@ -189,7 +195,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
             }
 
             var completed = await _lifecycle.WaitForCloseSignalAsync(
-                () => _didReceiveCompleted,
+                () => _didReceiveCommitOutcome,
                 _closeTimeout,
                 bumpEpochOnCancel: true,
                 cancellationToken).ConfigureAwait(false);
@@ -306,7 +312,52 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 case RealtimeSourceTranscriptionServerEvent.TranscriptionCompleted:
                     lock (_lifecycle.Sync)
                     {
-                        _didReceiveCompleted = true;
+                        if (_isAwaitingCommitOutcome)
+                        {
+                            _didReceiveCommitOutcome = true;
+                        }
+                    }
+
+                    break;
+
+                case RealtimeSourceTranscriptionServerEvent.TranscriptionFailed failed:
+                    lock (_lifecycle.Sync)
+                    {
+                        if (_isAwaitingCommitOutcome)
+                        {
+                            _didReceiveCommitOutcome = true;
+                        }
+                    }
+
+                    deliveryState.NoteSourceFailureQueued();
+                    if (failed.Classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                    {
+                        if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(
+                            RealtimeTranslationLane.Source,
+                            new RealtimeTranslationServerEvent.InputTranscriptFailed(
+                                failed.ItemId,
+                                failed.EventId,
+                                failed.Code,
+                                failed.ErrorType),
+                            currentEpoch)))
+                        {
+                            return;
+                        }
+
+                        break;
+                    }
+
+                    deliveryState.TryRecordTermination(failed.Classification);
+                    if (!writer.TryDeliver(new RealtimeTranslationStreamEvent(
+                        RealtimeTranslationLane.Source,
+                        new RealtimeTranslationServerEvent.InputTranscriptFailed(
+                            failed.ItemId,
+                            failed.EventId,
+                            failed.Code,
+                            failed.ErrorType),
+                        currentEpoch)))
+                    {
+                        return;
                     }
 
                     break;

@@ -1815,6 +1815,10 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
     }
 
+    var pendingSourceFailureCount: Int {
+        state.withLock { $0.deliveryState.pendingSourceFailureCount }
+    }
+
     var events: AsyncStream<RealtimeTranslationStreamEvent> {
         get async {
             state.withLock(\.eventStream)
@@ -1928,6 +1932,79 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
                 )
             )
         }
+    }
+
+    func publishSourceFailure(
+        itemID: String?,
+        eventID: String?,
+        code: String?,
+        errorType: String?,
+        epoch: Int? = nil
+    ) {
+        state.withLock { state in
+            guard let continuation = state.eventContinuation else { return }
+            let yielder = EventDeliveryYielder(
+                continuation: continuation,
+                deliveryState: state.deliveryState,
+                stage: .source,
+                capacity: RealtimeSourceTranscriptionConnection.eventBufferLimit
+            )
+            _ = yielder.deliver(
+                RealtimeTranslationStreamEvent(
+                    lane: .source,
+                    event: .inputTranscriptFailed(
+                        itemID: itemID,
+                        eventID: eventID,
+                        code: code,
+                        errorType: errorType
+                    ),
+                    epoch: epoch ?? state.connectionEpoch
+                )
+            )
+        }
+    }
+
+    func publishSourceFailureAfterTermination(
+        itemID: String?,
+        eventID: String?,
+        code: String?,
+        errorType: String?,
+        waitUntilFallback: CheckedContinuationBox? = nil
+    ) async {
+        state.withLock { state in
+            state.deliveryState.noteSourceFailureQueued()
+            state.deliveryState.tryRecordTermination(.recoverableServerError)
+        }
+        if let waitUntilFallback {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                waitUntilFallback.install(continuation)
+            }
+        }
+        publishSourceFailure(
+            itemID: itemID,
+            eventID: eventID,
+            code: code,
+            errorType: errorType
+        )
+    }
+
+    func queueSourceFailureWithoutDrain() {
+        state.withLock { $0.deliveryState.noteSourceFailureQueued() }
+    }
+
+    func queueAndPublishSourceFailure(
+        itemID: String?,
+        eventID: String?,
+        code: String?,
+        errorType: String?
+    ) {
+        state.withLock { $0.deliveryState.noteSourceFailureQueued() }
+        publishSourceFailure(
+            itemID: itemID,
+            eventID: eventID,
+            code: code,
+            errorType: errorType
+        )
     }
 
     func recordLoss(

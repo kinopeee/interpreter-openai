@@ -44,6 +44,7 @@ final class EventDeliveryState: @unchecked Sendable {
         var lossStage: EventDeliveryStage?
         var lossCapacity: Int?
         var termination: EventDeliveryTermination = .none
+        var pendingSourceFailureCount = 0
         var completed = false
         var waiters: [CheckedContinuation<Void, Never>] = []
     }
@@ -69,6 +70,24 @@ final class EventDeliveryState: @unchecked Sendable {
 
     var termination: EventDeliveryTermination {
         state.withLock { $0.termination }
+    }
+
+    var pendingSourceFailureCount: Int {
+        state.withLock { $0.pendingSourceFailureCount }
+    }
+
+    var hasPendingSourceFailure: Bool {
+        state.withLock { $0.pendingSourceFailureCount > 0 }
+    }
+
+    func noteSourceFailureQueued() {
+        state.withLock { $0.pendingSourceFailureCount += 1 }
+    }
+
+    func noteSourceFailureConsumed() {
+        state.withLock {
+            $0.pendingSourceFailureCount = max(0, $0.pendingSourceFailureCount - 1)
+        }
     }
 
     func recordLoss(stage: EventDeliveryStage, capacity: Int) {
@@ -139,6 +158,13 @@ final class EventDeliveryState: @unchecked Sendable {
 
     static func classify(errorType: String?, code: String?, message: String) -> RealtimeServerErrorClassification {
         RealtimeServerErrorClassification.classify(errorType: errorType, code: code, message: message)
+    }
+
+    static func classifyTranscriptionFailure(
+        errorType: String?,
+        code: String?
+    ) -> RealtimeServerErrorClassification {
+        RealtimeServerErrorClassification.classifyTranscriptionFailure(errorType: errorType, code: code)
     }
 
     func makeError() -> RealtimeTranslationError {

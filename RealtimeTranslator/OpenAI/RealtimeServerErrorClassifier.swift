@@ -24,6 +24,22 @@ struct RealtimeServerErrorClassification: Sendable, Equatable {
     let termination: EventDeliveryTermination
 
     static func classify(errorType: String?, code: String?, message: String) -> RealtimeServerErrorClassification {
+        classifyCore(errorType: errorType, code: code, message: message, fallback: .halt)
+    }
+
+    static func classifyTranscriptionFailure(
+        errorType: String?,
+        code: String?
+    ) -> RealtimeServerErrorClassification {
+        classifyCore(errorType: errorType, code: code, message: "", fallback: .keepAlive)
+    }
+
+    private static func classifyCore(
+        errorType: String?,
+        code: String?,
+        message: String,
+        fallback: RealtimeServerErrorDisposition
+    ) -> RealtimeServerErrorClassification {
         let normalizedCode = normalize(code)
         let normalizedType = normalize(errorType)
 
@@ -51,7 +67,9 @@ struct RealtimeServerErrorClassification: Sendable, Equatable {
             return RealtimeServerErrorClassification(disposition: .recover, termination: .recoverableServerError)
         }
 
-        return fatal(message)
+        return fallback == .keepAlive
+            ? RealtimeServerErrorClassification(disposition: .keepAlive, termination: .none)
+            : fatal(message)
     }
 
     /// keepAlive は例外にならないため呼び出し側で先に除外する。

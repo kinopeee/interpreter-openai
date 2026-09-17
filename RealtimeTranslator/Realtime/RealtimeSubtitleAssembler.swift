@@ -62,6 +62,10 @@ struct RealtimeSubtitleAssembler: Sendable {
         sourceText.utf16.count
     }
 
+    var hasUnconfirmedContent: Bool {
+        !sourceText.isEmpty || translationText.values.contains { !$0.isEmpty }
+    }
+
     var isCurrentSegmentTainted: Bool {
         currentSegmentTainted
     }

@@ -179,7 +179,9 @@ final class CodecFixtureTests: XCTestCase {
             }
 
             let inbound = Data(SharedFixtures.text(fixture["json"]).utf8)
-            await transport.enqueueInbound(inbound)
+            if kind != "transcriptionFailed" && kind != "transcriptionCompleted" {
+                await transport.enqueueInbound(inbound)
+            }
 
             switch kind {
             case "inputTranscriptDelta":
@@ -202,12 +204,43 @@ final class CodecFixtureTests: XCTestCase {
                 XCTAssertTrue(events.isEmpty, "ignored payload must not emit an event (\(name))")
 
             case "transcriptionCompleted":
-                // 完了は events へ出さず、commit drain の内部フラグとして扱う。
+                // 完了は events へ出さず、commit 後の内部フラグとして扱う。
                 let closeTask = Task {
                     try await connection.closeGracefully()
                 }
                 try await waitUntilSentContains(transport, type: "input_audio_buffer.commit")
+                await transport.enqueueInbound(inbound)
                 try await closeTask.value
+
+            case "transcriptionFailed":
+                // Given: commit 待ち中に失敗通知が届く
+                // When: close drain を完了する
+                // Then: failed でも completed と同様に 500ms 未満で close が成功する
+                let closeTask = Task {
+                    try await connection.closeGracefully()
+                }
+                try await waitUntilSentContains(transport, type: "input_audio_buffer.commit")
+                let started = ContinuousClock.now
+                await transport.enqueueInbound(inbound)
+                try await closeTask.value
+                let elapsed = ContinuousClock.now - started
+                XCTAssertLessThan(
+                    elapsed,
+                    .milliseconds(500),
+                    "failed close drain exceeded timeout for \(name)"
+                )
+                let event = try await waitForEvent(box)
+                guard case .inputTranscriptFailed(let itemID, let eventID, let code, let errorType) = event.event
+                else {
+                    XCTFail("expected inputTranscriptFailed for \(name)")
+                    collector.cancel()
+                    await connection.forceClose()
+                    continue
+                }
+                XCTAssertEqual(SharedFixtures.optionalText(expected["itemId"]), itemID, name)
+                XCTAssertEqual(SharedFixtures.optionalText(expected["eventId"]), eventID, name)
+                XCTAssertEqual(SharedFixtures.optionalText(expected["code"]), code, name)
+                XCTAssertEqual(SharedFixtures.optionalText(expected["errorType"]), errorType, name)
 
             case "error":
                 let event = try await waitForEvent(box)
@@ -228,6 +261,115 @@ final class CodecFixtureTests: XCTestCase {
             collector.cancel()
             await connection.forceClose()
         }
+    }
+
+    // Given: 秘密情報を含む failed payload を source connection へ投入する
+    // When: source event を受信する
+    // Then: event model に message を保持せず許可された値だけを返す
+    func testTranscriptionFailurePayloadDoesNotRetainMessage() async throws {
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeSourceTranscriptionConnection(
+            transport: transport,
+            safetyIdentifier: "test-safety",
+            handshakeTimeoutNanoseconds: 1_000_000_000,
+            closeTimeoutNanoseconds: 500_000_000
+        )
+        try await startTranscription(connection, transport: transport)
+        let stream = await connection.events
+        let box = EventBox()
+        let collector = Task {
+            for await event in stream {
+                await box.append(event)
+            }
+        }
+        try await transport.enqueueJSON([
+            "type": "conversation.item.input_audio_transcription.failed",
+            "item_id": "privacy-item",
+            "event_id": "privacy-event",
+            "error": [
+                "code": "audio_unintelligible",
+                "message": "こんにちは sk-leak-1234"
+            ]
+        ])
+
+        let event = try await waitForEvent(box)
+        XCTAssertEqual(
+            event.event,
+            .inputTranscriptFailed(
+                itemID: "privacy-item",
+                eventID: "privacy-event",
+                code: "audio_unintelligible",
+                errorType: nil
+            )
+        )
+        collector.cancel()
+        await connection.forceClose()
+    }
+
+    func testTranscriptionCloseHandlesCompletedDeliveredDuringCommitSend() async throws {
+        // Given: commit送信中にcompletedを即時受信する原文接続
+        let transport = FakeRealtimeWebSocketTransport()
+        await transport.setImmediateCloseResponses(true)
+        await transport.setAfterSendHook { type in
+            guard type == "input_audio_buffer.commit" else { return }
+            await Task.yield()
+        }
+        let connection = RealtimeSourceTranscriptionConnection(
+            transport: transport,
+            safetyIdentifier: "test-safety",
+            handshakeTimeoutNanoseconds: 1_000_000_000,
+            closeTimeoutNanoseconds: 500_000_000
+        )
+        try await startTranscription(connection, transport: transport)
+
+        // When: graceful closeを開始する
+        let started = ContinuousClock.now
+        try await connection.closeGracefully()
+        let elapsed = ContinuousClock.now - started
+
+        // Then: commit中のcompletedでcloseが完了する
+        XCTAssertLessThan(elapsed, .milliseconds(500))
+        await connection.forceClose()
+    }
+
+    // Given: 録音中に failed を受信済みの原文接続
+    // When: commit 後に completed / failed が来ない
+    // Then: 録音中の failed を commit 結果にせず CloseTimeout になる
+    func testLiveTranscriptionFailureDoesNotSatisfyLaterCommitWait() async throws {
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeSourceTranscriptionConnection(
+            transport: transport,
+            safetyIdentifier: "test-safety",
+            handshakeTimeoutNanoseconds: 1_000_000_000,
+            closeTimeoutNanoseconds: 200_000_000
+        )
+        try await startTranscription(connection, transport: transport)
+        let stream = await connection.events
+        let box = EventBox()
+        let collector = Task {
+            for await event in stream {
+                await box.append(event)
+            }
+        }
+        try await transport.enqueueJSON([
+            "type": "conversation.item.input_audio_transcription.failed",
+            "item_id": "live-item",
+            "event_id": "live-event",
+            "error": [
+                "code": "audio_unintelligible"
+            ]
+        ])
+        _ = try await waitForEvent(box)
+
+        do {
+            try await connection.closeGracefully()
+            XCTFail("expected closeTimeout after a live failed event")
+        } catch let error as RealtimeTranslationError {
+            XCTAssertEqual(error, .closeTimeout)
+        }
+        try await waitUntilSentContains(transport, type: "input_audio_buffer.commit")
+        collector.cancel()
+        await connection.forceClose()
     }
 
     private func assertDelta(

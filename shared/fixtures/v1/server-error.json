@@ -26,6 +26,18 @@
     "errorMessageKey": "error.recoverableServer",
     "isRecoverable": true
   },
+  "transcriptionFailed": {
+    "description": "conversation.item.input_audio_transcription.failed の分類。error.type / error.code は別々に照合し、error.message は保持しない。許可リスト外・欠損は一部失敗として接続維持（keepAlive）。keepAlive でも失敗 item の未確定字幕は無効化する。",
+    "unknownDisposition": "keepAlive",
+    "cases": [
+      { "name": "missing type and code keeps the connection", "errorType": null, "code": null, "expected": { "disposition": "keepAlive", "termination": "none" } },
+      { "name": "unknown type and code keep the connection", "errorType": "transcription_error", "code": "audio_unintelligible", "expected": { "disposition": "keepAlive", "termination": "none" } },
+      { "name": "server_error type recovers", "errorType": "server_error", "code": null, "expected": { "disposition": "recover", "termination": "recoverableServerError" } },
+      { "name": "rate_limit_exceeded code recovers", "errorType": null, "code": "rate_limit_exceeded", "expected": { "disposition": "recover", "termination": "recoverableServerError" } },
+      { "name": "quota exhaustion halts", "errorType": "server_error", "code": "insufficient_quota", "expected": { "disposition": "halt", "termination": "fatalServerError" } },
+      { "name": "authentication code halts", "errorType": "invalid_request_error", "code": "invalid_api_key", "expected": { "disposition": "halt", "termination": "authenticationFailed" } }
+    ]
+  },
   "cases": [
     {
       "name": "internal transport code recovers",

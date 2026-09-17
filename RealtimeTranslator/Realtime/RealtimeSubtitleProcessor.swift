@@ -20,6 +20,7 @@ struct RealtimeSubtitleProcessor: Sendable {
     private var selectedTranslationTarget: RealtimeTranslationOutputLanguage?
     private var reverseEvidenceCount = 0
     private var sourceBoundaryTracker = SourceBoundaryTracker()
+    private var handledFailedSourceKeys = Set<String>()
 
     var currentSourceLength: Int { assembler.currentSourceLength }
     var currentSegmentGeneration: Int { assembler.currentSegmentGeneration }
@@ -33,6 +34,7 @@ struct RealtimeSubtitleProcessor: Sendable {
         activeLanguagePair = pair
         selectedTranslationTarget = nil
         reverseEvidenceCount = 0
+        handledFailedSourceKeys.removeAll()
         assembler.setLanguagePair(pair)
     }
 
@@ -69,6 +71,18 @@ struct RealtimeSubtitleProcessor: Sendable {
         )
     }
 
+    mutating func discardFailedSource(itemID: String?, eventID: String?) -> RealtimeSubtitleUpdate? {
+        let key = itemID ?? eventID
+        if let key, handledFailedSourceKeys.contains(key) {
+            return nil
+        }
+        guard assembler.hasUnconfirmedContent else { return nil }
+        if let key {
+            handledFailedSourceKeys.insert(key)
+        }
+        return discardUnconfirmed()
+    }
+
     mutating func markAudioLoss(now: Date) -> RealtimeSubtitleUpdate {
         assembler.markAudioLoss(now: now)
         clearBoundaryCandidate()
@@ -95,6 +109,9 @@ struct RealtimeSubtitleProcessor: Sendable {
         now: Date,
         isReplay: Bool = false
     ) -> RealtimeSubtitleProcessingResult? {
+        if case .inputTranscriptFailed = streamEvent.event {
+            return nil
+        }
         let deltaStart = assembler.currentSourceLength
         let sourceDelta: String?
         if case .inputTranscriptDelta(let delta, _, _) = streamEvent.event,

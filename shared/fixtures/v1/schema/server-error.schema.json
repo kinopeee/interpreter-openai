@@ -12,6 +12,7 @@
     "terminationPrecedence",
     "allowlists",
     "recoverableServerError",
+    "transcriptionFailed",
     "cases"
   ],
   "properties": {
@@ -64,6 +65,42 @@
         "errorKind": { "const": "recoverableServerError" },
         "errorMessageKey": { "type": "string" },
         "isRecoverable": { "const": true }
+      }
+    },
+    "transcriptionFailed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description", "unknownDisposition", "cases"],
+      "properties": {
+        "description": { "type": "string" },
+        "unknownDisposition": { "const": "keepAlive" },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "errorType", "code", "expected"],
+            "properties": {
+              "name": { "type": "string" },
+              "errorType": { "type": ["string", "null"] },
+              "code": { "type": ["string", "null"] },
+              "expected": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["disposition", "termination"],
+                "properties": {
+                  "disposition": { "type": "string", "enum": ["keepAlive", "recover", "halt"] },
+                  "termination": {
+                    "type": "string",
+                    "enum": ["none", "authenticationFailed", "fatalServerError", "recoverableServerError", "transportFailure"]
+                  },
+                  "sanitizedMessage": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "cases": {

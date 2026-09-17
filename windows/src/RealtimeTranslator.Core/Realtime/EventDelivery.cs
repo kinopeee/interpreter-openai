@@ -35,6 +35,7 @@ public sealed class EventDeliveryState
     private int _lossCapacity;
     private EventDeliveryTermination _termination;
     private string? _terminationMessage;
+    private int _pendingSourceFailureCount;
 
     public EventDeliveryState(int epoch)
     {
@@ -94,6 +95,47 @@ public sealed class EventDeliveryState
             lock (_sync)
             {
                 return _terminationMessage;
+            }
+        }
+    }
+
+    public int PendingSourceFailureCount
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _pendingSourceFailureCount;
+            }
+        }
+    }
+
+    public bool HasPendingSourceFailure
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _pendingSourceFailureCount > 0;
+            }
+        }
+    }
+
+    public void NoteSourceFailureQueued()
+    {
+        lock (_sync)
+        {
+            _pendingSourceFailureCount++;
+        }
+    }
+
+    public void NoteSourceFailureConsumed()
+    {
+        lock (_sync)
+        {
+            if (_pendingSourceFailureCount > 0)
+            {
+                _pendingSourceFailureCount--;
             }
         }
     }
@@ -183,6 +225,11 @@ public sealed class EventDeliveryState
         ArgumentNullException.ThrowIfNull(error);
         return RealtimeServerErrorClassification.Classify(error.ErrorType, error.Code, error.Message);
     }
+
+    public static RealtimeServerErrorClassification ClassifyTranscriptionFailure(
+        string? errorType,
+        string? code) =>
+        RealtimeServerErrorClassification.ClassifyTranscriptionFailure(errorType, code);
 
     /// <summary>分類結果を記録する。接続維持なら何も記録せず false。</summary>
     public bool TryRecordTermination(RealtimeServerErrorClassification classification) =>
