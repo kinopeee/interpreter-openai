@@ -1893,10 +1893,6 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
     }
 
-    var appendedFrameCount: Int {
-        state.withLock(\.appendedFrames.count)
-    }
-
     func appendAudioFrame(_ pcm16LE: Data) async throws {
         let gate = state.withLock { state in
             state.appendAudioFrameCallCount += 1

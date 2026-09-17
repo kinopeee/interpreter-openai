@@ -4001,12 +4001,16 @@ public sealed class InterpretationSessionTests
             }
         }
 
+        private long _emitSequence;
+
         /// <summary>frame を consumer へ届ける（受信停止監視の frame 供給用）。</summary>
         public void Emit(ReadOnlyMemory<byte> frame)
         {
             lock (_sync)
             {
-                _frames.Writer.TryWrite(frame);
+                _emitSequence += 1;
+                _frames.Writer.TryWrite(
+                    new CapturedAudioFrame(1, _emitSequence, frame, 0, _emitSequence * 100));
             }
         }
     }
