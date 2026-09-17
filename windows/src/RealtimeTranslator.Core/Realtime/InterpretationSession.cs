@@ -86,6 +86,9 @@ public sealed class InterpretationSession : IDisposable
 
     internal Action? AfterFailedSourceFallbackForTests { get; set; }
 
+    /// <summary>テスト用。Listening 直前の monitor 世代開始 lock 直前に差し込む。</summary>
+    internal Action? BeforeHealthGenerationBeginForTests { get; set; }
+
     public InterpretationSession(
         IApiKeyStore apiKeyStore,
         IRealtimeAudioCapture audioCapture,
@@ -484,8 +487,8 @@ public sealed class InterpretationSession : IDisposable
 
     private async Task ConnectAndStreamAsync(int generation, CancellationToken cancellationToken)
     {
-        // _dualClient.ConnectionEpoch は Dual 側の lock を取るため _sync 保持中には読まない。
-        var entryAttemptEpoch = _dualClient.ConnectionEpoch;
+        // _dualClient.ReservedEpoch は Dual 側の lock を取るため _sync 保持中には読まない。
+        var entryAttemptEpoch = _dualClient.ReservedEpoch;
         lock (_sync)
         {
             // RequireApiKey 失敗（missing key）も試行の終了診断へ乗せるため先に記録する。
@@ -516,14 +519,14 @@ public sealed class InterpretationSession : IDisposable
         {
             // StartAsync は network 処理の前に connectionEpoch を予約済み。失敗した
             // handshake の epoch で診断するため読み直す。
-            var reservedEpoch = _dualClient.ConnectionEpoch;
+            var reservedEpoch = _dualClient.ReservedEpoch;
             lock (_sync)
             {
                 _healthAttemptEpoch = reservedEpoch;
             }
             throw;
         }
-        var reservedAfterStart = _dualClient.ConnectionEpoch;
+        var reservedAfterStart = _dualClient.ReservedEpoch;
         lock (_sync)
         {
             _healthAttemptEpoch = reservedAfterStart;
@@ -557,39 +560,56 @@ public sealed class InterpretationSession : IDisposable
         }
 
         SetState(TranslationState.Listening);
+        BeforeHealthGenerationBeginForTests?.Invoke();
+        var staleGeneration = false;
         lock (_sync)
         {
-            _reconnectBudget.RecordListening();
-
-            var monitorNow = HealthNow();
-            _healthMonitor.BeginGeneration(
-                generation,
-                epoch,
-                _connectionCountInGeneration > 1,
-                monitorNow);
-            _healthGenerationEnded = false;
-            // handshake の受信を初回 tick で「新規受信」と誤認しないよう現数でシードする。
-            _healthReceiveCounts.Clear();
-            foreach (var lane in HealthLanes)
+            if (generation != _lifecycleGeneration)
             {
-                _healthReceiveCounts[lane] = feed.DeliveryState.ReceiveCount(lane);
+                // SetState とこの lock の間に StopAsync が世代を進めた場合、
+                // 止められた世代の monitor を再活性化しない。
+                staleGeneration = true;
             }
-
-            // 世代が始まった attempt の診断窓は monitor 側へ移す。
-            _healthAttemptStart = null;
-            // 期限の remaining は受信時に一度だけ壁時計で算出し、以後は単調時計で追う。
-            var wallNow = _timeProvider.GetUtcNow().ToUnixTimeSeconds();
-            foreach (var lane in HealthLanes)
+            else
             {
-                var expiry = feed.DeliveryState.SessionExpiry(lane);
-                _healthMonitor.RecordSessionExpiry(
-                    lane,
-                    expiry is { } value
-                        && RealtimeSessionExpiry.RemainingSeconds(value, wallNow) is { } seconds
-                        ? TimeSpan.FromSeconds(seconds)
-                        : null,
+                _reconnectBudget.RecordListening();
+
+                var monitorNow = HealthNow();
+                _healthMonitor.BeginGeneration(
+                    generation,
+                    epoch,
+                    _connectionCountInGeneration > 1,
                     monitorNow);
+                _healthGenerationEnded = false;
+                // handshake の受信を初回 tick で「新規受信」と誤認しないよう現数でシードする。
+                _healthReceiveCounts.Clear();
+                foreach (var lane in HealthLanes)
+                {
+                    _healthReceiveCounts[lane] = feed.DeliveryState.ReceiveCount(lane);
+                }
+
+                // 世代が始まった attempt の診断窓は monitor 側へ移す。
+                _healthAttemptStart = null;
+                // 期限の remaining は受信時に一度だけ壁時計で算出し、以後は単調時計で追う。
+                var wallNow = _timeProvider.GetUtcNow().ToUnixTimeSeconds();
+                foreach (var lane in HealthLanes)
+                {
+                    var expiry = feed.DeliveryState.SessionExpiry(lane);
+                    _healthMonitor.RecordSessionExpiry(
+                        lane,
+                        expiry is { } value
+                            && RealtimeSessionExpiry.RemainingSeconds(value, wallNow) is { } seconds
+                            ? TimeSpan.FromSeconds(seconds)
+                            : null,
+                        monitorNow);
+                }
             }
+        }
+        if (staleGeneration)
+        {
+            await _audioCapture.StopAsync().ConfigureAwait(false);
+            await _dualClient.ForceCloseAsync().ConfigureAwait(false);
+            return;
         }
 
         using var streamCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -1288,8 +1308,8 @@ public sealed class InterpretationSession : IDisposable
     private void RecordHealthTermination(SessionTerminationKind kind)
     {
         // handshake 中の stop では Dual 側の予約 epoch が _healthAttemptEpoch より
-        // 先に進むため、_sync 保持前に現 epoch を読んでおく。
-        var currentEpoch = _dualClient.ConnectionEpoch;
+        // 先に進むため、_sync 保持前に予約 epoch を読んでおく。
+        var reservedEpoch = _dualClient.ReservedEpoch;
         lock (_sync)
         {
             var now = HealthNow();
@@ -1309,7 +1329,7 @@ public sealed class InterpretationSession : IDisposable
                     kind,
                     duration < TimeSpan.Zero ? TimeSpan.Zero : duration,
                     _healthAttemptGeneration,
-                    Math.Max(_healthAttemptEpoch, currentEpoch));
+                    reservedEpoch);
             }
             else
             {

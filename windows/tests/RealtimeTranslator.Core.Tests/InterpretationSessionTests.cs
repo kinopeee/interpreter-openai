@@ -3560,10 +3560,10 @@ public sealed class InterpretationSessionTests
 
     // Given: 録音 A が Listening 到達後に停止し、次の StartAsync が handshake 失敗する fake
     // When: 録音 B の StartAsync が Error へ終わる
-    // Then: 終了診断の epoch は Dual client の ConnectionEpoch（A の Listening epoch より大きい）で記録される
-    //       （stop() が世代を進めるため B の試行 generation は 3）
+    // Then: 終了診断の epoch は Dual client の ReservedEpoch（A の Listening epoch より大きい）で記録される
+    //       （StopAsync が世代を進めるため B の試行 generation は 3）
     [Fact]
-    public async Task HandshakeFailureEpochUsesDualConnectionEpoch()
+    public async Task HandshakeFailureEpochUsesDualReservedEpoch()
     {
         var client = new FakeDualClient();
         using var session = NewSession(client, timeProvider: new MonotonicClock());
@@ -3582,8 +3582,35 @@ public sealed class InterpretationSessionTests
         var diagnostic = session.LatestTerminationDiagnostic;
         Assert.NotNull(diagnostic);
         Assert.Equal(3, diagnostic.Generation);
-        Assert.Equal(client.ConnectionEpoch, diagnostic.Epoch);
+        Assert.Equal(client.ReservedEpoch, diagnostic.Epoch);
         Assert.True(diagnostic.Epoch > listeningEpoch);
+        await session.StopAsync();
+    }
+
+    // Given: Listening 直前の monitor 世代開始で StopAsync が世代を進めるセッション（hook で再現）
+    // When: 次の StartAsync が handshake 失敗で Error へ終わる
+    // Then: 終了診断は新しい試行の generation/epoch で記録され、止められた世代の monitor は再活性化しない
+    [Fact]
+    public async Task StaleGenerationDoesNotReactivateHealthMonitor()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, timeProvider: new MonotonicClock());
+        session.BeforeHealthGenerationBeginForTests = () => _ = session.StopAsync();
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Idle);
+
+        session.BeforeHealthGenerationBeginForTests = null;
+        client.StartException = new RealtimeTranslationException(
+            RealtimeTranslationErrorKind.FatalServerError);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(SessionTerminationKind.FatalServerError, diagnostic.Kind);
+        Assert.Equal(3, diagnostic.Generation);
+        Assert.Equal(client.ReservedEpoch, diagnostic.Epoch);
         await session.StopAsync();
     }
 
@@ -4053,6 +4080,7 @@ public sealed class InterpretationSessionTests
             Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
 
         private int _epoch;
+        private int _reservedEpoch;
         public EventDeliveryState DeliveryState { get; private set; } = new(0);
         public RealtimeEventFeed Feed => new(Events, ConnectionEpoch, DeliveryState);
 
@@ -4074,6 +4102,17 @@ public sealed class InterpretationSessionTests
                 lock (_sync)
                 {
                     return _epoch;
+                }
+            }
+        }
+
+        public int ReservedEpoch
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _reservedEpoch;
                 }
             }
         }
@@ -4160,6 +4199,7 @@ public sealed class InterpretationSessionTests
                 LastStartedPair = pair;
                 // 本物と同じく、network 処理（注入失敗を含む）の前に epoch を予約する。
                 _epoch += 1;
+                _reservedEpoch = _epoch;
                 LastStartedTuning = tuning;
                 if (ThrowOnNextStart)
                 {

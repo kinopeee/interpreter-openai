@@ -1271,6 +1271,7 @@ public sealed class InterpretationSessionReceiveOverflowTests
         private Channel<RealtimeTranslationStreamEvent> _events =
             Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
         private int _epoch;
+        private int _reservedEpoch;
 
         public EventDeliveryState DeliveryState { get; private set; } = new(0);
 
@@ -1298,6 +1299,17 @@ public sealed class InterpretationSessionReceiveOverflowTests
             }
         }
 
+        public int ReservedEpoch
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _reservedEpoch;
+                }
+            }
+        }
+
         public int StartCount { get; private set; }
 
         public TaskCompletionSource Started { get; } =
@@ -1320,6 +1332,7 @@ public sealed class InterpretationSessionReceiveOverflowTests
             {
                 StartCount++;
                 _epoch++;
+                _reservedEpoch = _epoch;
                 DeliveryState = new EventDeliveryState(_epoch);
                 _events = Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
                 if (StartCount == 1)

@@ -70,8 +70,8 @@ final class InterpretationSession {
     private var healthReceiveCounts: [RealtimeTranslationLane: Int] = [:]
     private var healthGenerationEnded = true
     /// 世代未開始（pre-Listening）の終了診断用に、接続試行の開始時刻と意図 epoch を保持する。
-    /// epoch は dual client の connectionEpoch（handshake 失敗時は予約済み epoch、
-    /// APIキー欠落時は直前の接続 epoch）。
+    /// epoch は dual client の予約済み epoch（handshake 失敗時も予約値を保持し、
+    /// APIキー欠落時は直前の予約 epoch）。
     private var healthAttemptStart: Duration?
     private var healthAttemptEpoch = 0
     private var healthAttemptGeneration = 0
@@ -315,7 +315,7 @@ final class InterpretationSession {
     private func connectAndStream(generation: Int) async throws {
         connectionCountInGeneration += 1
         healthAttemptStart = healthNow()
-        healthAttemptEpoch = await dualClient.connectionEpoch
+        healthAttemptEpoch = await dualClient.reservedEpoch
         healthAttemptGeneration = lifecycleGeneration
         let apiKey = try requireAPIKey()
         state = .connecting
@@ -332,10 +332,10 @@ final class InterpretationSession {
         } catch {
             // start は network 処理の前に connectionEpoch を予約済み。失敗した handshake の
             // epoch で診断するため読み直す。
-            healthAttemptEpoch = await dualClient.connectionEpoch
+            healthAttemptEpoch = await dualClient.reservedEpoch
             throw error
         }
-        healthAttemptEpoch = await dualClient.connectionEpoch
+        healthAttemptEpoch = await dualClient.reservedEpoch
         guard generation == lifecycleGeneration else {
             await dualClient.forceClose()
             return
@@ -368,6 +368,7 @@ final class InterpretationSession {
             now: monitorNow
         )
         healthGenerationEnded = false
+        lastHealthSnapshotLogAt = nil
         // handshake の受信を初回 tick で「新規受信」と誤認しないよう現数でシードする。
         for lane in Self.healthLanes {
             healthReceiveCounts[lane] = feed.deliveryState.receiveCount(lane)
@@ -966,7 +967,7 @@ final class InterpretationSession {
             // 世代未開始（pre-Listening / handshake 失敗）の終了は attempt の
             // 開始時刻・意図 epoch で記録する。monitor の stall 状態には触れない。
             // handshake 中の stop では接続側の予約 epoch が先に進むため記録時に読み直す。
-            healthAttemptEpoch = await dualClient.connectionEpoch
+            healthAttemptEpoch = await dualClient.reservedEpoch
             diagnostic = SessionTerminationDiagnostic(
                 kind: kind,
                 connectionDuration: max(.zero, now - attemptStart),

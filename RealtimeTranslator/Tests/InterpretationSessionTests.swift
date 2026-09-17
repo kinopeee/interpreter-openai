@@ -1774,6 +1774,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         var eventStream: AsyncStream<RealtimeTranslationStreamEvent>
         var eventContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation?
         var connectionEpoch = 0
+        var reservedEpoch = 0
         var deliveryState = EventDeliveryState(epoch: 0)
         var appendedFrames: [Data] = []
         var appendAudioFrameCallCount = 0
@@ -1829,6 +1830,12 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
     }
 
+    var reservedEpoch: Int {
+        get async {
+            state.withLock(\.reservedEpoch)
+        }
+    }
+
     var pendingSourceFailureCount: Int {
         state.withLock { $0.deliveryState.pendingSourceFailureCount }
     }
@@ -1862,30 +1869,39 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         // 本物と同じく、network 処理（注入失敗を含む）の前に epoch を予約する。
         state.withLock { state in
             state.connectionEpoch += 1
+            state.reservedEpoch = state.connectionEpoch
         }
-        if let startGate {
-            try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation {
-                    (continuation: CheckedContinuation<Void, Error>) in
-                    if Task.isCancelled {
-                        continuation.resume(throwing: CancellationError())
-                        return
+        do {
+            if let startGate {
+                try await withTaskCancellationHandler {
+                    try await withCheckedThrowingContinuation {
+                        (continuation: CheckedContinuation<Void, Error>) in
+                        if Task.isCancelled {
+                            continuation.resume(throwing: CancellationError())
+                            return
+                        }
+                        startGate.installThrowing(continuation)
                     }
-                    startGate.installThrowing(continuation)
+                } onCancel: {
+                    startGate.resumeThrowing(CancellationError())
                 }
-            } onCancel: {
-                startGate.resumeThrowing(CancellationError())
             }
-        }
-        try Task.checkCancellation()
-        if let startError {
-            // one-shot: 再接続後の start を成功させる
-            self.startError = nil
-            throw startError
-        }
-        if startFailuresRemaining > 0 {
-            startFailuresRemaining -= 1
-            throw RealtimeTranslationError.recoverableTransportFailure("forced start failure")
+            try Task.checkCancellation()
+            if let startError {
+                // one-shot: 再接続後の start を成功させる
+                self.startError = nil
+                throw startError
+            }
+            if startFailuresRemaining > 0 {
+                startFailuresRemaining -= 1
+                throw RealtimeTranslationError.recoverableTransportFailure("forced start failure")
+            }
+        } catch {
+            // 本物の catch → forceClose に合わせ、予約後に epoch をもう一度進める。
+            state.withLock { state in
+                state.connectionEpoch += 1
+            }
+            throw error
         }
 
         state.withLock { state in

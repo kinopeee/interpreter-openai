@@ -202,6 +202,7 @@ public sealed class InterpretationSessionReconnectClassificationTests
         private Channel<RealtimeTranslationStreamEvent> _events =
             Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
         private int _epoch;
+        private int _reservedEpoch;
         public EventDeliveryState DeliveryState { get; private set; } = new(0);
         public RealtimeEventFeed Feed => new(Events, ConnectionEpoch, DeliveryState);
 
@@ -223,6 +224,17 @@ public sealed class InterpretationSessionReconnectClassificationTests
                 lock (_sync)
                 {
                     return _epoch;
+                }
+            }
+        }
+
+        public int ReservedEpoch
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _reservedEpoch;
                 }
             }
         }
@@ -273,6 +285,7 @@ public sealed class InterpretationSessionReconnectClassificationTests
             lock (_sync)
             {
                 _epoch += 1;
+                _reservedEpoch = _epoch;
                 DeliveryState = new EventDeliveryState(_epoch);
                 _events = Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
             }

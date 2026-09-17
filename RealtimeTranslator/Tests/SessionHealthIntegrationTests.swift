@@ -305,9 +305,8 @@ final class SessionHealthIntegrationTests: XCTestCase {
 
     // Given: Listening 中の接続（epoch 1）が recoverable 切断され、再接続 handshake が致命的に失敗する
     // When: 2 回目の試行が error へ終わる
-    // Then: 終了診断の epoch は再接続試行で予約された connectionEpoch（teardown の
-    //       forceClose で現 epoch がさらに進むため、その時点より小さい 3）で、
-    //       試行開始からの非負の duration を持つ
+    // Then: 終了診断の epoch は再接続試行で予約された reservedEpoch（失敗後の forceClose で
+    //       現 epoch がさらに進んでも予約値 3 を保持）で、試行開始からの非負の duration を持つ
     func testReconnectHandshakeFailureEmitsAttemptTermination() async {
         let clock = FakeHealthClock()
         let audio = FakeRealtimeAudioCaptureService()
@@ -326,8 +325,9 @@ final class SessionHealthIntegrationTests: XCTestCase {
         )
         await waitUntil { session.state == .error }
 
+        let reservedEpoch = await dual.reservedEpoch
         let diagnostic = session.latestHealthTermination
-        XCTAssertEqual(diagnostic?.epoch, 3)
+        XCTAssertEqual(diagnostic?.epoch, reservedEpoch)
         XCTAssertEqual(diagnostic?.kind, .fatalServerError)
         XCTAssertGreaterThanOrEqual(diagnostic?.connectionDuration ?? .zero, .zero)
         await session.stop()
@@ -361,9 +361,9 @@ final class SessionHealthIntegrationTests: XCTestCase {
 
     // Given: 録音 A が Listening 到達後に停止し、次の start が handshake 失敗する fake
     // When: 録音 B の start が error へ終わる
-    // Then: 終了診断の epoch は dual client の connectionEpoch（A の Listening epoch より大きい）で記録される
-    //       （A の Listening epoch は 1、B の試行で予約される epoch は 2、generation は 3）
-    func testHandshakeFailureEpochUsesDualConnectionEpoch() async {
+    // Then: 終了診断の epoch は dual client の reservedEpoch（A の Listening epoch より大きく、
+    //       失敗後 cleanup で進んだ現 connectionEpoch とは異なる）で記録される
+    func testHandshakeFailureEpochUsesDualReservedEpoch() async {
         let clock = FakeHealthClock()
         let audio = FakeRealtimeAudioCaptureService()
         let dual = FakeDualRealtimeTranslationClient()
@@ -380,10 +380,13 @@ final class SessionHealthIntegrationTests: XCTestCase {
         await session.start()
         await waitUntil { session.state == .error }
 
+        let reservedEpoch = await dual.reservedEpoch
+        let currentEpoch = await dual.connectionEpoch
         let diagnostic = session.latestHealthTermination
         XCTAssertEqual(diagnostic?.generation, 3)
-        XCTAssertEqual(diagnostic?.epoch, 2)
-        XCTAssertGreaterThan(diagnostic?.epoch ?? 0, listeningEpoch)
+        XCTAssertEqual(diagnostic?.epoch, reservedEpoch)
+        XCTAssertNotEqual(reservedEpoch, currentEpoch)
+        XCTAssertGreaterThan(reservedEpoch, listeningEpoch)
         await session.stop()
     }
 }
