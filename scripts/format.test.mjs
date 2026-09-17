@@ -583,6 +583,8 @@ test("setup removes stale partial caches but preserves live partial caches", asy
   /* Given: 有効なキャッシュがあり、削除できない古い partial が残っている */
   /* When: setup を再実行する */
   /* Then: 削除失敗は警告に留め、有効なキャッシュを再利用して 0 を返す */
+  /* 権限で削除を阻めない root と Windows ではこの節を省く */
+  if (process.platform === "win32" || process.getuid?.() === 0) return;
   await mkdir(deadPartial, { recursive: true });
   await writeFile(path.join(deadPartial, "lock"), "");
   await chmod(deadPartial, 0o555);
