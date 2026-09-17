@@ -428,7 +428,8 @@ final class SubtitlePresentationTests: XCTestCase {
         )
 
         // Then: SwiftUIの固有高に再拡大されず、画面内に収まる
-        let reserved = SubtitleWindowGeometry.showsRecordingControl
+        let reserved =
+            SubtitleWindowGeometry.showsRecordingControl
             ? SubtitleWindowGeometry.controlSize.height
                 + SubtitleWindowGeometry.controlSpacing
             : 0

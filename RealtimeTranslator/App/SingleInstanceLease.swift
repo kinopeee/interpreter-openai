@@ -23,10 +23,12 @@ final class SingleInstanceLease {
         guard let bundleIdentifier = Bundle.main.bundleIdentifier else {
             throw SingleInstanceLeaseError.bundleIdentifierUnavailable
         }
-        guard let applicationSupportDirectory = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first else {
+        guard
+            let applicationSupportDirectory = FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            ).first
+        else {
             throw SingleInstanceLeaseError.applicationSupportDirectoryUnavailable
         }
 
@@ -45,14 +47,16 @@ final class SingleInstanceLease {
 
     static func acquire(at lockURL: URL) throws -> SingleInstanceLease? {
         let flags = O_CREAT | O_RDWR | O_EXLOCK | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW
-        guard let descriptor = lockURL.withUnsafeFileSystemRepresentation({ path -> Int32? in
-            guard let path else { return nil }
-            return Darwin.open(
-                path,
-                flags,
-                mode_t(S_IRUSR | S_IWUSR)
-            )
-        }) else {
+        guard
+            let descriptor = lockURL.withUnsafeFileSystemRepresentation({ path -> Int32? in
+                guard let path else { return nil }
+                return Darwin.open(
+                    path,
+                    flags,
+                    mode_t(S_IRUSR | S_IWUSR)
+                )
+            })
+        else {
             throw SingleInstanceLeaseError.invalidLockPath
         }
 
@@ -85,7 +89,7 @@ final class SingleInstanceLease {
 
     private static func writeOwnerPID(to descriptor: Int32) throws {
         guard Darwin.ftruncate(descriptor, 0) == 0,
-              Darwin.lseek(descriptor, 0, SEEK_SET) >= 0
+            Darwin.lseek(descriptor, 0, SEEK_SET) >= 0
         else {
             throw SingleInstanceLeaseError.ownerMetadataWriteFailed(errno)
         }

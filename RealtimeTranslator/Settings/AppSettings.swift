@@ -135,12 +135,13 @@ final class AppSettings {
         panelOriginX = defaults.double(forKey: Keys.panelOriginX)
         panelOriginY = defaults.double(forKey: Keys.panelOriginY)
         acceptedOpenAIConsentVersion = defaults.integer(forKey: Keys.openAIConsentVersion)
-        let pair = LanguagePair(
-            rawValue: defaults.string(forKey: Keys.languagePair) ?? ""
-        ) ?? .jaEn
+        let pair =
+            LanguagePair(
+                rawValue: defaults.string(forKey: Keys.languagePair) ?? ""
+            ) ?? .jaEn
 
         if let storedPrompt = defaults.string(forKey: Keys.transcriptionPrompt),
-           !storedPrompt.isEmpty
+            !storedPrompt.isEmpty
         {
             transcriptionPrompt = storedPrompt
         } else {
@@ -156,7 +157,7 @@ final class AppSettings {
         }
 
         if let storedNoise = defaults.string(forKey: Keys.noiseReductionMode),
-           RealtimeTranslationNoiseReduction(rawValue: storedNoise) != nil
+            RealtimeTranslationNoiseReduction(rawValue: storedNoise) != nil
         {
             noiseReductionMode = storedNoise
         } else {
@@ -164,7 +165,7 @@ final class AppSettings {
         }
 
         if let storedDelay = defaults.string(forKey: Keys.transcriptionDelayMode),
-           RealtimeTranscriptionDelay(rawValue: storedDelay) != nil
+            RealtimeTranscriptionDelay(rawValue: storedDelay) != nil
         {
             transcriptionDelayMode = storedDelay
         } else {

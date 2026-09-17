@@ -39,6 +39,21 @@ jobs:
         with:
           global-json-file: windows/global.json
 
+      - uses: actions/cache@v4
+        if: steps.locate.outputs.found == 'true'
+        with:
+          path: .devin/format/tools
+          key: format-csharp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/format.mjs', '.devin/format/tool-versions.json') }}
+
+      - name: Check C# formatting
+        if: steps.locate.outputs.found == 'true'
+        shell: pwsh
+        run: |
+          node scripts/format.mjs csharp setup
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/format.mjs csharp check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Restore
         if: steps.locate.outputs.found == 'true'
         env:

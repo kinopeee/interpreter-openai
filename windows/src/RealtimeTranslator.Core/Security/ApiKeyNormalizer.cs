@@ -18,9 +18,7 @@ public enum StoredApiKeyState
     Valid,
 }
 
-public readonly record struct ApiKeyNormalizationResult(
-    ApiKeyNormalizationStatus Status,
-    string? Value);
+public readonly record struct ApiKeyNormalizationResult(ApiKeyNormalizationStatus Status, string? Value);
 
 /// <summary>
 /// BYOK キーの正規化。埋め込み空白・制御文字を落とし、ヘッダ破壊と貼り付けゴミを防ぐ。
@@ -74,8 +72,7 @@ public static class ApiKeyNormalizer
             return true;
         }
 
-        return Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control
-            or UnicodeCategory.Format;
+        return Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control or UnicodeCategory.Format;
     }
 
     private static bool IsAllowed(string value)
@@ -96,7 +93,5 @@ public static class ApiKeyNormalizer
 public sealed class ApiKeyFormatException : ArgumentException
 {
     public ApiKeyFormatException(string message)
-        : base(message)
-    {
-    }
+        : base(message) { }
 }

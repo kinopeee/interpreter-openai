@@ -19,7 +19,9 @@ public sealed class RoutingSourceTextWindowTests
 
         var trimmed = RoutingSourceTextWindow.Trim(prefix + tail, LanguagePair.JaEn);
 
-        Assert.True(trimmed.EndsWith(tail, StringComparison.Ordinal) || trimmed.Contains("world", StringComparison.Ordinal));
+        Assert.True(
+            trimmed.EndsWith(tail, StringComparison.Ordinal) || trimmed.Contains("world", StringComparison.Ordinal)
+        );
         Assert.True(trimmed.Length <= RoutingSourceTextWindow.MaxLength);
     }
 
@@ -66,8 +68,9 @@ public sealed class RoutingSourceTextWindowTests
     [Fact]
     public void TrimNullThrowsArgumentNullException()
     {
-        var exception = Assert.Throws<ArgumentNullException>(
-            () => RoutingSourceTextWindow.Trim(null!, LanguagePair.JaEn));
+        var exception = Assert.Throws<ArgumentNullException>(() =>
+            RoutingSourceTextWindow.Trim(null!, LanguagePair.JaEn)
+        );
 
         Assert.Equal("text", exception.ParamName);
     }
@@ -88,9 +91,7 @@ public sealed class RoutingSourceTextWindowTests
         Assert.StartsWith("¿", detectorWindow, StringComparison.Ordinal);
         Assert.Contains("¿", trimmed, StringComparison.Ordinal);
         Assert.DoesNotContain("aaa", trimmed, StringComparison.Ordinal);
-        Assert.Equal(
-            SpokenLanguageEvidence.Spanish,
-            SpokenLanguageDetector.Evidence(trimmed, LanguagePair.EnEs));
+        Assert.Equal(SpokenLanguageEvidence.Spanish, SpokenLanguageDetector.Evidence(trimmed, LanguagePair.EnEs));
     }
 
     // Given: en-es 語窓内に長い語と、上限を超える空白 run がある
@@ -157,8 +158,6 @@ public sealed class RoutingSourceTextWindowTests
         Assert.True(trimmed.Length < text.Length);
         Assert.True(trimmed.Length <= RoutingSourceTextWindow.MaxLength);
         Assert.DoesNotContain("ん", trimmed, StringComparison.Ordinal);
-        Assert.Equal(
-            SpokenLanguageEvidence.Japanese,
-            SpokenLanguageDetector.Evidence(trimmed, pair));
+        Assert.Equal(SpokenLanguageEvidence.Japanese, SpokenLanguageDetector.Evidence(trimmed, pair));
     }
 }

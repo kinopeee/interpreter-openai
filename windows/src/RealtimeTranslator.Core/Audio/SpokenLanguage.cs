@@ -36,20 +36,19 @@ public enum LanguagePair
 
 public static class LanguagePairExtensions
 {
-    public static ImmutableArray<SpokenLanguage> Languages(this LanguagePair pair) => pair switch
-    {
-        LanguagePair.JaEn => [SpokenLanguage.Japanese, SpokenLanguage.English],
-        LanguagePair.JaEs => [SpokenLanguage.Japanese, SpokenLanguage.Spanish],
-        LanguagePair.EnEs => [SpokenLanguage.English, SpokenLanguage.Spanish],
-        _ => throw new ArgumentOutOfRangeException(nameof(pair), pair, null),
-    };
+    public static ImmutableArray<SpokenLanguage> Languages(this LanguagePair pair) =>
+        pair switch
+        {
+            LanguagePair.JaEn => [SpokenLanguage.Japanese, SpokenLanguage.English],
+            LanguagePair.JaEs => [SpokenLanguage.Japanese, SpokenLanguage.Spanish],
+            LanguagePair.EnEs => [SpokenLanguage.English, SpokenLanguage.Spanish],
+            _ => throw new ArgumentOutOfRangeException(nameof(pair), pair, null),
+        };
 
     public static RealtimeTranslationOutputLanguage? TranslationTarget(
         this LanguagePair pair,
-        SpokenLanguage language) =>
-        pair.Counterpart(language) is { } counterpart
-            ? counterpart.ToOutputLanguage()
-            : null;
+        SpokenLanguage language
+    ) => pair.Counterpart(language) is { } counterpart ? counterpart.ToOutputLanguage() : null;
 
     public static SpokenLanguage? Counterpart(this LanguagePair pair, SpokenLanguage language)
     {
@@ -66,9 +65,7 @@ public static class LanguagePairExtensions
     /// 出力 target に対応する話者言語（source）を返す。
     /// <c>translationTarget(source) == target</c> となる側であり、target と同名の言語ではない。
     /// </summary>
-    public static SpokenLanguage? Counterpart(
-        this LanguagePair pair,
-        RealtimeTranslationOutputLanguage target)
+    public static SpokenLanguage? Counterpart(this LanguagePair pair, RealtimeTranslationOutputLanguage target)
     {
         foreach (var language in pair.Languages())
         {
@@ -81,27 +78,30 @@ public static class LanguagePairExtensions
         return null;
     }
 
-    public static string ToWireValue(this LanguagePair pair) => pair switch
-    {
-        LanguagePair.JaEn => "ja-en",
-        LanguagePair.JaEs => "ja-es",
-        LanguagePair.EnEs => "en-es",
-        _ => throw new ArgumentOutOfRangeException(nameof(pair), pair, null),
-    };
+    public static string ToWireValue(this LanguagePair pair) =>
+        pair switch
+        {
+            LanguagePair.JaEn => "ja-en",
+            LanguagePair.JaEs => "ja-es",
+            LanguagePair.EnEs => "en-es",
+            _ => throw new ArgumentOutOfRangeException(nameof(pair), pair, null),
+        };
 
-    public static LanguagePair ParseLanguagePair(string wireValue) => wireValue switch
-    {
-        "ja-en" => LanguagePair.JaEn,
-        "ja-es" => LanguagePair.JaEs,
-        "en-es" => LanguagePair.EnEs,
-        _ => throw new ArgumentOutOfRangeException(nameof(wireValue), wireValue, null),
-    };
+    public static LanguagePair ParseLanguagePair(string wireValue) =>
+        wireValue switch
+        {
+            "ja-en" => LanguagePair.JaEn,
+            "ja-es" => LanguagePair.JaEs,
+            "en-es" => LanguagePair.EnEs,
+            _ => throw new ArgumentOutOfRangeException(nameof(wireValue), wireValue, null),
+        };
 
-    public static RealtimeTranslationOutputLanguage ToOutputLanguage(this SpokenLanguage language) => language switch
-    {
-        SpokenLanguage.English => RealtimeTranslationOutputLanguage.English,
-        SpokenLanguage.Japanese => RealtimeTranslationOutputLanguage.Japanese,
-        SpokenLanguage.Spanish => RealtimeTranslationOutputLanguage.Spanish,
-        _ => throw new ArgumentOutOfRangeException(nameof(language), language, null),
-    };
+    public static RealtimeTranslationOutputLanguage ToOutputLanguage(this SpokenLanguage language) =>
+        language switch
+        {
+            SpokenLanguage.English => RealtimeTranslationOutputLanguage.English,
+            SpokenLanguage.Japanese => RealtimeTranslationOutputLanguage.Japanese,
+            SpokenLanguage.Spanish => RealtimeTranslationOutputLanguage.Spanish,
+            _ => throw new ArgumentOutOfRangeException(nameof(language), language, null),
+        };
 }

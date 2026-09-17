@@ -14,11 +14,10 @@ public readonly record struct RealtimeSubtitleUpdate(
     bool ShouldFinalize,
     int SegmentGeneration,
     bool IsInvalidation = false,
-    long Sequence = 0);
+    long Sequence = 0
+);
 
-public readonly record struct LanguageSwitchSplit(
-    RealtimeSubtitleUpdate? Finalized,
-    RealtimeSubtitleUpdate Current);
+public readonly record struct LanguageSwitchSplit(RealtimeSubtitleUpdate? Finalized, RealtimeSubtitleUpdate Current);
 
 /// <summary>原文 authority と複数出力言語を時間整列し、自動 lane 選択する。</summary>
 public sealed class RealtimeSubtitleAssembler
@@ -28,6 +27,7 @@ public sealed class RealtimeSubtitleAssembler
     /// 短い idle cutoff は訳文を切り落とすため 8 秒を使う。
     /// </summary>
     public static readonly TimeSpan IdleFinalizeInterval = TimeSpan.FromSeconds(8);
+
     /// <summary><c>shared/fixtures/v1/audio.json</c> の loss.taintedSegmentWindowMs と一致する。</summary>
     public static readonly TimeSpan AudioLossTaintWindow = TimeSpan.FromSeconds(8);
 
@@ -41,6 +41,7 @@ public sealed class RealtimeSubtitleAssembler
     private readonly HashSet<string> _seenEventIds = new(StringComparer.Ordinal);
     private LanguagePair _languagePair;
     private DateTimeOffset _lastActivityAt = DateTimeOffset.MinValue;
+
     // elapsed_ms は接続ごとに独立した時計。lane 間で比較すると切替直後の
     // 新 lane の delta をすべて捨ててしまうため、確定カットオフと観測最大値は lane ごとに保持する。
     private readonly Dictionary<RealtimeTranslationLane, int> _finalizedCutoffElapsedMs = new();
@@ -103,8 +104,7 @@ public sealed class RealtimeSubtitleAssembler
         _audioLossTaintedUntil = now + AudioLossTaintWindow;
     }
 
-    public void SetBoundaryCandidatePending(bool pending) =>
-        _boundaryCandidatePending = pending;
+    public void SetBoundaryCandidatePending(bool pending) => _boundaryCandidatePending = pending;
 
     /// <summary>セッションが判定した期待翻訳 lane。同言語 echo より優先する。</summary>
     public void ExpectLane(RealtimeTranslationOutputLanguage? lane)
@@ -146,7 +146,8 @@ public sealed class RealtimeSubtitleAssembler
         var splitOffset = BoundaryOffsetMovingWhitespaceToNewSide(offset);
         var prefix = _sourceText[..splitOffset];
         var suffix = _sourceText[splitOffset..];
-        var hasCompletePair = prefix.Length > 0
+        var hasCompletePair =
+            prefix.Length > 0
             && _selectedLane is not null
             && CurrentTranslation.Length > 0
             && _translationSourceEnd.GetValueOrDefault(_selectedLane.Value) >= splitOffset;
@@ -161,7 +162,8 @@ public sealed class RealtimeSubtitleAssembler
                     CurrentTranslation,
                     IsTranslationCurrent: true,
                     ShouldFinalize: true,
-                    SegmentGeneration: _segmentGeneration);
+                    SegmentGeneration: _segmentGeneration
+                );
             }
         }
 
@@ -198,7 +200,8 @@ public sealed class RealtimeSubtitleAssembler
                     streamEvent.Target,
                     translation.EventId,
                     translation.ElapsedMs,
-                    now);
+                    now
+                );
 
             default:
                 return null;
@@ -229,8 +232,7 @@ public sealed class RealtimeSubtitleAssembler
 
         if (_sourceText.Length == 0)
         {
-            _currentSegmentTainted = _audioLossTaintedUntil is { } deadline
-                && now <= deadline;
+            _currentSegmentTainted = _audioLossTaintedUntil is { } deadline && now <= deadline;
             _audioLossTaintedUntil = null;
         }
 
@@ -252,13 +254,16 @@ public sealed class RealtimeSubtitleAssembler
         RealtimeTranslationOutputLanguage target,
         string? eventId,
         int? elapsedMs,
-        DateTimeOffset now)
+        DateTimeOffset now
+    )
     {
         // 確定後に届いた旧 segment の訳文で、保持中の完全ペアを上書きしない。
         // 次の source delta が来るまで target delta は破棄する。
-        if (delta.Length == 0
+        if (
+            delta.Length == 0
             || _awaitingSourceAfterFinalize
-            || IsDuplicateOrStale(eventId, elapsedMs, RealtimeTranslationLane.Translation(target)))
+            || IsDuplicateOrStale(eventId, elapsedMs, RealtimeTranslationLane.Translation(target))
+        )
         {
             return null;
         }
@@ -336,10 +341,8 @@ public sealed class RealtimeSubtitleAssembler
         }
 
         // 補助: 原文の文字種。
-        _selectedLane = _languagePair.TranslationTarget(
-            SpokenLanguageDetector.Detect(_sourceText, _languagePair));
-        if (_selectedLane is { } detected
-            && _translationText.GetValueOrDefault(detected, string.Empty).Length > 0)
+        _selectedLane = _languagePair.TranslationTarget(SpokenLanguageDetector.Detect(_sourceText, _languagePair));
+        if (_selectedLane is { } detected && _translationText.GetValueOrDefault(detected, string.Empty).Length > 0)
         {
             _translationIsCurrent = true;
         }
@@ -400,7 +403,8 @@ public sealed class RealtimeSubtitleAssembler
             CurrentTranslation,
             IsTranslationCurrent: true,
             ShouldFinalize: true,
-            _segmentGeneration);
+            _segmentGeneration
+        );
 
         // 次の source 開始まで表示内容は aggregator 側で保持する。
         ClearSegmentBuffers(advancingGeneration: true);
@@ -410,11 +414,12 @@ public sealed class RealtimeSubtitleAssembler
         return update;
     }
 
-    private string CurrentTranslation => _selectedLane switch
-    {
-        { } lane => _translationText.GetValueOrDefault(lane, string.Empty),
-        _ => string.Empty,
-    };
+    private string CurrentTranslation =>
+        _selectedLane switch
+        {
+            { } lane => _translationText.GetValueOrDefault(lane, string.Empty),
+            _ => string.Empty,
+        };
 
     private RealtimeSubtitleUpdate Snapshot()
     {
@@ -424,7 +429,8 @@ public sealed class RealtimeSubtitleAssembler
             translation,
             _translationIsCurrent && translation.Length > 0,
             ShouldFinalize: false,
-            _segmentGeneration);
+            _segmentGeneration
+        );
     }
 
     private RealtimeSubtitleUpdate AbandonStaleSegment(DateTimeOffset now)
@@ -440,7 +446,8 @@ public sealed class RealtimeSubtitleAssembler
             IsTranslationCurrent: false,
             ShouldFinalize: false,
             _segmentGeneration,
-            IsInvalidation: true);
+            IsInvalidation: true
+        );
     }
 
     private void ApplyFinalizedCutoffs()
@@ -458,9 +465,7 @@ public sealed class RealtimeSubtitleAssembler
             return;
         }
 
-        _maxElapsedMs[lane] = _maxElapsedMs.TryGetValue(lane, out var max)
-            ? Math.Max(max, elapsed)
-            : elapsed;
+        _maxElapsedMs[lane] = _maxElapsedMs.TryGetValue(lane, out var max) ? Math.Max(max, elapsed) : elapsed;
     }
 
     private void ClearSegmentBuffers(bool advancingGeneration)
@@ -517,9 +522,7 @@ public sealed class RealtimeSubtitleAssembler
         while (index > 0)
         {
             var previous = entries[index - 1];
-            if (!Rune.IsWhiteSpace(previous.Rune)
-                && previous.Rune.Value != 0x00BF
-                && previous.Rune.Value != 0x00A1)
+            if (!Rune.IsWhiteSpace(previous.Rune) && previous.Rune.Value != 0x00BF && previous.Rune.Value != 0x00A1)
             {
                 break;
             }
@@ -533,7 +536,5 @@ public sealed class RealtimeSubtitleAssembler
 
     /// <summary>直前 segment 確定後、空のまま次の原文が来たら新 segment として扱う。</summary>
     private bool ShouldStartNewSegmentForSourceUpdate() =>
-        _sourceText.Length == 0
-        && _selectedLane is null
-        && _translationText.Any(text => text.Value.Length > 0);
+        _sourceText.Length == 0 && _selectedLane is null && _translationText.Any(text => text.Value.Length > 0);
 }

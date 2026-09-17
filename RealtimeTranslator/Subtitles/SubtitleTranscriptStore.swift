@@ -50,13 +50,16 @@ final class SubtitleTranscriptStore: @unchecked Sendable {
         guard let bundleIdentifier else {
             throw CocoaError(.fileNoSuchFile)
         }
-        guard let applicationSupport = fileManager.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first else {
+        guard
+            let applicationSupport = fileManager.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            ).first
+        else {
             throw CocoaError(.fileNoSuchFile)
         }
-        let directory = applicationSupport
+        let directory =
+            applicationSupport
             .appendingPathComponent(bundleIdentifier, isDirectory: true)
             .appendingPathComponent("transcripts", isDirectory: true)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)

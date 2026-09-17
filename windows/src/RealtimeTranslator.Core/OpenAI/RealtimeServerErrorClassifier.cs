@@ -24,33 +24,18 @@ public enum RealtimeServerErrorDisposition
 public readonly record struct RealtimeServerErrorClassification(
     RealtimeServerErrorDisposition Disposition,
     EventDeliveryTermination Termination,
-    string? SanitizedMessage)
+    string? SanitizedMessage
+)
 {
     public const string TransportCode = "transport";
 
-    private static readonly string[] KeepAliveCodes =
-    [
-        "input_audio_buffer_commit_empty",
-    ];
+    private static readonly string[] KeepAliveCodes = ["input_audio_buffer_commit_empty"];
 
-    private static readonly string[] HaltCodes =
-    [
-        "insufficient_quota",
-        "billing_hard_limit_reached",
-    ];
+    private static readonly string[] HaltCodes = ["insufficient_quota", "billing_hard_limit_reached"];
 
-    private static readonly string[] RecoverCodes =
-    [
-        "server_error",
-        "rate_limit_exceeded",
-        "session_expired",
-    ];
+    private static readonly string[] RecoverCodes = ["server_error", "rate_limit_exceeded", "session_expired"];
 
-    private static readonly string[] RecoverTypes =
-    [
-        "server_error",
-        "rate_limit_error",
-    ];
+    private static readonly string[] RecoverTypes = ["server_error", "rate_limit_error"];
 
     public static RealtimeServerErrorClassification Classify(string? errorType, string? code, string message)
     {
@@ -65,29 +50,25 @@ public readonly record struct RealtimeServerErrorClassification(
         string? errorType,
         string? code,
         string message,
-        RealtimeServerErrorDisposition fallback)
+        RealtimeServerErrorDisposition fallback
+    )
     {
-
         var normalizedCode = Normalize(code);
         var normalizedType = Normalize(errorType);
 
         // 認証失敗は code に関わらず最優先（transport 扱いで再接続に回さない）。
         // code と type は独立して認証判定に回す（type だけに根拠がある場合も拾う）。
-        if (RealtimeTranslationException.IsAuthenticationFailure(code, message)
-            || RealtimeTranslationException.IsAuthenticationFailure(errorType, message))
+        if (
+            RealtimeTranslationException.IsAuthenticationFailure(code, message)
+            || RealtimeTranslationException.IsAuthenticationFailure(errorType, message)
+        )
         {
-            return new(
-                RealtimeServerErrorDisposition.Halt,
-                EventDeliveryTermination.AuthenticationFailed,
-                null);
+            return new(RealtimeServerErrorDisposition.Halt, EventDeliveryTermination.AuthenticationFailed, null);
         }
 
         if (normalizedCode == TransportCode)
         {
-            return new(
-                RealtimeServerErrorDisposition.Recover,
-                EventDeliveryTermination.TransportFailure,
-                null);
+            return new(RealtimeServerErrorDisposition.Recover, EventDeliveryTermination.TransportFailure, null);
         }
 
         if (Matches(HaltCodes, normalizedCode) || Matches(HaltCodes, normalizedType))
@@ -97,45 +78,44 @@ public readonly record struct RealtimeServerErrorClassification(
 
         if (Matches(KeepAliveCodes, normalizedCode))
         {
-            return new(
-                RealtimeServerErrorDisposition.KeepAlive,
-                EventDeliveryTermination.None,
-                null);
+            return new(RealtimeServerErrorDisposition.KeepAlive, EventDeliveryTermination.None, null);
         }
 
         if (Matches(RecoverCodes, normalizedCode) || Matches(RecoverTypes, normalizedType))
         {
-            return new(
-                RealtimeServerErrorDisposition.Recover,
-                EventDeliveryTermination.RecoverableServerError,
-                null);
+            return new(RealtimeServerErrorDisposition.Recover, EventDeliveryTermination.RecoverableServerError, null);
         }
 
         return fallback == RealtimeServerErrorDisposition.KeepAlive
-            ? new(
-                RealtimeServerErrorDisposition.KeepAlive,
-                EventDeliveryTermination.None,
-                null)
+            ? new(RealtimeServerErrorDisposition.KeepAlive, EventDeliveryTermination.None, null)
             : Fatal(message);
     }
 
-    public RealtimeTranslationException ToException() => Termination switch
-    {
-        EventDeliveryTermination.AuthenticationFailed =>
-            new RealtimeTranslationException(RealtimeTranslationErrorKind.AuthenticationFailed),
-        EventDeliveryTermination.FatalServerError =>
-            new RealtimeTranslationException(RealtimeTranslationErrorKind.FatalServerError, SanitizedMessage),
-        EventDeliveryTermination.RecoverableServerError =>
-            new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableServerError),
-        EventDeliveryTermination.TransportFailure =>
-            new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableTransportFailure),
-        _ => throw new InvalidOperationException("keep-alive errors do not produce an exception."),
-    };
+    public RealtimeTranslationException ToException() =>
+        Termination switch
+        {
+            EventDeliveryTermination.AuthenticationFailed => new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.AuthenticationFailed
+            ),
+            EventDeliveryTermination.FatalServerError => new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.FatalServerError,
+                SanitizedMessage
+            ),
+            EventDeliveryTermination.RecoverableServerError => new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.RecoverableServerError
+            ),
+            EventDeliveryTermination.TransportFailure => new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.RecoverableTransportFailure
+            ),
+            _ => throw new InvalidOperationException("keep-alive errors do not produce an exception."),
+        };
 
-    private static RealtimeServerErrorClassification Fatal(string message) => new(
-        RealtimeServerErrorDisposition.Halt,
-        EventDeliveryTermination.FatalServerError,
-        RealtimeTranslationException.SanitizeServerMessage(message));
+    private static RealtimeServerErrorClassification Fatal(string message) =>
+        new(
+            RealtimeServerErrorDisposition.Halt,
+            EventDeliveryTermination.FatalServerError,
+            RealtimeTranslationException.SanitizeServerMessage(message)
+        );
 
     private static string Normalize(string? value) =>
         SecretText.NormalizeForMatch(value ?? string.Empty).Replace(" ", string.Empty, StringComparison.Ordinal);

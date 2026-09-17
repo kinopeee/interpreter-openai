@@ -30,7 +30,10 @@ public sealed class SubtitleFixtureTests
         var limits = SharedFixtures.Load("subtitle", 2)["limits"]!.AsObject();
 
         // When/Then: clipper 定数が一致する
-        Assert.Equal(SharedFixtures.Number(limits["japaneseCharacterLimit"]), SubtitleTailClipper.JapaneseCharacterLimit);
+        Assert.Equal(
+            SharedFixtures.Number(limits["japaneseCharacterLimit"]),
+            SubtitleTailClipper.JapaneseCharacterLimit
+        );
         Assert.Equal(SharedFixtures.Number(limits["englishCharacterLimit"]), SubtitleTailClipper.EnglishCharacterLimit);
         Assert.Equal(SharedFixtures.Text(limits["ellipsis"]), SubtitleTailClipper.Ellipsis);
     }
@@ -46,9 +49,7 @@ public sealed class SubtitleFixtureTests
         var fixture = SharedFixtures.Case("subtitle", "clip", name, 2);
 
         // When/Then: 末尾クリップ結果が一致する
-        Assert.Equal(
-            Expand(fixture["expected"]!),
-            SubtitleTailClipper.Clip(Expand(fixture["input"]!)));
+        Assert.Equal(Expand(fixture["expected"]!), SubtitleTailClipper.Clip(Expand(fixture["input"]!)));
     }
 
     // Given: shared fixture の無採取 finalize 間隔
@@ -63,7 +64,8 @@ public sealed class SubtitleFixtureTests
         // When/Then: IdleFinalizeInterval が一致する
         Assert.Equal(
             TimeSpan.FromSeconds(SharedFixtures.Number(assembler["idleFinalizeSeconds"])),
-            RealtimeSubtitleAssembler.IdleFinalizeInterval);
+            RealtimeSubtitleAssembler.IdleFinalizeInterval
+        );
     }
 
     [Theory]
@@ -72,67 +74,55 @@ public sealed class SubtitleFixtureTests
     {
         // Given: v2 boundary fixture
         var fixture = FindBoundaryCase(name);
-            var pair = LanguagePairExtensions.ParseLanguagePair(
-                SharedFixtures.Text(fixture["pair"]));
-            var currentLanguage = ParseLanguage(SharedFixtures.Text(fixture["currentLanguage"]));
-            var currentTarget = pair.TranslationTarget(currentLanguage)
-                ?? throw new Xunit.Sdk.XunitException("missing initial target");
-            var reverseEvidenceCount = 0;
-            var routing = string.Empty;
-            var source = string.Empty;
-            var tracker = new SourceBoundaryTracker();
-            var candidates = new List<int?>();
-            int? switchDelta = null;
+        var pair = LanguagePairExtensions.ParseLanguagePair(SharedFixtures.Text(fixture["pair"]));
+        var currentLanguage = ParseLanguage(SharedFixtures.Text(fixture["currentLanguage"]));
+        var currentTarget =
+            pair.TranslationTarget(currentLanguage) ?? throw new Xunit.Sdk.XunitException("missing initial target");
+        var reverseEvidenceCount = 0;
+        var routing = string.Empty;
+        var source = string.Empty;
+        var tracker = new SourceBoundaryTracker();
+        var candidates = new List<int?>();
+        int? switchDelta = null;
 
-            // When: source delta を routing / detector / selector / tracker に順に渡す
-            for (var index = 0; index < fixture["deltas"]!.AsArray().Count; index += 1)
+        // When: source delta を routing / detector / selector / tracker に順に渡す
+        for (var index = 0; index < fixture["deltas"]!.AsArray().Count; index += 1)
+        {
+            var delta = SharedFixtures.Text(fixture["deltas"]![index]);
+            var deltaStart = source.Length;
+            source += delta;
+            routing = RoutingSourceTextWindow.Trim(routing + delta, pair);
+            var evidence = SpokenLanguageDetector.RecentEvidence(routing, pair);
+            OppositeScriptRun? oppositeRun = null;
+            if (pair != LanguagePair.EnEs)
             {
-                var delta = SharedFixtures.Text(fixture["deltas"]![index]);
-                var deltaStart = source.Length;
-                source += delta;
-                routing = RoutingSourceTextWindow.Trim(routing + delta, pair);
-                var evidence = SpokenLanguageDetector.RecentEvidence(routing, pair);
-                OppositeScriptRun? oppositeRun = null;
-                if (pair != LanguagePair.EnEs)
-                {
-                    tracker.Observe(
-                        source,
-                        deltaStart,
-                        0,
-                        pair,
-                        currentLanguage,
-                        0);
-                    oppositeRun = tracker.OppositeScriptRun(source);
-                }
-                var selection = TranslationTargetSelector.Select(
-                    pair,
-                    currentTarget,
-                    reverseEvidenceCount,
-                    evidence,
-                    oppositeRun);
-                reverseEvidenceCount = selection.ReverseEvidenceCount;
-
-                if (selection.Target == currentTarget)
-                {
-                    if (pair == LanguagePair.EnEs)
-                    {
-                        tracker.Observe(
-                            source,
-                            deltaStart,
-                            0,
-                            pair,
-                            currentLanguage,
-                            reverseEvidenceCount);
-                    }
-                    candidates.Add(tracker.CandidateOffset);
-                }
-                else
-                {
-                    candidates.Add(tracker.CandidateOffset ?? deltaStart);
-                    switchDelta = index;
-                    break;
-                }
+                tracker.Observe(source, deltaStart, 0, pair, currentLanguage, 0);
+                oppositeRun = tracker.OppositeScriptRun(source);
             }
+            var selection = TranslationTargetSelector.Select(
+                pair,
+                currentTarget,
+                reverseEvidenceCount,
+                evidence,
+                oppositeRun
+            );
+            reverseEvidenceCount = selection.ReverseEvidenceCount;
+
+            if (selection.Target == currentTarget)
+            {
+                if (pair == LanguagePair.EnEs)
+                {
+                    tracker.Observe(source, deltaStart, 0, pair, currentLanguage, reverseEvidenceCount);
+                }
+                candidates.Add(tracker.CandidateOffset);
+            }
+            else
+            {
+                candidates.Add(tracker.CandidateOffset ?? deltaStart);
+                switchDelta = index;
+                break;
+            }
+        }
 
         var expectedCandidates = new List<int?>();
         foreach (var value in fixture["expectedCandidateOffsets"]!.AsArray())
@@ -141,19 +131,13 @@ public sealed class SubtitleFixtureTests
         }
 
         Assert.Equal(expectedCandidates, candidates);
-        Assert.Equal(
-            SharedFixtures.OptionalNumber(fixture["expectedSwitchAtDelta"]),
-            switchDelta);
+        Assert.Equal(SharedFixtures.OptionalNumber(fixture["expectedSwitchAtDelta"]), switchDelta);
 
         if (switchDelta is { } switchIndex)
         {
             var splitOffset = candidates[switchIndex] ?? source.Length;
-            Assert.Equal(
-                SharedFixtures.OptionalText(fixture["expectedOldSource"]),
-                source[..splitOffset]);
-            Assert.Equal(
-                SharedFixtures.OptionalText(fixture["expectedNewSource"]),
-                source[splitOffset..]);
+            Assert.Equal(SharedFixtures.OptionalText(fixture["expectedOldSource"]), source[..splitOffset]);
+            Assert.Equal(SharedFixtures.OptionalText(fixture["expectedNewSource"]), source[splitOffset..]);
         }
     }
 
@@ -169,22 +153,20 @@ public sealed class SubtitleFixtureTests
         assembler.Ingest(
             new RealtimeTranslationStreamEvent(
                 RealtimeTranslationLane.Source,
-                new RealtimeTranslationServerEvent.InputTranscriptDelta(
-                    "the meeting is today",
-                    "source-1",
-                    null),
-                1),
-            Origin);
+                new RealtimeTranslationServerEvent.InputTranscriptDelta("the meeting is today", "source-1", null),
+                1
+            ),
+            Origin
+        );
 
         var update = assembler.Ingest(
             new RealtimeTranslationStreamEvent(
                 RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.Spanish),
-                new RealtimeTranslationServerEvent.OutputTranscriptDelta(
-                    "la reunión es hoy",
-                    "translation-1",
-                    null),
-                1),
-            Origin);
+                new RealtimeTranslationServerEvent.OutputTranscriptDelta("la reunión es hoy", "translation-1", null),
+                1
+            ),
+            Origin
+        );
 
         Assert.NotNull(update);
         Assert.Equal("la reunión es hoy", update.Value.TranslatedText);
@@ -202,12 +184,11 @@ public sealed class SubtitleFixtureTests
         assembler.Ingest(
             new RealtimeTranslationStreamEvent(
                 RealtimeTranslationLane.Source,
-                new RealtimeTranslationServerEvent.InputTranscriptDelta(
-                    "会議を始めます",
-                    "source-jaes",
-                    null),
-                1),
-            Origin);
+                new RealtimeTranslationServerEvent.InputTranscriptDelta("会議を始めます", "source-jaes", null),
+                1
+            ),
+            Origin
+        );
 
         var update = assembler.Ingest(
             new RealtimeTranslationStreamEvent(
@@ -215,9 +196,12 @@ public sealed class SubtitleFixtureTests
                 new RealtimeTranslationServerEvent.OutputTranscriptDelta(
                     "Empezamos la reunión",
                     "translation-jaes",
-                    null),
-                1),
-            Origin);
+                    null
+                ),
+                1
+            ),
+            Origin
+        );
 
         Assert.NotNull(update);
         Assert.Equal("Empezamos la reunión", update.Value.TranslatedText);
@@ -239,7 +223,8 @@ public sealed class SubtitleFixtureTests
         assembler.ExpectLane(
             SharedFixtures.OptionalText(fixture["expectLane"]) is { } lane
                 ? RealtimeTranslationWireValues.ParseOutputLanguage(lane)
-                : null);
+                : null
+        );
 
         // When: tick / delta を順に適用する
         RealtimeSubtitleUpdate? last = null;
@@ -257,13 +242,16 @@ public sealed class SubtitleFixtureTests
                     assembler,
                     SharedFixtures.Number(step["boundaryOffset"]),
                     now,
-                    finalizedPairs),
+                    finalizedPairs
+                ),
                 "sourceDelta" or "translationDelta" => assembler.Ingest(
                     new RealtimeTranslationStreamEvent(
                         ParseLane(SharedFixtures.Text(step["lane"])),
                         ServerEvent(kind, step),
-                        SharedFixtures.OptionalNumber(step["epoch"]) ?? epoch),
-                    now),
+                        SharedFixtures.OptionalNumber(step["epoch"]) ?? epoch
+                    ),
+                    now
+                ),
                 _ => throw new Xunit.Sdk.XunitException("unhandled step kind " + kind),
             };
 
@@ -315,7 +303,8 @@ public sealed class SubtitleFixtureTests
         RealtimeSubtitleAssembler assembler,
         int offset,
         DateTimeOffset now,
-        List<(string Source, string Translation)> finalizedPairs)
+        List<(string Source, string Translation)> finalizedPairs
+    )
     {
         var split = assembler.SplitForLanguageSwitch(offset, now);
         if (split.Finalized is { } finalized)

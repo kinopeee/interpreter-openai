@@ -97,7 +97,8 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
     func send(_ data: Data) async throws {
         sendAttemptCount += 1
         let type = Self.messageType(of: data)
-        let isAudioAppend = type == "session.input_audio_buffer.append"
+        let isAudioAppend =
+            type == "session.input_audio_buffer.append"
             || type == "input_audio_buffer.append"
         if isAudioAppend, holdAudioAppends {
             try await withTaskCancellationHandler {
@@ -131,7 +132,7 @@ actor FakeRealtimeWebSocketTransport: RealtimeWebSocketTransport {
                 try enqueueJSON(["type": "session.closed"])
             } else if type == "input_audio_buffer.commit" {
                 try enqueueJSON([
-                    "type": "conversation.item.input_audio_transcription.completed",
+                    "type": "conversation.item.input_audio_transcription.completed"
                 ])
             }
         }

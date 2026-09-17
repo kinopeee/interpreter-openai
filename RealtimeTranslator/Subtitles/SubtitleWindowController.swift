@@ -97,7 +97,8 @@ final class SubtitleWindowController: NSObject {
         fontSize: Double,
         translationState: TranslationState
     ) {
-        let shouldRenderSubtitles = self.snapshot.presentation != snapshot.presentation
+        let shouldRenderSubtitles =
+            self.snapshot.presentation != snapshot.presentation
             || self.fontSize != fontSize
         let shouldRenderControls = self.translationState != translationState
         self.snapshot = snapshot
@@ -142,7 +143,8 @@ final class SubtitleWindowController: NSObject {
 
     private func installDragMonitor() {
         removeDragMonitor()
-        dragMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
+        dragMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) {
+            [weak self] event in
             self?.handleDrag(event)
             return event
         }
@@ -203,9 +205,11 @@ final class SubtitleWindowController: NSObject {
     }
 
     private func movePanels(to requestedOrigin: CGPoint) {
-        guard let screen = targetScreen(
-            bestMatchingSubtitleOrigin: requestedOrigin
-        ) else {
+        guard
+            let screen = targetScreen(
+                bestMatchingSubtitleOrigin: requestedOrigin
+            )
+        else {
             return
         }
         let layout = layout(in: screen, requestedOrigin: requestedOrigin)
@@ -223,11 +227,13 @@ final class SubtitleWindowController: NSObject {
         let fallbackIndex = fallbackScreen.flatMap { fallback in
             screens.firstIndex { $0 === fallback }
         }
-        guard let index = SubtitleWindowGeometry.screenIndex(
-            containing: origin,
-            in: screens.map(\.frame),
-            fallbackIndex: fallbackIndex
-        ) else {
+        guard
+            let index = SubtitleWindowGeometry.screenIndex(
+                containing: origin,
+                in: screens.map(\.frame),
+                fallbackIndex: fallbackIndex
+            )
+        else {
             return fallbackScreen
         }
         return screens[index]
@@ -243,11 +249,13 @@ final class SubtitleWindowController: NSObject {
         let fallbackIndex = fallbackScreen.flatMap { fallback in
             screens.firstIndex { $0 === fallback }
         }
-        guard let index = SubtitleWindowGeometry.screenIndex(
-            bestMatching: CGRect(origin: origin, size: panel.frame.size),
-            in: screens.map(\.frame),
-            fallbackIndex: fallbackIndex
-        ) else {
+        guard
+            let index = SubtitleWindowGeometry.screenIndex(
+                bestMatching: CGRect(origin: origin, size: panel.frame.size),
+                in: screens.map(\.frame),
+                fallbackIndex: fallbackIndex
+            )
+        else {
             return fallbackScreen
         }
         return screens[index]
@@ -262,10 +270,12 @@ final class SubtitleWindowController: NSObject {
             hostingController: hostingController,
             in: visibleFrame
         )
-        let origin = requestedOrigin ?? SubtitleWindowGeometry.defaultOrigin(
-            in: visibleFrame,
-            subtitleSize: subtitleSize
-        )
+        let origin =
+            requestedOrigin
+            ?? SubtitleWindowGeometry.defaultOrigin(
+                in: visibleFrame,
+                subtitleSize: subtitleSize
+            )
         return SubtitleWindowGeometry.layout(
             subtitleOrigin: origin,
             subtitleSize: subtitleSize,

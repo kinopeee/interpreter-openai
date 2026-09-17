@@ -24,7 +24,8 @@ public static class Pcm16LittleEndianEncoder
         {
             BinaryPrimitives.WriteInt16LittleEndian(
                 destination.Slice(index * 2, 2),
-                EncodeSample(floatSamples[index], gain));
+                EncodeSample(floatSamples[index], gain)
+            );
         }
     }
 

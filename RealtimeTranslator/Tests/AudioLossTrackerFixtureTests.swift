@@ -47,7 +47,8 @@ final class AudioLossTrackerFixtureTests: XCTestCase {
             XCTAssertEqual(tracker.metrics.droppedFrames, SharedFixtures.number(expected["droppedFrames"]), name)
             XCTAssertEqual(tracker.metrics.lostMilliseconds, SharedFixtures.number(expected["lostMs"]), name)
             XCTAssertEqual(tracker.metrics.lossEvents, SharedFixtures.number(expected["lossEvents"]), name)
-            XCTAssertEqual(tracker.metrics.maxQueueWaitMilliseconds, SharedFixtures.number(expected["maxQueueWaitMs"]), name)
+            XCTAssertEqual(
+                tracker.metrics.maxQueueWaitMilliseconds, SharedFixtures.number(expected["maxQueueWaitMs"]), name)
             XCTAssertEqual(reconnectAt, SharedFixtures.optionalNumber(expected["reconnectAt"]), name)
         }
     }

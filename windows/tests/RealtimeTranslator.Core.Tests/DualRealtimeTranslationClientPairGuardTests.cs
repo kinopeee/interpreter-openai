@@ -31,18 +31,21 @@ public sealed class DualRealtimeTranslationClientPairGuardTests
         var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
         using var dual = CreateJaEnOnlyDual(source, english, japanese);
 
-        var error = await Assert.ThrowsAsync<ArgumentException>(
-            () => dual.StartAsync("sk-test", RealtimeSessionTuning.Default, pair));
+        var error = await Assert.ThrowsAsync<ArgumentException>(() =>
+            dual.StartAsync("sk-test", RealtimeSessionTuning.Default, pair)
+        );
 
         Assert.Equal("pair", error.ParamName);
         Assert.Equal(0, source.ConnectCount);
         Assert.Equal(0, english.ConnectCount);
         Assert.Equal(0, japanese.ConnectCount);
 
-        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English));
-        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("after-failed-start")));
+        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English)
+        );
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("after-failed-start"))
+        );
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, selectError.Kind);
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
 
@@ -52,9 +55,7 @@ public sealed class DualRealtimeTranslationClientPairGuardTests
         Assert.Empty(SentTypes(source));
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         Assert.False(await dual.Events.WaitToReadAsync(timeout.Token));
     }
@@ -75,8 +76,9 @@ public sealed class DualRealtimeTranslationClientPairGuardTests
         var sourceCloseAfterJaEn = source.CloseCount;
         Assert.True(sourceConnectAfterJaEn >= 1);
 
-        var error = await Assert.ThrowsAsync<ArgumentException>(
-            () => dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs));
+        var error = await Assert.ThrowsAsync<ArgumentException>(() =>
+            dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEs)
+        );
 
         Assert.Equal("pair", error.ParamName);
         Assert.Equal(sourceConnectAfterJaEn, source.ConnectCount);
@@ -84,8 +86,9 @@ public sealed class DualRealtimeTranslationClientPairGuardTests
         Assert.True(english.CloseCount >= 1);
         Assert.True(japanese.CloseCount >= 1);
 
-        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Japanese));
+        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Japanese)
+        );
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, selectError.Kind);
     }
 
@@ -100,8 +103,9 @@ public sealed class DualRealtimeTranslationClientPairGuardTests
         var japanese = new FakeRealtimeServerTransport();
         using var dual = CreateJaEnOnlyDual(source, english, japanese);
 
-        await Assert.ThrowsAsync<ArgumentException>(
-            () => dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.EnEs));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.EnEs)
+        );
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn);
         await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
@@ -119,17 +123,13 @@ public sealed class DualRealtimeTranslationClientPairGuardTests
     private static DualRealtimeTranslationClient CreateJaEnOnlyDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,
-        FakeRealtimeServerTransport japanese) =>
+        FakeRealtimeServerTransport japanese
+    ) =>
         new(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.English,
-                english,
-                "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.Japanese,
-                japanese,
-                "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
 
     private static List<string> SentTypes(FakeRealtimeServerTransport transport)
     {

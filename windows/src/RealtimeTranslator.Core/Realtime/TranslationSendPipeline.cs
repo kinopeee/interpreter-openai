@@ -33,7 +33,8 @@ internal sealed class TranslationSendPipeline
         Func<RealtimeTranslationOutputLanguage, RealtimeTranslationConnection> connectionProvider,
         Func<int> connectionEpochProvider,
         Func<bool> isRunningProvider,
-        Func<EventDeliveryWriter?> mergeWriterProvider)
+        Func<EventDeliveryWriter?> mergeWriterProvider
+    )
     {
         _sync = sync;
         _clientTuning = clientTuning;
@@ -70,9 +71,7 @@ internal sealed class TranslationSendPipeline
 
     internal (Task? PumpTask, CancellationTokenSource Cancellation) Detach() => _pump.Detach();
 
-    internal bool TryEnqueueTranslationFrameLocked(
-        ReadOnlyMemory<byte> frame,
-        RealtimeTranslationOutputLanguage target)
+    internal bool TryEnqueueTranslationFrameLocked(ReadOnlyMemory<byte> frame, RealtimeTranslationOutputLanguage target)
     {
         // transport failure 後は enqueue 自体を止め、ポンプ再起動の隙を残さない。
         if (_pump.HaltedForTransportFailure)
@@ -113,9 +112,7 @@ internal sealed class TranslationSendPipeline
             PendingTranslationFrame pending;
             lock (_sync)
             {
-                if (!_isRunningProvider()
-                    || _pump.HaltedForTransportFailure
-                    || _queues.PendingCount == 0)
+                if (!_isRunningProvider() || _pump.HaltedForTransportFailure || _queues.PendingCount == 0)
                 {
                     _pump.FinishIfCurrent(generation);
                     return;
@@ -131,8 +128,7 @@ internal sealed class TranslationSendPipeline
 
                 lock (_sync)
                 {
-                    if (!_pump.HaltedForTransportFailure
-                        && _connectionEpochProvider() == pumpEpoch)
+                    if (!_pump.HaltedForTransportFailure && _connectionEpochProvider() == pumpEpoch)
                     {
                         _pump.ResetFailures();
                     }
@@ -187,10 +183,7 @@ internal sealed class TranslationSendPipeline
         }
     }
 
-    internal void PublishTransportError(
-        RealtimeTranslationOutputLanguage target,
-        int epoch,
-        string message)
+    internal void PublishTransportError(RealtimeTranslationOutputLanguage target, int epoch, string message)
     {
         EventDeliveryWriter? writer;
         lock (_sync)
@@ -198,12 +191,16 @@ internal sealed class TranslationSendPipeline
             writer = _mergeWriterProvider();
         }
 
-        writer?.TryDeliver(new RealtimeTranslationStreamEvent(
-            target,
-            new RealtimeTranslationServerEvent.ServerError(
-                message,
-                DualRealtimeTranslationClient.TransportErrorCode),
-            epoch));
+        writer?.TryDeliver(
+            new RealtimeTranslationStreamEvent(
+                target,
+                new RealtimeTranslationServerEvent.ServerError(
+                    message,
+                    DualRealtimeTranslationClient.TransportErrorCode
+                ),
+                epoch
+            )
+        );
     }
 
     internal TimeSpan ResolveCloseDrainTimeout()
@@ -226,10 +223,10 @@ internal sealed class TranslationSendPipeline
     /// <remarks>送信が停滞しても timeout（既定5秒、Close時はpending比例）で打ち切る（ポンプTaskを無期限待ちしない）。</remarks>
     internal async Task WaitForTranslationDrainAsync(
         TimeSpan? timeout = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
-        var deadline = Environment.TickCount64
-            + (long)(timeout ?? TimeSpan.FromSeconds(5)).TotalMilliseconds;
+        var deadline = Environment.TickCount64 + (long)(timeout ?? TimeSpan.FromSeconds(5)).TotalMilliseconds;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();

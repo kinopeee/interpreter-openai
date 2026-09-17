@@ -23,7 +23,8 @@ public sealed class RealtimeSubtitleProcessorTests
         Assert.NotNull(result);
         Assert.Equal(
             new RealtimeSubtitleRoutingAction.Select(RealtimeTranslationOutputLanguage.English),
-            result.RoutingAction);
+            result.RoutingAction
+        );
         Assert.True(result.IsSourceUpdate);
         Assert.Single(result.Updates);
         Assert.Equal(result.IngestedUpdate, result.Updates[0]);
@@ -43,7 +44,8 @@ public sealed class RealtimeSubtitleProcessorTests
 
         var result = processor.Process(
             Translation(RealtimeTranslationOutputLanguage.English, "It is sunny today.", "t1", 2),
-            Origin.AddMilliseconds(2));
+            Origin.AddMilliseconds(2)
+        );
 
         Assert.NotNull(result);
         Assert.Equal(new RealtimeSubtitleRoutingAction.None(), result.RoutingAction);
@@ -64,21 +66,21 @@ public sealed class RealtimeSubtitleProcessorTests
         processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
         processor.Process(
             Translation(RealtimeTranslationOutputLanguage.English, "It is sunny today.", "t1", 2),
-            Origin.AddMilliseconds(2));
+            Origin.AddMilliseconds(2)
+        );
 
         // 直近16 scalar 窓に日本語が残るため、この時点では切り替わらない
         var partial = processor.Process(Source("To", "s2", 3), Origin.AddMilliseconds(3));
         Assert.NotNull(partial);
         Assert.Equal(new RealtimeSubtitleRoutingAction.None(), partial.RoutingAction);
 
-        var result = processor.Process(
-            Source("day it is sunny outside", "s3", 4),
-            Origin.AddMilliseconds(4));
+        var result = processor.Process(Source("day it is sunny outside", "s3", 4), Origin.AddMilliseconds(4));
 
         Assert.NotNull(result);
         Assert.Equal(
             new RealtimeSubtitleRoutingAction.Switch(RealtimeTranslationOutputLanguage.Japanese),
-            result.RoutingAction);
+            result.RoutingAction
+        );
         Assert.Equal(2, result.Updates.Count);
         Assert.True(result.Updates[0].ShouldFinalize);
         Assert.Equal("今日は晴れです。", result.Updates[0].SourceText);
@@ -99,24 +101,22 @@ public sealed class RealtimeSubtitleProcessorTests
         processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
         processor.Process(
             Translation(RealtimeTranslationOutputLanguage.English, "It is sunny today.", "t1", 2),
-            Origin.AddMilliseconds(2));
+            Origin.AddMilliseconds(2)
+        );
 
-        var partial = processor.Process(
-            Source("Today it is", "s2", 3),
-            Origin.AddMilliseconds(3));
+        var partial = processor.Process(Source("Today it is", "s2", 3), Origin.AddMilliseconds(3));
         Assert.NotNull(partial);
         Assert.Equal(new RealtimeSubtitleRoutingAction.None(), partial.RoutingAction);
         Assert.Null(processor.Tick(Origin.AddSeconds(9)));
         Assert.Equal("今日は晴れです。Today it is".Length, processor.CurrentSourceLength);
 
-        var result = processor.Process(
-            Source(" sunny outside", "s3", 4),
-            Origin.AddSeconds(9).AddMilliseconds(4));
+        var result = processor.Process(Source(" sunny outside", "s3", 4), Origin.AddSeconds(9).AddMilliseconds(4));
 
         Assert.NotNull(result);
         Assert.Equal(
             new RealtimeSubtitleRoutingAction.Switch(RealtimeTranslationOutputLanguage.Japanese),
-            result.RoutingAction);
+            result.RoutingAction
+        );
         Assert.Equal("今日は晴れです。", result.Updates[0].SourceText);
         Assert.True(result.Updates[0].ShouldFinalize);
         Assert.Equal("Today it is sunny outside", result.Updates[1].SourceText);
@@ -140,13 +140,12 @@ public sealed class RealtimeSubtitleProcessorTests
         Assert.Equal(string.Empty, processor.RoutingSourceText);
 
         // selected target がリセットされたので次の日本語原文で再選択される
-        var result = processor.Process(
-            Source("こんにちは", "s4", 5),
-            Origin.AddMilliseconds(5));
+        var result = processor.Process(Source("こんにちは", "s4", 5), Origin.AddMilliseconds(5));
         Assert.NotNull(result);
         Assert.Equal(
             new RealtimeSubtitleRoutingAction.Select(RealtimeTranslationOutputLanguage.English),
-            result.RoutingAction);
+            result.RoutingAction
+        );
     }
 
     // Given: 日本語原文「今日は晴れです。」で英語 target が選択済み
@@ -161,10 +160,12 @@ public sealed class RealtimeSubtitleProcessorTests
 
         var japanese = processor.Process(
             Translation(RealtimeTranslationOutputLanguage.Japanese, "こんにちは", "t-loss-1", 10),
-            Origin.AddMilliseconds(10));
+            Origin.AddMilliseconds(10)
+        );
         var english = processor.Process(
             Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t-loss-2", 11),
-            Origin.AddMilliseconds(11));
+            Origin.AddMilliseconds(11)
+        );
 
         Assert.NotNull(japanese);
         Assert.Equal("こんにちは", japanese.Updates[0].TranslatedText);
@@ -185,8 +186,10 @@ public sealed class RealtimeSubtitleProcessorTests
             new RealtimeTranslationStreamEvent(
                 RealtimeTranslationLane.Source,
                 new RealtimeTranslationServerEvent.InputTranscriptDelta("こんにちは", "s0", 1),
-                0),
-            Origin);
+                0
+            ),
+            Origin
+        );
 
         Assert.Null(result);
         Assert.Equal(string.Empty, processor.RoutingSourceText);
@@ -203,14 +206,13 @@ public sealed class RealtimeSubtitleProcessorTests
         processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
 
         processor.ResetRoutingForNextSegment();
-        var result = processor.Process(
-            Source("こんにちは", "s5", 6),
-            Origin.AddMilliseconds(6));
+        var result = processor.Process(Source("こんにちは", "s5", 6), Origin.AddMilliseconds(6));
 
         Assert.NotNull(result);
         Assert.Equal(
             new RealtimeSubtitleRoutingAction.Select(RealtimeTranslationOutputLanguage.English),
-            result.RoutingAction);
+            result.RoutingAction
+        );
         Assert.Equal("こんにちは", processor.RoutingSourceText);
     }
 
@@ -226,29 +228,31 @@ public sealed class RealtimeSubtitleProcessorTests
         Assert.NotNull(first);
         Assert.Equal(
             new RealtimeSubtitleRoutingAction.Select(RealtimeTranslationOutputLanguage.Japanese),
-            first.RoutingAction);
+            first.RoutingAction
+        );
 
         const int nonFlippingDeltaCount = 200;
         for (var i = 0; i < nonFlippingDeltaCount; i += 1)
         {
-            processor.Process(
-                Source("and we never flip the script ", $"s{i + 1}", i + 2),
-                Origin);
+            processor.Process(Source("and we never flip the script ", $"s{i + 1}", i + 2), Origin);
         }
 
         Assert.True(
             processor.RoutingSourceText.Length <= RoutingSourceTextWindow.MaxLength,
-            $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap before flip");
+            $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap before flip"
+        );
 
         var result = processor.Process(Source("ここで日本語へ反転します", "flip", 999), Origin);
 
         Assert.NotNull(result);
         Assert.Equal(
             new RealtimeSubtitleRoutingAction.Switch(RealtimeTranslationOutputLanguage.English),
-            result.RoutingAction);
+            result.RoutingAction
+        );
         Assert.True(
             processor.RoutingSourceText.Length <= RoutingSourceTextWindow.MaxLength,
-            $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap after flip");
+            $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap after flip"
+        );
     }
 
     // Given: 長い英語原文で target が確定したあとに日本語へ反転する
@@ -266,17 +270,17 @@ public sealed class RealtimeSubtitleProcessorTests
         Assert.Contains("script", processor.RoutingSourceText, StringComparison.Ordinal);
         Assert.True(
             processor.RoutingSourceText.Length > flipDelta.Length,
-            "pre-flip routing buffer should still hold the English tail");
+            "pre-flip routing buffer should still hold the English tail"
+        );
 
         var result = processor.Process(Source(flipDelta, "s3", 3), Origin);
 
         Assert.NotNull(result);
         Assert.Equal(
             new RealtimeSubtitleRoutingAction.Switch(RealtimeTranslationOutputLanguage.English),
-            result.RoutingAction);
-        Assert.Equal(
-            " " + RoutingSourceTextWindow.Trim(flipDelta, LanguagePair.JaEn),
-            processor.RoutingSourceText);
+            result.RoutingAction
+        );
+        Assert.Equal(" " + RoutingSourceTextWindow.Trim(flipDelta, LanguagePair.JaEn), processor.RoutingSourceText);
         Assert.DoesNotContain("script", processor.RoutingSourceText, StringComparison.Ordinal);
         Assert.DoesNotContain("english", processor.RoutingSourceText, StringComparison.Ordinal);
     }
@@ -294,15 +298,15 @@ public sealed class RealtimeSubtitleProcessorTests
         Assert.NotNull(selected);
         Assert.Equal(
             new RealtimeSubtitleRoutingAction.Select(RealtimeTranslationOutputLanguage.Spanish),
-            selected.RoutingAction);
+            selected.RoutingAction
+        );
 
-        processor.Process(
-            Source(new string('x', RoutingSourceTextWindow.MaxLength + 32), "s2", 2),
-            Origin);
+        processor.Process(Source(new string('x', RoutingSourceTextWindow.MaxLength + 32), "s2", 2), Origin);
 
         Assert.True(
             processor.RoutingSourceText.Length <= RoutingSourceTextWindow.MaxLength,
-            $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap");
+            $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap"
+        );
     }
 
     // Given: 日本語原文と英訳のあと、ゲート未達の 3 語製品名が続く
@@ -315,11 +319,10 @@ public sealed class RealtimeSubtitleProcessorTests
         processor.Process(Source("今日は晴れです。", "s1", 1), Origin);
         processor.Process(
             Translation(RealtimeTranslationOutputLanguage.English, "It is sunny today.", "t1", 2),
-            Origin.AddMilliseconds(2));
+            Origin.AddMilliseconds(2)
+        );
 
-        var gated = processor.Process(
-            Source(" Google Cloud Platform", "s2", 3),
-            Origin.AddMilliseconds(3));
+        var gated = processor.Process(Source(" Google Cloud Platform", "s2", 3), Origin.AddMilliseconds(3));
         Assert.NotNull(gated);
         Assert.Equal(new RealtimeSubtitleRoutingAction.None(), gated.RoutingAction);
         Assert.False(gated.Updates[0].IsTranslationCurrent);
@@ -346,20 +349,21 @@ public sealed class RealtimeSubtitleProcessorTests
         Assert.NotNull(first);
         Assert.Equal(
             new RealtimeSubtitleRoutingAction.Select(RealtimeTranslationOutputLanguage.English),
-            first.RoutingAction);
+            first.RoutingAction
+        );
 
         var gap = new string(' ', RoutingSourceTextWindow.MaxLength + 32);
-        var result = processor.Process(
-            Source("aa bb cc dd ee ff gg" + gap + " hh", "s2", 2),
-            Origin);
+        var result = processor.Process(Source("aa bb cc dd ee ff gg" + gap + " hh", "s2", 2), Origin);
 
         Assert.NotNull(result);
         Assert.Equal(
             new RealtimeSubtitleRoutingAction.Switch(RealtimeTranslationOutputLanguage.Japanese),
-            result.RoutingAction);
+            result.RoutingAction
+        );
         Assert.True(
             processor.RoutingSourceText.Length <= RoutingSourceTextWindow.MaxLength,
-            $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap");
+            $"routing buffer length {processor.RoutingSourceText.Length} exceeded the cap"
+        );
     }
 
     private static RealtimeSubtitleProcessor NewProcessor()
@@ -373,15 +377,18 @@ public sealed class RealtimeSubtitleProcessorTests
         new(
             RealtimeTranslationLane.Source,
             new RealtimeTranslationServerEvent.InputTranscriptDelta(text, eventId, elapsedMs),
-            1);
+            1
+        );
 
     private static RealtimeTranslationStreamEvent Translation(
         RealtimeTranslationOutputLanguage target,
         string text,
         string eventId,
-        int? elapsedMs) =>
+        int? elapsedMs
+    ) =>
         new(
             RealtimeTranslationLane.Translation(target),
             new RealtimeTranslationServerEvent.OutputTranscriptDelta(text, eventId, elapsedMs),
-            1);
+            1
+        );
 }

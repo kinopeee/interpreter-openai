@@ -18,11 +18,12 @@ public sealed class RealtimeSubtitleAssemblerTests
         var assembler = NewAssembler();
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
         assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
-        assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200), Origin.AddMilliseconds(200));
+        assembler.Ingest(
+            Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200),
+            Origin.AddMilliseconds(200)
+        );
 
-        var continued = assembler.Ingest(
-            Source("、皆さん", "s2", 300),
-            Origin.AddMilliseconds(400));
+        var continued = assembler.Ingest(Source("、皆さん", "s2", 300), Origin.AddMilliseconds(400));
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
         var idle = assembler.Tick(Origin.AddSeconds(9));
 
@@ -73,10 +74,12 @@ public sealed class RealtimeSubtitleAssemblerTests
 
         var late = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, " Late", "t-late", 200),
-            Origin.AddSeconds(9.3));
+            Origin.AddSeconds(9.3)
+        );
         var fresh = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Thank you", "t-new", 400),
-            Origin.AddSeconds(9.4));
+            Origin.AddSeconds(9.4)
+        );
 
         Assert.Null(late);
         Assert.NotNull(fresh);
@@ -98,7 +101,8 @@ public sealed class RealtimeSubtitleAssemblerTests
 
         var caughtUp = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, " everyone", "t2", 450),
-            Origin.AddMilliseconds(500));
+            Origin.AddMilliseconds(500)
+        );
         var idle = assembler.Tick(Origin.AddSeconds(9));
 
         Assert.NotNull(caughtUp);
@@ -119,10 +123,12 @@ public sealed class RealtimeSubtitleAssemblerTests
         assembler.Ingest(Source("Tokyo", "s1", 100), Origin);
         assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Tokyo", "echo", 150),
-            Origin.AddMilliseconds(150));
+            Origin.AddMilliseconds(150)
+        );
         var buffered = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.Japanese, "東京", "ja", 200),
-            Origin.AddMilliseconds(200));
+            Origin.AddMilliseconds(200)
+        );
 
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.Japanese);
         var idle = assembler.Tick(Origin.AddSeconds(9));
@@ -144,12 +150,14 @@ public sealed class RealtimeSubtitleAssemblerTests
         assembler.Ingest(Source("Tokyo", "s1", 100), Origin);
         var echo = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Tokyo", "echo", 150),
-            Origin.AddMilliseconds(150));
+            Origin.AddMilliseconds(150)
+        );
 
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.Japanese);
         var update = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.Japanese, "東京", "ja", 200),
-            Origin.AddMilliseconds(200));
+            Origin.AddMilliseconds(200)
+        );
 
         Assert.Equal("Tokyo", echo?.TranslatedText);
         Assert.NotNull(update);
@@ -169,10 +177,12 @@ public sealed class RealtimeSubtitleAssemblerTests
 
         var empty = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, string.Empty, "t-empty", 150),
-            Origin.AddMilliseconds(150));
+            Origin.AddMilliseconds(150)
+        );
         var japanese = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.Japanese, "こんにちは", "t-ja", 200),
-            Origin.AddMilliseconds(200));
+            Origin.AddMilliseconds(200)
+        );
 
         Assert.Null(empty);
         Assert.NotNull(japanese);
@@ -198,10 +208,12 @@ public sealed class RealtimeSubtitleAssemblerTests
         var nextSource = assembler.Ingest(Source("ありがとう", "s2", null), Origin.AddSeconds(9.2));
         var late = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, " Late", "t-late", 200),
-            Origin.AddSeconds(9.3));
+            Origin.AddSeconds(9.3)
+        );
         var fresh = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Thank you", "t-new", 400),
-            Origin.AddSeconds(9.4));
+            Origin.AddSeconds(9.4)
+        );
 
         Assert.True(finalized?.ShouldFinalize);
         Assert.Equal("ありがとう", nextSource?.SourceText);
@@ -225,8 +237,10 @@ public sealed class RealtimeSubtitleAssemblerTests
             new RealtimeTranslationStreamEvent(
                 RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
                 new RealtimeTranslationServerEvent.InputTranscriptDelta("polluting source", "p1", 10),
-                1),
-            Origin);
+                1
+            ),
+            Origin
+        );
         var source = assembler.Ingest(Source("こんにちは", "s1", 100), Origin.AddMilliseconds(80));
 
         Assert.Null(polluted);
@@ -246,7 +260,8 @@ public sealed class RealtimeSubtitleAssemblerTests
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.Japanese);
         var echo = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Tokyo", "echo", 50),
-            Origin);
+            Origin
+        );
 
         var source = assembler.Ingest(Source("こんにちは", "s1", 80), Origin.AddMilliseconds(80));
 
@@ -267,9 +282,7 @@ public sealed class RealtimeSubtitleAssemblerTests
     {
         var assembler = NewAssembler();
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
-        assembler.Ingest(
-            Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 50),
-            Origin);
+        assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 50), Origin);
         var update = assembler.Ingest(Source("こんにちは", "s1", null), Origin.AddMilliseconds(80));
 
         Assert.NotNull(update);
@@ -290,10 +303,12 @@ public sealed class RealtimeSubtitleAssemblerTests
 
         var echo = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Hello there", "t-echo", 150),
-            Origin.AddMilliseconds(150));
+            Origin.AddMilliseconds(150)
+        );
         var expected = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.Japanese, "こんにちは", "t1", 200),
-            Origin.AddMilliseconds(200));
+            Origin.AddMilliseconds(200)
+        );
 
         Assert.NotNull(echo);
         Assert.Equal("Hello there", echo.Value.SourceText);
@@ -318,7 +333,8 @@ public sealed class RealtimeSubtitleAssemblerTests
 
         var duplicate = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, " again", "t1", 250),
-            Origin.AddMilliseconds(250));
+            Origin.AddMilliseconds(250)
+        );
         var idle = assembler.Tick(Origin.AddSeconds(9));
 
         Assert.Null(duplicate);
@@ -368,10 +384,12 @@ public sealed class RealtimeSubtitleAssemblerTests
 
         var stale = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, " stale", "t2", 20100),
-            Origin);
+            Origin
+        );
         var japanese = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.Japanese, "やあ", "t3", 13400),
-            Origin);
+            Origin
+        );
 
         Assert.NotNull(split.Finalized);
         Assert.Equal("Hello", split.Finalized.Value.TranslatedText);
@@ -390,21 +408,18 @@ public sealed class RealtimeSubtitleAssemblerTests
         var assembler = NewAssembler();
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
         assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
-        assembler.Ingest(
-            Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200),
-            Origin);
+        assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200), Origin);
         var finalized = assembler.Tick(Origin.AddSeconds(9));
         Assert.True(finalized?.ShouldFinalize);
 
         assembler.BeginNewEpoch(2);
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
 
-        var reusedSource = assembler.Ingest(
-            Source("ありがとう", "s1", 50, epoch: 2),
-            Origin.AddSeconds(10));
+        var reusedSource = assembler.Ingest(Source("ありがとう", "s1", 50, epoch: 2), Origin.AddSeconds(10));
         var reusedTranslation = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Thank you", "t1", 80, epoch: 2),
-            Origin.AddSeconds(10.1));
+            Origin.AddSeconds(10.1)
+        );
 
         Assert.NotNull(reusedSource);
         Assert.Equal("ありがとう", reusedSource.Value.SourceText);
@@ -444,7 +459,8 @@ public sealed class RealtimeSubtitleAssemblerTests
         assembler.Ingest(Source("今日は OpenAI", "s1", 100), Origin);
         assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Today it is OpenAI", "t1", 200),
-            Origin);
+            Origin
+        );
         assembler.SetBoundaryCandidatePending(true);
 
         // When: idle finalize 間隔を超えて Tick する
@@ -467,7 +483,8 @@ public sealed class RealtimeSubtitleAssemblerTests
         assembler.Ingest(Source(" Hello", "s2", 200), Origin.AddMilliseconds(100));
         assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 300),
-            Origin.AddMilliseconds(200));
+            Origin.AddMilliseconds(200)
+        );
 
         // When: 確認済み境界で split する
         var split = assembler.SplitForLanguageSwitch(5, Origin.AddMilliseconds(300));
@@ -489,7 +506,8 @@ public sealed class RealtimeSubtitleAssemblerTests
         assembler.Ingest(Source("今日は会議です", "s1", 100), Origin);
         assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Today is a meeting", "t1", 200),
-            Origin);
+            Origin
+        );
         assembler.Ingest(Source(" Hello", "s2", 300), Origin.AddMilliseconds(100));
 
         // When: tracker が次語先頭（空白の後ろ）を指したまま split する
@@ -525,24 +543,23 @@ public sealed class RealtimeSubtitleAssemblerTests
         return assembler;
     }
 
-    private static RealtimeTranslationStreamEvent Source(
-        string text,
-        string eventId,
-        int? elapsedMs,
-        int epoch = 1) =>
+    private static RealtimeTranslationStreamEvent Source(string text, string eventId, int? elapsedMs, int epoch = 1) =>
         new(
             RealtimeTranslationLane.Source,
             new RealtimeTranslationServerEvent.InputTranscriptDelta(text, eventId, elapsedMs),
-            epoch);
+            epoch
+        );
 
     private static RealtimeTranslationStreamEvent Translation(
         RealtimeTranslationOutputLanguage target,
         string text,
         string eventId,
         int? elapsedMs,
-        int epoch = 1) =>
+        int epoch = 1
+    ) =>
         new(
             RealtimeTranslationLane.Translation(target),
             new RealtimeTranslationServerEvent.OutputTranscriptDelta(text, eventId, elapsedMs),
-            epoch);
+            epoch
+        );
 }

@@ -13,6 +13,7 @@ public sealed class SubtitleOverlayViewModel : INotifyPropertyChanged
     public const double SourceFontScale = 0.85;
     public const double BannerFontScale = 0.45;
     public const double MinimumBannerFontSize = 14;
+
     /// 行間はフォントサイズ比例。macOS の lineSpacing は既定行送りへの「加算」なので、
     /// WPF では既定行送り (Segoe UI の FontFamily.LineSpacing = 1.3333) に fontSize/10 を足す。
     /// FontSize * 1.1 にすると WPF では既定より行間が「詰まる」ので誤り。
@@ -25,6 +26,7 @@ public sealed class SubtitleOverlayViewModel : INotifyPropertyChanged
 
     /// 訳文が未確定である間だけ末尾へ添える記号。
     public const string PendingMarker = "…";
+
     /// Aggregator の確定句読点に加え、表示用マーカー抑制のため末尾の `…` も見る。
     /// （`……` の誤記を避ける。Aggregator の確定条件自体は変えない。）
     private const string TerminalPunctuation = "。．.!？?！…";

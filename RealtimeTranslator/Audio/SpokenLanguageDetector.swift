@@ -145,8 +145,10 @@ enum SpokenLanguageDetector {
                 englishScore += 1
             }
             if word.unicodeScalars.contains(where: {
-                [0x00E1, 0x00E9, 0x00ED, 0x00F3, 0x00FA, 0x00FC,
-                 0x00C1, 0x00C9, 0x00CD, 0x00D3, 0x00DA, 0x00DC].contains($0.value)
+                [
+                    0x00E1, 0x00E9, 0x00ED, 0x00F3, 0x00FA, 0x00FC,
+                    0x00C1, 0x00C9, 0x00CD, 0x00D3, 0x00DA, 0x00DC,
+                ].contains($0.value)
             }) {
                 spanishScore += 2
             }
@@ -226,7 +228,7 @@ enum SpokenLanguageDetector {
     static func isLatinWordScalar(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.value {
         case 0x0041...0x005A, 0x0061...0x007A,
-             0x00C0...0x00D6, 0x00D8...0x00F6, 0x00F8...0x00FF:
+            0x00C0...0x00D6, 0x00D8...0x00F6, 0x00F8...0x00FF:
             return true
         default:
             return false

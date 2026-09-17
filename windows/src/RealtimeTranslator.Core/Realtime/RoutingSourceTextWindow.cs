@@ -35,13 +35,9 @@ internal static class RoutingSourceTextWindow
 
         if (pair == LanguagePair.EnEs)
         {
-            var wordStart = SpokenLanguageDetector.RecentWordWindowStart(
-                text,
-                SpokenLanguageDetector.EnEsWindow);
+            var wordStart = SpokenLanguageDetector.RecentWordWindowStart(text, SpokenLanguageDetector.EnEsWindow);
             var collapsed = CollapseWhitespaceRuns(text[wordStart..]);
-            return string.IsNullOrWhiteSpace(collapsed)
-                ? string.Empty
-                : PrefixCappedToMaxLength(collapsed);
+            return string.IsNullOrWhiteSpace(collapsed) ? string.Empty : PrefixCappedToMaxLength(collapsed);
         }
 
         var window = RecentEvidenceWindowSubstring(text, SpokenLanguageDetector.RecentEvidenceWindow);

@@ -26,10 +26,7 @@ public sealed class SourceBoundaryTrackerTests
     [Theory]
     [InlineData("It is over.", " Pero la reunión es", 11)]
     [InlineData("It is over and", " la reunión está", 14)]
-    public void EnEsCandidateUsesSentenceOrCueStart(
-        string first,
-        string second,
-        int expected)
+    public void EnEsCandidateUsesSentenceOrCueStart(string first, string second, int expected)
     {
         // Given: current language が英語の en-es tracker
         var tracker = new SourceBoundaryTracker();

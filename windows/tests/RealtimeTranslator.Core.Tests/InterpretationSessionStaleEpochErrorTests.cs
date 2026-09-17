@@ -62,7 +62,8 @@ public sealed class InterpretationSessionStaleEpochErrorTests
         client.PublishServerError(
             DualRealtimeTranslationClient.TransportErrorMessage,
             DualRealtimeTranslationClient.TransportErrorCode,
-            staleEpoch);
+            staleEpoch
+        );
         await Task.Delay(80);
 
         Assert.Equal(TranslationState.Listening, session.State);
@@ -83,7 +84,8 @@ public sealed class InterpretationSessionStaleEpochErrorTests
 
         client.PublishServerError(
             DualRealtimeTranslationClient.TransportErrorMessage,
-            DualRealtimeTranslationClient.TransportErrorCode);
+            DualRealtimeTranslationClient.TransportErrorCode
+        );
         await WaitUntilAsync(() => client.StartCount >= 2);
 
         Assert.True(client.StartCount >= 2);
@@ -104,14 +106,16 @@ public sealed class InterpretationSessionStaleEpochErrorTests
 
         client.PublishServerError(
             DualRealtimeTranslationClient.TranslationBacklogErrorMessage,
-            DualRealtimeTranslationClient.TransportErrorCode);
+            DualRealtimeTranslationClient.TransportErrorCode
+        );
         await WaitUntilAsync(() => client.StartCount >= 2);
         var reconnectCount = client.StartCount;
 
         client.PublishServerError(
             DualRealtimeTranslationClient.TranslationBacklogErrorMessage,
             DualRealtimeTranslationClient.TransportErrorCode,
-            staleEpoch);
+            staleEpoch
+        );
         await Task.Delay(80);
 
         Assert.Equal(reconnectCount, client.StartCount);
@@ -124,7 +128,8 @@ public sealed class InterpretationSessionStaleEpochErrorTests
             new FakeAudioCapture(),
             client,
             initialReconnectDelay: TimeSpan.FromMilliseconds(1),
-            tickInterval: TimeSpan.FromMilliseconds(15));
+            tickInterval: TimeSpan.FromMilliseconds(15)
+        );
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
@@ -242,7 +247,8 @@ public sealed class InterpretationSessionStaleEpochErrorTests
             string apiKey,
             RealtimeSessionTuning tuning,
             LanguagePair pair = LanguagePair.JaEn,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             lock (_sync)
             {
@@ -260,17 +266,17 @@ public sealed class InterpretationSessionStaleEpochErrorTests
 
         public Task AppendAudioFrameAsync(
             ReadOnlyMemory<byte> pcm16LittleEndian,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default
+        ) => Task.CompletedTask;
 
         public Task SelectTranslationTargetAsync(
             RealtimeTranslationOutputLanguage? target,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             lock (_sync)
             {
-                if (target is { } selected
-                    && LastStartedPair is { } pair
-                    && pair.Counterpart(selected) is { } spoken)
+                if (target is { } selected && LastStartedPair is { } pair && pair.Counterpart(selected) is { } spoken)
                 {
                     _spokenLanguages.Add(spoken);
                 }
@@ -281,7 +287,8 @@ public sealed class InterpretationSessionStaleEpochErrorTests
 
         public Task UpdateTranscriptionTuningAsync(
             RealtimeSessionTuning tuning,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default
+        ) => Task.CompletedTask;
 
         public Task ResetAudioRoutingAsync() => Task.CompletedTask;
 
@@ -297,15 +304,19 @@ public sealed class InterpretationSessionStaleEpochErrorTests
             return Task.CompletedTask;
         }
 
-        public void PublishSourceDelta(string delta, int? epoch = null) => PublishLane(
-            RealtimeTranslationLane.Source,
-            new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
-            epoch);
+        public void PublishSourceDelta(string delta, int? epoch = null) =>
+            PublishLane(
+                RealtimeTranslationLane.Source,
+                new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null),
+                epoch
+            );
 
-        public void PublishServerError(string message, string code, int? epoch = null) => PublishLane(
-            RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
-            new RealtimeTranslationServerEvent.ServerError(message, code),
-            epoch);
+        public void PublishServerError(string message, string code, int? epoch = null) =>
+            PublishLane(
+                RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
+                new RealtimeTranslationServerEvent.ServerError(message, code),
+                epoch
+            );
 
         private void Complete()
         {
@@ -318,12 +329,12 @@ public sealed class InterpretationSessionStaleEpochErrorTests
         private void PublishLane(
             RealtimeTranslationLane lane,
             RealtimeTranslationServerEvent serverEvent,
-            int? epoch = null)
+            int? epoch = null
+        )
         {
             lock (_sync)
             {
-                _events.Writer.TryWrite(
-                    new RealtimeTranslationStreamEvent(lane, serverEvent, epoch ?? _epoch));
+                _events.Writer.TryWrite(new RealtimeTranslationStreamEvent(lane, serverEvent, epoch ?? _epoch));
             }
         }
     }

@@ -31,9 +31,10 @@ final class LanguageFixtureTests: XCTestCase {
     // Then: 期待する証拠と検出結果になる
     func testEvidenceAndDetectMatchFixture() throws {
         for name in try SharedFixtures.caseNames("language", "evidence") {
-                        let fixture = try SharedFixtures.case("language", "evidence", name)
+            let fixture = try SharedFixtures.case("language", "evidence", name)
             let input = SharedFixtures.text(fixture["input"])
-            let pair = SharedFixtures.optionalText(fixture["pair"])
+            let pair =
+                SharedFixtures.optionalText(fixture["pair"])
                 .flatMap(LanguagePair.init(rawValue:))
                 ?? .jaEn
             XCTAssertEqual(
@@ -52,9 +53,10 @@ final class LanguageFixtureTests: XCTestCase {
     // Then: fixture の期待証拠と全体証拠の両方に一致する
     func testRecentEvidenceMatchesFixture() throws {
         for name in try SharedFixtures.caseNames("language", "recentEvidence") {
-                        let fixture = try SharedFixtures.case("language", "recentEvidence", name)
+            let fixture = try SharedFixtures.case("language", "recentEvidence", name)
             let input = SharedFixtures.text(fixture["input"])
-            let pair = SharedFixtures.optionalText(fixture["pair"])
+            let pair =
+                SharedFixtures.optionalText(fixture["pair"])
                 .flatMap(LanguagePair.init(rawValue:))
                 ?? .jaEn
             XCTAssertEqual(

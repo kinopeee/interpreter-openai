@@ -8,8 +8,8 @@ internal static class AppReleaseVersionInfo
 {
     internal static string CurrentDisplayValue()
     {
-        var informational = typeof(App).Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+        var informational = typeof(App)
+            .Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion;
         return AppReleaseVersion.DisplayValue(informational);
     }

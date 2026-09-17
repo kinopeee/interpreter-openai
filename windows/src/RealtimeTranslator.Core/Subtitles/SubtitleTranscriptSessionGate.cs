@@ -31,10 +31,7 @@ public sealed class SubtitleTranscriptSessionGate
     /// 録音中に OFF→ON へ切り替えたときだけ開始マーカーが必要。
     /// 既にマーカー済みなら false（再有効化での重複防止）。
     /// </summary>
-    public bool TryOpenOnMidRecordingOptIn(
-        bool previouslyEnabled,
-        bool nowEnabled,
-        bool isActivelyRecording)
+    public bool TryOpenOnMidRecordingOptIn(bool previouslyEnabled, bool nowEnabled, bool isActivelyRecording)
     {
         if (!isActivelyRecording || previouslyEnabled || !nowEnabled || HasOpenSession)
         {

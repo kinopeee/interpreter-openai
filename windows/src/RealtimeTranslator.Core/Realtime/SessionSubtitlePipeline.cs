@@ -30,7 +30,8 @@ internal sealed class SessionSubtitlePipeline
         Func<RealtimeEventFeed?> activeFeedProvider,
         Func<RealtimeEventFeed> fallbackFeedProvider,
         Action<RealtimeSubtitleUpdate> emitUpdate,
-        Func<Action?> afterFailedSourceFallbackProvider)
+        Func<Action?> afterFailedSourceFallbackProvider
+    )
     {
         ArgumentNullException.ThrowIfNull(sync);
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -76,16 +77,10 @@ internal sealed class SessionSubtitlePipeline
         long sequence,
         int discardedMilliseconds,
         int queueWaitMilliseconds,
-        long atMilliseconds) =>
-        _audioLossTracker.Observe(
-            generation,
-            sequence,
-            discardedMilliseconds,
-            queueWaitMilliseconds,
-            atMilliseconds);
+        long atMilliseconds
+    ) => _audioLossTracker.Observe(generation, sequence, discardedMilliseconds, queueWaitMilliseconds, atMilliseconds);
 
-    public RealtimeSubtitleUpdate MarkAudioLoss() =>
-        _processor.MarkAudioLoss(_timeProvider.GetUtcNow());
+    public RealtimeSubtitleUpdate MarkAudioLoss() => _processor.MarkAudioLoss(_timeProvider.GetUtcNow());
 
     public RealtimeSubtitleUpdate? DiscardFailedSource(string? itemId, string? eventId) =>
         _processor.DiscardFailedSource(itemId, eventId);
@@ -120,8 +115,7 @@ internal sealed class SessionSubtitlePipeline
         {
             pending = _processor.IsCurrentSegmentTainted
                 ? _processor.DiscardUnconfirmed()
-                : _processor.Tick(
-                    _timeProvider.GetUtcNow() + RealtimeSubtitleAssembler.IdleFinalizeInterval);
+                : _processor.Tick(_timeProvider.GetUtcNow() + RealtimeSubtitleAssembler.IdleFinalizeInterval);
         }
 
         if (pending is { } update)
@@ -247,8 +241,7 @@ internal sealed class SessionSubtitlePipeline
         RealtimeSubtitleUpdate? invalidation = null;
         lock (_sync)
         {
-            if (!feed.DeliveryState.DidLoseEvents
-                || _handledLossEpoch == feed.Epoch)
+            if (!feed.DeliveryState.DidLoseEvents || _handledLossEpoch == feed.Epoch)
             {
                 return false;
             }
@@ -266,9 +259,7 @@ internal sealed class SessionSubtitlePipeline
         RealtimeSubtitleUpdate stamped;
         lock (_sync)
         {
-            stamped = update.Sequence == 0
-                ? update with { Sequence = ++_subtitleSequence }
-                : update;
+            stamped = update.Sequence == 0 ? update with { Sequence = ++_subtitleSequence } : update;
         }
 
         _emitUpdate(stamped);

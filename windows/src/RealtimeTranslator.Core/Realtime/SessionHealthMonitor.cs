@@ -40,12 +40,16 @@ public enum SessionTerminationKind
     SessionUpdateTimeout,
     CloseTimeout,
     Cancelled,
+
     /// <summary>再接続 budget の枯渇（RealtimeTranslationErrorKind にはない終了分類）。</summary>
     ReconnectBudgetExhausted,
+
     /// <summary>再接続試行回数の上限（RealtimeTranslationErrorKind にはない終了分類）。</summary>
     ReconnectAttemptLimit,
+
     /// <summary>ユーザーによる停止。</summary>
     UserStopped,
+
     /// <summary>RealtimeTranslationErrorKind 以外の失敗（デバイス・未知のエラー）。</summary>
     Other,
 }
@@ -53,22 +57,23 @@ public enum SessionTerminationKind
 /// <summary>RealtimeTranslationErrorKind → SessionTerminationKind の明示対応。</summary>
 public static class SessionTerminationKindMapping
 {
-    public static SessionTerminationKind FromErrorKind(RealtimeTranslationErrorKind kind) => kind switch
-    {
-        RealtimeTranslationErrorKind.MissingApiKey => SessionTerminationKind.MissingApiKey,
-        RealtimeTranslationErrorKind.NotConnected => SessionTerminationKind.NotConnected,
-        RealtimeTranslationErrorKind.InvalidMessage => SessionTerminationKind.InvalidMessage,
-        RealtimeTranslationErrorKind.AuthenticationFailed => SessionTerminationKind.AuthenticationFailed,
-        RealtimeTranslationErrorKind.FatalServerError => SessionTerminationKind.FatalServerError,
-        RealtimeTranslationErrorKind.RecoverableTransportFailure =>
-            SessionTerminationKind.RecoverableTransportFailure,
-        RealtimeTranslationErrorKind.RecoverableServerError => SessionTerminationKind.RecoverableServerError,
-        RealtimeTranslationErrorKind.ReceiveOverflow => SessionTerminationKind.ReceiveOverflow,
-        RealtimeTranslationErrorKind.SessionUpdateTimeout => SessionTerminationKind.SessionUpdateTimeout,
-        RealtimeTranslationErrorKind.CloseTimeout => SessionTerminationKind.CloseTimeout,
-        RealtimeTranslationErrorKind.Cancelled => SessionTerminationKind.Cancelled,
-        _ => SessionTerminationKind.Other,
-    };
+    public static SessionTerminationKind FromErrorKind(RealtimeTranslationErrorKind kind) =>
+        kind switch
+        {
+            RealtimeTranslationErrorKind.MissingApiKey => SessionTerminationKind.MissingApiKey,
+            RealtimeTranslationErrorKind.NotConnected => SessionTerminationKind.NotConnected,
+            RealtimeTranslationErrorKind.InvalidMessage => SessionTerminationKind.InvalidMessage,
+            RealtimeTranslationErrorKind.AuthenticationFailed => SessionTerminationKind.AuthenticationFailed,
+            RealtimeTranslationErrorKind.FatalServerError => SessionTerminationKind.FatalServerError,
+            RealtimeTranslationErrorKind.RecoverableTransportFailure =>
+                SessionTerminationKind.RecoverableTransportFailure,
+            RealtimeTranslationErrorKind.RecoverableServerError => SessionTerminationKind.RecoverableServerError,
+            RealtimeTranslationErrorKind.ReceiveOverflow => SessionTerminationKind.ReceiveOverflow,
+            RealtimeTranslationErrorKind.SessionUpdateTimeout => SessionTerminationKind.SessionUpdateTimeout,
+            RealtimeTranslationErrorKind.CloseTimeout => SessionTerminationKind.CloseTimeout,
+            RealtimeTranslationErrorKind.Cancelled => SessionTerminationKind.Cancelled,
+            _ => SessionTerminationKind.Other,
+        };
 
     /// <summary>RealtimeTranslationException 以外は Other。生のメッセージは使わない。</summary>
     public static SessionTerminationKind FromException(Exception error) =>
@@ -83,24 +88,26 @@ public sealed record SessionHealthDetection(
     int Epoch,
     RealtimeTranslationLane? Lane,
     TimeSpan Elapsed,
-    TimeSpan? Remaining)
+    TimeSpan? Remaining
+)
 {
     /// <summary>数値と enum 名だけの content-free な表現（ログ用）。</summary>
     public override string ToString() =>
         $"kind={Kind} generation={Generation} epoch={Epoch} lane={(Lane?.ToLogString() ?? "-")} "
-            + $"elapsedMs={(long)Elapsed.TotalMilliseconds} "
-            + $"remainingMs={(Remaining is { } remaining ? ((long)remaining.TotalMilliseconds).ToString() : "-")}";
+        + $"elapsedMs={(long)Elapsed.TotalMilliseconds} "
+        + $"remainingMs={(Remaining is { } remaining ? ((long)remaining.TotalMilliseconds).ToString() : "-")}";
 }
 
 public sealed record SessionTerminationDiagnostic(
     SessionTerminationKind Kind,
     TimeSpan ConnectionDuration,
     int Generation,
-    int Epoch)
+    int Epoch
+)
 {
     public override string ToString() =>
         $"kind={Kind} durationMs={(long)ConnectionDuration.TotalMilliseconds} "
-            + $"generation={Generation} epoch={Epoch}";
+        + $"generation={Generation} epoch={Epoch}";
 }
 
 public sealed record SessionHealthSnapshot
@@ -116,8 +123,8 @@ public sealed record SessionHealthSnapshot
     public TimeSpan? SinceSourceProgress { get; init; }
     public TimeSpan? SinceSelectedTranslationProgress { get; init; }
     public RealtimeTranslationLane? SelectedLane { get; init; }
-    public IReadOnlyDictionary<RealtimeTranslationLane, TimeSpan?> LaneExpiryRemaining { get; init; }
-        = new Dictionary<RealtimeTranslationLane, TimeSpan?>();
+    public IReadOnlyDictionary<RealtimeTranslationLane, TimeSpan?> LaneExpiryRemaining { get; init; } =
+        new Dictionary<RealtimeTranslationLane, TimeSpan?>();
     public int SourceProgressCount { get; init; }
     public int TranslationProgressCount { get; init; }
 
@@ -148,8 +155,11 @@ public sealed record SessionHealthSnapshot
         lanes.Sort(static (a, b) => SessionHealthMonitor.LaneOrder(a).CompareTo(SessionHealthMonitor.LaneOrder(b)));
         return string.Join(
             ",",
-            lanes.Select(lane => $"{lane.ToLogString()}:"
-                + (LaneExpiryRemaining[lane] is { } v ? ((long)v.TotalMilliseconds).ToString() : "-")));
+            lanes.Select(lane =>
+                $"{lane.ToLogString()}:"
+                + (LaneExpiryRemaining[lane] is { } v ? ((long)v.TotalMilliseconds).ToString() : "-")
+            )
+        );
     }
 }
 
@@ -330,8 +340,7 @@ public sealed class SessionHealthMonitor
     }
 
     /// <summary>その時点の snapshot と、この evaluate で新たに発火した検知（kind の定義順）を返す。</summary>
-    public (SessionHealthSnapshot Snapshot, IReadOnlyList<SessionHealthDetection> NewDetections)
-        Evaluate(TimeSpan now)
+    public (SessionHealthSnapshot Snapshot, IReadOnlyList<SessionHealthDetection> NewDetections) Evaluate(TimeSpan now)
     {
         var phase = CurrentPhase(now);
         var laneExpiryRemaining = new Dictionary<RealtimeTranslationLane, TimeSpan?>();
@@ -352,8 +361,7 @@ public sealed class SessionHealthMonitor
             SinceReceive = _lastReceive is { } received ? now - received : null,
             SinceSourceProgress = _lastSourceProgress is { } progress ? now - progress : null,
             SinceSelectedTranslationProgress =
-                _selectedLane is { } selected
-                && _lastTranslationProgress.TryGetValue(selected, out var lastSelected)
+                _selectedLane is { } selected && _lastTranslationProgress.TryGetValue(selected, out var lastSelected)
                     ? now - lastSelected
                     : null,
             SelectedLane = _selectedLane,
@@ -375,8 +383,7 @@ public sealed class SessionHealthMonitor
                 case SessionHealthDetectionKind.CaptureStalled:
                     // send が in-flight の間は capture が記録されないのは直列 send の
                     // 待ちによるもので capture 停止ではない。
-                    if (_sendInFlightSince is null
-                        && now - (_lastCapture ?? _connectedAt) >= _thresholds.CaptureStall)
+                    if (_sendInFlightSince is null && now - (_lastCapture ?? _connectedAt) >= _thresholds.CaptureStall)
                     {
                         Emit(detections, kind, null, now);
                     }
@@ -393,10 +400,14 @@ public sealed class SessionHealthMonitor
 
                     // in-flight 中は直列 send が capture 記録を止めるため、
                     // in-flight 自体を capture 生存の証拠とする。
-                    if (now >= GraceEnd
-                        && (_sendInFlightSince is not null
-                            || now - (_lastCapture ?? _connectedAt) < _thresholds.CaptureStall)
-                        && now - sendReference >= _thresholds.SendStall)
+                    if (
+                        now >= GraceEnd
+                        && (
+                            _sendInFlightSince is not null
+                            || now - (_lastCapture ?? _connectedAt) < _thresholds.CaptureStall
+                        )
+                        && now - sendReference >= _thresholds.SendStall
+                    )
                     {
                         Emit(detections, kind, null, now);
                     }
@@ -404,9 +415,11 @@ public sealed class SessionHealthMonitor
                     break;
 
                 case SessionHealthDetectionKind.ReceiveStalled:
-                    if (now >= GraceEnd
+                    if (
+                        now >= GraceEnd
                         && _firstActivityAfterLastReceive is { } firstAfterReceive
-                        && now - firstAfterReceive >= _thresholds.ReceiveStall)
+                        && now - firstAfterReceive >= _thresholds.ReceiveStall
+                    )
                     {
                         Emit(detections, kind, null, now);
                     }
@@ -415,12 +428,15 @@ public sealed class SessionHealthMonitor
 
                 case SessionHealthDetectionKind.SourceStalled:
                 {
-                    var receiveStalled = _firstActivityAfterLastReceive is { } firstReceive
+                    var receiveStalled =
+                        _firstActivityAfterLastReceive is { } firstReceive
                         && now - firstReceive >= _thresholds.ReceiveStall;
-                    if (now >= GraceEnd
+                    if (
+                        now >= GraceEnd
                         && !receiveStalled
                         && _firstActivityAfterLastSourceProgress is { } firstSource
-                        && now - firstSource >= _thresholds.SourceStall)
+                        && now - firstSource >= _thresholds.SourceStall
+                    )
                     {
                         Emit(detections, kind, null, now);
                     }
@@ -430,24 +446,24 @@ public sealed class SessionHealthMonitor
 
                 case SessionHealthDetectionKind.TranslationStalled:
                 {
-                    if (now < GraceEnd
+                    if (
+                        now < GraceEnd
                         || _selectedLane is not { } selectedLane
                         || _selectedAt is not { } selectedAt
                         || _lastSourceProgress is not { } lastSource
                         || lastSource < selectedAt
-                        || now - lastSource < _thresholds.TranslationStall)
+                        || now - lastSource < _thresholds.TranslationStall
+                    )
                     {
                         break;
                     }
 
                     // selectedAt より古い lane 進捗は無視（null 扱い）。
                     var lastTranslation =
-                        _lastTranslationProgress.TryGetValue(selectedLane, out var lastTx)
-                        && lastTx >= selectedAt
+                        _lastTranslationProgress.TryGetValue(selectedLane, out var lastTx) && lastTx >= selectedAt
                             ? lastTx
                             : (TimeSpan?)null;
-                    if (lastTranslation is null
-                        || lastSource - lastTranslation.Value >= _thresholds.TranslationStall)
+                    if (lastTranslation is null || lastSource - lastTranslation.Value >= _thresholds.TranslationStall)
                     {
                         Emit(detections, kind, selectedLane, now);
                     }
@@ -460,14 +476,15 @@ public sealed class SessionHealthMonitor
                     foreach (var (lane, deadline) in SortedExpiryDeadlines())
                     {
                         var remaining = deadline - now;
-                        if (kind == SessionHealthDetectionKind.ExpiryNear
+                        if (
+                            kind == SessionHealthDetectionKind.ExpiryNear
                             && remaining > TimeSpan.Zero
-                            && remaining <= _thresholds.ExpiryNear)
+                            && remaining <= _thresholds.ExpiryNear
+                        )
                         {
                             Emit(detections, kind, lane, now, remaining);
                         }
-                        else if (kind == SessionHealthDetectionKind.Expired
-                            && remaining <= TimeSpan.Zero)
+                        else if (kind == SessionHealthDetectionKind.Expired && remaining <= TimeSpan.Zero)
                         {
                             Emit(detections, kind, lane, now, remaining);
                         }
@@ -512,15 +529,15 @@ public sealed class SessionHealthMonitor
         SessionHealthDetectionKind kind,
         RealtimeTranslationLane? lane,
         TimeSpan now,
-        TimeSpan? remaining = null)
+        TimeSpan? remaining = null
+    )
     {
         if (!_emitted.Add(new EmittedKey { Kind = kind, Lane = lane }))
         {
             return;
         }
 
-        detections.Add(new SessionHealthDetection(
-            kind, _generation, _epoch, lane, now - _connectedAt, remaining));
+        detections.Add(new SessionHealthDetection(kind, _generation, _epoch, lane, now - _connectedAt, remaining));
     }
 
     private SessionHealthPhase CurrentPhase(TimeSpan now)

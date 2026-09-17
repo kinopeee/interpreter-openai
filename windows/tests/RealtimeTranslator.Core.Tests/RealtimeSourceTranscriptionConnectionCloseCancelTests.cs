@@ -25,7 +25,8 @@ public sealed class RealtimeSourceTranscriptionConnectionCloseCancelTests
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            closeTimeout: TimeSpan.FromSeconds(5));
+            closeTimeout: TimeSpan.FromSeconds(5)
+        );
         await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         using var caller = new CancellationTokenSource();
@@ -59,8 +60,8 @@ public sealed class RealtimeSourceTranscriptionConnectionCloseCancelTests
     }
 
     private static string[] SentTypes(FakeRealtimeServerTransport transport) =>
-        transport.Sent
-            .Select(payload => JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>() ?? string.Empty)
+        transport
+            .Sent.Select(payload => JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>() ?? string.Empty)
             .Where(type => type.Length > 0)
             .ToArray();
 }

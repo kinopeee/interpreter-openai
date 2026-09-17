@@ -39,14 +39,16 @@ public sealed class ServerErrorClassificationFixtureTests
     [MemberData(nameof(CaseNames))]
     public void ClassificationMatchesFixture(string name)
     {
-        var item = SharedFixtures.Section("server-error", "cases")
+        var item = SharedFixtures
+            .Section("server-error", "cases")
             .Single(entry => SharedFixtures.Text(entry!["name"]) == name)!;
         var expected = item["expected"]!;
 
         var actual = RealtimeServerErrorClassification.Classify(
             SharedFixtures.OptionalText(item["errorType"]),
             SharedFixtures.OptionalText(item["code"]),
-            SharedFixtures.Text(item["message"]));
+            SharedFixtures.Text(item["message"])
+        );
 
         Assert.Equal(ParseDisposition(expected["disposition"]), actual.Disposition);
         Assert.Equal(ParseTermination(expected["termination"]), actual.Termination);
@@ -74,7 +76,8 @@ public sealed class ServerErrorClassificationFixtureTests
             var expected = item!["expected"]!;
             var actual = RealtimeServerErrorClassification.ClassifyTranscriptionFailure(
                 SharedFixtures.OptionalText(item["errorType"]),
-                SharedFixtures.OptionalText(item["code"]));
+                SharedFixtures.OptionalText(item["code"])
+            );
             Assert.Equal(ParseDisposition(expected["disposition"]), actual.Disposition);
             Assert.Equal(ParseTermination(expected["termination"]), actual.Termination);
             if (actual.Termination != EventDeliveryTermination.FatalServerError)
@@ -94,22 +97,20 @@ public sealed class ServerErrorClassificationFixtureTests
 
         Assert.Equal(
             SharedFixtures.Text(fixture["allowlists"]!["transportCode"]),
-            RealtimeServerErrorClassification.TransportCode);
-        Assert.Equal(
-            DualRealtimeTranslationClient.TransportErrorCode,
-            RealtimeServerErrorClassification.TransportCode);
+            RealtimeServerErrorClassification.TransportCode
+        );
+        Assert.Equal(DualRealtimeTranslationClient.TransportErrorCode, RealtimeServerErrorClassification.TransportCode);
         Assert.Equal(
             Enum.GetValues<EventDeliveryTermination>()
                 .Where(value => value != EventDeliveryTermination.None)
                 .OrderByDescending(value => value),
-            fixture["terminationPrecedence"]!.AsArray().Select(ParseTermination));
+            fixture["terminationPrecedence"]!.AsArray().Select(ParseTermination)
+        );
 
         var recoverable = fixture["recoverableServerError"]!;
         var exception = new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableServerError);
         Assert.True(exception.IsRecoverable);
-        Assert.Equal(
-            UserCopy.Current.Text(SharedFixtures.Text(recoverable["errorMessageKey"])),
-            exception.Message);
+        Assert.Equal(UserCopy.Current.Text(SharedFixtures.Text(recoverable["errorMessageKey"])), exception.Message);
     }
 
     // Given: 回復候補・接続維持・致命の各 error を EventDeliveryState へ記録する
@@ -120,19 +121,25 @@ public sealed class ServerErrorClassificationFixtureTests
     {
         var state = new EventDeliveryState(epoch: 1);
 
-        Assert.False(state.TryRecordTermination(
-            RealtimeServerErrorClassification.Classify(null, "input_audio_buffer_commit_empty", "empty")));
+        Assert.False(
+            state.TryRecordTermination(
+                RealtimeServerErrorClassification.Classify(null, "input_audio_buffer_commit_empty", "empty")
+            )
+        );
         Assert.Equal(EventDeliveryTermination.None, state.Termination);
 
-        Assert.True(state.TryRecordTermination(
-            RealtimeServerErrorClassification.Classify("server_error", null, "boom")));
+        Assert.True(
+            state.TryRecordTermination(RealtimeServerErrorClassification.Classify("server_error", null, "boom"))
+        );
         Assert.Equal(RealtimeTranslationErrorKind.RecoverableServerError, state.ToException().Kind);
         Assert.True(state.ToException().IsRecoverable);
 
-        Assert.True(state.TryRecordTermination(
-            RealtimeServerErrorClassification.Classify(null, "unknown_code", "bearer sk-x")));
-        Assert.False(state.TryRecordTermination(
-            RealtimeServerErrorClassification.Classify("server_error", null, "boom")));
+        Assert.True(
+            state.TryRecordTermination(RealtimeServerErrorClassification.Classify(null, "unknown_code", "bearer sk-x"))
+        );
+        Assert.False(
+            state.TryRecordTermination(RealtimeServerErrorClassification.Classify("server_error", null, "boom"))
+        );
         Assert.Equal(EventDeliveryTermination.FatalServerError, state.Termination);
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, state.ToException().Message);
     }
@@ -144,23 +151,22 @@ public sealed class ServerErrorClassificationFixtureTests
     public void TranslationAndSourceCodecsPreserveTypeAndCodeIdentically()
     {
         var utf8 = Encoding.UTF8.GetBytes(
-            """{"type":"error","error":{"message":"Rate limit reached","type":"rate_limit_error","code":"rate_limit_exceeded"}}""");
+            """{"type":"error","error":{"message":"Rate limit reached","type":"rate_limit_error","code":"rate_limit_exceeded"}}"""
+        );
 
         var translation = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(
-            RealtimeTranslationMessageCodec.DecodeServerEvent(utf8));
+            RealtimeTranslationMessageCodec.DecodeServerEvent(utf8)
+        );
         var source = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(
-            RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8));
+            RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8)
+        );
 
         Assert.Equal("rate_limit_error", translation.ErrorType);
         Assert.Equal("rate_limit_exceeded", translation.Code);
         Assert.Equal(translation.ErrorType, source.ErrorType);
         Assert.Equal(translation.Code, source.Code);
-        Assert.Equal(
-            EventDeliveryState.Classify(translation),
-            EventDeliveryState.Classify(source.ToStreamError()));
-        Assert.Equal(
-            RealtimeServerErrorDisposition.Recover,
-            EventDeliveryState.Classify(translation).Disposition);
+        Assert.Equal(EventDeliveryState.Classify(translation), EventDeliveryState.Classify(source.ToStreamError()));
+        Assert.Equal(RealtimeServerErrorDisposition.Recover, EventDeliveryState.Classify(translation).Disposition);
     }
 
     // Given: 認証失敗の文言を持つが code が transport / invalid_request_error の error
@@ -172,20 +178,24 @@ public sealed class ServerErrorClassificationFixtureTests
         var direct = RealtimeServerErrorClassification.Classify(
             null,
             RealtimeServerErrorClassification.TransportCode,
-            "Incorrect API key provided: sk-secret");
+            "Incorrect API key provided: sk-secret"
+        );
         Assert.Equal(RealtimeServerErrorDisposition.Halt, direct.Disposition);
         Assert.Equal(EventDeliveryTermination.AuthenticationFailed, direct.Termination);
 
         var utf8 = Encoding.UTF8.GetBytes(
-            """{"type":"error","error":{"message":"Incorrect API key provided: sk-secret","type":"invalid_request_error","code":"invalid_request_error"}}""");
+            """{"type":"error","error":{"message":"Incorrect API key provided: sk-secret","type":"invalid_request_error","code":"invalid_request_error"}}"""
+        );
         var source = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(
-            RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8));
+            RealtimeSourceTranscriptionCodec.DecodeServerEvent(utf8)
+        );
         Assert.DoesNotContain("sk-secret", source.Message, StringComparison.Ordinal);
         Assert.Equal(EventDeliveryTermination.AuthenticationFailed, source.Classification.Termination);
         // 表示文言（ローカライズ済み）から再分類すると認証の根拠が失われる。接続側は Classification を使う。
         Assert.NotEqual(
             EventDeliveryTermination.AuthenticationFailed,
-            EventDeliveryState.Classify(source.ToStreamError()).Termination);
+            EventDeliveryState.Classify(source.ToStreamError()).Termination
+        );
     }
 
     // Given: handshake 中の翻訳接続と原文接続
@@ -196,20 +206,21 @@ public sealed class ServerErrorClassificationFixtureTests
     {
         var translationTransport = new FakeRealtimeServerTransport();
         translationTransport.EnqueueJson(
-            """{"type":"error","error":{"message":"buffer empty","code":"input_audio_buffer_commit_empty"}}""");
+            """{"type":"error","error":{"message":"buffer empty","code":"input_audio_buffer_commit_empty"}}"""
+        );
         var translation = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             translationTransport,
-            "test-safety");
-        await translation.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+            "test-safety"
+        );
+        await translation.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
         Assert.False(translation.Events.Completion.IsCompleted);
         await translation.ForceCloseAsync();
 
         var sourceTransport = new FakeRealtimeServerTransport();
         sourceTransport.EnqueueJson(
-            """{"type":"error","error":{"message":"buffer empty","code":"input_audio_buffer_commit_empty"}}""");
+            """{"type":"error","error":{"message":"buffer empty","code":"input_audio_buffer_commit_empty"}}"""
+        );
         var source = new RealtimeSourceTranscriptionConnection(sourceTransport, "test-safety");
         await source.StartAsync("sk-test", RealtimeSessionTuning.Default);
         Assert.False(source.Events.Completion.IsCompleted);
@@ -237,12 +248,12 @@ public sealed class ServerErrorClassificationFixtureTests
             RealtimeTranslationOutputLanguage.English,
             translationTransport,
             "test-safety",
-            sessionUpdateTimeout: timeout);
+            sessionUpdateTimeout: timeout
+        );
         var started = Stopwatch.GetTimestamp();
-        var translationError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => translation.StartAsync(
-                "sk-test",
-                SessionConfigs.EnglishTargetWithoutSourceTranscription()));
+        var translationError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            translation.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription())
+        );
         Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, translationError.Kind);
         Assert.InRange(Stopwatch.GetElapsedTime(started), timeout, TimeSpan.FromSeconds(10));
 
@@ -256,10 +267,12 @@ public sealed class ServerErrorClassificationFixtureTests
         var source = new RealtimeSourceTranscriptionConnection(
             sourceTransport,
             "test-safety",
-            handshakeTimeout: timeout);
+            handshakeTimeout: timeout
+        );
         started = Stopwatch.GetTimestamp();
-        var sourceError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => source.StartAsync("sk-test", RealtimeSessionTuning.Default));
+        var sourceError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            source.StartAsync("sk-test", RealtimeSessionTuning.Default)
+        );
         Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, sourceError.Kind);
         Assert.InRange(Stopwatch.GetElapsedTime(started), timeout, TimeSpan.FromSeconds(10));
     }
@@ -272,16 +285,17 @@ public sealed class ServerErrorClassificationFixtureTests
     {
         var transport = new FakeRealtimeServerTransport();
         transport.EnqueueJson(
-            """{"type":"error","error":{"message":"upstream echo sk-should-not-appear","type":"server_error"}}""");
+            """{"type":"error","error":{"message":"upstream echo sk-should-not-appear","type":"server_error"}}"""
+        );
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
+            "test-safety"
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.StartAsync(
-                "sk-test",
-                SessionConfigs.EnglishTargetWithoutSourceTranscription()));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription())
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.RecoverableServerError, error.Kind);
         Assert.True(error.IsRecoverable);
@@ -299,12 +313,15 @@ public sealed class ServerErrorClassificationFixtureTests
         await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         transport.EnqueueJson(
-            """{"type":"error","error":{"message":"buffer empty","code":"input_audio_buffer_commit_empty"}}""");
+            """{"type":"error","error":{"message":"buffer empty","code":"input_audio_buffer_commit_empty"}}"""
+        );
         transport.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","delta":"still-here","event_id":"e1"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","delta":"still-here","event_id":"e1"}"""
+        );
 
         var streamEvent = await connection.Events.ReadAsync(
-            new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
+            new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5)).Token
+        );
         var delta = Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptDelta>(streamEvent.Event);
         Assert.Equal("still-here", delta.Delta);
         Assert.False(connection.Events.Completion.IsCompleted);

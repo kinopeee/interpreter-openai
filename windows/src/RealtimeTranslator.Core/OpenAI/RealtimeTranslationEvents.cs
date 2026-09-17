@@ -6,14 +6,13 @@ namespace RealtimeTranslator.Core.OpenAI;
 public sealed record RealtimeTranslationSessionConfig(
     RealtimeTranslationOutputLanguage OutputLanguage,
     string? InputTranscriptionModel,
-    RealtimeTranslationNoiseReduction? NoiseReduction);
+    RealtimeTranslationNoiseReduction? NoiseReduction
+);
 
 /// <summary>クライアントからサーバーへ送るイベント。</summary>
 public abstract record RealtimeTranslationClientEvent
 {
-    private RealtimeTranslationClientEvent()
-    {
-    }
+    private RealtimeTranslationClientEvent() { }
 
     public sealed record SessionUpdate(RealtimeTranslationSessionConfig Config) : RealtimeTranslationClientEvent;
 
@@ -25,9 +24,7 @@ public abstract record RealtimeTranslationClientEvent
 /// <summary>サーバーから届くイベント。</summary>
 public abstract record RealtimeTranslationServerEvent
 {
-    private RealtimeTranslationServerEvent()
-    {
-    }
+    private RealtimeTranslationServerEvent() { }
 
     /// <summary><c>session.expires_at</c>（unix 秒）。不明（欠落・非数値・範囲外）は null。</summary>
     public sealed record SessionCreated(long? ExpiresAtUnixSeconds) : RealtimeTranslationServerEvent;
@@ -56,28 +53,25 @@ public abstract record RealtimeTranslationServerEvent
 }
 
 /// <summary>どの接続から届いたかと接続世代を付与したイベント。</summary>
-public readonly record struct RealtimeTranslationLane(
-    bool IsSource,
-    RealtimeTranslationOutputLanguage? Target)
+public readonly record struct RealtimeTranslationLane(bool IsSource, RealtimeTranslationOutputLanguage? Target)
 {
     public static RealtimeTranslationLane Source => new(true, null);
 
-    public static RealtimeTranslationLane Translation(RealtimeTranslationOutputLanguage target) =>
-        new(false, target);
+    public static RealtimeTranslationLane Translation(RealtimeTranslationOutputLanguage target) => new(false, target);
 }
 
 public sealed record RealtimeTranslationStreamEvent(
     RealtimeTranslationLane Lane,
     RealtimeTranslationServerEvent Event,
-    int Epoch)
+    int Epoch
+)
 {
     public RealtimeTranslationStreamEvent(
         RealtimeTranslationOutputLanguage target,
         RealtimeTranslationServerEvent @event,
-        int epoch)
-        : this(RealtimeTranslationLane.Translation(target), @event, epoch)
-    {
-    }
+        int epoch
+    )
+        : this(RealtimeTranslationLane.Translation(target), @event, epoch) { }
 
     public RealtimeTranslationOutputLanguage Target =>
         Lane.Target ?? throw new InvalidOperationException("source lane has no translation target");

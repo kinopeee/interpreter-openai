@@ -25,14 +25,9 @@ public sealed class DualRealtimeTranslationClientUnselectedCloseTests
         var japanese = new FakeRealtimeServerTransport { AutoCloseResponses = true };
         using var dual = new DualRealtimeTranslationClient(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.English,
-                english,
-                "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.Japanese,
-                japanese,
-                "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
         await dual.AppendAudioFrameAsync(Frame(0x21));
@@ -48,14 +43,13 @@ public sealed class DualRealtimeTranslationClientUnselectedCloseTests
         Assert.True(english.CloseCount >= 1);
         Assert.True(japanese.CloseCount >= 1);
 
-        while (dual.Events.TryRead(out _))
-        {
-        }
+        while (dual.Events.TryRead(out _)) { }
 
         Assert.False(await dual.Events.WaitToReadAsync());
 
-        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.AppendAudioFrameAsync(Frame(0x22)));
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.AppendAudioFrameAsync(Frame(0x22))
+        );
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
     }
 
@@ -66,6 +60,5 @@ public sealed class DualRealtimeTranslationClientUnselectedCloseTests
         return frame;
     }
 
-    private static string? TypeOf(byte[] payload) =>
-        JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>();
+    private static string? TypeOf(byte[] payload) => JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>();
 }

@@ -26,15 +26,15 @@ public sealed class UserCopyTests
         Assert.Equal(UiLocale.Ja, copy.Locale);
         Assert.False(string.IsNullOrEmpty(copy.Text("error.genericServer")));
         Assert.False(string.IsNullOrEmpty(copy.Text("settings.uiLanguage")));
-        Assert.Equal("バージョン 0.1.0", copy.Format("settings.appVersion", new Dictionary<string, string>
-        {
-            ["version"] = "0.1.0",
-        }));
+        Assert.Equal(
+            "バージョン 0.1.0",
+            copy.Format("settings.appVersion", new Dictionary<string, string> { ["version"] = "0.1.0" })
+        );
         var english = UserCopy.Parse(json, UiLocale.En);
-        Assert.Equal("Version 0.1.0", english.Format("settings.appVersion", new Dictionary<string, string>
-        {
-            ["version"] = "0.1.0",
-        }));
+        Assert.Equal(
+            "Version 0.1.0",
+            english.Format("settings.appVersion", new Dictionary<string, string> { ["version"] = "0.1.0" })
+        );
     }
 
     // Given: 埋め込みリソースとリポジトリ上の ui.json
@@ -84,7 +84,8 @@ public sealed class UserCopyTests
             UiLocale.Ja,
             new Dictionary<string, string>(),
             new Dictionary<string, string> { ["only.en"] = english.Text("only.en") },
-            logged.Add);
+            logged.Add
+        );
 
         var text = copy.Text("only.en");
 
@@ -104,7 +105,8 @@ public sealed class UserCopyTests
             UiLocale.Ja,
             new Dictionary<string, string>(),
             new Dictionary<string, string>(),
-            logged.Add);
+            logged.Add
+        );
 
         Assert.Equal("missing.key", copy.Text("missing.key"));
         Assert.Single(logged);
@@ -135,10 +137,8 @@ public sealed class UserCopyTests
 
         Assert.Equal(
             "待機中 — Control + Option + Space で録音開始",
-            copy.Format("banner.idle", new Dictionary<string, string>
-            {
-                ["hotkey"] = "Control + Option + Space",
-            }));
+            copy.Format("banner.idle", new Dictionary<string, string> { ["hotkey"] = "Control + Option + Space" })
+        );
     }
 
     // Given: 非 ASCII や不正な開始文字を含む疑似プレースホルダ
@@ -149,10 +149,12 @@ public sealed class UserCopyTests
     {
         Assert.Equal(
             new HashSet<string>(StringComparer.Ordinal) { "hotkey" },
-            UserCopyCatalogLint.PlaceholderNames("ok {hotkey} and {名前} and {1bad}"));
+            UserCopyCatalogLint.PlaceholderNames("ok {hotkey} and {名前} and {1bad}")
+        );
         Assert.Equal(
             new HashSet<string>(StringComparer.Ordinal) { "_ok", "_", "a1" },
-            UserCopyCatalogLint.PlaceholderNames("{_ok} {_} {a1}"));
+            UserCopyCatalogLint.PlaceholderNames("{_ok} {_} {a1}")
+        );
     }
 
     // Given: 重複キーを含むカタログ
@@ -216,11 +218,11 @@ public sealed class UserCopyTests
 
         Assert.Equal(
             " 再接続中… ({attempt}/3)",
-            copy.Format("banner.reconnectingProgress", new Dictionary<string, string>
-            {
-                ["detail"] = string.Empty,
-                ["max"] = "3",
-            }));
+            copy.Format(
+                "banner.reconnectingProgress",
+                new Dictionary<string, string> { ["detail"] = string.Empty, ["max"] = "3" }
+            )
+        );
     }
 
     // Given: Core が実行時に引くユーザー向けキー
@@ -306,7 +308,8 @@ public sealed class UserCopyTests
     public void ResolveFollowsPreferenceThenOsLanguage(
         UiLanguagePreference preference,
         string? osLanguage,
-        UiLocale expected)
+        UiLocale expected
+    )
     {
         Assert.Equal(expected, UiLanguage.Resolve(preference, osLanguage));
     }

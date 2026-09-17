@@ -29,8 +29,7 @@ public sealed class Win32HotkeyRegistrar : IGlobalHotkeyRegistrar
     public bool Register(IntPtr windowHandle, int id, HotkeyModifiers modifiers, uint virtualKey) =>
         NativeMethods.RegisterHotKey(windowHandle, id, (uint)modifiers, virtualKey);
 
-    public bool Unregister(IntPtr windowHandle, int id) =>
-        NativeMethods.UnregisterHotKey(windowHandle, id);
+    public bool Unregister(IntPtr windowHandle, int id) => NativeMethods.UnregisterHotKey(windowHandle, id);
 
     private static class NativeMethods
     {
@@ -78,7 +77,8 @@ public sealed class GlobalHotkeyManager : IDisposable
     public bool Register(
         IntPtr windowHandle,
         HotkeyModifiers modifiers = DefaultModifiers,
-        uint virtualKey = VirtualKeySpace)
+        uint virtualKey = VirtualKeySpace
+    )
     {
         Unregister();
 

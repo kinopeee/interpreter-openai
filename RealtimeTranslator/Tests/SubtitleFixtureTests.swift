@@ -61,7 +61,7 @@ final class SubtitleFixtureTests: XCTestCase {
         for caseItem in cases {
             let fixture = try XCTUnwrap(caseItem as? [String: Any])
             let name = SharedFixtures.text(fixture["name"])
-                        let epoch = SharedFixtures.number(fixture["epoch"])
+            let epoch = SharedFixtures.number(fixture["epoch"])
             var assembler = RealtimeSubtitleAssembler()
             assembler.reset(epoch: epoch)
             if let lane = SharedFixtures.optionalText(fixture["expectLane"]) {
@@ -94,7 +94,8 @@ final class SubtitleFixtureTests: XCTestCase {
                     update = split.current
                 case "sourceDelta", "translationDelta":
                     let lane = SharedFixtures.text(step["lane"])
-                    let eventLane: RealtimeTranslationLane = kind == "sourceDelta"
+                    let eventLane: RealtimeTranslationLane =
+                        kind == "sourceDelta"
                         ? .source
                         : .translation(
                             try XCTUnwrap(RealtimeTranslationOutputLanguage(rawValue: lane))

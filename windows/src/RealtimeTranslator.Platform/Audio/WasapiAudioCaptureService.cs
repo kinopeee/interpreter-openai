@@ -15,19 +15,13 @@ namespace RealtimeTranslator.Platform.Audio;
 public sealed class AudioCaptureException : Exception
 {
     public AudioCaptureException()
-        : this(UserCopy.Current.Text("error.micStartFailed"))
-    {
-    }
+        : this(UserCopy.Current.Text("error.micStartFailed")) { }
 
     public AudioCaptureException(string message)
-        : base(message)
-    {
-    }
+        : base(message) { }
 
     public AudioCaptureException(string message, Exception innerException)
-        : base(message, innerException)
-    {
-    }
+        : base(message, innerException) { }
 }
 
 /// <summary>WASAPI 共有モードのマイク入力を 100 ms / 24 kHz / PCM16 mono frame として供給する。</summary>
@@ -39,8 +33,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
     /// </summary>
     internal const int FrameChannelCapacity = AudioLossPolicy.SendQueueFrameCapacity;
 
-    private static readonly TimeSpan FrameInterval =
-        TimeSpan.FromMilliseconds(Pcm16FramePacketizer.FrameDurationMilliseconds);
+    private static readonly TimeSpan FrameInterval = TimeSpan.FromMilliseconds(
+        Pcm16FramePacketizer.FrameDurationMilliseconds
+    );
 
     private readonly Func<MMDevice>? _deviceFactory;
     private readonly object _sync = new();
@@ -54,9 +49,7 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
     private bool _stopRequested = true;
     private int _captureGeneration;
 
-    public WasapiAudioCaptureService(
-        Func<MMDevice>? deviceFactory = null,
-        TimeProvider? timeProvider = null)
+    public WasapiAudioCaptureService(Func<MMDevice>? deviceFactory = null, TimeProvider? timeProvider = null)
     {
         _deviceFactory = deviceFactory;
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -89,9 +82,7 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
             }
             else
             {
-                ownedDevice = new MMDeviceEnumerator().GetDefaultAudioEndpoint(
-                    DataFlow.Capture,
-                    Role.Communications);
+                ownedDevice = new MMDeviceEnumerator().GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
                 device = ownedDevice;
             }
 
@@ -127,13 +118,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
             // StartRecording より先に pump を登録し、StopAsync が orphan writer を
             // 先に閉じて FlushRemainder を落とす隙間を作らない。
             _pumpTask = Task.Run(
-                () => PumpAsync(
-                    pipeline,
-                    frames.Writer,
-                    captureGeneration,
-                    _timeProvider,
-                    pumpToken),
-                CancellationToken.None);
+                () => PumpAsync(pipeline, frames.Writer, captureGeneration, _timeProvider, pumpToken),
+                CancellationToken.None
+            );
         }
 
         try
@@ -178,20 +165,20 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
     public void Dispose() => StopAsync().GetAwaiter().GetResult();
 
     /// <summary>macOS の bufferingNewest(32) 相当。満杯時は oldest を捨てて最新を優先する。</summary>
-    internal static Channel<CapturedAudioFrame> CreateFrameChannel(
-        Action<CapturedAudioFrame>? onDropped = null) =>
+    internal static Channel<CapturedAudioFrame> CreateFrameChannel(Action<CapturedAudioFrame>? onDropped = null) =>
         CreateFrameChannelCore(onDropped ?? CreateLoggingDropCallback());
 
     private static Action<CapturedAudioFrame> CreateLoggingDropCallback()
     {
         long droppedCount = 0;
-        return _ => AppLogger.Debug(
+        return _ =>
+            AppLogger.Debug(
                 LogCategory.Audio,
-                $"DBG_CAPTURE_QUEUE_DROP count={Interlocked.Increment(ref droppedCount)}");
+                $"DBG_CAPTURE_QUEUE_DROP count={Interlocked.Increment(ref droppedCount)}"
+            );
     }
 
-    private static Channel<CapturedAudioFrame> CreateFrameChannelCore(
-        Action<CapturedAudioFrame> onDropped) =>
+    private static Channel<CapturedAudioFrame> CreateFrameChannelCore(Action<CapturedAudioFrame> onDropped) =>
         AudioFrameChannel.CreateBounded(onDropped);
 
     private static async Task PumpAsync(
@@ -199,7 +186,8 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         ChannelWriter<CapturedAudioFrame> writer,
         int captureGeneration,
         TimeProvider timeProvider,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         long sequence = 0;
         using var timer = new PeriodicTimer(FrameInterval);
@@ -212,12 +200,15 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
                 var frames = pipeline.TakeTickFrames(Pcm16FramePacketizer.SamplesPerFrame);
                 foreach (var frame in frames)
                 {
-                    writer.TryWrite(new CapturedAudioFrame(
-                        captureGeneration,
-                        sequence++,
-                        frame,
-                        checked((int)pipeline.DiscardedMilliseconds),
-                        timeProvider.GetTimestamp()));
+                    writer.TryWrite(
+                        new CapturedAudioFrame(
+                            captureGeneration,
+                            sequence++,
+                            frame,
+                            checked((int)pipeline.DiscardedMilliseconds),
+                            timeProvider.GetTimestamp()
+                        )
+                    );
                 }
             }
         }
@@ -229,12 +220,15 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         {
             foreach (var frame in pipeline.FlushRemainder())
             {
-                writer.TryWrite(new CapturedAudioFrame(
-                    captureGeneration,
-                    sequence++,
-                    frame,
-                    checked((int)pipeline.DiscardedMilliseconds),
-                    timeProvider.GetTimestamp()));
+                writer.TryWrite(
+                    new CapturedAudioFrame(
+                        captureGeneration,
+                        sequence++,
+                        frame,
+                        checked((int)pipeline.DiscardedMilliseconds),
+                        timeProvider.GetTimestamp()
+                    )
+                );
             }
 
             writer.TryComplete();

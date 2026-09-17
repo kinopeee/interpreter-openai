@@ -43,11 +43,14 @@ public sealed class DualRealtimeTranslationClientPostHaltTuningTests
                 RealtimeTranslationNoiseReduction.NearField,
                 RealtimeTranscriptionDelay.High,
                 "Post-halt glossary",
-                ["Acme"]));
+                ["Acme"]
+            )
+        );
         await WaitUntilSentAsync(harness.Source, sentBefore + 1);
 
-        var transcription = SessionUpdates(harness.Source)[^1]
-            ["session"]!["audio"]!["input"]!["transcription"]!.AsObject();
+        var transcription = SessionUpdates(harness.Source)[^1]["session"]!["audio"]!["input"]![
+            "transcription"
+        ]!.AsObject();
         Assert.Equal("Post-halt glossary", transcription["prompt"]!.GetValue<string>());
         Assert.Equal("high", transcription["delay"]!.GetValue<string>());
 
@@ -73,8 +76,9 @@ public sealed class DualRealtimeTranslationClientPostHaltTuningTests
         await dual.ResetAudioRoutingAsync();
 
         Assert.Equal(0, source.ConnectCount);
-        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English));
+        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English)
+        );
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, selectError.Kind);
     }
 
@@ -94,29 +98,26 @@ public sealed class DualRealtimeTranslationClientPostHaltTuningTests
 
         await dual.ResetAudioRoutingAsync();
 
-        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English));
+        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English)
+        );
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, selectError.Kind);
     }
 
     private static DualRealtimeTranslationClient CreateDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,
-        FakeRealtimeServerTransport japanese) =>
+        FakeRealtimeServerTransport japanese
+    ) =>
         new(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.English,
-                english,
-                "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.Japanese,
-                japanese,
-                "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
 
     private static List<JsonObject> SessionUpdates(FakeRealtimeServerTransport transport) =>
-        transport.Sent
-            .Select(payload => JsonNode.Parse(payload)?.AsObject())
+        transport
+            .Sent.Select(payload => JsonNode.Parse(payload)?.AsObject())
             .Where(node => node?["type"]?.GetValue<string>() == "session.update")
             .Select(node => node!)
             .ToList();
@@ -137,7 +138,8 @@ public sealed class DualRealtimeTranslationClientPostHaltTuningTests
             FakeRealtimeServerTransport source,
             FakeRealtimeServerTransport english,
             FakeRealtimeServerTransport japanese,
-            DualRealtimeTranslationClient dual)
+            DualRealtimeTranslationClient dual
+        )
         {
             Source = source;
             English = english;
@@ -160,14 +162,9 @@ public sealed class DualRealtimeTranslationClientPostHaltTuningTests
             var japanese = new FakeRealtimeServerTransport();
             var dual = new DualRealtimeTranslationClient(
                 new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-                new RealtimeTranslationConnection(
-                    RealtimeTranslationOutputLanguage.English,
-                    english,
-                    "test-safety"),
-                new RealtimeTranslationConnection(
-                    RealtimeTranslationOutputLanguage.Japanese,
-                    japanese,
-                    "test-safety"));
+                new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+                new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+            );
 
             await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn);
             return new HaltHarness(source, english, japanese, dual);
@@ -190,8 +187,10 @@ public sealed class DualRealtimeTranslationClientPostHaltTuningTests
             var count = 0;
             while (Dual.Events.TryRead(out var streamEvent))
             {
-                if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError error
-                    && error.Code == DualRealtimeTranslationClient.TransportErrorCode)
+                if (
+                    streamEvent.Event is RealtimeTranslationServerEvent.ServerError error
+                    && error.Code == DualRealtimeTranslationClient.TransportErrorCode
+                )
                 {
                     count += 1;
                 }

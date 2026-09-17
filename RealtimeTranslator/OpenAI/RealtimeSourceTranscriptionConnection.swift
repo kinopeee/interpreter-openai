@@ -178,18 +178,20 @@ actor RealtimeSourceTranscriptionConnection {
                             "DBG_TRANSCRIPT_EVENT target=source kind=input epoch=\(currentEpoch, privacy: .public)"
                         )
                         #endif
-                        guard deliveryYielder?.deliver(
-                            RealtimeTranslationStreamEvent(
-                                lane: .source,
-                                event: .inputTranscriptDelta(
-                                    delta: delta,
-                                    // item_idは同一turnの全deltaで共通なので重複排除に使わない。
-                                    eventID: object["event_id"] as? String,
-                                    elapsedMs: nil
-                                ),
-                                epoch: currentEpoch
-                            )
-                        ) == true else { return }
+                        guard
+                            deliveryYielder?.deliver(
+                                RealtimeTranslationStreamEvent(
+                                    lane: .source,
+                                    event: .inputTranscriptDelta(
+                                        delta: delta,
+                                        // item_idは同一turnの全deltaで共通なので重複排除に使わない。
+                                        eventID: object["event_id"] as? String,
+                                        elapsedMs: nil
+                                    ),
+                                    epoch: currentEpoch
+                                )
+                            ) == true
+                        else { return }
                     case "conversation.item.input_audio_transcription.completed":
                         if isAwaitingCommitOutcome {
                             didReceiveCommitOutcome = true
@@ -207,18 +209,20 @@ actor RealtimeSourceTranscriptionConnection {
                         if classification.disposition != .keepAlive {
                             deliveryYielder?.deliveryState.tryRecordTermination(classification)
                         }
-                        guard deliveryYielder?.deliver(
-                            RealtimeTranslationStreamEvent(
-                                lane: .source,
-                                event: .inputTranscriptFailed(
-                                    itemID: object["item_id"] as? String,
-                                    eventID: object["event_id"] as? String,
-                                    code: error?["code"] as? String,
-                                    errorType: error?["type"] as? String
-                                ),
-                                epoch: currentEpoch
-                            )
-                        ) == true else { return }
+                        guard
+                            deliveryYielder?.deliver(
+                                RealtimeTranslationStreamEvent(
+                                    lane: .source,
+                                    event: .inputTranscriptFailed(
+                                        itemID: object["item_id"] as? String,
+                                        eventID: object["event_id"] as? String,
+                                        code: error?["code"] as? String,
+                                        errorType: error?["type"] as? String
+                                    ),
+                                    epoch: currentEpoch
+                                )
+                            ) == true
+                        else { return }
                     case "error":
                         let serverError = Self.serverError(object)
                         let classification = EventDeliveryState.classify(
@@ -231,17 +235,19 @@ actor RealtimeSourceTranscriptionConnection {
                             continue
                         }
                         deliveryYielder?.deliveryState.tryRecordTermination(classification)
-                        guard deliveryYielder?.deliver(
-                            RealtimeTranslationStreamEvent(
-                                lane: .source,
-                                event: .error(
-                                    message: serverError.message,
-                                    code: serverError.code,
-                                    errorType: serverError.errorType
-                                ),
-                                epoch: currentEpoch
-                            )
-                        ) == true else { return }
+                        guard
+                            deliveryYielder?.deliver(
+                                RealtimeTranslationStreamEvent(
+                                    lane: .source,
+                                    event: .error(
+                                        message: serverError.message,
+                                        code: serverError.code,
+                                        errorType: serverError.errorType
+                                    ),
+                                    epoch: currentEpoch
+                                )
+                            ) == true
+                        else { return }
                     default:
                         break
                     }
@@ -250,17 +256,19 @@ actor RealtimeSourceTranscriptionConnection {
                 } catch {
                     guard currentEpoch == epoch else { return }
                     deliveryYielder?.deliveryState.tryRecordTermination(.transportFailure)
-                    guard deliveryYielder?.deliver(
-                        RealtimeTranslationStreamEvent(
-                            lane: .source,
-                            event: .error(
-                                message: UiCopy.text("error.sourceDisconnected"),
-                                code: RealtimeServerErrorClassification.transportCode,
-                                errorType: nil
-                            ),
-                            epoch: currentEpoch
-                        )
-                        ) == true else { return }
+                    guard
+                        deliveryYielder?.deliver(
+                            RealtimeTranslationStreamEvent(
+                                lane: .source,
+                                event: .error(
+                                    message: UiCopy.text("error.sourceDisconnected"),
+                                    code: RealtimeServerErrorClassification.transportCode,
+                                    errorType: nil
+                                ),
+                                epoch: currentEpoch
+                            )
+                        ) == true
+                    else { return }
                     return
                 }
             }
@@ -296,10 +304,10 @@ actor RealtimeSourceTranscriptionConnection {
                             "keywords": tuning.transcriptionKeywords,
                         ],
                         "noise_reduction": [
-                            "type": tuning.noiseReduction.rawValue,
+                            "type": tuning.noiseReduction.rawValue
                         ],
                         "turn_detection": NSNull(),
-                    ],
+                    ]
                 ],
             ],
         ]

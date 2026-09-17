@@ -31,7 +31,8 @@ public sealed class CodecFixtureTests
         var expected = fixture["expected"];
         Assert.True(
             SharedFixtures.JsonEquals(actual, expected),
-            $"expected {SharedFixtures.Canonical(expected)} but encoded {SharedFixtures.Canonical(actual)}");
+            $"expected {SharedFixtures.Canonical(expected)} but encoded {SharedFixtures.Canonical(actual)}"
+        );
     }
 
     // Given: fixture の翻訳サーバーメッセージ
@@ -56,9 +57,7 @@ public sealed class CodecFixtureTests
             {
                 // expiresAt が expected にあればその値、無ければ null を要求する。
                 var typed = Assert.IsType<RealtimeTranslationServerEvent.SessionCreated>(actual);
-                Assert.Equal(
-                    SharedFixtures.OptionalLong(expected["expiresAt"]),
-                    typed.ExpiresAtUnixSeconds);
+                Assert.Equal(SharedFixtures.OptionalLong(expected["expiresAt"]), typed.ExpiresAtUnixSeconds);
                 break;
             }
 
@@ -122,8 +121,9 @@ public sealed class CodecFixtureTests
         var utf8 = Encoding.UTF8.GetBytes(SharedFixtures.Text(fixture["json"]));
 
         // When: 復号を試みる
-        var error = Assert.Throws<RealtimeTranslationException>(
-            () => RealtimeTranslationMessageCodec.DecodeServerEvent(utf8));
+        var error = Assert.Throws<RealtimeTranslationException>(() =>
+            RealtimeTranslationMessageCodec.DecodeServerEvent(utf8)
+        );
 
         // Then: InvalidMessage に正規化される
         Assert.Equal(RealtimeTranslationErrorKind.InvalidMessage, error.Kind);
@@ -145,9 +145,12 @@ public sealed class CodecFixtureTests
                     SharedFixtures.OptionalText(fixture["inputTranscriptionModel"]),
                     SharedFixtures.OptionalText(fixture["noiseReduction"]) is { } noiseReduction
                         ? RealtimeTranslationWireValues.ParseNoiseReduction(noiseReduction)
-                        : null)),
+                        : null
+                )
+            ),
             "inputAudioBufferAppend" => new RealtimeTranslationClientEvent.InputAudioBufferAppend(
-                SharedFixtures.Text(fixture["base64Audio"])),
+                SharedFixtures.Text(fixture["base64Audio"])
+            ),
             "sessionClose" => new RealtimeTranslationClientEvent.SessionClose(),
             _ => throw new Xunit.Sdk.XunitException("unhandled client event kind"),
         };

@@ -22,7 +22,8 @@ final class AppCoordinator: NSObject {
         }
     )
     private lazy var transcriptStore: SubtitleTranscriptStore = {
-        let url = (try? SubtitleTranscriptStore.defaultFileURL())
+        let url =
+            (try? SubtitleTranscriptStore.defaultFileURL())
             ?? FileManager.default.temporaryDirectory
             .appendingPathComponent("realtimetranslator-session.txt")
         return SubtitleTranscriptStore(fileURL: url)
@@ -375,8 +376,8 @@ extension AppCoordinator: InterpretationSessionDelegate {
 
         let displayedSnapshot: SubtitleSnapshot
         if translationState == .idle,
-           snapshot.current.isEmpty,
-           snapshot.statusBanner == nil
+            snapshot.current.isEmpty,
+            snapshot.statusBanner == nil
         {
             displayedSnapshot = idleSnapshot
         } else {
@@ -384,8 +385,8 @@ extension AppCoordinator: InterpretationSessionDelegate {
         }
         // 記録上限バナーを、直後の session snapshot で上書きしない。
         if didAnnounceTranscriptCap,
-           lastSnapshot.statusBanner == SubtitleTranscriptStore.sizeLimitBanner,
-           displayedSnapshot.statusBanner == nil
+            lastSnapshot.statusBanner == SubtitleTranscriptStore.sizeLimitBanner,
+            displayedSnapshot.statusBanner == nil
         {
             var merged = displayedSnapshot
             merged.statusBanner = SubtitleTranscriptStore.sizeLimitBanner

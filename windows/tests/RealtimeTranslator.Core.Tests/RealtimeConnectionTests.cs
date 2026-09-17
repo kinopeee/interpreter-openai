@@ -26,11 +26,10 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
+            "test-safety"
+        );
 
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
         await connection.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("frame"));
 
         Assert.Equal("session.update", TypeOf(transport.Sent[0]));
@@ -48,21 +47,19 @@ public sealed class RealtimeConnectionTests
         var translation = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.Japanese,
             translationTransport,
-            "safety-id");
+            "safety-id"
+        );
         var sourceTransport = new FakeRealtimeServerTransport();
         var source = new RealtimeSourceTranscriptionConnection(sourceTransport, "safety-id");
 
-        await translation.StartAsync(
-            "sk-test",
-            SessionConfigs.JapaneseTargetWithoutSourceTranscription());
+        await translation.StartAsync("sk-test", SessionConfigs.JapaneseTargetWithoutSourceTranscription());
         await source.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         Assert.Equal(
             new Uri("wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate"),
-            translationTransport.ConnectedUrl);
-        Assert.Equal(
-            new Uri("wss://api.openai.com/v1/realtime?intent=transcription"),
-            sourceTransport.ConnectedUrl);
+            translationTransport.ConnectedUrl
+        );
+        Assert.Equal(new Uri("wss://api.openai.com/v1/realtime?intent=transcription"), sourceTransport.ConnectedUrl);
 
         foreach (var headers in new[] { translationTransport.ConnectedHeaders, sourceTransport.ConnectedHeaders })
         {
@@ -86,11 +83,12 @@ public sealed class RealtimeConnectionTests
             RealtimeTranslationOutputLanguage.English,
             transport,
             "test-safety",
-            sessionUpdateTimeout: ShortTimeout);
+            sessionUpdateTimeout: ShortTimeout
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription())
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, error.Kind);
         Assert.True(transport.CloseCount >= 1);
@@ -103,16 +101,19 @@ public sealed class RealtimeConnectionTests
     public async Task TranslationConnectionClassifiesAuthenticationFailure()
     {
         var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
-        transport.EnqueueJson("""{"type":"error","error":{"message":"Incorrect API key sk-live-xyz","code":"invalid_api_key"}}""");
+        transport.EnqueueJson(
+            """{"type":"error","error":{"message":"Incorrect API key sk-live-xyz","code":"invalid_api_key"}}"""
+        );
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
             "test-safety",
-            sessionUpdateTimeout: ShortTimeout);
+            sessionUpdateTimeout: ShortTimeout
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription())
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
         Assert.DoesNotContain("sk-live-xyz", error.Message, StringComparison.Ordinal);
@@ -126,16 +127,18 @@ public sealed class RealtimeConnectionTests
     {
         var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
         transport.EnqueueJson(
-            """{"type":"error","error":{"message":"Invalid Authorization header: Bearer sk-leak-example","code":"invalid_request_error"}}""");
+            """{"type":"error","error":{"message":"Invalid Authorization header: Bearer sk-leak-example","code":"invalid_request_error"}}"""
+        );
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
             "test-safety",
-            sessionUpdateTimeout: ShortTimeout);
+            sessionUpdateTimeout: ShortTimeout
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription())
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
         Assert.DoesNotContain("sk-leak-example", error.Message, StringComparison.Ordinal);
@@ -151,16 +154,18 @@ public sealed class RealtimeConnectionTests
     {
         var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
         transport.EnqueueJson(
-            """{"type":"error","error":{"message":"upstream echo sk-should-not-appear","code":"upstream_failure"}}""");
+            """{"type":"error","error":{"message":"upstream echo sk-should-not-appear","code":"upstream_failure"}}"""
+        );
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
             "test-safety",
-            sessionUpdateTimeout: ShortTimeout);
+            sessionUpdateTimeout: ShortTimeout
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription())
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.FatalServerError, error.Kind);
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
@@ -180,11 +185,12 @@ public sealed class RealtimeConnectionTests
             RealtimeTranslationOutputLanguage.English,
             transport,
             "test-safety",
-            sessionUpdateTimeout: ShortTimeout);
+            sessionUpdateTimeout: ShortTimeout
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription())
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.InvalidMessage, error.Kind);
         Assert.True(transport.CloseCount >= 1);
@@ -200,11 +206,12 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
+            "test-safety"
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
-            "   ",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("   ", SessionConfigs.EnglishTargetWithoutSourceTranscription())
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.MissingApiKey, error.Kind);
         Assert.Equal(0, transport.ConnectCount);
@@ -218,16 +225,18 @@ public sealed class RealtimeConnectionTests
     {
         var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
         transport.EnqueueJson(
-            """{"type":"error","error":{"message":"Missing bearer or basic authentication in header","code":"invalid_request_error"}}""");
+            """{"type":"error","error":{"message":"Missing bearer or basic authentication in header","code":"invalid_request_error"}}"""
+        );
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
             "test-safety",
-            sessionUpdateTimeout: ShortTimeout);
+            sessionUpdateTimeout: ShortTimeout
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription())
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
         Assert.DoesNotContain("bearer", error.Message, StringComparison.OrdinalIgnoreCase);
@@ -245,11 +254,12 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
+            "test-safety"
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.StartAsync(
-            "sk-proj-abc\n3:26",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription()));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-proj-abc\n3:26", SessionConfigs.EnglishTargetWithoutSourceTranscription())
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
         Assert.Equal(0, transport.ConnectCount);
@@ -265,11 +275,10 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
+            "test-safety"
+        );
 
-        await connection.StartAsync(
-            "sk-proj-AAAA\nBBBB",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+        await connection.StartAsync("sk-proj-AAAA\nBBBB", SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         Assert.Equal("Bearer sk-proj-AAAABBBB", transport.ConnectedHeaders["Authorization"]);
         await connection.ForceCloseAsync();
@@ -285,10 +294,9 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.Japanese,
             transport,
-            "test-safety");
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.JapaneseTargetWithoutSourceTranscription());
+            "test-safety"
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.JapaneseTargetWithoutSourceTranscription());
 
         transport.EnqueueJson("""{"type":"session.output_transcript.delta","delta":"こんにちは","event_id":"e1"}""");
         var streamEvent = await ReadOneAsync(connection.Events);
@@ -310,15 +318,16 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+            "test-safety"
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         transport.EnqueueJson(
-            """{"type":"session.input_transcript.delta","delta":"polluting source","event_id":"in-1","elapsed_ms":10}""");
+            """{"type":"session.input_transcript.delta","delta":"polluting source","event_id":"in-1","elapsed_ms":10}"""
+        );
         transport.EnqueueJson(
-            """{"type":"session.output_transcript.delta","delta":"kept translation","event_id":"out-1"}""");
+            """{"type":"session.output_transcript.delta","delta":"kept translation","event_id":"out-1"}"""
+        );
 
         RealtimeTranslationServerEvent.OutputTranscriptDelta? kept = null;
         var deadline = Environment.TickCount64 + 5_000;
@@ -354,10 +363,9 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+            "test-safety"
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         // bounded(512) + DropOldest を超える量。フィルタが無いと後続の訳文が落ちる。
         for (var index = 0; index < 600; index += 1)
@@ -366,7 +374,8 @@ public sealed class RealtimeConnectionTests
         }
 
         transport.EnqueueJson(
-            """{"type":"session.output_transcript.delta","delta":"kept after audio flood","event_id":"keep-1"}""");
+            """{"type":"session.output_transcript.delta","delta":"kept after audio flood","event_id":"keep-1"}"""
+        );
 
         RealtimeTranslationServerEvent.OutputTranscriptDelta? kept = null;
         var deadline = Environment.TickCount64 + 5_000;
@@ -402,10 +411,9 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+            "test-safety"
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         transport.EnqueueRaw(Encoding.UTF8.GetBytes("{not json"));
         var streamEvent = await ReadOneAsync(connection.Events);
@@ -425,14 +433,14 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+            "test-safety"
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         transport.EnqueueJson("""{"type":"session.unknown.noise"}""");
         transport.EnqueueJson(
-            """{"type":"session.output_transcript.delta","delta":"Hello","event_id":"t1","elapsed_ms":10}""");
+            """{"type":"session.output_transcript.delta","delta":"Hello","event_id":"t1","elapsed_ms":10}"""
+        );
 
         RealtimeTranslationServerEvent.OutputTranscriptDelta? delta = null;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -458,13 +466,11 @@ public sealed class RealtimeConnectionTests
             RealtimeTranslationOutputLanguage.English,
             transport,
             "test-safety",
-            closeTimeout: ShortTimeout);
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+            closeTimeout: ShortTimeout
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.CloseGracefullyAsync());
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.CloseGracefullyAsync());
 
         Assert.Equal(RealtimeTranslationErrorKind.CloseTimeout, error.Kind);
         Assert.Equal("session.close", TypeOf(transport.Sent[^1]));
@@ -481,10 +487,9 @@ public sealed class RealtimeConnectionTests
             RealtimeTranslationOutputLanguage.English,
             transport,
             "test-safety",
-            closeTimeout: TimeSpan.FromSeconds(2));
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+            closeTimeout: TimeSpan.FromSeconds(2)
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         transport.FailNextSend();
         transport.EnqueueJson("""{"type":"session.closed"}""");
@@ -508,18 +513,15 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeTranslationConnection(
             RealtimeTranslationOutputLanguage.English,
             transport,
-            "test-safety");
-        await connection.StartAsync(
-            "sk-test",
-            SessionConfigs.EnglishTargetWithoutSourceTranscription());
+            "test-safety"
+        );
+        await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription());
 
         await connection.CloseGracefullyAsync();
 
         Assert.Equal("session.close", TypeOf(transport.Sent[^1]));
         Assert.True(transport.CloseCount >= 1);
-        while (connection.Events.TryRead(out _))
-        {
-        }
+        while (connection.Events.TryRead(out _)) { }
 
         Assert.False(await connection.Events.WaitToReadAsync());
     }
@@ -535,7 +537,8 @@ public sealed class RealtimeConnectionTests
             RealtimeTranslationOutputLanguage.Japanese,
             transport,
             "test-safety",
-            closeTimeout: TimeSpan.FromSeconds(2));
+            closeTimeout: TimeSpan.FromSeconds(2)
+        );
 
         var started = Stopwatch.StartNew();
         await connection.CloseGracefullyAsync();
@@ -556,21 +559,25 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            closeTimeout: TimeSpan.FromSeconds(2));
+            closeTimeout: TimeSpan.FromSeconds(2)
+        );
         await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         transport.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"hello","event_id":"e1"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":"hello","event_id":"e1"}"""
+        );
         var streamEvent = await ReadOneAsync(connection.Events);
         var delta = Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptDelta>(streamEvent.Event);
         Assert.Equal("hello", delta.Delta);
         Assert.Null(delta.ElapsedMs);
 
         transport.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","delta":"","event_id":"empty"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","delta":"","event_id":"empty"}"""
+        );
         transport.EnqueueJson("""{"type":"session.unknown.noise"}""");
         transport.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":" world","event_id":"e2"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"i1","delta":" world","event_id":"e2"}"""
+        );
         var second = await ReadOneAsync(connection.Events);
         var secondDelta = Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptDelta>(second.Event);
         Assert.Equal(" world", secondDelta.Delta);
@@ -593,14 +600,16 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            closeTimeout: TimeSpan.FromMilliseconds(500));
+            closeTimeout: TimeSpan.FromMilliseconds(500)
+        );
         await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         var closeTask = connection.CloseGracefullyAsync();
         await WaitUntilAsync(() => transport.Sent.Any(payload => TypeOf(payload) == "input_audio_buffer.commit"));
         var started = Stopwatch.StartNew();
         transport.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.failed","item_id":"close-item","event_id":"close-event","error":{"code":"audio_unintelligible","message":"こんにちは sk-leak-1234"}}""");
+            """{"type":"conversation.item.input_audio_transcription.failed","item_id":"close-item","event_id":"close-event","error":{"code":"audio_unintelligible","message":"こんにちは sk-leak-1234"}}"""
+        );
         await closeTask;
         started.Stop();
 
@@ -611,8 +620,10 @@ public sealed class RealtimeConnectionTests
                 "close-item",
                 "close-event",
                 "audio_unintelligible",
-                null),
-            streamEvent.Event);
+                null
+            ),
+            streamEvent.Event
+        );
         await connection.ForceCloseAsync();
     }
 
@@ -631,12 +642,13 @@ public sealed class RealtimeConnectionTests
                 {
                     await Task.Yield();
                 }
-            }
+            },
         };
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            closeTimeout: TimeSpan.FromMilliseconds(500));
+            closeTimeout: TimeSpan.FromMilliseconds(500)
+        );
         await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         var started = Stopwatch.StartNew();
@@ -658,7 +670,8 @@ public sealed class RealtimeConnectionTests
         await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         transport.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.failed","item_id":"privacy-item","event_id":"privacy-event","error":{"code":"audio_unintelligible","message":"こんにちは sk-leak-1234"}}""");
+            """{"type":"conversation.item.input_audio_transcription.failed","item_id":"privacy-item","event_id":"privacy-event","error":{"code":"audio_unintelligible","message":"こんにちは sk-leak-1234"}}"""
+        );
         var streamEvent = await ReadOneAsync(connection.Events);
 
         Assert.Equal(
@@ -666,8 +679,10 @@ public sealed class RealtimeConnectionTests
                 "privacy-item",
                 "privacy-event",
                 "audio_unintelligible",
-                null),
-            streamEvent.Event);
+                null
+            ),
+            streamEvent.Event
+        );
         await connection.ForceCloseAsync();
     }
 
@@ -680,10 +695,12 @@ public sealed class RealtimeConnectionTests
         var transport = new FakeRealtimeServerTransport();
         var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
 
-        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("frame")));
-        var tuningError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.UpdateTuningAsync(RealtimeSessionTuning.Default));
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("frame"))
+        );
+        var tuningError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.UpdateTuningAsync(RealtimeSessionTuning.Default)
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, tuningError.Kind);
@@ -699,10 +716,12 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            handshakeTimeout: ShortTimeout);
+            handshakeTimeout: ShortTimeout
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.StartAsync("sk-test", RealtimeSessionTuning.Default));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-test", RealtimeSessionTuning.Default)
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.SessionUpdateTimeout, error.Kind);
         Assert.True(transport.CloseCount >= 1);
@@ -719,12 +738,14 @@ public sealed class RealtimeConnectionTests
             RealtimeTranslationOutputLanguage.English,
             transport,
             "test-safety",
-            sessionUpdateTimeout: TimeSpan.FromSeconds(15));
+            sessionUpdateTimeout: TimeSpan.FromSeconds(15)
+        );
         using var caller = new CancellationTokenSource();
         var startTask = connection.StartAsync(
             "sk-test",
             SessionConfigs.EnglishTargetWithoutSourceTranscription(),
-            cancellationToken: caller.Token);
+            cancellationToken: caller.Token
+        );
 
         await WaitUntilAsync(() => transport.ConnectCount >= 1);
         await caller.CancelAsync();
@@ -743,9 +764,14 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            handshakeTimeout: TimeSpan.FromSeconds(15));
+            handshakeTimeout: TimeSpan.FromSeconds(15)
+        );
         using var caller = new CancellationTokenSource();
-        var startTask = connection.StartAsync("sk-test", RealtimeSessionTuning.Default, cancellationToken: caller.Token);
+        var startTask = connection.StartAsync(
+            "sk-test",
+            RealtimeSessionTuning.Default,
+            cancellationToken: caller.Token
+        );
 
         await WaitUntilAsync(() => transport.ConnectCount >= 1);
         await caller.CancelAsync();
@@ -764,7 +790,8 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            closeTimeout: TimeSpan.FromSeconds(2));
+            closeTimeout: TimeSpan.FromSeconds(2)
+        );
 
         var started = Stopwatch.StartNew();
         await connection.CloseGracefullyAsync();
@@ -785,11 +812,11 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            closeTimeout: ShortTimeout);
+            closeTimeout: ShortTimeout
+        );
         await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.CloseGracefullyAsync());
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.CloseGracefullyAsync());
 
         Assert.Equal(RealtimeTranslationErrorKind.CloseTimeout, error.Kind);
         Assert.Equal("input_audio_buffer.commit", TypeOf(transport.Sent[^1]));
@@ -805,16 +832,17 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            closeTimeout: ShortTimeout);
+            closeTimeout: ShortTimeout
+        );
         await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         transport.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.failed","item_id":"live-item","event_id":"live-event","error":{"code":"audio_unintelligible"}}""");
+            """{"type":"conversation.item.input_audio_transcription.failed","item_id":"live-item","event_id":"live-event","error":{"code":"audio_unintelligible"}}"""
+        );
         var streamEvent = await ReadOneAsync(connection.Events);
         Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptFailed>(streamEvent.Event);
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.CloseGracefullyAsync());
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() => connection.CloseGracefullyAsync());
 
         Assert.Equal(RealtimeTranslationErrorKind.CloseTimeout, error.Kind);
         Assert.Equal("input_audio_buffer.commit", TypeOf(transport.Sent[^1]));
@@ -831,7 +859,8 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            closeTimeout: TimeSpan.FromSeconds(2));
+            closeTimeout: TimeSpan.FromSeconds(2)
+        );
         await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         transport.FailNextSend();
@@ -856,14 +885,17 @@ public sealed class RealtimeConnectionTests
     {
         var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
         transport.EnqueueJson(
-            """{"type":"error","error":{"message":"Incorrect API key sk-live-xyz","code":"invalid_api_key"}}""");
+            """{"type":"error","error":{"message":"Incorrect API key sk-live-xyz","code":"invalid_api_key"}}"""
+        );
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            handshakeTimeout: ShortTimeout);
+            handshakeTimeout: ShortTimeout
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.StartAsync("sk-test", RealtimeSessionTuning.Default));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-test", RealtimeSessionTuning.Default)
+        );
 
         Assert.False(error.IsRecoverable);
         Assert.Equal("OpenAI APIキーが無効です", error.Message);
@@ -880,14 +912,17 @@ public sealed class RealtimeConnectionTests
     {
         var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
         transport.EnqueueJson(
-            """{"type":"error","error":{"message":"Invalid Authorization header: Bearer sk-leak-example","code":"invalid_request_error"}}""");
+            """{"type":"error","error":{"message":"Invalid Authorization header: Bearer sk-leak-example","code":"invalid_request_error"}}"""
+        );
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            handshakeTimeout: ShortTimeout);
+            handshakeTimeout: ShortTimeout
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.StartAsync("sk-test", RealtimeSessionTuning.Default));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-test", RealtimeSessionTuning.Default)
+        );
 
         Assert.False(error.IsRecoverable);
         Assert.Equal("OpenAI APIキーが無効です", error.Message);
@@ -904,14 +939,17 @@ public sealed class RealtimeConnectionTests
     {
         var transport = new FakeRealtimeServerTransport { AutoHandshake = false };
         transport.EnqueueJson(
-            """{"type":"error","error":{"message":"upstream echo sk-should-not-appear","code":"upstream_failure"}}""");
+            """{"type":"error","error":{"message":"upstream echo sk-should-not-appear","code":"upstream_failure"}}"""
+        );
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            handshakeTimeout: ShortTimeout);
+            handshakeTimeout: ShortTimeout
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.StartAsync("sk-test", RealtimeSessionTuning.Default));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-test", RealtimeSessionTuning.Default)
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.FatalServerError, error.Kind);
         Assert.Equal(RealtimeTranslationException.GenericServerMessage, error.Message);
@@ -930,10 +968,12 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeSourceTranscriptionConnection(
             transport,
             "test-safety",
-            handshakeTimeout: ShortTimeout);
+            handshakeTimeout: ShortTimeout
+        );
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.StartAsync("sk-test", RealtimeSessionTuning.Default));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-test", RealtimeSessionTuning.Default)
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.InvalidMessage, error.Kind);
         Assert.True(transport.CloseCount >= 1);
@@ -948,8 +988,9 @@ public sealed class RealtimeConnectionTests
         var transport = new FakeRealtimeServerTransport();
         var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.StartAsync("   ", RealtimeSessionTuning.Default));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("   ", RealtimeSessionTuning.Default)
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.MissingApiKey, error.Kind);
         Assert.Equal(0, transport.ConnectCount);
@@ -964,8 +1005,9 @@ public sealed class RealtimeConnectionTests
         var transport = new FakeRealtimeServerTransport();
         var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
 
-        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => connection.StartAsync("sk-proj-abc\n3:26", RealtimeSessionTuning.Default));
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            connection.StartAsync("sk-proj-abc\n3:26", RealtimeSessionTuning.Default)
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
         Assert.Equal(0, transport.ConnectCount);
@@ -1018,7 +1060,8 @@ public sealed class RealtimeConnectionTests
         await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         transport.EnqueueJson(
-            """{"type":"error","error":{"message":"Incorrect API key sk-runtime-xyz","code":"invalid_api_key"}}""");
+            """{"type":"error","error":{"message":"Incorrect API key sk-runtime-xyz","code":"invalid_api_key"}}"""
+        );
         var streamEvent = await ReadOneAsync(connection.Events);
 
         var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(streamEvent.Event);
@@ -1039,10 +1082,18 @@ public sealed class RealtimeConnectionTests
         var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
         await connection.StartAsync(
             "sk-test",
-            RealtimeSessionTuning.Default with { NoiseReduction = RealtimeTranslationNoiseReduction.FarField });
+            RealtimeSessionTuning.Default with
+            {
+                NoiseReduction = RealtimeTranslationNoiseReduction.FarField,
+            }
+        );
 
         await connection.UpdateTuningAsync(
-            RealtimeSessionTuning.Default with { NoiseReduction = RealtimeTranslationNoiseReduction.NearField });
+            RealtimeSessionTuning.Default with
+            {
+                NoiseReduction = RealtimeTranslationNoiseReduction.NearField,
+            }
+        );
 
         var payload = JsonNode.Parse(transport.Sent[^1])!.AsObject();
         var noiseReduction = payload["session"]!["audio"]!["input"]!["noise_reduction"]!["type"]!.GetValue<string>();
@@ -1051,7 +1102,8 @@ public sealed class RealtimeConnectionTests
     }
 
     private static async Task<RealtimeTranslationStreamEvent> ReadOneAsync(
-        System.Threading.Channels.ChannelReader<RealtimeTranslationStreamEvent> reader)
+        System.Threading.Channels.ChannelReader<RealtimeTranslationStreamEvent> reader
+    )
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         return await reader.ReadAsync(timeout.Token);
@@ -1073,6 +1125,5 @@ public sealed class RealtimeConnectionTests
         Assert.Fail("condition was not met in time");
     }
 
-    private static string? TypeOf(byte[] payload) =>
-        JsonNode.Parse(payload)!.AsObject()["type"]?.GetValue<string>();
+    private static string? TypeOf(byte[] payload) => JsonNode.Parse(payload)!.AsObject()["type"]?.GetValue<string>();
 }

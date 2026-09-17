@@ -28,13 +28,15 @@ public interface IDualRealtimeTranslationClient
         string apiKey,
         RealtimeSessionTuning tuning,
         LanguagePair pair = LanguagePair.JaEn,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 
     Task AppendAudioFrameAsync(ReadOnlyMemory<byte> pcm16LittleEndian, CancellationToken cancellationToken = default);
 
     Task SelectTranslationTargetAsync(
         RealtimeTranslationOutputLanguage? target,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 
     Task UpdateTranscriptionTuningAsync(RealtimeSessionTuning tuning, CancellationToken cancellationToken = default);
 
@@ -81,7 +83,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         RealtimeTranslationConnection japaneseConnection,
         TimeSpan? translationDrainTimeout = null,
         RealtimeTranslationConnection? spanishConnection = null,
-        DualRealtimeTranslationClientTuning? clientTuning = null)
+        DualRealtimeTranslationClientTuning? clientTuning = null
+    )
     {
         ArgumentNullException.ThrowIfNull(sourceConnection);
         ArgumentNullException.ThrowIfNull(englishConnection);
@@ -109,14 +112,16 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             target => _connections[target],
             () => _connectionEpoch,
             () => _isRunning,
-            () => _eventBuffer.MergeWriter);
+            () => _eventBuffer.MergeWriter
+        );
         _mergePump = new EventMergePump(
             _sync,
             _eventBuffer,
             () => ConnectionEpoch,
             () => _sourceConnection.Events,
             target => _connections[target].Events,
-            () => _startedTranslationTargets);
+            () => _startedTranslationTargets
+        );
     }
 
     public ChannelReader<RealtimeTranslationStreamEvent> Events
@@ -189,7 +194,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         string apiKey,
         RealtimeSessionTuning tuning,
         LanguagePair pair = LanguagePair.JaEn,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(tuning);
 
@@ -223,25 +229,22 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             {
                 var starts = new List<Task>
                 {
-                    _sourceConnection.StartAsync(
-                        apiKey,
-                        tuning,
-                        pair,
-                        deliveryState,
-                        handshakeCts.Token),
+                    _sourceConnection.StartAsync(apiKey, tuning, pair, deliveryState, handshakeCts.Token),
                 };
-                starts.AddRange(pair.Languages().Select(language =>
-                    {
-                        var target = language.ToOutputLanguage();
-                        return _connections[target].StartAsync(
-                            apiKey,
-                            new RealtimeTranslationSessionConfig(
-                                target,
-                                null,
-                                tuning.NoiseReduction),
-                            deliveryState,
-                            handshakeCts.Token);
-                    }));
+                starts.AddRange(
+                    pair.Languages()
+                        .Select(language =>
+                        {
+                            var target = language.ToOutputLanguage();
+                            return _connections[target]
+                                .StartAsync(
+                                    apiKey,
+                                    new RealtimeTranslationSessionConfig(target, null, tuning.NoiseReduction),
+                                    deliveryState,
+                                    handshakeCts.Token
+                                );
+                        })
+                );
 
                 await ConnectionHandshake.StartAllAsync(starts, handshakeCts).ConfigureAwait(false);
             }
@@ -280,9 +283,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
                 throw new RealtimeTranslationException(RealtimeTranslationErrorKind.Cancelled);
             }
 
-            _startedTranslationTargets = pair.Languages()
-                .Select(language => language.ToOutputLanguage())
-                .ToArray();
+            _startedTranslationTargets = pair.Languages().Select(language => language.ToOutputLanguage()).ToArray();
         }
 
         BeforeStartEventMergeForTests?.Invoke();
@@ -294,7 +295,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     /// </summary>
     internal void SeedCompletedTranslationEventForTests(
         RealtimeTranslationOutputLanguage target,
-        RealtimeTranslationServerEvent serverEvent)
+        RealtimeTranslationServerEvent serverEvent
+    )
     {
         ArgumentNullException.ThrowIfNull(serverEvent);
 
@@ -308,7 +310,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
     public async Task AppendAudioFrameAsync(
         ReadOnlyMemory<byte> pcm16LittleEndian,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         lock (_sync)
         {
@@ -357,7 +360,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
     public Task SelectTranslationTargetAsync(
         RealtimeTranslationOutputLanguage? target,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         _ = cancellationToken;
 
@@ -388,7 +392,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             {
                 throw new ArgumentException(
                     $"Translation connection for '{selected.ToWireValue()}' is not configured.",
-                    nameof(target));
+                    nameof(target)
+                );
             }
 
             _selectedTranslationTarget = selected;
@@ -414,7 +419,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
 
     public Task UpdateTranscriptionTuningAsync(
         RealtimeSessionTuning tuning,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         lock (_sync)
         {
@@ -499,8 +505,10 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         try
         {
             await Task.WhenAll(
-                new[] { _sourceConnection.CloseGracefullyAsync(cancellationToken) }
-                    .Concat(_connections.Values.Select(connection => connection.CloseGracefullyAsync(cancellationToken))))
+                    new[] { _sourceConnection.CloseGracefullyAsync(cancellationToken) }.Concat(
+                        _connections.Values.Select(connection => connection.CloseGracefullyAsync(cancellationToken))
+                    )
+                )
                 .ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // 最初の close 失敗だけを呼び出し元へ返し、残りの解放は必ず行う。
@@ -537,8 +545,11 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         await TranslationSendPipeline.AwaitPumpAsync(pump).ConfigureAwait(false);
 
         Exception? firstError = null;
-        foreach (var close in new Func<Task>[] { _sourceConnection.ForceCloseAsync }
-                     .Concat(_connections.Values.Select(connection => (Func<Task>)connection.ForceCloseAsync)))
+        foreach (
+            var close in new Func<Task>[] { _sourceConnection.ForceCloseAsync }.Concat(
+                _connections.Values.Select(connection => (Func<Task>)connection.ForceCloseAsync)
+            )
+        )
         {
             try
             {
@@ -608,8 +619,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     /// <summary>翻訳ポンプが現在の待ち行列を処理し終えるまで待つ。決定的なテストのために使う。</summary>
     internal Task WaitForTranslationDrainAsync(
         TimeSpan? timeout = null,
-        CancellationToken cancellationToken = default) =>
-        _sendPipeline.WaitForTranslationDrainAsync(timeout, cancellationToken);
+        CancellationToken cancellationToken = default
+    ) => _sendPipeline.WaitForTranslationDrainAsync(timeout, cancellationToken);
 
     private void EnsureConnectionsForPair(LanguagePair pair)
     {
@@ -620,7 +631,8 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             {
                 throw new ArgumentException(
                     $"Translation connection for '{target.ToWireValue()}' is required for pair '{pair.ToWireValue()}'.",
-                    nameof(pair));
+                    nameof(pair)
+                );
             }
         }
     }

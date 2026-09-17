@@ -14,29 +14,57 @@ public static class SpokenLanguageDetector
     public const int EnEsWindow = 8;
 
     public static readonly ImmutableArray<string> SpanishExclusiveWords =
-        ["el", "la", "los", "las", "es", "está", "que", "y", "de", "del", "con", "por", "para", "pero", "más", "sí"];
+    [
+        "el",
+        "la",
+        "los",
+        "las",
+        "es",
+        "está",
+        "que",
+        "y",
+        "de",
+        "del",
+        "con",
+        "por",
+        "para",
+        "pero",
+        "más",
+        "sí",
+    ];
 
     public static readonly ImmutableArray<string> EnglishExclusiveWords =
-        ["the", "and", "is", "are", "of", "to", "it", "that", "this", "with", "for", "you", "they"];
+    [
+        "the",
+        "and",
+        "is",
+        "are",
+        "of",
+        "to",
+        "it",
+        "that",
+        "this",
+        "with",
+        "for",
+        "you",
+        "they",
+    ];
 
     public static SpokenLanguage Detect(string text, LanguagePair pair) =>
         Evidence(text, pair) switch
-    {
-        SpokenLanguageEvidence.Japanese => SpokenLanguage.Japanese,
-        SpokenLanguageEvidence.English => SpokenLanguage.English,
-        SpokenLanguageEvidence.Spanish => SpokenLanguage.Spanish,
-        _ => SpokenLanguage.Unknown,
-    };
+        {
+            SpokenLanguageEvidence.Japanese => SpokenLanguage.Japanese,
+            SpokenLanguageEvidence.English => SpokenLanguage.English,
+            SpokenLanguageEvidence.Spanish => SpokenLanguage.Spanish,
+            _ => SpokenLanguage.Unknown,
+        };
 
     /// <summary>
     /// 空白を除いた末尾 N 個の Unicode scalar (code point) 分の範囲だけで証拠を評価する。
     /// 空白 scalar は語境界判定のため残す。日本語がウィンドウ外へ流れ出ると英語切替を検出できる。
     /// 単位は UTF-16 <see cref="char"/> でも書記素クラスタでもない (shared/protocol/routing.md 正本)。
     /// </summary>
-    public static SpokenLanguageEvidence RecentEvidence(
-        string text,
-        LanguagePair pair,
-        int? window = null)
+    public static SpokenLanguageEvidence RecentEvidence(string text, LanguagePair pair, int? window = null)
     {
         ArgumentNullException.ThrowIfNull(text);
 
@@ -51,9 +79,7 @@ public static class SpokenLanguageDetector
             var words = WordSpans(text);
             return words.Count <= effectiveWindow
                 ? Evidence(text, pair)
-                : Evidence(
-                    text[WordWindowStart(text, words, effectiveWindow)..words[^1].End],
-                    pair);
+                : Evidence(text[WordWindowStart(text, words, effectiveWindow)..words[^1].End], pair);
         }
 
         var starts = ScalarStarts(text);
@@ -73,9 +99,7 @@ public static class SpokenLanguageDetector
         return nonWhitespaceCount == 0 ? SpokenLanguageEvidence.None : Evidence(text[start..], pair);
     }
 
-    public static SpokenLanguageEvidence Evidence(
-        string text,
-        LanguagePair pair)
+    public static SpokenLanguageEvidence Evidence(string text, LanguagePair pair)
     {
         ArgumentNullException.ThrowIfNull(text);
 
@@ -126,9 +150,7 @@ public static class SpokenLanguageDetector
         {
             0 => SpokenLanguageEvidence.None,
             1 => SpokenLanguageEvidence.AmbiguousLatin,
-            _ => pair == LanguagePair.JaEs
-                ? SpokenLanguageEvidence.Spanish
-                : SpokenLanguageEvidence.English,
+            _ => pair == LanguagePair.JaEs ? SpokenLanguageEvidence.Spanish : SpokenLanguageEvidence.English,
         };
     }
 
@@ -166,9 +188,7 @@ public static class SpokenLanguageDetector
             return SpokenLanguageEvidence.AmbiguousLatin;
         }
 
-        return spanishScore > englishScore
-            ? SpokenLanguageEvidence.Spanish
-            : SpokenLanguageEvidence.English;
+        return spanishScore > englishScore ? SpokenLanguageEvidence.Spanish : SpokenLanguageEvidence.English;
     }
 
     private static List<string> TokenizeWords(string text)
@@ -242,10 +262,7 @@ public static class SpokenLanguageDetector
         return WordWindowStart(text, words, window);
     }
 
-    private static int WordWindowStart(
-        string text,
-        List<(int Start, int End)> words,
-        int window)
+    private static int WordWindowStart(string text, List<(int Start, int End)> words, int window)
     {
         var start = words[^window].Start;
         // 語前の ¿ / ¡ は空白を挟んでも窓に残す。空白だけの prefix や直前のラテン語には踏み込まない。
@@ -253,9 +270,11 @@ public static class SpokenLanguageDetector
         while (probe > 0)
         {
             var previousOffset = probe - 1;
-            if (char.IsLowSurrogate(text[previousOffset])
+            if (
+                char.IsLowSurrogate(text[previousOffset])
                 && previousOffset > 0
-                && char.IsHighSurrogate(text[previousOffset - 1]))
+                && char.IsHighSurrogate(text[previousOffset - 1])
+            )
             {
                 previousOffset -= 1;
             }
@@ -281,11 +300,17 @@ public static class SpokenLanguageDetector
     }
 
     internal static bool IsLatinWordScalar(Rune rune) =>
-        rune.Value is >= 0x0041 and <= 0x005A
-            or >= 0x0061 and <= 0x007A
-            or >= 0x00C0 and <= 0x00D6
-            or >= 0x00D8 and <= 0x00F6
-            or >= 0x00F8 and <= 0x00FF;
+        rune.Value
+            is >= 0x0041
+                and <= 0x005A
+                or >= 0x0061
+                and <= 0x007A
+                or >= 0x00C0
+                and <= 0x00D6
+                or >= 0x00D8
+                and <= 0x00F6
+                or >= 0x00F8
+                and <= 0x00FF;
 
     /// <summary>Unicode scalar 単位で末尾から走査するための開始 UTF-16 オフセット列。</summary>
     private static List<int> ScalarStarts(string text)

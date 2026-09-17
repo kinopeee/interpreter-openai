@@ -28,3 +28,6 @@ build/
 bin/
 obj/
 artifacts/
+
+# Formatter tool caches (scripts/format.mjs setup)
+.devin/format/tools/

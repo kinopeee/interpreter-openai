@@ -46,8 +46,7 @@ public sealed class InterpretationSessionRoutingGateTests
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+                return updates.Exists(update => update.TranslatedText.Length > 0 && !update.ShouldFinalize);
             }
         });
 
@@ -67,7 +66,8 @@ public sealed class InterpretationSessionRoutingGateTests
             finalized = updates.Find(update => update.ShouldFinalize);
             Assert.Contains(
                 updates,
-                update => update.SourceText.Contains("continue in english", StringComparison.Ordinal));
+                update => update.SourceText.Contains("continue in english", StringComparison.Ordinal)
+            );
         }
 
         Assert.Equal("フェンス前の完全ペア", finalized.SourceText);
@@ -104,8 +104,7 @@ public sealed class InterpretationSessionRoutingGateTests
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+                return updates.Exists(update => update.TranslatedText.Length > 0 && !update.ShouldFinalize);
             }
         });
 
@@ -140,8 +139,7 @@ public sealed class InterpretationSessionRoutingGateTests
         var session = NewSession(client);
 
         var startTask = session.StartAsync();
-        await WaitUntilAsync(() =>
-            client.StartCount == 1 && session.State == TranslationState.Connecting);
+        await WaitUntilAsync(() => client.StartCount == 1 && session.State == TranslationState.Connecting);
 
         session.Dispose();
         startGate.TrySetResult();
@@ -151,16 +149,15 @@ public sealed class InterpretationSessionRoutingGateTests
         Assert.Equal(1, client.StartCount);
     }
 
-    private static InterpretationSession NewSession(
-        FakeDualClient client,
-        TimeProvider? clock = null) =>
+    private static InterpretationSession NewSession(FakeDualClient client, TimeProvider? clock = null) =>
         new(
             new FakeApiKeyStore("sk-test"),
             new FakeAudioCapture(),
             client,
             timeProvider: clock,
             initialReconnectDelay: TimeSpan.FromMilliseconds(1),
-            tickInterval: TimeSpan.FromMilliseconds(15));
+            tickInterval: TimeSpan.FromMilliseconds(15)
+        );
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
@@ -297,7 +294,8 @@ public sealed class InterpretationSessionRoutingGateTests
             string apiKey,
             RealtimeSessionTuning tuning,
             LanguagePair pair = LanguagePair.JaEn,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             Task? gateTask;
             lock (_sync)
@@ -324,11 +322,13 @@ public sealed class InterpretationSessionRoutingGateTests
 
         public Task AppendAudioFrameAsync(
             ReadOnlyMemory<byte> pcm16LittleEndian,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default
+        ) => Task.CompletedTask;
 
         public async Task SelectTranslationTargetAsync(
             RealtimeTranslationOutputLanguage? target,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             EnteredSelectTarget?.TrySetResult();
             var gateTask = SelectTargetGate?.Task;
@@ -339,9 +339,7 @@ public sealed class InterpretationSessionRoutingGateTests
 
             lock (_sync)
             {
-                if (target is { } selected
-                    && LastStartedPair is { } pair
-                    && pair.Counterpart(selected) is { } spoken)
+                if (target is { } selected && LastStartedPair is { } pair && pair.Counterpart(selected) is { } spoken)
                 {
                     _spokenLanguages.Add(spoken);
                 }
@@ -350,7 +348,8 @@ public sealed class InterpretationSessionRoutingGateTests
 
         public Task UpdateTranscriptionTuningAsync(
             RealtimeSessionTuning tuning,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default
+        ) => Task.CompletedTask;
 
         public async Task ResetAudioRoutingAsync()
         {
@@ -374,13 +373,17 @@ public sealed class InterpretationSessionRoutingGateTests
             return Task.CompletedTask;
         }
 
-        public void PublishSourceDelta(string delta) => PublishLane(
-            RealtimeTranslationLane.Source,
-            new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null));
+        public void PublishSourceDelta(string delta) =>
+            PublishLane(
+                RealtimeTranslationLane.Source,
+                new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null)
+            );
 
-        public void PublishTranslationDelta(RealtimeTranslationOutputLanguage target, string delta) => PublishLane(
-            RealtimeTranslationLane.Translation(target),
-            new RealtimeTranslationServerEvent.OutputTranscriptDelta(delta, Guid.NewGuid().ToString(), null));
+        public void PublishTranslationDelta(RealtimeTranslationOutputLanguage target, string delta) =>
+            PublishLane(
+                RealtimeTranslationLane.Translation(target),
+                new RealtimeTranslationServerEvent.OutputTranscriptDelta(delta, Guid.NewGuid().ToString(), null)
+            );
 
         private void Complete()
         {
@@ -390,14 +393,11 @@ public sealed class InterpretationSessionRoutingGateTests
             }
         }
 
-        private void PublishLane(
-            RealtimeTranslationLane lane,
-            RealtimeTranslationServerEvent serverEvent)
+        private void PublishLane(RealtimeTranslationLane lane, RealtimeTranslationServerEvent serverEvent)
         {
             lock (_sync)
             {
-                _events.Writer.TryWrite(
-                    new RealtimeTranslationStreamEvent(lane, serverEvent, _epoch));
+                _events.Writer.TryWrite(new RealtimeTranslationStreamEvent(lane, serverEvent, _epoch));
             }
         }
     }

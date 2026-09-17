@@ -19,7 +19,8 @@ final class SubtitleWindowGeometryTests: XCTestCase {
     func testCapsContentHeightToVisibleFrame() {
         // Given: 画面の利用可能高を超える字幕内容高
         let visibleFrame = CGRect(x: -300, y: -100, width: 1_000, height: 700)
-        let reserved = SubtitleWindowGeometry.showsRecordingControl
+        let reserved =
+            SubtitleWindowGeometry.showsRecordingControl
             ? SubtitleWindowGeometry.controlSize.height
                 + SubtitleWindowGeometry.controlSpacing
             : 0
@@ -38,7 +39,7 @@ final class SubtitleWindowGeometryTests: XCTestCase {
         // Given: 原点が負座標にある副画面と、その画面内の保存位置
         let screenFrames = [
             CGRect(x: 200, y: 0, width: 1_400, height: 900),
-            CGRect(x: -1_720, y: -120, width: 1_920, height: 1_080)
+            CGRect(x: -1_720, y: -120, width: 1_920, height: 1_080),
         ]
         let savedOrigin = CGPoint(x: -1_200, y: 80)
 
@@ -57,7 +58,7 @@ final class SubtitleWindowGeometryTests: XCTestCase {
         // Given: 接続中のどの画面にも含まれない保存位置
         let screenFrames = [
             CGRect(x: 100, y: 100, width: 800, height: 600),
-            CGRect(x: 900, y: 100, width: 1_000, height: 700)
+            CGRect(x: 900, y: 100, width: 1_000, height: 700),
         ]
         let savedOrigin = CGPoint(x: -2_000, y: -1_000)
 
@@ -76,7 +77,7 @@ final class SubtitleWindowGeometryTests: XCTestCase {
         // Given: 原点は左画面内だが、面積の大半が右画面へ移った字幕パネル
         let screenFrames = [
             CGRect(x: 0, y: 0, width: 1_000, height: 800),
-            CGRect(x: 1_000, y: 0, width: 1_000, height: 800)
+            CGRect(x: 1_000, y: 0, width: 1_000, height: 800),
         ]
         let proposedFrame = CGRect(x: 800, y: 200, width: 600, height: 200)
 

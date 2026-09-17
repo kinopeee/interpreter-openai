@@ -77,7 +77,9 @@ struct UserCopy: Sendable {
         return template
     }
 
-    static func parse(json: Data, locale: UiLocale, missingKeyHandler: (@Sendable (String) -> Void)? = nil) throws -> UserCopy {
+    static func parse(json: Data, locale: UiLocale, missingKeyHandler: (@Sendable (String) -> Void)? = nil) throws
+        -> UserCopy
+    {
         let tables = try readLocaleTables(json)
         let primary = locale == .ja ? tables.ja : tables.en
         return UserCopy(
@@ -172,7 +174,8 @@ struct UserCopy: Sendable {
     /// Windows / shared-contracts と同じ `[A-Za-z_][A-Za-z0-9_]*`。
     private static func isPlaceholderName(_ name: String) -> Bool {
         guard let first = name.utf8.first else { return false }
-        let isStart = first == UInt8(ascii: "_")
+        let isStart =
+            first == UInt8(ascii: "_")
             || (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(first)
             || (UInt8(ascii: "a")...UInt8(ascii: "z")).contains(first)
         guard isStart else { return false }

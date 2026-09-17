@@ -88,12 +88,14 @@ public sealed class LogSecretRedactorTests
     [Fact]
     public void RedactReplacesTabSplitApiKeyHyphenAndBody()
     {
-        foreach (var input in new[]
-        {
-            "invalid key sk\t-abcdefghi",
-            "invalid key sk-\tabcdefghi",
-            "invalid key sk-abcd\tefghi",
-        })
+        foreach (
+            var input in new[]
+            {
+                "invalid key sk\t-abcdefghi",
+                "invalid key sk-\tabcdefghi",
+                "invalid key sk-abcd\tefghi",
+            }
+        )
         {
             var redacted = LogSecretRedactor.Redact(input);
 
@@ -133,8 +135,7 @@ public sealed class LogSecretRedactorTests
     public void RedactReplacesOpenAISafetyIdentifierHeader()
     {
         const string identifier = "deadbeefcafebabe0123456789abcdef";
-        var redacted = LogSecretRedactor.Redact(
-            "hdr OpenAI-Safety-Identifier: " + identifier + " extra");
+        var redacted = LogSecretRedactor.Redact("hdr OpenAI-Safety-Identifier: " + identifier + " extra");
 
         Assert.DoesNotContain(identifier, redacted, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Safety-Identifier", redacted, StringComparison.OrdinalIgnoreCase);
@@ -148,8 +149,7 @@ public sealed class LogSecretRedactorTests
     public void RedactReplacesZeroWidthObfuscatedSafetyIdentifierHeader()
     {
         const string identifier = "deadbeefcafebabe0123456789abcdef";
-        var redacted = LogSecretRedactor.Redact(
-            "hdr OpenAI-Safety-\u200bIdentifier: " + identifier + " extra");
+        var redacted = LogSecretRedactor.Redact("hdr OpenAI-Safety-\u200bIdentifier: " + identifier + " extra");
 
         Assert.DoesNotContain(identifier, redacted, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(LogSecretRedactor.Placeholder, redacted, StringComparison.Ordinal);
@@ -174,9 +174,7 @@ public sealed class LogSecretRedactorTests
     [Fact]
     public void SecretTextNormalizesControlWhitespaceWithoutJoiningStatusCodes()
     {
-        Assert.Equal(
-            "invalid api key provided",
-            SecretText.NormalizeForMatch("invalid api\tkey provided"));
+        Assert.Equal("invalid api key provided", SecretText.NormalizeForMatch("invalid api\tkey provided"));
         Assert.Equal("code 4 01", SecretText.NormalizeForMatch("code 4\t01"));
         Assert.DoesNotContain("401", SecretText.NormalizeForMatch("code 4\t01"), StringComparison.Ordinal);
     }

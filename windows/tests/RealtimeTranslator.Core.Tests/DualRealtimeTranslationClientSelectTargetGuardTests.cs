@@ -60,8 +60,9 @@ public sealed class DualRealtimeTranslationClientSelectTargetGuardTests
         await dual.AppendAudioFrameAsync(Encoding.UTF8.GetBytes("before"));
         await dual.WaitForTranslationDrainAsync();
 
-        var error = await Assert.ThrowsAsync<ArgumentException>(
-            () => dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Spanish));
+        var error = await Assert.ThrowsAsync<ArgumentException>(() =>
+            dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.Spanish)
+        );
 
         Assert.Contains("'es'", error.Message, StringComparison.Ordinal);
         Assert.Equal("target", error.ParamName);
@@ -77,15 +78,11 @@ public sealed class DualRealtimeTranslationClientSelectTargetGuardTests
     private static DualRealtimeTranslationClient CreateJaEn(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,
-        FakeRealtimeServerTransport japanese) =>
+        FakeRealtimeServerTransport japanese
+    ) =>
         new(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.English,
-                english,
-                "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.Japanese,
-                japanese,
-                "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
 }

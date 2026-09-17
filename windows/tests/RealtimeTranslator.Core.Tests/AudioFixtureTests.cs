@@ -29,7 +29,8 @@ public sealed class AudioFixtureTests
         Assert.Equal(SharedFixtures.Number(format["bytesPerSample"]), Pcm16FramePacketizer.BytesPerSample);
         Assert.Equal(
             SharedFixtures.Number(format["frameDurationMilliseconds"]),
-            Pcm16FramePacketizer.FrameDurationMilliseconds);
+            Pcm16FramePacketizer.FrameDurationMilliseconds
+        );
         Assert.Equal(SharedFixtures.Number(format["samplesPerFrame"]), Pcm16FramePacketizer.SamplesPerFrame);
         Assert.Equal(SharedFixtures.Number(format["bytesPerFrame"]), Pcm16FramePacketizer.BytesPerFrame);
     }
@@ -105,7 +106,8 @@ public sealed class AudioFixtureTests
         Assert.Equal(SharedFixtures.Number(fixture["totalInputBytes"]), input.Count);
         Assert.Equal(
             SharedFixtures.Number(fixture["expectedEmittedFrameCount"]),
-            emitted.Count / Pcm16FramePacketizer.BytesPerFrame);
+            emitted.Count / Pcm16FramePacketizer.BytesPerFrame
+        );
 
         var flushed = packetizer.FlushWithSilencePadding();
         Assert.NotNull(flushed);
@@ -133,7 +135,9 @@ public sealed class AudioFixtureTests
             (short)SharedFixtures.Number(fixture["expected"]),
             Pcm16LittleEndianEncoder.EncodeSample(
                 (float)SharedFixtures.Real(fixture["sample"]),
-                (float)SharedFixtures.Real(fixture["gain"])));
+                (float)SharedFixtures.Real(fixture["gain"])
+            )
+        );
     }
 
     // Given: shared fixture の適応ゲイン定数
@@ -153,7 +157,8 @@ public sealed class AudioFixtureTests
         Assert.Equal((float)SharedFixtures.Real(constants["clipThreshold"]), AdaptiveMicrophoneGain.ClipThreshold);
         Assert.Equal(
             (float)SharedFixtures.Real(constants["defaultInitialGain"]),
-            AdaptiveMicrophoneGain.DefaultInitialGain);
+            AdaptiveMicrophoneGain.DefaultInitialGain
+        );
     }
 
     // Given: fixture のピーク推移シナリオ
@@ -280,11 +285,13 @@ public sealed class AudioFixtureTests
         {
             Assert.Equal(
                 Pcm16LittleEndianEncoder.EncodeSample(samples[index], gain),
-                BinaryPrimitives.ReadInt16LittleEndian(encoded.AsSpan(index * 2, 2)));
+                BinaryPrimitives.ReadInt16LittleEndian(encoded.AsSpan(index * 2, 2))
+            );
         }
 
-        var tooSmall = Assert.Throws<ArgumentException>(
-            () => Pcm16LittleEndianEncoder.Encode(samples, new byte[samples.Length], gain));
+        var tooSmall = Assert.Throws<ArgumentException>(() =>
+            Pcm16LittleEndianEncoder.Encode(samples, new byte[samples.Length], gain)
+        );
         Assert.Equal("destination", tooSmall.ParamName);
     }
 
@@ -301,12 +308,12 @@ public sealed class AudioFixtureTests
 
     private static System.Text.Json.Nodes.JsonObject FindGainCase(
         System.Text.Json.Nodes.JsonObject gainFixture,
-        string name)
+        string name
+    )
     {
         foreach (var item in gainFixture["cases"]!.AsArray())
         {
-            if (item is System.Text.Json.Nodes.JsonObject candidate
-                && SharedFixtures.Text(candidate["name"]) == name)
+            if (item is System.Text.Json.Nodes.JsonObject candidate && SharedFixtures.Text(candidate["name"]) == name)
             {
                 return candidate;
             }

@@ -22,7 +22,8 @@ public sealed record AppSettingsData(
     RealtimeTranscriptionDelay TranscriptionDelay,
     bool RecordSubtitles,
     LanguagePair LanguagePair = LanguagePair.JaEn,
-    UiLanguagePreference UiLanguage = UiLanguagePreference.System)
+    UiLanguagePreference UiLanguage = UiLanguagePreference.System
+)
 {
     /// <summary>同意文言を変えたら上げる。上げると再同意を求める。</summary>
     public const int CurrentConsentVersion = 1;
@@ -42,15 +43,13 @@ public sealed record AppSettingsData(
         RealtimeTranslationNoiseReduction.FarField,
         RealtimeTranscriptionDelay.Low,
         RecordSubtitles: false,
-        LanguagePair.JaEn);
+        LanguagePair.JaEn
+    );
 
     public bool HasAcceptedCurrentConsent => AcceptedConsentVersion >= CurrentConsentVersion;
 
-    public RealtimeSessionTuning Tuning() => RealtimeSessionTuning.Make(
-        NoiseReduction,
-        TranscriptionDelay,
-        TranscriptionPrompt,
-        TranscriptionKeywordsText);
+    public RealtimeSessionTuning Tuning() =>
+        RealtimeSessionTuning.Make(NoiseReduction, TranscriptionDelay, TranscriptionPrompt, TranscriptionKeywordsText);
 }
 
 /// <summary>settings.json の読み書き。壊れた値は既定へ倒し、UI が起動できない状態を作らない。</summary>
@@ -115,7 +114,8 @@ public static class AppSettingsCodec
             TranscriptionDelay(dictionary) ?? defaults.TranscriptionDelay,
             Boolean(dictionary, "recordSubtitles") ?? false,
             Pair(dictionary) ?? defaults.LanguagePair,
-            UiLanguage.Parse(Text(dictionary, "uiLanguage")));
+            UiLanguage.Parse(Text(dictionary, "uiLanguage"))
+        );
     }
 
     public static double ClampFontSize(double value) =>

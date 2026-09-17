@@ -81,8 +81,8 @@ final class SessionHealthMonitorFixtureTests: XCTestCase {
                 case "expiry":
                     let remaining: Duration? =
                         step["remainingMs"] is NSNull || step["remainingMs"] == nil
-                            ? nil
-                            : .milliseconds(number(step, "remainingMs"))
+                        ? nil
+                        : .milliseconds(number(step, "remainingMs"))
                     monitor.recordSessionExpiry(
                         lane: try lane(step["lane"], stepName: name),
                         remaining: remaining,
@@ -177,11 +177,12 @@ final class SessionHealthMonitorFixtureTests: XCTestCase {
         case "en": return .translation(.english)
         case "ja": return .translation(.japanese)
         case "es": return .translation(.spanish)
-        default: throw SharedFixtures.FixtureError.invalidCase(
-            fixture: "health",
-            section: "scenarios",
-            name: stepName
-        )
+        default:
+            throw SharedFixtures.FixtureError.invalidCase(
+                fixture: "health",
+                section: "scenarios",
+                name: stepName
+            )
         }
     }
 }

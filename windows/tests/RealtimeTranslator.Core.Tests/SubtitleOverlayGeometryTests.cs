@@ -19,7 +19,8 @@ public sealed class SubtitleOverlayGeometryTests
     public void WidthIsCappedAtMaximum() =>
         Assert.Equal(
             SubtitleOverlayGeometry.MaximumWidth,
-            SubtitleOverlayGeometry.Width(new OverlayRect(0, 0, 5_000, 800)));
+            SubtitleOverlayGeometry.Width(new OverlayRect(0, 0, 5_000, 800))
+        );
 
     // Given: 原点がずれた作業領域
     // When: 既定配置を求める
@@ -58,7 +59,8 @@ public sealed class SubtitleOverlayGeometryTests
     {
         var clamped = SubtitleOverlayGeometry.Clamp(
             new OverlayRect(-300, -200, 400, 200),
-            new OverlayRect(20, 10, 1_000, 800));
+            new OverlayRect(20, 10, 1_000, 800)
+        );
 
         Assert.Equal(20, clamped.X);
         Assert.Equal(10, clamped.Y);

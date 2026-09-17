@@ -92,27 +92,31 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
     func testKeepAliveIsNotRecordedAndFatalOutranksRecoverable() {
         let state = EventDeliveryState(epoch: 1)
 
-        XCTAssertFalse(state.tryRecordTermination(
-            RealtimeServerErrorClassification.classify(
-                errorType: nil,
-                code: "input_audio_buffer_commit_empty",
-                message: "empty"
-            )
-        ))
+        XCTAssertFalse(
+            state.tryRecordTermination(
+                RealtimeServerErrorClassification.classify(
+                    errorType: nil,
+                    code: "input_audio_buffer_commit_empty",
+                    message: "empty"
+                )
+            ))
         XCTAssertEqual(state.termination, .none)
 
-        XCTAssertTrue(state.tryRecordTermination(
-            RealtimeServerErrorClassification.classify(errorType: "server_error", code: nil, message: "boom")
-        ))
+        XCTAssertTrue(
+            state.tryRecordTermination(
+                RealtimeServerErrorClassification.classify(errorType: "server_error", code: nil, message: "boom")
+            ))
         XCTAssertEqual(state.makeError(), .recoverableServerError)
         XCTAssertTrue(state.makeError().isRecoverable)
 
-        XCTAssertTrue(state.tryRecordTermination(
-            RealtimeServerErrorClassification.classify(errorType: nil, code: "unknown_code", message: "bearer sk-x")
-        ))
-        XCTAssertFalse(state.tryRecordTermination(
-            RealtimeServerErrorClassification.classify(errorType: "server_error", code: nil, message: "boom")
-        ))
+        XCTAssertTrue(
+            state.tryRecordTermination(
+                RealtimeServerErrorClassification.classify(errorType: nil, code: "unknown_code", message: "bearer sk-x")
+            ))
+        XCTAssertFalse(
+            state.tryRecordTermination(
+                RealtimeServerErrorClassification.classify(errorType: "server_error", code: nil, message: "boom")
+            ))
         XCTAssertEqual(
             state.termination,
             .fatalServerError(RealtimeTranslationError.genericServerMessage)

@@ -8,10 +8,7 @@ using RealtimeTranslator.Core.Audio;
 
 namespace RealtimeTranslator.Core.Realtime;
 
-public readonly record struct OppositeScriptRun(
-    int LatinWordCount,
-    int LatinScalarCount,
-    int JapaneseScalarCount);
+public readonly record struct OppositeScriptRun(int LatinWordCount, int LatinScalarCount, int JapaneseScalarCount);
 
 public sealed class SourceBoundaryTracker
 {
@@ -31,7 +28,8 @@ public sealed class SourceBoundaryTracker
         int segmentGeneration,
         LanguagePair pair,
         SpokenLanguage currentLanguage,
-        int reverseEvidenceCount)
+        int reverseEvidenceCount
+    )
     {
         ArgumentNullException.ThrowIfNull(segmentSource);
         if (_observedSegmentGeneration != segmentGeneration)
@@ -79,13 +77,11 @@ public sealed class SourceBoundaryTracker
         return new OppositeScriptRun(
             SpokenLanguageDetector.WordSpans(run).Count,
             latinScalarCount,
-            japaneseScalarCount);
+            japaneseScalarCount
+        );
     }
 
-    private void ObserveScriptPair(
-        string source,
-        int deltaStart,
-        SpokenLanguage currentLanguage)
+    private void ObserveScriptPair(string source, int deltaStart, SpokenLanguage currentLanguage)
     {
         var oppositeIsJapanese = currentLanguage != SpokenLanguage.Japanese;
         var entries = ScalarEntries(source);
@@ -98,9 +94,7 @@ public sealed class SourceBoundaryTracker
 
             if (CandidateOffset is null && isOpposite)
             {
-                CandidateOffset = MoveBackwardOverNewSidePrefix(
-                    entry.Offset,
-                    entries);
+                CandidateOffset = MoveBackwardOverNewSidePrefix(entry.Offset, entries);
             }
             else if (CandidateOffset is not null && isOwn)
             {
@@ -109,10 +103,7 @@ public sealed class SourceBoundaryTracker
         }
     }
 
-    private void ObserveEnEs(
-        string source,
-        SpokenLanguage currentLanguage,
-        int reverseEvidenceCount)
+    private void ObserveEnEs(string source, SpokenLanguage currentLanguage, int reverseEvidenceCount)
     {
         if (reverseEvidenceCount == 0)
         {
@@ -125,31 +116,26 @@ public sealed class SourceBoundaryTracker
             return;
         }
 
-        var reverseLanguage = currentLanguage == SpokenLanguage.English
-            ? SpokenLanguage.Spanish
-            : SpokenLanguage.English;
+        var reverseLanguage =
+            currentLanguage == SpokenLanguage.English ? SpokenLanguage.Spanish : SpokenLanguage.English;
         var entries = ScalarEntries(source);
-        if (CandidateOffset is { } candidate
-            && FirstCueStartingAtOrAfter(source, candidate, entries) == reverseLanguage)
+        if (
+            CandidateOffset is { } candidate
+            && FirstCueStartingAtOrAfter(source, candidate, entries) == reverseLanguage
+        )
         {
             return;
         }
 
         var spans = SpokenLanguageDetector.WordSpans(source);
         var windowStart = SpokenLanguageDetector.RecentWordWindowStart(source);
-        var recentSpans = spans
-            .Where(span => span.Start >= windowStart)
-            .ToArray();
+        var recentSpans = spans.Where(span => span.Start >= windowStart).ToArray();
         var firstReverseWord = recentSpans
             .Select(span => (Span: span, Language: CueLanguage(source[span.Start..span.End])))
             .Where(value => value.Language == reverseLanguage)
             .Select(value => (int?)value.Span.Start)
             .FirstOrDefault();
-        var firstReverseMark = FirstStandaloneSpanishMark(
-            source,
-            windowStart,
-            source.Length,
-            entries);
+        var firstReverseMark = FirstStandaloneSpanishMark(source, windowStart, source.Length, entries);
         var cueStart = new[] { firstReverseWord, firstReverseMark }
             .Where(value => value is not null)
             .Select(value => value!.Value)
@@ -167,7 +153,8 @@ public sealed class SourceBoundaryTracker
         var hasCurrentCue = recentSpans.Any(span =>
             span.Start >= sentenceStart
             && span.Start < cueStart
-            && CueLanguage(source[span.Start..span.End]) == currentLanguage);
+            && CueLanguage(source[span.Start..span.End]) == currentLanguage
+        );
         var rawCandidate = hasCurrentCue ? cueStart : sentenceStart;
         CandidateOffset = MoveBackwardOverNewSidePrefix(rawCandidate, entries);
     }
@@ -175,12 +162,12 @@ public sealed class SourceBoundaryTracker
     private static SpokenLanguage? FirstCueStartingAtOrAfter(
         string source,
         int offset,
-        List<(int Offset, Rune Rune)> entries)
+        List<(int Offset, Rune Rune)> entries
+    )
     {
         int? firstWordOffset = null;
         SpokenLanguage? firstWordLanguage = null;
-        foreach (var span in SpokenLanguageDetector.WordSpans(source)
-            .Where(span => span.Start >= offset))
+        foreach (var span in SpokenLanguageDetector.WordSpans(source).Where(span => span.Start >= offset))
         {
             var language = CueLanguage(source[span.Start..span.End]);
             if (language is not null)
@@ -212,8 +199,10 @@ public sealed class SourceBoundaryTracker
             return SpokenLanguage.English;
         }
 
-        if (SpokenLanguageDetector.SpanishExclusiveWords.Contains(lower)
-            || word.EnumerateRunes().Any(IsSpanishAccentOrN))
+        if (
+            SpokenLanguageDetector.SpanishExclusiveWords.Contains(lower)
+            || word.EnumerateRunes().Any(IsSpanishAccentOrN)
+        )
         {
             return SpokenLanguage.Spanish;
         }
@@ -221,15 +210,10 @@ public sealed class SourceBoundaryTracker
         return null;
     }
 
-    private static int SentenceStart(
-        string source,
-        int windowStart,
-        int before,
-        List<(int Offset, Rune Rune)> entries)
+    private static int SentenceStart(string source, int windowStart, int before, List<(int Offset, Rune Rune)> entries)
     {
         var result = windowStart;
-        foreach (var entry in entries
-            .Where(entry => entry.Offset >= windowStart && entry.Offset < before))
+        foreach (var entry in entries.Where(entry => entry.Offset >= windowStart && entry.Offset < before))
         {
             if (IsSentenceTerminator(entry.Rune))
             {
@@ -244,13 +228,16 @@ public sealed class SourceBoundaryTracker
         string source,
         int start,
         int end,
-        List<(int Offset, Rune Rune)> entries)
+        List<(int Offset, Rune Rune)> entries
+    )
     {
         foreach (var entry in entries)
         {
-            if (entry.Offset >= start
+            if (
+                entry.Offset >= start
                 && entry.Offset < end
-                && (entry.Rune.Value == 0x00BF || entry.Rune.Value == 0x00A1))
+                && (entry.Rune.Value == 0x00BF || entry.Rune.Value == 0x00A1)
+            )
             {
                 return entry.Offset;
             }
@@ -259,9 +246,7 @@ public sealed class SourceBoundaryTracker
         return null;
     }
 
-    private static int MoveBackwardOverNewSidePrefix(
-        int candidate,
-        List<(int Offset, Rune Rune)> entries)
+    private static int MoveBackwardOverNewSidePrefix(int candidate, List<(int Offset, Rune Rune)> entries)
     {
         var result = candidate;
         var index = 0;
@@ -273,9 +258,7 @@ public sealed class SourceBoundaryTracker
         while (index > 0)
         {
             var previous = entries[index - 1];
-            if (!Rune.IsWhiteSpace(previous.Rune)
-                && previous.Rune.Value != 0x00BF
-                && previous.Rune.Value != 0x00A1)
+            if (!Rune.IsWhiteSpace(previous.Rune) && previous.Rune.Value != 0x00BF && previous.Rune.Value != 0x00A1)
             {
                 break;
             }
@@ -301,14 +284,24 @@ public sealed class SourceBoundaryTracker
     }
 
     private static bool IsJapanese(Rune rune) =>
-        rune.Value is >= 0x3040 and <= 0x30FF
-            or >= 0x3400 and <= 0x4DBF
-            or >= 0x4E00 and <= 0x9FFF;
+        rune.Value is >= 0x3040 and <= 0x30FF or >= 0x3400 and <= 0x4DBF or >= 0x4E00 and <= 0x9FFF;
 
     private static bool IsSpanishAccentOrN(Rune rune) =>
-        rune.Value is 0x00E1 or 0x00E9 or 0x00ED or 0x00F3 or 0x00FA or 0x00FC
-            or 0x00C1 or 0x00C9 or 0x00CD or 0x00D3 or 0x00DA or 0x00DC
-            or 0x00F1 or 0x00D1;
+        rune.Value
+            is 0x00E1
+                or 0x00E9
+                or 0x00ED
+                or 0x00F3
+                or 0x00FA
+                or 0x00FC
+                or 0x00C1
+                or 0x00C9
+                or 0x00CD
+                or 0x00D3
+                or 0x00DA
+                or 0x00DC
+                or 0x00F1
+                or 0x00D1;
 
     private static bool IsSentenceTerminator(Rune rune) =>
         rune.Value is 0x002E or 0x0021 or 0x003F or 0x3002 or 0xFF01 or 0xFF1F;

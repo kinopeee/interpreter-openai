@@ -91,7 +91,8 @@ struct MergedEventBuffer {
             // consumer が generation bump で ingest を止めたあと、
             // AsyncStream.finish() は未読要素を捨てる。Windows Channel と違い再読できないので、
             // 未消費の最新窓だけを移す。既に ingest した nil event_id delta は再適用しない。
-            stopDrainBuffer = recentYields
+            stopDrainBuffer =
+                recentYields
                 .filter { $0.sequence > ackedSequence }
                 .map { $0.event }
         }

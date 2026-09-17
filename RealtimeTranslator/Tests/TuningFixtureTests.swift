@@ -27,7 +27,7 @@ final class TuningFixtureTests: XCTestCase {
     // Then: fixture の期待配列と一致する
     func testParseKeywordsMatchesFixture() throws {
         for name in try SharedFixtures.caseNames("tuning", "parseKeywords") {
-                        let fixture = try SharedFixtures.case("tuning", "parseKeywords", name)
+            let fixture = try SharedFixtures.case("tuning", "parseKeywords", name)
             let expected = try XCTUnwrap(fixture["expected"] as? [Any]).map(SharedFixtures.text)
             XCTAssertEqual(
                 RealtimeSessionTuning.parseKeywords(from: SharedFixtures.text(fixture["input"])),
@@ -72,7 +72,7 @@ final class TuningFixtureTests: XCTestCase {
     // Then: fixture の期待文字列と一致する
     func testSanitizedPromptMatchesFixture() throws {
         for name in try SharedFixtures.caseNames("tuning", "sanitizedPrompt") {
-                        let fixture = try SharedFixtures.case("tuning", "sanitizedPrompt", name)
+            let fixture = try SharedFixtures.case("tuning", "sanitizedPrompt", name)
             XCTAssertEqual(
                 SharedFixtures.text(fixture["expected"]),
                 RealtimeSessionTuning.sanitizedPrompt(SharedFixtures.text(fixture["input"]))
@@ -128,10 +128,11 @@ final class TuningFixtureTests: XCTestCase {
         for name in try SharedFixtures.caseNames("tuning", "isPromptOverCharacterLimit") {
             let fixture = try SharedFixtures.case("tuning", "isPromptOverCharacterLimit", name)
             let character = SharedFixtures.text(fixture["repeatedCharacter"])
-            let input = String(
-                repeating: character,
-                count: SharedFixtures.number(fixture["inputLength"])
-            ) + SharedFixtures.text(fixture["suffix"])
+            let input =
+                String(
+                    repeating: character,
+                    count: SharedFixtures.number(fixture["inputLength"])
+                ) + SharedFixtures.text(fixture["suffix"])
 
             XCTAssertEqual(
                 SharedFixtures.flag(fixture["expected"]),
@@ -149,7 +150,8 @@ final class TuningFixtureTests: XCTestCase {
             let fixture = try SharedFixtures.case("tuning", "isKeywordCountOverLimit", name)
             let template = SharedFixtures.text(fixture["lineTemplate"])
             let lineCount = SharedFixtures.number(fixture["lineCount"])
-            let input = (0..<lineCount)
+            let input =
+                (0..<lineCount)
                 .map { template.replacingOccurrences(of: "{index}", with: String($0)) }
                 .joined(separator: "\n")
                 + SharedFixtures.text(fixture["suffix"])

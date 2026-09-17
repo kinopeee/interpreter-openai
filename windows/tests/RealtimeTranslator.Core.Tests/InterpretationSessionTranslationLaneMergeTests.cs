@@ -34,7 +34,8 @@ public sealed class InterpretationSessionTranslationLaneMergeTests
         Assert.Equal(1, english.ConnectCount);
 
         english.EnqueueJson(
-            """{"type":"error","error":{"message":"Provider echo included sk-lane-secret","code":"upstream_failure"}}""");
+            """{"type":"error","error":{"message":"Provider echo included sk-lane-secret","code":"upstream_failure"}}"""
+        );
 
         await WaitUntilAsync(() => session.State == TranslationState.Error);
         await WaitUntilAsync(() => message is not null);
@@ -66,7 +67,8 @@ public sealed class InterpretationSessionTranslationLaneMergeTests
         Assert.Equal(1, english.ConnectCount);
 
         english.EnqueueJson(
-            """{"type":"error","error":{"message":"rate_limit exceeded for translation lane","code":"rate_limit"}}""");
+            """{"type":"error","error":{"message":"rate_limit exceeded for translation lane","code":"rate_limit"}}"""
+        );
 
         await WaitUntilAsync(() => session.State == TranslationState.Error);
         await WaitUntilAsync(() => message is not null);
@@ -84,22 +86,19 @@ public sealed class InterpretationSessionTranslationLaneMergeTests
             new FakeAudioCapture(),
             dual,
             initialReconnectDelay: TimeSpan.FromMilliseconds(1),
-            tickInterval: TimeSpan.FromMilliseconds(20));
+            tickInterval: TimeSpan.FromMilliseconds(20)
+        );
 
     private static DualRealtimeTranslationClient CreateDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,
-        FakeRealtimeServerTransport japanese) =>
+        FakeRealtimeServerTransport japanese
+    ) =>
         new(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.English,
-                english,
-                "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.Japanese,
-                japanese,
-                "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
@@ -125,8 +124,7 @@ public sealed class InterpretationSessionTranslationLaneMergeTests
     private sealed class FakeAudioCapture : IRealtimeAudioCapture
     {
         private readonly object _sync = new();
-        private Channel<CapturedAudioFrame> _frames =
-            Channel.CreateUnbounded<CapturedAudioFrame>();
+        private Channel<CapturedAudioFrame> _frames = Channel.CreateUnbounded<CapturedAudioFrame>();
 
         public ChannelReader<CapturedAudioFrame> Frames
         {

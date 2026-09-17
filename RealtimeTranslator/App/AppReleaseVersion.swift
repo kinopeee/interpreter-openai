@@ -23,7 +23,7 @@ enum AppReleaseVersion {
         }
 
         if value.count >= 2, value.first == "v" || value.first == "V",
-           let second = value.dropFirst().first, ("0"..."9").contains(second)
+            let second = value.dropFirst().first, ("0"..."9").contains(second)
         {
             value.removeFirst()
         }

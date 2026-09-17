@@ -179,9 +179,9 @@ public sealed class SecurityAndAppServicesTests
 
         Assert.True(manager.Register(new IntPtr(1)));
         Assert.False(manager.HandleMessage(GlobalHotkeyManager.WmHotkey, new IntPtr(0x1234)));
-        Assert.True(manager.HandleMessage(
-            GlobalHotkeyManager.WmHotkey,
-            new IntPtr(GlobalHotkeyManager.DefaultHotkeyId)));
+        Assert.True(
+            manager.HandleMessage(GlobalHotkeyManager.WmHotkey, new IntPtr(GlobalHotkeyManager.DefaultHotkeyId))
+        );
 
         manager.Unregister();
 
@@ -203,9 +203,9 @@ public sealed class SecurityAndAppServicesTests
         Assert.True(manager.Register(new IntPtr(1)));
         manager.Unregister();
 
-        Assert.False(manager.HandleMessage(
-            GlobalHotkeyManager.WmHotkey,
-            new IntPtr(GlobalHotkeyManager.DefaultHotkeyId)));
+        Assert.False(
+            manager.HandleMessage(GlobalHotkeyManager.WmHotkey, new IntPtr(GlobalHotkeyManager.DefaultHotkeyId))
+        );
         Assert.Equal(0, pressed);
     }
 
@@ -236,7 +236,8 @@ public sealed class SecurityAndAppServicesTests
 
             AppLogger.Error(
                 LogCategory.Realtime,
-                $"connect failed key=sk-live-abcdef123456 Authorization: Bearer sk-live-abcdef123456 install={installId}");
+                $"connect failed key=sk-live-abcdef123456 Authorization: Bearer sk-live-abcdef123456 install={installId}"
+            );
 
             var line = Assert.Single(sink.Lines);
             Assert.DoesNotContain("sk-live-abcdef123456", line, StringComparison.Ordinal);
@@ -270,16 +271,9 @@ public sealed class SecurityAndAppServicesTests
             var pcm16 = new byte[Pcm16FramePacketizer.BytesPerFrame];
             Array.Fill(pcm16, (byte)0x41);
 
-            for (var sequence = 0;
-                 sequence < WasapiAudioCaptureService.FrameChannelCapacity + 2;
-                 sequence++)
+            for (var sequence = 0; sequence < WasapiAudioCaptureService.FrameChannelCapacity + 2; sequence++)
             {
-                Assert.True(channel.Writer.TryWrite(new CapturedAudioFrame(
-                    1,
-                    sequence,
-                    pcm16,
-                    0,
-                    sequence)));
+                Assert.True(channel.Writer.TryWrite(new CapturedAudioFrame(1, sequence, pcm16, 0, sequence)));
             }
 
             Assert.Equal(2, sink.Lines.Count);
@@ -291,7 +285,8 @@ public sealed class SecurityAndAppServicesTests
                 {
                     Assert.Equal(LogCategory.Audio, entry.Category);
                     Assert.Equal(EventLevel.Verbose, entry.Level);
-                });
+                }
+            );
             Assert.DoesNotContain(sink.Lines, line => line.Contains("AAAA", StringComparison.Ordinal));
         }
         finally

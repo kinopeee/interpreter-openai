@@ -28,10 +28,12 @@ public sealed class DualRealtimeTranslationClientDisposeTests
         dual.Dispose();
         dual.Dispose();
 
-        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.AppendAudioFrameAsync(Frame(0x11)));
-        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English));
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.AppendAudioFrameAsync(Frame(0x11))
+        );
+        var selectError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English)
+        );
 
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, selectError.Kind);
@@ -61,17 +63,13 @@ public sealed class DualRealtimeTranslationClientDisposeTests
     private static DualRealtimeTranslationClient CreateDual(
         FakeRealtimeServerTransport source,
         FakeRealtimeServerTransport english,
-        FakeRealtimeServerTransport japanese) =>
+        FakeRealtimeServerTransport japanese
+    ) =>
         new(
             new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.English,
-                english,
-                "test-safety"),
-            new RealtimeTranslationConnection(
-                RealtimeTranslationOutputLanguage.Japanese,
-                japanese,
-                "test-safety"));
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+            new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+        );
 
     private static byte[] Frame(byte fill)
     {

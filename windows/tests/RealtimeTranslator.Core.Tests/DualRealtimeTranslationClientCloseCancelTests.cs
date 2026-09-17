@@ -61,7 +61,8 @@ public sealed class DualRealtimeTranslationClientCloseCancelTests
             english,
             japanese,
             TimeSpan.FromSeconds(2),
-            translationDrainTimeout: TimeSpan.FromSeconds(2));
+            translationDrainTimeout: TimeSpan.FromSeconds(2)
+        );
 
         await dual.StartAsync("sk-test", RealtimeSessionTuning.Default);
         await dual.SelectTranslationTargetAsync(RealtimeTranslationOutputLanguage.English);
@@ -76,8 +77,9 @@ public sealed class DualRealtimeTranslationClientCloseCancelTests
         Assert.DoesNotContain("session.close", SentTypes(english));
         Assert.DoesNotContain("session.close", SentTypes(japanese));
         Assert.DoesNotContain("input_audio_buffer.commit", SentTypes(source));
-        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(
-            () => dual.AppendAudioFrameAsync(Frame(0x32)));
+        var appendError = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+            dual.AppendAudioFrameAsync(Frame(0x32))
+        );
         Assert.Equal(RealtimeTranslationErrorKind.NotConnected, appendError.Kind);
     }
 
@@ -86,20 +88,24 @@ public sealed class DualRealtimeTranslationClientCloseCancelTests
         FakeRealtimeServerTransport english,
         FakeRealtimeServerTransport japanese,
         TimeSpan closeTimeout,
-        TimeSpan? translationDrainTimeout = null) =>
+        TimeSpan? translationDrainTimeout = null
+    ) =>
         new(
             new RealtimeSourceTranscriptionConnection(source, "test-safety", closeTimeout: closeTimeout),
             new RealtimeTranslationConnection(
                 RealtimeTranslationOutputLanguage.English,
                 english,
                 "test-safety",
-                closeTimeout: closeTimeout),
+                closeTimeout: closeTimeout
+            ),
             new RealtimeTranslationConnection(
                 RealtimeTranslationOutputLanguage.Japanese,
                 japanese,
                 "test-safety",
-                closeTimeout: closeTimeout),
-            translationDrainTimeout: translationDrainTimeout);
+                closeTimeout: closeTimeout
+            ),
+            translationDrainTimeout: translationDrainTimeout
+        );
 
     private static byte[] Frame(byte fill)
     {
@@ -109,8 +115,8 @@ public sealed class DualRealtimeTranslationClientCloseCancelTests
     }
 
     private static string[] SentTypes(FakeRealtimeServerTransport transport) =>
-        transport.Sent
-            .Select(payload => JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>() ?? string.Empty)
+        transport
+            .Sent.Select(payload => JsonNode.Parse(payload)?.AsObject()["type"]?.GetValue<string>() ?? string.Empty)
             .Where(type => type.Length > 0)
             .ToArray();
 }

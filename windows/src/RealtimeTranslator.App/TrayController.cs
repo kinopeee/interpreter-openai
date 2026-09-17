@@ -26,25 +26,32 @@ public sealed class TrayController : IDisposable
 
     public TrayController(LanguagePair languagePair = LanguagePair.JaEn)
     {
-        _startStopItem = new ToolStripMenuItem(UiCopy.Text("menu.startTranslation"), null, (_, _) => StartStopRequested?.Invoke(this, EventArgs.Empty));
+        _startStopItem = new ToolStripMenuItem(
+            UiCopy.Text("menu.startTranslation"),
+            null,
+            (_, _) => StartStopRequested?.Invoke(this, EventArgs.Empty)
+        );
         _exportSubtitlesItem = new ToolStripMenuItem(
             UiCopy.Text("menu.exportSubtitles"),
             null,
-            (_, _) => ExportSubtitlesRequested?.Invoke(this, EventArgs.Empty))
+            (_, _) => ExportSubtitlesRequested?.Invoke(this, EventArgs.Empty)
+        )
         {
             Enabled = false,
         };
         _clearSubtitlesItem = new ToolStripMenuItem(
             UiCopy.Text("menu.clearSubtitles"),
             null,
-            (_, _) => ClearSubtitlesRequested?.Invoke(this, EventArgs.Empty))
+            (_, _) => ClearSubtitlesRequested?.Invoke(this, EventArgs.Empty)
+        )
         {
             Enabled = false,
         };
         _editPositionItem = new ToolStripMenuItem(
             UiCopy.Text("menu.editPosition"),
             null,
-            (_, _) => EditPositionRequested?.Invoke(this, EventArgs.Empty))
+            (_, _) => EditPositionRequested?.Invoke(this, EventArgs.Empty)
+        )
         {
             CheckOnClick = false,
         };
@@ -61,9 +68,21 @@ public sealed class TrayController : IDisposable
         menu.Items.Add(_clearSubtitlesItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_editPositionItem);
-        menu.Items.Add(new ToolStripMenuItem(UiCopy.Text("menu.settings"), null, (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty)));
+        menu.Items.Add(
+            new ToolStripMenuItem(
+                UiCopy.Text("menu.settings"),
+                null,
+                (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty)
+            )
+        );
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem(UiCopy.Text("menu.quit"), null, (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty)));
+        menu.Items.Add(
+            new ToolStripMenuItem(
+                UiCopy.Text("menu.quit"),
+                null,
+                (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty)
+            )
+        );
 
         _notifyIcon = new NotifyIcon
         {
@@ -88,11 +107,12 @@ public sealed class TrayController : IDisposable
 
     public event EventHandler? ExitRequested;
 
-    public static bool IsRunning(TranslationState state) => state
-        is TranslationState.Connecting
-        or TranslationState.Listening
-        or TranslationState.Reconnecting
-        or TranslationState.Closing;
+    public static bool IsRunning(TranslationState state) =>
+        state
+            is TranslationState.Connecting
+                or TranslationState.Listening
+                or TranslationState.Reconnecting
+                or TranslationState.Closing;
 
     public void UpdateState(TranslationState state)
     {
@@ -102,9 +122,7 @@ public sealed class TrayController : IDisposable
         _startStopItem.Enabled = state != TranslationState.Closing;
         _notifyIcon.Icon = IconFor(state);
         // NotifyIcon.Text は 63 文字までなので状態名だけを足す。
-        _notifyIcon.Text = string.Create(
-            CultureInfo.InvariantCulture,
-            $"Realtime Translator ({state})");
+        _notifyIcon.Text = string.Create(CultureInfo.InvariantCulture, $"Realtime Translator ({state})");
     }
 
     public void SetEditingPosition(bool isEditing) => _editPositionItem.Checked = isEditing;
@@ -158,14 +176,18 @@ public sealed class TrayController : IDisposable
         return icon;
     }
 
-    private static Color ColorFor(TranslationState state) => state switch
-    {
-        TranslationState.Listening => Color.FromArgb(0x3C, 0xC4, 0x5B),
-        TranslationState.Connecting or TranslationState.Reconnecting or TranslationState.Closing
-            => Color.FromArgb(0xF0, 0xA8, 0x30),
-        TranslationState.Error => Color.FromArgb(0xE0, 0x45, 0x3A),
-        _ => Color.FromArgb(0xB0, 0xB6, 0xBE),
-    };
+    private static Color ColorFor(TranslationState state) =>
+        state switch
+        {
+            TranslationState.Listening => Color.FromArgb(0x3C, 0xC4, 0x5B),
+            TranslationState.Connecting or TranslationState.Reconnecting or TranslationState.Closing => Color.FromArgb(
+                0xF0,
+                0xA8,
+                0x30
+            ),
+            TranslationState.Error => Color.FromArgb(0xE0, 0x45, 0x3A),
+            _ => Color.FromArgb(0xB0, 0xB6, 0xBE),
+        };
 
     /// <summary>状態色の丸を描いた 32x32 アイコン。バイナリ資産を持たずに状態を判別できる。</summary>
     private static Icon CreateIcon(Color color)

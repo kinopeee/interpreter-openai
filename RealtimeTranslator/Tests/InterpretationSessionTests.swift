@@ -1601,7 +1601,8 @@ final class InterpretationSessionTests: XCTestCase {
         let longToken = String(repeating: "y", count: RoutingSourceTextWindow.maxLength + 3)
         let manyWords = ["aa", longToken, "zz"].joined(separator: "   ")
         let twoUnitScalar = "😀"
-        let nearLimit = String(repeating: "z", count: RoutingSourceTextWindow.maxLength - 1)
+        let nearLimit =
+            String(repeating: "z", count: RoutingSourceTextWindow.maxLength - 1)
             + twoUnitScalar
 
         // When: en-es の語窓切り詰めを行う
@@ -2168,10 +2169,11 @@ final class CheckedContinuationBox: @unchecked Sendable {
     private let state = OSAllocatedUnfairLock(initialState: State())
 
     func resume() {
-        let continuations = state.withLock { state -> (
-            CheckedContinuation<Void, Never>?,
-            CheckedContinuation<Void, Error>?
-        ) in
+        let continuations = state.withLock {
+            state -> (
+                CheckedContinuation<Void, Never>?,
+                CheckedContinuation<Void, Error>?
+            ) in
             if let throwingContinuation = state.throwingContinuation {
                 state.throwingContinuation = nil
                 return (nil, throwingContinuation)
@@ -2191,10 +2193,11 @@ final class CheckedContinuationBox: @unchecked Sendable {
     }
 
     func resumeThrowing(_ error: Error) {
-        let continuations = state.withLock { state -> (
-            CheckedContinuation<Void, Never>?,
-            CheckedContinuation<Void, Error>?
-        ) in
+        let continuations = state.withLock {
+            state -> (
+                CheckedContinuation<Void, Never>?,
+                CheckedContinuation<Void, Error>?
+            ) in
             if let throwingContinuation = state.throwingContinuation {
                 state.throwingContinuation = nil
                 return (nil, throwingContinuation)

@@ -7,7 +7,7 @@ final class CodecFixtureTests: XCTestCase {
     // Then: 期待する JSON ペイロードと一致する
     func testEncodeMatchesFixture() throws {
         for name in try SharedFixtures.caseNames("codec", "encode") {
-                        let fixture = try SharedFixtures.case("codec", "encode", name)
+            let fixture = try SharedFixtures.case("codec", "encode", name)
             let eventObject = try XCTUnwrap(fixture["event"] as? [String: Any])
             let encoded = try RealtimeTranslationMessageCodec.encode(clientEvent(eventObject))
             let actual = try SharedFixtures.parseUTF8(encoded)
@@ -24,7 +24,7 @@ final class CodecFixtureTests: XCTestCase {
     // Then: 期待するサーバーイベント種別と値になる
     func testDecodeMatchesFixture() throws {
         for name in try SharedFixtures.caseNames("codec", "decode") {
-                        let fixture = try SharedFixtures.case("codec", "decode", name)
+            let fixture = try SharedFixtures.case("codec", "decode", name)
             let utf8 = Data(SharedFixtures.text(fixture["json"]).utf8)
             let actual = try RealtimeTranslationMessageCodec.decodeServerEvent(from: utf8)
             let expected = try XCTUnwrap(fixture["expected"] as? [String: Any])
@@ -76,7 +76,7 @@ final class CodecFixtureTests: XCTestCase {
     // Then: fixture が指定するエラー種別へ正規化される
     func testDecodeFailureMatchesFixture() throws {
         for name in try SharedFixtures.caseNames("codec", "decodeFailures") {
-                        let fixture = try SharedFixtures.case("codec", "decodeFailures", name)
+            let fixture = try SharedFixtures.case("codec", "decodeFailures", name)
             let utf8 = Data(SharedFixtures.text(fixture["json"]).utf8)
             XCTAssertThrowsError(
                 try RealtimeTranslationMessageCodec.decodeServerEvent(from: utf8)
@@ -323,8 +323,8 @@ final class CodecFixtureTests: XCTestCase {
             "event_id": "privacy-event",
             "error": [
                 "code": "audio_unintelligible",
-                "message": "こんにちは sk-leak-1234"
-            ]
+                "message": "こんにちは sk-leak-1234",
+            ],
         ])
 
         let event = try await waitForEvent(box)
@@ -392,7 +392,7 @@ final class CodecFixtureTests: XCTestCase {
             "event_id": "live-event",
             "error": [
                 "code": "audio_unintelligible"
-            ]
+            ],
         ])
         _ = try await waitForEvent(box)
 

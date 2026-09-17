@@ -138,20 +138,17 @@ public sealed class InterpretationSessionIdleTickTests
         {
             lock (updates)
             {
-                return updates.Exists(update =>
-                    update.SourceText.Contains("OpenAI", StringComparison.Ordinal));
+                return updates.Exists(update => update.SourceText.Contains("OpenAI", StringComparison.Ordinal));
             }
         });
-        client.PublishTranslationDelta(
-            RealtimeTranslationOutputLanguage.English,
-            "Today it is OpenAI");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Today it is OpenAI");
         await WaitUntilAsync(() =>
         {
             lock (updates)
             {
                 return updates.Exists(update =>
-                    update.TranslatedText.Contains("OpenAI", StringComparison.Ordinal)
-                    && !update.ShouldFinalize);
+                    update.TranslatedText.Contains("OpenAI", StringComparison.Ordinal) && !update.ShouldFinalize
+                );
             }
         });
 
@@ -163,7 +160,8 @@ public sealed class InterpretationSessionIdleTickTests
                 return updates.Exists(update =>
                     update.ShouldFinalize
                     && update.SourceText == "今日は OpenAI"
-                    && update.TranslatedText == "Today it is OpenAI");
+                    && update.TranslatedText == "Today it is OpenAI"
+                );
             }
         });
         await session.StopAsync();
@@ -205,16 +203,14 @@ public sealed class InterpretationSessionIdleTickTests
 
         client.PublishSourceDelta("今日は晴れです。");
         await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
-        client.PublishTranslationDelta(
-            RealtimeTranslationOutputLanguage.English,
-            "It is sunny today.");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "It is sunny today.");
         await WaitUntilAsync(() =>
         {
             lock (updates)
             {
                 return updates.Exists(update =>
-                    update.TranslatedText.Contains("sunny", StringComparison.Ordinal)
-                    && !update.ShouldFinalize);
+                    update.TranslatedText.Contains("sunny", StringComparison.Ordinal) && !update.ShouldFinalize
+                );
             }
         });
 
@@ -226,8 +222,8 @@ public sealed class InterpretationSessionIdleTickTests
             lock (updates)
             {
                 return updates.Exists(update =>
-                    update.SourceText.Contains("続きです。", StringComparison.Ordinal)
-                    && !update.ShouldFinalize);
+                    update.SourceText.Contains("続きです。", StringComparison.Ordinal) && !update.ShouldFinalize
+                );
             }
         });
 
@@ -237,9 +233,7 @@ public sealed class InterpretationSessionIdleTickTests
         await Task.Delay(20);
         Assert.Equal(resetsAtHook, client.ResetAudioRoutingCount);
 
-        client.PublishTranslationDelta(
-            RealtimeTranslationOutputLanguage.English,
-            "It continues.");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "It continues.");
         await WaitUntilAsync(() =>
         {
             lock (updates)
@@ -247,7 +241,8 @@ public sealed class InterpretationSessionIdleTickTests
                 return updates.Exists(update =>
                     update.TranslatedText.Contains("continues", StringComparison.Ordinal)
                     && update.IsTranslationCurrent
-                    && !update.ShouldFinalize);
+                    && !update.ShouldFinalize
+                );
             }
         });
         session.BeforeRoutingResetForTests = null;
@@ -261,7 +256,8 @@ public sealed class InterpretationSessionIdleTickTests
             client,
             timeProvider: clock,
             initialReconnectDelay: TimeSpan.FromMilliseconds(1),
-            tickInterval: TimeSpan.FromMilliseconds(15));
+            tickInterval: TimeSpan.FromMilliseconds(15)
+        );
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
@@ -422,7 +418,8 @@ public sealed class InterpretationSessionIdleTickTests
             string apiKey,
             RealtimeSessionTuning tuning,
             LanguagePair pair = LanguagePair.JaEn,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             lock (_sync)
             {
@@ -442,17 +439,17 @@ public sealed class InterpretationSessionIdleTickTests
 
         public Task AppendAudioFrameAsync(
             ReadOnlyMemory<byte> pcm16LittleEndian,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default
+        ) => Task.CompletedTask;
 
         public Task SelectTranslationTargetAsync(
             RealtimeTranslationOutputLanguage? target,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             lock (_sync)
             {
-                if (target is { } selected
-                    && LastStartedPair is { } pair
-                    && pair.Counterpart(selected) is { } spoken)
+                if (target is { } selected && LastStartedPair is { } pair && pair.Counterpart(selected) is { } spoken)
                 {
                     _selectedTargets.Add(selected);
                     _currentTarget = selected;
@@ -465,7 +462,8 @@ public sealed class InterpretationSessionIdleTickTests
 
         public Task UpdateTranscriptionTuningAsync(
             RealtimeSessionTuning tuning,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default
+        ) => Task.CompletedTask;
 
         public Task ResetAudioRoutingAsync()
         {
@@ -490,13 +488,17 @@ public sealed class InterpretationSessionIdleTickTests
             return Task.CompletedTask;
         }
 
-        public void PublishSourceDelta(string delta) => PublishLane(
-            RealtimeTranslationLane.Source,
-            new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null));
+        public void PublishSourceDelta(string delta) =>
+            PublishLane(
+                RealtimeTranslationLane.Source,
+                new RealtimeTranslationServerEvent.InputTranscriptDelta(delta, Guid.NewGuid().ToString(), null)
+            );
 
-        public void PublishTranslationDelta(RealtimeTranslationOutputLanguage target, string delta) => PublishLane(
-            RealtimeTranslationLane.Translation(target),
-            new RealtimeTranslationServerEvent.OutputTranscriptDelta(delta, Guid.NewGuid().ToString(), null));
+        public void PublishTranslationDelta(RealtimeTranslationOutputLanguage target, string delta) =>
+            PublishLane(
+                RealtimeTranslationLane.Translation(target),
+                new RealtimeTranslationServerEvent.OutputTranscriptDelta(delta, Guid.NewGuid().ToString(), null)
+            );
 
         private void Complete()
         {
@@ -506,14 +508,11 @@ public sealed class InterpretationSessionIdleTickTests
             }
         }
 
-        private void PublishLane(
-            RealtimeTranslationLane lane,
-            RealtimeTranslationServerEvent serverEvent)
+        private void PublishLane(RealtimeTranslationLane lane, RealtimeTranslationServerEvent serverEvent)
         {
             lock (_sync)
             {
-                _events.Writer.TryWrite(
-                    new RealtimeTranslationStreamEvent(lane, serverEvent, _epoch));
+                _events.Writer.TryWrite(new RealtimeTranslationStreamEvent(lane, serverEvent, _epoch));
             }
         }
     }

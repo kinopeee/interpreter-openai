@@ -32,8 +32,7 @@ public sealed class InterpretationSessionReconnectClassificationTests
 
         client.NextStartErrorKind = RealtimeTranslationErrorKind.SessionUpdateTimeout;
         client.PublishTransportError();
-        await WaitUntilAsync(() =>
-            session.State == TranslationState.Listening && client.StartCount >= 3);
+        await WaitUntilAsync(() => session.State == TranslationState.Listening && client.StartCount >= 3);
 
         Assert.Equal(TranslationState.Listening, session.State);
         Assert.Null(message);
@@ -140,7 +139,8 @@ public sealed class InterpretationSessionReconnectClassificationTests
             new FakeAudioCapture(),
             client,
             initialReconnectDelay: TimeSpan.FromMilliseconds(1),
-            tickInterval: TimeSpan.FromMilliseconds(20));
+            tickInterval: TimeSpan.FromMilliseconds(20)
+        );
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
@@ -166,8 +166,7 @@ public sealed class InterpretationSessionReconnectClassificationTests
     private sealed class FakeAudioCapture : IRealtimeAudioCapture
     {
         private readonly object _sync = new();
-        private Channel<CapturedAudioFrame> _frames =
-            Channel.CreateUnbounded<CapturedAudioFrame>();
+        private Channel<CapturedAudioFrame> _frames = Channel.CreateUnbounded<CapturedAudioFrame>();
 
         public ChannelReader<CapturedAudioFrame> Frames
         {
@@ -251,7 +250,8 @@ public sealed class InterpretationSessionReconnectClassificationTests
             string apiKey,
             RealtimeSessionTuning tuning,
             LanguagePair pair = LanguagePair.JaEn,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             Task? gateTask;
             RealtimeTranslationErrorKind? throwKind;
@@ -293,15 +293,18 @@ public sealed class InterpretationSessionReconnectClassificationTests
 
         public Task AppendAudioFrameAsync(
             ReadOnlyMemory<byte> pcm16LittleEndian,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default
+        ) => Task.CompletedTask;
 
         public Task SelectTranslationTargetAsync(
             RealtimeTranslationOutputLanguage? target,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default
+        ) => Task.CompletedTask;
 
         public Task UpdateTranscriptionTuningAsync(
             RealtimeSessionTuning tuning,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default
+        ) => Task.CompletedTask;
 
         public Task ResetAudioRoutingAsync() => Task.CompletedTask;
 
@@ -317,10 +320,13 @@ public sealed class InterpretationSessionReconnectClassificationTests
             return Task.CompletedTask;
         }
 
-        public void PublishTransportError() => Publish(
-            new RealtimeTranslationServerEvent.ServerError(
-                DualRealtimeTranslationClient.TransportErrorMessage,
-                DualRealtimeTranslationClient.TransportErrorCode));
+        public void PublishTransportError() =>
+            Publish(
+                new RealtimeTranslationServerEvent.ServerError(
+                    DualRealtimeTranslationClient.TransportErrorMessage,
+                    DualRealtimeTranslationClient.TransportErrorCode
+                )
+            );
 
         private void Complete()
         {
@@ -338,7 +344,9 @@ public sealed class InterpretationSessionReconnectClassificationTests
                     new RealtimeTranslationStreamEvent(
                         RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
                         serverEvent,
-                        _epoch));
+                        _epoch
+                    )
+                );
             }
         }
     }

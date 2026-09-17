@@ -6,7 +6,8 @@ namespace RealtimeTranslator.Core.Audio;
 public readonly record struct AudioLossPolicy(
     int FrameDurationMilliseconds = 100,
     int ReconnectLostMillisecondsThreshold = 6400,
-    int ReconnectWindowMilliseconds = 30000)
+    int ReconnectWindowMilliseconds = 30000
+)
 {
     public const int SendQueueFrameCapacity = 32;
 
@@ -17,7 +18,8 @@ public readonly record struct AudioLossObservation(
     int DroppedFrames,
     int LostMilliseconds,
     int QueueWaitMilliseconds,
-    bool ShouldReconnect)
+    bool ShouldReconnect
+)
 {
     public bool DidLose => LostMilliseconds > 0;
 }
@@ -26,7 +28,8 @@ public readonly record struct AudioLossMetrics(
     int DroppedFrames,
     int LostMilliseconds,
     int LossEvents,
-    int MaxQueueWaitMilliseconds);
+    int MaxQueueWaitMilliseconds
+);
 
 public sealed class AudioLossTracker
 {
@@ -53,7 +56,8 @@ public sealed class AudioLossTracker
         long sequence,
         int discardedMilliseconds,
         int queueWaitMilliseconds,
-        long atMilliseconds)
+        long atMilliseconds
+    )
     {
         var isFirstFrame = _lastGeneration != generation;
         var droppedFrames = isFirstFrame
@@ -62,8 +66,7 @@ public sealed class AudioLossTracker
         var discardedDelta = isFirstFrame
             ? Math.Max(0, discardedMilliseconds)
             : Math.Max(0, discardedMilliseconds - _lastDiscardedMilliseconds);
-        var lostMilliseconds = checked(
-            droppedFrames * _policy.FrameDurationMilliseconds + discardedDelta);
+        var lostMilliseconds = checked(droppedFrames * _policy.FrameDurationMilliseconds + discardedDelta);
         var clampedQueueWait = Math.Max(0, queueWaitMilliseconds);
 
         _lastGeneration = generation;
@@ -73,9 +76,7 @@ public sealed class AudioLossTracker
         {
             DroppedFrames = checked(_metrics.DroppedFrames + droppedFrames),
             LostMilliseconds = checked(_metrics.LostMilliseconds + lostMilliseconds),
-            MaxQueueWaitMilliseconds = Math.Max(
-                _metrics.MaxQueueWaitMilliseconds,
-                clampedQueueWait),
+            MaxQueueWaitMilliseconds = Math.Max(_metrics.MaxQueueWaitMilliseconds, clampedQueueWait),
         };
 
         if (lostMilliseconds > 0)
@@ -98,11 +99,7 @@ public sealed class AudioLossTracker
             _lossEvents.Clear();
         }
 
-        return new AudioLossObservation(
-            droppedFrames,
-            lostMilliseconds,
-            clampedQueueWait,
-            shouldReconnect);
+        return new AudioLossObservation(droppedFrames, lostMilliseconds, clampedQueueWait, shouldReconnect);
     }
 
     public void Reset()

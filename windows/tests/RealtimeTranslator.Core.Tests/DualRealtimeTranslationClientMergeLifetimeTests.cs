@@ -23,13 +23,14 @@ public sealed class DualRealtimeTranslationClientMergeLifetimeTests
     {
         await using var harness = await MergeHarness.StartAsync();
 
+        harness.Source.EnqueueJson("""{"type":"conversation.item.input_audio_transcription.completed"}""");
         harness.Source.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.completed"}""");
-        harness.Source.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","delta":"after-completed","event_id":"e-after-completed"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","delta":"after-completed","event_id":"e-after-completed"}"""
+        );
         var deltaEvent = await ReadUntilAsync(
             harness.Dual,
-            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta);
+            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta
+        );
         var delta = Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptDelta>(deltaEvent.Event);
 
         Assert.Equal("after-completed", delta.Delta);
@@ -46,31 +47,36 @@ public sealed class DualRealtimeTranslationClientMergeLifetimeTests
         await using var harness = await MergeHarness.StartAsync();
 
         harness.English.EnqueueJson(
-            """{"type":"error","error":{"message":"rate_limit exceeded","code":"rate_limit_exceeded"}}""");
+            """{"type":"error","error":{"message":"rate_limit exceeded","code":"rate_limit_exceeded"}}"""
+        );
         var errorEvent = await ReadUntilAsync(
             harness.Dual,
-            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.ServerError);
+            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.ServerError
+        );
         var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(errorEvent.Event);
         Assert.Equal("rate_limit_exceeded", error.Code);
         Assert.Equal(RealtimeTranslationOutputLanguage.English, errorEvent.Target);
         Assert.False(harness.Dual.Events.Completion.IsCompleted);
 
         harness.English.EnqueueJson(
-            """{"type":"session.output_transcript.delta","delta":"kept after error","event_id":"out-after-error"}""");
+            """{"type":"session.output_transcript.delta","delta":"kept after error","event_id":"out-after-error"}"""
+        );
         var translationEvent = await ReadUntilAsync(
             harness.Dual,
-            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.OutputTranscriptDelta);
-        var translation = Assert.IsType<RealtimeTranslationServerEvent.OutputTranscriptDelta>(
-            translationEvent.Event);
+            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.OutputTranscriptDelta
+        );
+        var translation = Assert.IsType<RealtimeTranslationServerEvent.OutputTranscriptDelta>(translationEvent.Event);
         Assert.Equal("kept after error", translation.Delta);
         Assert.Equal(RealtimeTranslationOutputLanguage.English, translationEvent.Target);
         Assert.False(harness.Dual.Events.Completion.IsCompleted);
 
         harness.Source.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","delta":"after-translation-error","event_id":"e-src"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","delta":"after-translation-error","event_id":"e-src"}"""
+        );
         var deltaEvent = await ReadUntilAsync(
             harness.Dual,
-            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta);
+            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta
+        );
         var delta = Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptDelta>(deltaEvent.Event);
 
         Assert.Equal("after-translation-error", delta.Delta);
@@ -89,15 +95,18 @@ public sealed class DualRealtimeTranslationClientMergeLifetimeTests
         harness.English.EnqueueJson("""{"type":"session.closed"}""");
         var closedEvent = await ReadUntilAsync(
             harness.Dual,
-            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.SessionClosed);
+            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.SessionClosed
+        );
         Assert.Equal(RealtimeTranslationOutputLanguage.English, closedEvent.Target);
         Assert.False(harness.Dual.Events.Completion.IsCompleted);
 
         harness.Source.EnqueueJson(
-            """{"type":"conversation.item.input_audio_transcription.delta","delta":"after-english-closed","event_id":"e-src-2"}""");
+            """{"type":"conversation.item.input_audio_transcription.delta","delta":"after-english-closed","event_id":"e-src-2"}"""
+        );
         var deltaEvent = await ReadUntilAsync(
             harness.Dual,
-            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta);
+            streamEvent => streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta
+        );
         var delta = Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptDelta>(deltaEvent.Event);
 
         Assert.Equal("after-english-closed", delta.Delta);
@@ -107,7 +116,8 @@ public sealed class DualRealtimeTranslationClientMergeLifetimeTests
 
     private static async Task<RealtimeTranslationStreamEvent> ReadUntilAsync(
         DualRealtimeTranslationClient dual,
-        Func<RealtimeTranslationStreamEvent, bool> match)
+        Func<RealtimeTranslationStreamEvent, bool> match
+    )
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (true)
@@ -126,7 +136,8 @@ public sealed class DualRealtimeTranslationClientMergeLifetimeTests
             FakeRealtimeServerTransport source,
             FakeRealtimeServerTransport english,
             FakeRealtimeServerTransport japanese,
-            DualRealtimeTranslationClient dual)
+            DualRealtimeTranslationClient dual
+        )
         {
             Source = source;
             English = english;
@@ -149,19 +160,12 @@ public sealed class DualRealtimeTranslationClientMergeLifetimeTests
             var japanese = new FakeRealtimeServerTransport();
             var dual = new DualRealtimeTranslationClient(
                 new RealtimeSourceTranscriptionConnection(source, "test-safety"),
-                new RealtimeTranslationConnection(
-                    RealtimeTranslationOutputLanguage.English,
-                    english,
-                    "test-safety"),
-                new RealtimeTranslationConnection(
-                    RealtimeTranslationOutputLanguage.Japanese,
-                    japanese,
-                    "test-safety"));
+                new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
+                new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety")
+            );
 
             await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn);
-            while (dual.Events.TryRead(out _))
-            {
-            }
+            while (dual.Events.TryRead(out _)) { }
 
             return new MergeHarness(source, english, japanese, dual);
         }

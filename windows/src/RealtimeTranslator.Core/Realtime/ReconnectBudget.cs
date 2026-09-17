@@ -10,16 +10,19 @@ public sealed record ReconnectPolicy(
     TimeSpan JitterMax,
     int MaxAttempts,
     TimeSpan TotalBudget,
-    TimeSpan StablePeriod)
+    TimeSpan StablePeriod
+)
 {
-    public static ReconnectPolicy Default { get; } = new(
-        InitialBackoff: TimeSpan.FromMilliseconds(500),
-        BackoffMultiplier: 2,
-        MaxBackoff: TimeSpan.FromSeconds(8),
-        JitterMax: TimeSpan.FromMilliseconds(250),
-        MaxAttempts: 5,
-        TotalBudget: TimeSpan.FromSeconds(120),
-        StablePeriod: TimeSpan.FromSeconds(30));
+    public static ReconnectPolicy Default { get; } =
+        new(
+            InitialBackoff: TimeSpan.FromMilliseconds(500),
+            BackoffMultiplier: 2,
+            MaxBackoff: TimeSpan.FromSeconds(8),
+            JitterMax: TimeSpan.FromMilliseconds(250),
+            MaxAttempts: 5,
+            TotalBudget: TimeSpan.FromSeconds(120),
+            StablePeriod: TimeSpan.FromSeconds(30)
+        );
 
     /// <summary>jitter を含まない attempt 回目（1 始まり）の backoff。</summary>
     public TimeSpan BackoffFor(int attempt)
@@ -40,8 +43,10 @@ public enum ReconnectDecisionKind
 {
     /// <summary>backoff だけ待ってから再接続する。</summary>
     Wait,
+
     /// <summary>attempt が上限を超えた。<c>error.reconnectLimit</c>。</summary>
     AttemptLimit,
+
     /// <summary>連続障害の開始から総予算を使い切った。<c>error.reconnectBudgetExhausted</c>。</summary>
     BudgetExhausted,
 }
@@ -50,7 +55,8 @@ public readonly record struct ReconnectDecision(
     ReconnectDecisionKind Kind,
     int Attempt,
     TimeSpan Backoff,
-    TimeSpan Jitter)
+    TimeSpan Jitter
+)
 {
     public TimeSpan Delay => Backoff + Jitter;
 }
@@ -73,7 +79,8 @@ public sealed class ReconnectBudget
     public ReconnectBudget(
         ReconnectPolicy? policy = null,
         TimeProvider? timeProvider = null,
-        Func<TimeSpan, TimeSpan>? jitter = null)
+        Func<TimeSpan, TimeSpan>? jitter = null
+    )
     {
         _policy = policy ?? ReconnectPolicy.Default;
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -134,7 +141,5 @@ public sealed class ReconnectBudget
     }
 
     private static TimeSpan DefaultJitter(TimeSpan max) =>
-        max <= TimeSpan.Zero
-            ? TimeSpan.Zero
-            : TimeSpan.FromTicks(Random.Shared.NextInt64(0, max.Ticks + 1));
+        max <= TimeSpan.Zero ? TimeSpan.Zero : TimeSpan.FromTicks(Random.Shared.NextInt64(0, max.Ticks + 1));
 }

@@ -15,7 +15,8 @@ public static class Pcm16AudioActivity
         for (var index = 0; index < sampleCount; index++)
         {
             var value = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(
-                pcm16LittleEndian.Slice(index * 2, 2));
+                pcm16LittleEndian.Slice(index * 2, 2)
+            );
             var magnitude = value == short.MinValue ? 32768 : Math.Abs((int)value);
             peak = Math.Max(peak, magnitude);
         }

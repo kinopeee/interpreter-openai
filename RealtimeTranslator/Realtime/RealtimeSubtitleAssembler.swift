@@ -148,7 +148,8 @@ struct RealtimeSubtitleAssembler: Sendable {
         )
         let prefix = String(sourceText[..<splitIndex])
         let suffix = String(sourceText[splitIndex...])
-        let translationReachedBoundary = selectedLane.flatMap { translationSourceEnd[$0] }
+        let translationReachedBoundary =
+            selectedLane.flatMap { translationSourceEnd[$0] }
             .map { $0 >= clampedOffset } == true
         let hasCompletePair =
             !prefix.isEmpty
@@ -498,7 +499,8 @@ struct RealtimeSubtitleAssembler: Sendable {
         var index = entries.firstIndex { $0.offset >= bounded } ?? entries.count
         while index > 0 {
             let previous = entries[index - 1]
-            let isNewSidePrefix = CharacterSet.whitespacesAndNewlines.contains(previous.scalar)
+            let isNewSidePrefix =
+                CharacterSet.whitespacesAndNewlines.contains(previous.scalar)
                 || previous.scalar.value == 0x00BF
                 || previous.scalar.value == 0x00A1
             guard isNewSidePrefix else { break }

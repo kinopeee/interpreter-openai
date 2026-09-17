@@ -524,7 +524,8 @@ final class InterpretationSession {
 
             // delta 文字列は monitor へ渡さない（検知は到着・進捗の事実だけを見る）。
             switch streamEvent.event {
-            case .inputTranscriptDelta(let delta, _, _) where streamEvent.lane == .source
+            case .inputTranscriptDelta(let delta, _, _)
+            where streamEvent.lane == .source
                 && !delta.isEmpty:
                 healthBookkeeper.recordSourceProgress()
             case .outputTranscriptDelta(let delta, _, _) where !delta.isEmpty:
@@ -703,7 +704,7 @@ final class InterpretationSession {
                 try? await Task.sleep(nanoseconds: intervalNanoseconds)
                 guard !Task.isCancelled else { return }
                 if let feed = self.activeFeed,
-                   self.subtitlePipeline.checkEventLoss(feed, generation: self.lifecycleGeneration)
+                    self.subtitlePipeline.checkEventLoss(feed, generation: self.lifecycleGeneration)
                 {
                     continue
                 }

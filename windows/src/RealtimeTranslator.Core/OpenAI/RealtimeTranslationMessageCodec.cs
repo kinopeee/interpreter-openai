@@ -82,9 +82,11 @@ public static class RealtimeTranslationMessageCodec
             throw new RealtimeTranslationException(RealtimeTranslationErrorKind.InvalidMessage);
         }
 
-        if (node is not JsonObject dictionary
+        if (
+            node is not JsonObject dictionary
             || dictionary["type"] is not JsonValue typeValue
-            || !typeValue.TryGetValue<string>(out var type))
+            || !typeValue.TryGetValue<string>(out var type)
+        )
         {
             throw new RealtimeTranslationException(RealtimeTranslationErrorKind.InvalidMessage);
         }
@@ -93,19 +95,22 @@ public static class RealtimeTranslationMessageCodec
         {
             case "session.created":
                 return new RealtimeTranslationServerEvent.SessionCreated(
-                    RealtimeSessionExpiry.ParseExpiresAt(dictionary["session"]));
+                    RealtimeSessionExpiry.ParseExpiresAt(dictionary["session"])
+                );
             case "session.updated":
                 return new RealtimeTranslationServerEvent.SessionUpdated();
             case "session.input_transcript.delta":
                 return new RealtimeTranslationServerEvent.InputTranscriptDelta(
                     StringValue(dictionary["delta"]) ?? string.Empty,
                     StringValue(dictionary["event_id"]),
-                    IntValue(dictionary["elapsed_ms"]));
+                    IntValue(dictionary["elapsed_ms"])
+                );
             case "session.output_transcript.delta":
                 return new RealtimeTranslationServerEvent.OutputTranscriptDelta(
                     StringValue(dictionary["delta"]) ?? string.Empty,
                     StringValue(dictionary["event_id"]),
-                    IntValue(dictionary["elapsed_ms"]));
+                    IntValue(dictionary["elapsed_ms"])
+                );
             case "session.output_audio.delta":
                 return new RealtimeTranslationServerEvent.OutputAudioDelta();
             case "session.closed":
@@ -113,13 +118,15 @@ public static class RealtimeTranslationMessageCodec
             case "error":
             {
                 var errorObject = dictionary["error"] as JsonObject;
-                var message = StringValue(errorObject?["message"])
+                var message =
+                    StringValue(errorObject?["message"])
                     ?? StringValue(dictionary["message"])
                     ?? RealtimeTranslationException.GenericServerMessage;
                 return new RealtimeTranslationServerEvent.ServerError(
                     message,
                     StringValue(errorObject?["code"]),
-                    StringValue(errorObject?["type"]));
+                    StringValue(errorObject?["type"])
+                );
             }
 
             default:
@@ -143,9 +150,11 @@ public static class RealtimeTranslationMessageCodec
             return intValue;
         }
 
-        if (value.TryGetValue<double>(out var doubleValue)
+        if (
+            value.TryGetValue<double>(out var doubleValue)
             && doubleValue >= int.MinValue
-            && doubleValue <= int.MaxValue)
+            && doubleValue <= int.MaxValue
+        )
         {
             return (int)doubleValue;
         }

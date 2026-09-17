@@ -110,7 +110,8 @@ struct SubtitleView: View {
     }
 
     private var currentSlot: some View {
-        let showListeningPlaceholder = snapshot.current.isEmpty
+        let showListeningPlaceholder =
+            snapshot.current.isEmpty
             && (snapshot.statusBanner == nil || snapshot.statusBanner?.isEmpty == true)
 
         return subtitleBlock(snapshot.current)

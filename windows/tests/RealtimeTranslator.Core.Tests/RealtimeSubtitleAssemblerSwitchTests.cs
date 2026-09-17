@@ -27,7 +27,8 @@ public sealed class RealtimeSubtitleAssemblerSwitchTests
             .Finalized;
         var late = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t-late", 200),
-            Origin.AddMilliseconds(200));
+            Origin.AddMilliseconds(200)
+        );
         var next = assembler.Ingest(Source("Hello there", "s2", 300), Origin.AddMilliseconds(250));
 
         Assert.Null(switched);
@@ -49,18 +50,20 @@ public sealed class RealtimeSubtitleAssemblerSwitchTests
         var assembler = NewAssembler();
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
         assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
-        _ = assembler.SplitForLanguageSwitch(
-            assembler.CurrentSourceLength,
-            Origin.AddMilliseconds(150));
-        Assert.Null(assembler.Ingest(
-            Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t-late", 200),
-            Origin.AddMilliseconds(200)));
+        _ = assembler.SplitForLanguageSwitch(assembler.CurrentSourceLength, Origin.AddMilliseconds(150));
+        Assert.Null(
+            assembler.Ingest(
+                Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t-late", 200),
+                Origin.AddMilliseconds(200)
+            )
+        );
 
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.Japanese);
         assembler.Ingest(Source("Hello there", "s2", 300), Origin.AddMilliseconds(250));
         var fresh = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.Japanese, "こんにちは、皆さん", "t-new", 400),
-            Origin.AddMilliseconds(350));
+            Origin.AddMilliseconds(350)
+        );
 
         Assert.NotNull(fresh);
         Assert.Equal("Hello there", fresh.Value.SourceText);
@@ -80,15 +83,18 @@ public sealed class RealtimeSubtitleAssemblerSwitchTests
         new(
             RealtimeTranslationLane.Source,
             new RealtimeTranslationServerEvent.InputTranscriptDelta(text, eventId, elapsedMs),
-            1);
+            1
+        );
 
     private static RealtimeTranslationStreamEvent Translation(
         RealtimeTranslationOutputLanguage target,
         string text,
         string eventId,
-        int? elapsedMs) =>
+        int? elapsedMs
+    ) =>
         new(
             RealtimeTranslationLane.Translation(target),
             new RealtimeTranslationServerEvent.OutputTranscriptDelta(text, eventId, elapsedMs),
-            1);
+            1
+        );
 }

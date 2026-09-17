@@ -25,11 +25,13 @@ public sealed class RealtimeSubtitleAssemblerSiblingLaneTests
         assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
         var selected = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "Hello", "en-1", 200),
-            Origin.AddMilliseconds(200));
+            Origin.AddMilliseconds(200)
+        );
 
         var sibling = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.Spanish, "Hola", "es-1", 250),
-            Origin.AddMilliseconds(250));
+            Origin.AddMilliseconds(250)
+        );
 
         Assert.NotNull(selected);
         Assert.Equal("Hello", selected.Value.TranslatedText);
@@ -53,10 +55,12 @@ public sealed class RealtimeSubtitleAssemblerSiblingLaneTests
 
         var sibling = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.Spanish, "hola a todos", "echo-es", 150),
-            Origin.AddMilliseconds(150));
+            Origin.AddMilliseconds(150)
+        );
         var expected = assembler.Ingest(
             Translation(RealtimeTranslationOutputLanguage.English, "hello everyone", "en-1", 200),
-            Origin.AddMilliseconds(200));
+            Origin.AddMilliseconds(200)
+        );
 
         Assert.NotNull(sibling);
         Assert.Equal("hola a todos", sibling.Value.SourceText);
@@ -79,15 +83,18 @@ public sealed class RealtimeSubtitleAssemblerSiblingLaneTests
         new(
             RealtimeTranslationLane.Source,
             new RealtimeTranslationServerEvent.InputTranscriptDelta(text, eventId, elapsedMs),
-            1);
+            1
+        );
 
     private static RealtimeTranslationStreamEvent Translation(
         RealtimeTranslationOutputLanguage target,
         string text,
         string eventId,
-        int? elapsedMs) =>
+        int? elapsedMs
+    ) =>
         new(
             RealtimeTranslationLane.Translation(target),
             new RealtimeTranslationServerEvent.OutputTranscriptDelta(text, eventId, elapsedMs),
-            1);
+            1
+        );
 }

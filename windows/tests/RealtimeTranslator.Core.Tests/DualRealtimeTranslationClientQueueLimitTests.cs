@@ -16,8 +16,11 @@ namespace RealtimeTranslator.Core.Tests;
 public sealed class DualRealtimeTranslationClientQueueLimitTests
 {
     public static TheoryData<string> Boundaries =>
-        new(SharedFixtures.Load("translation-queue")["boundaries"]!.AsArray()
-            .Select(node => SharedFixtures.Text(node!["name"])));
+        new(
+            SharedFixtures.Load("translation-queue")["boundaries"]!
+                .AsArray()
+                .Select(node => SharedFixtures.Text(node!["name"]))
+        );
 
     // Given: translation-queue.json and the localized backlog error
     // When: the shared constants and copy are read
@@ -26,11 +29,20 @@ public sealed class DualRealtimeTranslationClientQueueLimitTests
     public void ConstantsMatchFixture()
     {
         var fixture = SharedFixtures.Load("translation-queue");
-        Assert.Equal(SharedFixtures.Number(fixture["pendingFrameLimit"]), DualRealtimeTranslationClientTuning.DefaultPendingFrameLimit);
-        Assert.Equal(SharedFixtures.Number(fixture["prerollFrameLimit"]), DualRealtimeTranslationClientTuning.DefaultPrerollFrameLimit);
+        Assert.Equal(
+            SharedFixtures.Number(fixture["pendingFrameLimit"]),
+            DualRealtimeTranslationClientTuning.DefaultPendingFrameLimit
+        );
+        Assert.Equal(
+            SharedFixtures.Number(fixture["prerollFrameLimit"]),
+            DualRealtimeTranslationClientTuning.DefaultPrerollFrameLimit
+        );
         var overflow = fixture["overflow"]!.AsObject();
         Assert.Equal(SharedFixtures.Text(overflow["errorCode"]), DualRealtimeTranslationClient.TransportErrorCode);
-        Assert.Equal("翻訳音声の送信待ちが上限に達しました。", DualRealtimeTranslationClient.TranslationBacklogErrorMessage);
+        Assert.Equal(
+            "翻訳音声の送信待ちが上限に達しました。",
+            DualRealtimeTranslationClient.TranslationBacklogErrorMessage
+        );
     }
 
     // Given: a running client without a selected translation target
@@ -53,7 +65,8 @@ public sealed class DualRealtimeTranslationClientQueueLimitTests
     [MemberData(nameof(Boundaries))]
     public async Task Q02ToQ04BoundariesMatchFixture(string name)
     {
-        var boundary = SharedFixtures.Load("translation-queue")["boundaries"]!.AsArray()
+        var boundary = SharedFixtures.Load("translation-queue")["boundaries"]!
+            .AsArray()
             .Select(node => node!.AsObject())
             .Single(node => SharedFixtures.Text(node["name"]) == name);
         var pendingBefore = SharedFixtures.Number(boundary["pendingBefore"]);
@@ -106,7 +119,10 @@ public sealed class DualRealtimeTranslationClientQueueLimitTests
         }
 
         await harness.SelectAsync(RealtimeTranslationOutputLanguage.English);
-        Assert.Equal(Enumerable.Range(0, count).Select(index => $"frame-{index}"), harness.English.AppendedFrameTexts());
+        Assert.Equal(
+            Enumerable.Range(0, count).Select(index => $"frame-{index}"),
+            harness.English.AppendedFrameTexts()
+        );
         Assert.Empty(harness.Japanese.AppendedFrameTexts());
         Assert.Empty(harness.Spanish.AppendedFrameTexts());
         Assert.Empty(harness.DrainErrors());
@@ -291,7 +307,8 @@ public sealed class DualRealtimeTranslationClientQueueLimitTests
             FakeRealtimeServerTransport english,
             FakeRealtimeServerTransport japanese,
             FakeRealtimeServerTransport spanish,
-            DualRealtimeTranslationClient dual)
+            DualRealtimeTranslationClient dual
+        )
         {
             Source = source;
             English = english;
@@ -317,7 +334,11 @@ public sealed class DualRealtimeTranslationClientQueueLimitTests
                 new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.English, english, "test-safety"),
                 new RealtimeTranslationConnection(RealtimeTranslationOutputLanguage.Japanese, japanese, "test-safety"),
                 spanishConnection: new RealtimeTranslationConnection(
-                    RealtimeTranslationOutputLanguage.Spanish, spanish, "test-safety"));
+                    RealtimeTranslationOutputLanguage.Spanish,
+                    spanish,
+                    "test-safety"
+                )
+            );
             await dual.StartAsync("sk-test", RealtimeSessionTuning.Default, LanguagePair.JaEn);
             return new QueueHarness(source, english, japanese, spanish, dual);
         }
@@ -358,8 +379,10 @@ public sealed class DualRealtimeTranslationClientQueueLimitTests
             var errors = new List<TransportError>();
             while (Dual.Events.TryRead(out var streamEvent))
             {
-                if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError error
-                    && error.Code == DualRealtimeTranslationClient.TransportErrorCode)
+                if (
+                    streamEvent.Event is RealtimeTranslationServerEvent.ServerError error
+                    && error.Code == DualRealtimeTranslationClient.TransportErrorCode
+                )
                 {
                     errors.Add(new TransportError(error.Message, error.Code, streamEvent.Epoch));
                 }

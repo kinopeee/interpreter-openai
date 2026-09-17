@@ -23,7 +23,8 @@ internal sealed class AudioRoutingCoordinator : IDisposable
         object sync,
         IDualRealtimeTranslationClient dualClient,
         SessionSubtitlePipeline subtitlePipeline,
-        SessionHealthBookkeeper healthBookkeeper)
+        SessionHealthBookkeeper healthBookkeeper
+    )
     {
         ArgumentNullException.ThrowIfNull(sync);
         ArgumentNullException.ThrowIfNull(dualClient);
@@ -84,9 +85,7 @@ internal sealed class AudioRoutingCoordinator : IDisposable
         }
     }
 
-    public async Task ApplyAsync(
-        RealtimeSubtitleRoutingAction action,
-        CancellationToken cancellationToken)
+    public async Task ApplyAsync(RealtimeSubtitleRoutingAction action, CancellationToken cancellationToken)
     {
         await _routingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -97,14 +96,13 @@ internal sealed class AudioRoutingCoordinator : IDisposable
                     lock (_sync)
                     {
                         _healthBookkeeper.SetSelectedLane(
-                            select.Target is { } selectTarget
-                                ? RealtimeTranslationLane.Translation(selectTarget)
-                                : null);
+                            select.Target is { } selectTarget ? RealtimeTranslationLane.Translation(selectTarget) : null
+                        );
                     }
 
-                    await _dualClient.SelectTranslationTargetAsync(
-                        select.Target,
-                        cancellationToken).ConfigureAwait(false);
+                    await _dualClient
+                        .SelectTranslationTargetAsync(select.Target, cancellationToken)
+                        .ConfigureAwait(false);
                     break;
                 case RealtimeSubtitleRoutingAction.Switch @switch:
                     lock (_sync)
@@ -112,13 +110,14 @@ internal sealed class AudioRoutingCoordinator : IDisposable
                         _healthBookkeeper.SetSelectedLane(
                             @switch.Target is { } switchTarget
                                 ? RealtimeTranslationLane.Translation(switchTarget)
-                                : null);
+                                : null
+                        );
                     }
 
                     await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
-                    await _dualClient.SelectTranslationTargetAsync(
-                        @switch.Target,
-                        cancellationToken).ConfigureAwait(false);
+                    await _dualClient
+                        .SelectTranslationTargetAsync(@switch.Target, cancellationToken)
+                        .ConfigureAwait(false);
                     break;
             }
         }

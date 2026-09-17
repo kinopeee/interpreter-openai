@@ -1,16 +1,15 @@
 using System;
 using System.Linq;
 using RealtimeTranslator.Core.Audio;
-using RealtimeTranslator.Core.Realtime;
 using RealtimeTranslator.Core.OpenAI;
+using RealtimeTranslator.Core.Realtime;
 using Xunit;
 
 namespace RealtimeTranslator.Core.Tests;
 
 public sealed class SwitchStabilityFixtureTests
 {
-    public static TheoryData<string> Cases =>
-        SharedFixtures.CaseNames("routing", "switchStability");
+    public static TheoryData<string> Cases => SharedFixtures.CaseNames("routing", "switchStability");
 
     // Given: 同じ原文を異なる delta 分割で表した switchStability fixture
     // When: processor と同じ routing window / tracker / selector の流れを各分割へ適用する
@@ -20,10 +19,10 @@ public sealed class SwitchStabilityFixtureTests
     public void SwitchStabilityMatchesFixture(string name)
     {
         var fixture = SharedFixtures.Case("routing", "switchStability", name);
-        var pair = LanguagePairExtensions.ParseLanguagePair(
-            SharedFixtures.Text(fixture["pair"]));
+        var pair = LanguagePairExtensions.ParseLanguagePair(SharedFixtures.Text(fixture["pair"]));
         var initialTarget = RealtimeTranslationWireValues.ParseOutputLanguage(
-            SharedFixtures.Text(fixture["initialTarget"]));
+            SharedFixtures.Text(fixture["initialTarget"])
+        );
         string? joinedText = null;
         int? firstSplitOffset = null;
 
@@ -58,21 +57,16 @@ public sealed class SwitchStabilityFixtureTests
                 source += delta;
                 routing = RoutingSourceTextWindow.Trim(routing + delta, pair);
                 var evidence = SpokenLanguageDetector.RecentEvidence(routing, pair);
-                var currentLanguage = pair.Counterpart(target)
-                    ?? throw new Xunit.Sdk.XunitException("missing current language");
-                tracker.Observe(
-                    source,
-                    deltaStart,
-                    0,
-                    pair,
-                    currentLanguage,
-                    0);
+                var currentLanguage =
+                    pair.Counterpart(target) ?? throw new Xunit.Sdk.XunitException("missing current language");
+                tracker.Observe(source, deltaStart, 0, pair, currentLanguage, 0);
                 var selection = TranslationTargetSelector.Select(
                     pair,
                     target,
                     reverseEvidenceCount,
                     evidence,
-                    tracker.OppositeScriptRun(source));
+                    tracker.OppositeScriptRun(source)
+                );
                 reverseEvidenceCount = selection.ReverseEvidenceCount;
 
                 if (selection.Target is not { } nextTarget || nextTarget == target)
@@ -96,18 +90,10 @@ public sealed class SwitchStabilityFixtureTests
                 reverseEvidenceCount = 0;
             }
 
-            Assert.Equal(
-                SharedFixtures.Number(fixture["expectedSwitchCount"]),
-                switchCount);
-            Assert.Equal(
-                SharedFixtures.Text(fixture["expectedFinalTarget"]),
-                target.ToWireValue());
-            Assert.Equal(
-                SharedFixtures.OptionalNumber(split["expectedSwitchAtDelta"]),
-                switchDelta);
-            Assert.Equal(
-                SharedFixtures.OptionalNumber(split["expectedSourceLengthAtSwitch"]),
-                sourceLengthAtSwitch);
+            Assert.Equal(SharedFixtures.Number(fixture["expectedSwitchCount"]), switchCount);
+            Assert.Equal(SharedFixtures.Text(fixture["expectedFinalTarget"]), target.ToWireValue());
+            Assert.Equal(SharedFixtures.OptionalNumber(split["expectedSwitchAtDelta"]), switchDelta);
+            Assert.Equal(SharedFixtures.OptionalNumber(split["expectedSourceLengthAtSwitch"]), sourceLengthAtSwitch);
             if (firstSplitOffset is null)
             {
                 firstSplitOffset = splitOffset;
@@ -118,8 +104,6 @@ public sealed class SwitchStabilityFixtureTests
             }
         }
 
-        Assert.Equal(
-            SharedFixtures.OptionalNumber(fixture["expectedSplitOffset"]),
-            firstSplitOffset);
+        Assert.Equal(SharedFixtures.OptionalNumber(fixture["expectedSplitOffset"]), firstSplitOffset);
     }
 }

@@ -20,15 +20,9 @@ public sealed class SubtitleTranscriptFormatterTests
         var limits = (JsonObject)root["limits"]!;
         var messages = (JsonObject)root["messages"]!;
 
-        Assert.Equal(
-            SharedFixtures.Number(limits["maxFileBytes"]),
-            SubtitleTranscriptLimits.MaxFileBytes);
-        Assert.Equal(
-            SharedFixtures.Text(messages["sizeLimitBanner"]),
-            SubtitleTranscriptLimits.SizeLimitBanner);
-        Assert.Equal(
-            SharedFixtures.Text(messages["writeFailureBanner"]),
-            SubtitleTranscriptLimits.WriteFailureBanner);
+        Assert.Equal(SharedFixtures.Number(limits["maxFileBytes"]), SubtitleTranscriptLimits.MaxFileBytes);
+        Assert.Equal(SharedFixtures.Text(messages["sizeLimitBanner"]), SubtitleTranscriptLimits.SizeLimitBanner);
+        Assert.Equal(SharedFixtures.Text(messages["writeFailureBanner"]), SubtitleTranscriptLimits.WriteFailureBanner);
     }
 
     // Given: ui.json の字幕記録バナー ja
@@ -40,12 +34,8 @@ public sealed class SubtitleTranscriptFormatterTests
         var ja = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.Ja);
         var messages = (JsonObject)SharedFixtures.Load("transcript")["messages"]!;
 
-        Assert.Equal(
-            SharedFixtures.Text(messages["sizeLimitBanner"]),
-            ja.Text("transcript.sizeLimitBanner"));
-        Assert.Equal(
-            SharedFixtures.Text(messages["writeFailureBanner"]),
-            ja.Text("transcript.writeFailureBanner"));
+        Assert.Equal(SharedFixtures.Text(messages["sizeLimitBanner"]), ja.Text("transcript.sizeLimitBanner"));
+        Assert.Equal(SharedFixtures.Text(messages["writeFailureBanner"]), ja.Text("transcript.writeFailureBanner"));
     }
 
     // Given: fixture の entry / sessionStart ケース
@@ -65,7 +55,8 @@ public sealed class SubtitleTranscriptFormatterTests
             "entry" => SubtitleTranscriptFormatter.FormatEntry(
                 timestamp,
                 SharedFixtures.Text(fixture["sourceText"]),
-                SharedFixtures.Text(fixture["translatedText"])),
+                SharedFixtures.Text(fixture["translatedText"])
+            ),
             "sessionStart" => SubtitleTranscriptFormatter.FormatSessionStart(timestamp),
             _ => throw new InvalidOperationException("unhandled kind " + kind),
         };
@@ -81,9 +72,7 @@ public sealed class SubtitleTranscriptFormatterTests
     {
         var timestamp = new DateTimeOffset(2026, 8, 7, 15, 40, 12, TimeSpan.FromHours(9));
 
-        Assert.Equal(
-            "2026-08-07T15:40:12+09:00",
-            SubtitleTranscriptFormatter.FormatTimestamp(timestamp));
+        Assert.Equal("2026-08-07T15:40:12+09:00", SubtitleTranscriptFormatter.FormatTimestamp(timestamp));
     }
 
     // Given: UTC の固定時刻
@@ -94,9 +83,7 @@ public sealed class SubtitleTranscriptFormatterTests
     {
         var timestamp = new DateTimeOffset(2026, 8, 7, 16, 0, 0, TimeSpan.Zero);
 
-        Assert.Equal(
-            "2026-08-07T16:00:00Z",
-            SubtitleTranscriptFormatter.FormatTimestamp(timestamp));
+        Assert.Equal("2026-08-07T16:00:00Z", SubtitleTranscriptFormatter.FormatTimestamp(timestamp));
     }
 
     // Given: 英語 UI カタログが存在する

@@ -4,8 +4,8 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
-using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Audio;
+using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Realtime;
 using RealtimeTranslator.Core.Security;
 using RealtimeTranslator.Core.Settings;
@@ -33,10 +33,7 @@ public partial class App : Application, IDisposable
     private readonly AppSettingsStore _settingsStore = new();
     private readonly SubtitleTranscriptStore _transcriptStore = new();
     private readonly DispatcherTimer _subtitleClear = new() { Interval = SubtitleClearDelay };
-    private readonly DispatcherTimer _settingsSaveDebounce = new()
-    {
-        Interval = SettingsWindow.TuningDebounceInterval,
-    };
+    private readonly DispatcherTimer _settingsSaveDebounce = new() { Interval = SettingsWindow.TuningDebounceInterval };
 
     private SingleInstanceLease? _lease;
     private CredentialManagerApiKeyStore? _apiKeyStore;
@@ -74,7 +71,8 @@ public partial class App : Application, IDisposable
                 UiCopy.Text("alert.alreadyRunning"),
                 "Realtime Translator",
                 MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                MessageBoxImage.Information
+            );
             Shutdown();
             return;
         }
@@ -89,13 +87,13 @@ public partial class App : Application, IDisposable
             _capture,
             _dualClient,
             () => _settings.Tuning(),
-            languagePairProvider: () => _settings.LanguagePair);
+            languagePairProvider: () => _settings.LanguagePair
+        );
         _session.StateChanged += OnSessionStateChanged;
         _session.SubtitleUpdated += OnSubtitleUpdated;
         _session.MessageEncountered += OnSessionMessage;
         // 受信停止監視の診断（数値と enum 名のみ、content なし）。
-        _session.HealthDetected += (_, detection) =>
-            AppLogger.Info(LogCategory.Session, $"DBG_HEALTH {detection}");
+        _session.HealthDetected += (_, detection) => AppLogger.Info(LogCategory.Session, $"DBG_HEALTH {detection}");
 
         _tray = new TrayController(_settings.LanguagePair);
         // NotifyIcon コールバックは UI スレッドとは限らないため Dispatcher へ渡す。
@@ -134,16 +132,20 @@ public partial class App : Application, IDisposable
             new RealtimeTranslationConnection(
                 RealtimeTranslationOutputLanguage.English,
                 new ClientWebSocketTransport(),
-                safetyIdentifier),
+                safetyIdentifier
+            ),
             new RealtimeTranslationConnection(
                 RealtimeTranslationOutputLanguage.Japanese,
                 new ClientWebSocketTransport(),
-                safetyIdentifier),
+                safetyIdentifier
+            ),
             translationDrainTimeout: null,
             spanishConnection: new RealtimeTranslationConnection(
                 RealtimeTranslationOutputLanguage.Spanish,
                 new ClientWebSocketTransport(),
-                safetyIdentifier));
+                safetyIdentifier
+            )
+        );
     }
 
     private void RegisterHotkey()
@@ -225,10 +227,8 @@ public partial class App : Application, IDisposable
         {
             ShowSettings();
             _tray?.ShowMessage(
-                UiCopy.Text(
-                    keyState == StoredApiKeyState.Malformed
-                        ? "error.apiKeyMalformed"
-                        : "alert.needApiKey"));
+                UiCopy.Text(keyState == StoredApiKeyState.Malformed ? "error.apiKeyMalformed" : "alert.needApiKey")
+            );
             return;
         }
 
@@ -253,12 +253,14 @@ public partial class App : Application, IDisposable
 
         if (!_isEditingPosition)
         {
-            UpdateSettings(_settings with
-            {
-                HasCustomOverlayOrigin = true,
-                OverlayOriginX = _overlay.Left,
-                OverlayOriginY = _overlay.Top,
-            });
+            UpdateSettings(
+                _settings with
+                {
+                    HasCustomOverlayOrigin = true,
+                    OverlayOriginX = _overlay.Left,
+                    OverlayOriginY = _overlay.Top,
+                }
+            );
         }
     }
 
@@ -300,7 +302,8 @@ public partial class App : Application, IDisposable
             UiCopy.Text("alert.clearTranscript.body"),
             UiCopy.Text("alert.clearTranscriptTitle"),
             MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning);
+            MessageBoxImage.Warning
+        );
         if (result != MessageBoxResult.OK)
         {
             return;
@@ -361,10 +364,13 @@ public partial class App : Application, IDisposable
 
         // 録音中の初回オプトインだけ開始マーカーを補う（OFF→ON の再有効化では重複させない）。
         var isActivelyRecording = _state is not TranslationState.Idle and not TranslationState.Error;
-        if (_transcriptSession.TryOpenOnMidRecordingOptIn(
+        if (
+            _transcriptSession.TryOpenOnMidRecordingOptIn(
                 previouslyEnabled,
                 settings.RecordSubtitles,
-                isActivelyRecording))
+                isActivelyRecording
+            )
+        )
         {
             HandleTranscriptResult(_transcriptStore.MarkSessionStart());
         }
@@ -408,8 +414,7 @@ public partial class App : Application, IDisposable
                 HandleTranscriptResult(_transcriptStore.MarkSessionStart());
             }
 
-            HandleTranscriptResult(
-                _transcriptStore.AppendEntry(update.SourceText, update.TranslatedText));
+            HandleTranscriptResult(_transcriptStore.AppendEntry(update.SourceText, update.TranslatedText));
         }
 
         Dispatcher.InvokeAsync(() =>
@@ -433,13 +438,11 @@ public partial class App : Application, IDisposable
                 }
 
                 AppLogger.Info(LogCategory.General, "subtitle transcript reached size limit");
-                Dispatcher.InvokeAsync(() =>
-                    _tray?.ShowMessage(SubtitleTranscriptStore.SizeLimitBanner));
+                Dispatcher.InvokeAsync(() => _tray?.ShowMessage(SubtitleTranscriptStore.SizeLimitBanner));
                 break;
             case SubtitleTranscriptAppendResult.Failed:
                 AppLogger.Error(LogCategory.General, "subtitle transcript write failed");
-                Dispatcher.InvokeAsync(() =>
-                    _tray?.ShowMessage(SubtitleTranscriptStore.WriteFailureBanner));
+                Dispatcher.InvokeAsync(() => _tray?.ShowMessage(SubtitleTranscriptStore.WriteFailureBanner));
                 break;
             case SubtitleTranscriptAppendResult.SkippedDuplicate:
             case SubtitleTranscriptAppendResult.SkippedEmpty:

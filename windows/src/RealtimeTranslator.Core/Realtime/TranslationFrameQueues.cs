@@ -55,4 +55,5 @@ internal sealed class TranslationFrameQueues
 
 internal readonly record struct PendingTranslationFrame(
     ReadOnlyMemory<byte> Frame,
-    RealtimeTranslationOutputLanguage Target);
+    RealtimeTranslationOutputLanguage Target
+);

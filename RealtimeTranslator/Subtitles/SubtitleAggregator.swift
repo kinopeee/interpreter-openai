@@ -175,7 +175,8 @@ final class SubtitleAggregator: @unchecked Sendable {
         // Wait for target punctuation. Source punctuation often arrives before translation
         // and finalizing there would split the source and translation into separate blocks.
         let punctuation = endsWithTerminalPunctuation(current.translatedText)
-        let tooLong = exceedsMaxLength(current.sourceText, japanesePreferred: true)
+        let tooLong =
+            exceedsMaxLength(current.sourceText, japanesePreferred: true)
             || exceedsMaxLength(current.translatedText, japanesePreferred: false)
 
         if punctuation || idleExpired || tooLong {
@@ -221,7 +222,8 @@ final class SubtitleAggregator: @unchecked Sendable {
                 || (0x4E00...0x9FFF).contains(scalar.value)
                 || (0x3400...0x4DBF).contains(scalar.value)
         }
-        let limit = hasCJK || japanesePreferred
+        let limit =
+            hasCJK || japanesePreferred
             ? config.maxJapaneseCharacters
             : config.maxEnglishCharacters
         return text.count > limit

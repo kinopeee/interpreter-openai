@@ -388,9 +388,10 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
                 && delegate.snapshots.contains(where: \.isInvalidation)
         }
 
-        XCTAssertFalse(delegate.finalizedSnapshots.contains {
-            $0.sourceText == "失敗する字幕" || $0.translatedText == "Recover subtitle"
-        })
+        XCTAssertFalse(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "失敗する字幕" || $0.translatedText == "Recover subtitle"
+            })
         await session.stop()
     }
 
@@ -445,9 +446,10 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         }
 
         // Then: 失敗したペアは確定されない
-        XCTAssertFalse(delegate.finalizedSnapshots.contains {
-            $0.sourceText == "順序競合字幕" || $0.translatedText == "Ordering race"
-        })
+        XCTAssertFalse(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "順序競合字幕" || $0.translatedText == "Ordering race"
+            })
         await session.stop()
     }
 
@@ -490,9 +492,10 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
 
         XCTAssertEqual(dual.startCallCount, 1)
         XCTAssertTrue(delegate.snapshots.contains(where: \.isInvalidation))
-        XCTAssertFalse(delegate.finalizedSnapshots.contains {
-            $0.sourceText == "失敗する字幕" || $0.translatedText == "Halt subtitle"
-        })
+        XCTAssertFalse(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "失敗する字幕" || $0.translatedText == "Halt subtitle"
+            })
         await session.stop()
     }
 
@@ -550,9 +553,10 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
             }.count,
             finalizedCount
         )
-        XCTAssertTrue(delegate.finalizedSnapshots.contains {
-            $0.sourceText == "確定済み字幕" && $0.translatedText == "Finalized subtitle"
-        })
+        XCTAssertTrue(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "確定済み字幕" && $0.translatedText == "Finalized subtitle"
+            })
         await session.stop()
     }
 
@@ -602,9 +606,10 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
 
         XCTAssertEqual(session.state, .idle)
         XCTAssertTrue(delegate.snapshots.contains(where: \.isInvalidation))
-        XCTAssertFalse(delegate.finalizedSnapshots.contains {
-            $0.sourceText == "停止中の字幕" || $0.translatedText == "Stopping subtitle"
-        })
+        XCTAssertFalse(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "停止中の字幕" || $0.translatedText == "Stopping subtitle"
+            })
     }
 
     // Given: 停止前に未確定の字幕ペアを表示し、keepAlive failed が配送前にキューされた session
@@ -641,9 +646,10 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
 
         XCTAssertEqual(session.state, .idle)
         XCTAssertTrue(delegate.snapshots.contains(where: \.isInvalidation))
-        XCTAssertFalse(delegate.finalizedSnapshots.contains {
-            $0.sourceText == "停止drop字幕" || $0.translatedText == "Dropped failure"
-        })
+        XCTAssertFalse(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "停止drop字幕" || $0.translatedText == "Dropped failure"
+            })
     }
 
     // Given: 再接続前に未確定の字幕ペアと未配送の keepAlive failed が残る session
@@ -685,9 +691,10 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         }
 
         XCTAssertTrue(delegate.snapshots.contains(where: \.isInvalidation))
-        XCTAssertFalse(delegate.finalizedSnapshots.contains {
-            $0.sourceText == "再接続drop字幕" || $0.translatedText == "Reconnect dropped"
-        })
+        XCTAssertFalse(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "再接続drop字幕" || $0.translatedText == "Reconnect dropped"
+            })
         await session.stop()
     }
 
@@ -730,9 +737,10 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
 
         await session.stop()
 
-        XCTAssertTrue(delegate.finalizedSnapshots.contains {
-            $0.sourceText == "有効な後続字幕" && $0.translatedText == "Valid follow-up"
-        })
+        XCTAssertTrue(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "有効な後続字幕" && $0.translatedText == "Valid follow-up"
+            })
     }
 
     // Given: 停止前に未確定の字幕ペアを表示している session
@@ -781,9 +789,10 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
 
         XCTAssertEqual(session.state, .idle)
         XCTAssertFalse(delegate.snapshots.contains(where: \.isInvalidation))
-        XCTAssertTrue(delegate.finalizedSnapshots.contains {
-            $0.sourceText == "停止中の字幕" && $0.translatedText == "Stopping subtitle"
-        })
+        XCTAssertTrue(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "停止中の字幕" && $0.translatedText == "Stopping subtitle"
+            })
     }
 
     // Given: session が keepAlive の failed を受信する
@@ -823,10 +832,11 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
 
         XCTAssertTrue(delegate.messages.isEmpty)
         let invalidationIndex = delegate.snapshots.firstIndex(where: \.isInvalidation) ?? delegate.snapshots.endIndex
-        XCTAssertFalse(delegate.snapshots[invalidationIndex...].contains { snapshot in
-            snapshot.current.sourceText.contains("sk-")
-                || snapshot.current.translatedText.contains("sk-")
-        })
+        XCTAssertFalse(
+            delegate.snapshots[invalidationIndex...].contains { snapshot in
+                snapshot.current.sourceText.contains("sk-")
+                    || snapshot.current.translatedText.contains("sk-")
+            })
         await session.stop()
     }
 

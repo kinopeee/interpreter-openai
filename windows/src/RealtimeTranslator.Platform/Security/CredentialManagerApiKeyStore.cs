@@ -59,18 +59,13 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
     /// <summary>保存項目の有無と、接続に利用できる形式かを秘密値なしで返す。</summary>
     public StoredApiKeyState StoredKeyState
     {
-        get
-        {
-            return ApiKeyNormalizer.StoredState(ReadNormalizedCredential());
-        }
+        get { return ApiKeyNormalizer.StoredState(ReadNormalizedCredential()); }
     }
 
     public string? Load()
     {
         var result = ReadNormalizedCredential();
-        return result is { Status: ApiKeyNormalizationStatus.Valid, Value: { } value }
-            ? value
-            : null;
+        return result is { Status: ApiKeyNormalizationStatus.Valid, Value: { } value } ? value : null;
     }
 
     private ApiKeyNormalizationResult? ReadNormalizedCredential()
@@ -99,7 +94,9 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
                 UserCopy.Current.Text(
                     normalized.Status == ApiKeyNormalizationStatus.Malformed
                         ? "error.apiKeyMalformed"
-                        : "error.apiKeyEmpty"));
+                        : "error.apiKeyEmpty"
+                )
+            );
         }
 
         WriteBlob(Encoding.UTF8.GetBytes(value));
@@ -211,8 +208,10 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
         {
             public uint Flags;
             public uint Type;
+
             [MarshalAs(UnmanagedType.LPWStr)]
             public string TargetName;
+
             [MarshalAs(UnmanagedType.LPWStr)]
             public string? Comment;
             public long LastWritten;
@@ -221,8 +220,10 @@ public sealed class CredentialManagerApiKeyStore : IApiKeyStore
             public uint Persist;
             public uint AttributeCount;
             public IntPtr Attributes;
+
             [MarshalAs(UnmanagedType.LPWStr)]
             public string? TargetAlias;
+
             [MarshalAs(UnmanagedType.LPWStr)]
             public string? UserName;
         }

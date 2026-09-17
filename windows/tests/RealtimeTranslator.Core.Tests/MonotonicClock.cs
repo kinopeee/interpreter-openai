@@ -18,7 +18,10 @@ internal sealed class MonotonicClock : TimeProvider
     public void SetElapsed(TimeSpan elapsed)
     {
         Interlocked.Exchange(ref _timestamp, elapsed.Ticks);
-        Interlocked.Exchange(ref _utcTicks, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero).UtcTicks + elapsed.Ticks);
+        Interlocked.Exchange(
+            ref _utcTicks,
+            new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero).UtcTicks + elapsed.Ticks
+        );
     }
 
     public void Advance(TimeSpan delta)

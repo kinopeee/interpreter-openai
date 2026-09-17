@@ -31,19 +31,21 @@ public static class UiLanguage
     public const string JaWire = "ja";
     public const string EnWire = "en";
 
-    public static UiLanguagePreference Parse(string? wireValue) => wireValue switch
-    {
-        JaWire => UiLanguagePreference.Ja,
-        EnWire => UiLanguagePreference.En,
-        _ => UiLanguagePreference.System,
-    };
+    public static UiLanguagePreference Parse(string? wireValue) =>
+        wireValue switch
+        {
+            JaWire => UiLanguagePreference.Ja,
+            EnWire => UiLanguagePreference.En,
+            _ => UiLanguagePreference.System,
+        };
 
-    public static string ToWireValue(this UiLanguagePreference preference) => preference switch
-    {
-        UiLanguagePreference.Ja => JaWire,
-        UiLanguagePreference.En => EnWire,
-        _ => SystemWire,
-    };
+    public static string ToWireValue(this UiLanguagePreference preference) =>
+        preference switch
+        {
+            UiLanguagePreference.Ja => JaWire,
+            UiLanguagePreference.En => EnWire,
+            _ => SystemWire,
+        };
 
     public static UiLocale Resolve(UiLanguagePreference preference, string? osTwoLetterLanguage) =>
         preference switch
@@ -75,7 +77,8 @@ public sealed class UserCopy
         UiLocale locale,
         IReadOnlyDictionary<string, string> primary,
         IReadOnlyDictionary<string, string> english,
-        Action<string>? missingKeyLogger = null)
+        Action<string>? missingKeyLogger = null
+    )
     {
         ArgumentNullException.ThrowIfNull(primary);
         ArgumentNullException.ThrowIfNull(english);
@@ -156,7 +159,8 @@ public sealed class UserCopy
     public static UserCopy LoadEmbedded(UiLocale locale, Action<string>? missingKeyLogger = null)
     {
         var assembly = typeof(UserCopy).Assembly;
-        using var stream = assembly.GetManifestResourceStream(EmbeddedResourceName)
+        using var stream =
+            assembly.GetManifestResourceStream(EmbeddedResourceName)
             ?? throw new InvalidOperationException("embedded ui.json is missing");
         return Load(stream, locale, missingKeyLogger);
     }
@@ -165,7 +169,12 @@ public sealed class UserCopy
     {
         ArgumentNullException.ThrowIfNull(utf8Json);
 
-        using var reader = new StreamReader(utf8Json, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+        using var reader = new StreamReader(
+            utf8Json,
+            Encoding.UTF8,
+            detectEncodingFromByteOrderMarks: true,
+            leaveOpen: true
+        );
         return Parse(reader.ReadToEnd(), locale, missingKeyLogger);
     }
 

@@ -116,11 +116,11 @@ final class RealtimeSessionTuningTests: XCTestCase {
         // Given: 空行と前後空白を含むキーワードテキスト
         let text = """
 
-          ハッカソン
-        hackathon
+              ハッカソン
+            hackathon
 
-        エンジニア
-        """
+            エンジニア
+            """
 
         // When: 正規化する
         let keywords = RealtimeSessionTuning.parseKeywords(from: text)
@@ -191,7 +191,8 @@ final class RealtimeSessionTuningTests: XCTestCase {
 
     func testIsKeywordCountOverLimitIgnoresNonSubmittedLines() {
         // Given: 送信されない <> 行を含み、実送信は上限ちょうど
-        let keywords = (1...RealtimeSessionTuning.keywordLimit)
+        let keywords =
+            (1...RealtimeSessionTuning.keywordLimit)
             .map { "word\($0)" }
             .joined(separator: "\n") + "\n<>\n"
 

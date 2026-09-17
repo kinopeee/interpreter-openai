@@ -59,10 +59,12 @@ public sealed class InterpretationSession : IDisposable
 
     private CancellationTokenSource? _sessionCts;
     private Task? _sessionTask;
+
     /// <summary>進行中の Stop。二重 Stop を macOS の stopTask と同様に合流させる。</summary>
     private Task? _stopTask;
     private int _lifecycleGeneration;
     private TranslationState _state = TranslationState.Idle;
+
     /// <summary>現在の録音世代で使う言語ペア。Start 時に固定し、再接続でも settings の変更を取り込まない。</summary>
     private LanguagePair? _sessionLanguagePair;
     private RealtimeEventFeed? _activeFeed;
@@ -90,7 +92,8 @@ public sealed class InterpretationSession : IDisposable
         Func<LanguagePair>? languagePairProvider = null,
         ReconnectPolicy? reconnectPolicy = null,
         Func<TimeSpan, TimeSpan>? reconnectJitter = null,
-        SessionHealthThresholds? healthThresholds = null)
+        SessionHealthThresholds? healthThresholds = null
+    )
     {
         ArgumentNullException.ThrowIfNull(apiKeyStore);
         ArgumentNullException.ThrowIfNull(audioCapture);
@@ -113,19 +116,17 @@ public sealed class InterpretationSession : IDisposable
         _healthBookkeeper = new SessionHealthBookkeeper(
             healthThresholds,
             () => _timeProvider.GetElapsedTime(0L),
-            () => _timeProvider.GetUtcNow().ToUnixTimeSeconds());
+            () => _timeProvider.GetUtcNow().ToUnixTimeSeconds()
+        );
         _subtitlePipeline = new SessionSubtitlePipeline(
             _sync,
             _timeProvider,
             GetActiveFeed,
             () => _dualClient.Feed,
             update => SubtitleUpdated?.Invoke(this, update),
-            () => AfterFailedSourceFallbackForTests);
-        _audioRouting = new AudioRoutingCoordinator(
-            _sync,
-            _dualClient,
-            _subtitlePipeline,
-            _healthBookkeeper);
+            () => AfterFailedSourceFallbackForTests
+        );
+        _audioRouting = new AudioRoutingCoordinator(_sync, _dualClient, _subtitlePipeline, _healthBookkeeper);
         _startTimestamp = _timeProvider.GetTimestamp();
     }
 
@@ -354,8 +355,9 @@ public sealed class InterpretationSession : IDisposable
                 activePair = _subtitlePipeline.ActiveLanguagePair;
             }
 
-            await _dualClient.UpdateTranscriptionTuningAsync(
-                _tuningProvider().ForPair(activePair ?? LanguagePair.JaEn)).ConfigureAwait(false);
+            await _dualClient
+                .UpdateTranscriptionTuningAsync(_tuningProvider().ForPair(activePair ?? LanguagePair.JaEn))
+                .ConfigureAwait(false);
         }
         catch (RealtimeTranslationException)
         {
@@ -458,13 +460,17 @@ public sealed class InterpretationSession : IDisposable
                 RecordHealthTermination(
                     decision.Kind == ReconnectDecisionKind.BudgetExhausted
                         ? SessionTerminationKind.ReconnectBudgetExhausted
-                        : SessionTerminationKind.ReconnectAttemptLimit);
+                        : SessionTerminationKind.ReconnectAttemptLimit
+                );
                 await TearDownStreamingAsync().ConfigureAwait(false);
                 _subtitlePipeline.FlushPendingFinalizeIfNeeded();
-                EnterError(UserCopy.Current.Text(
-                    decision.Kind == ReconnectDecisionKind.BudgetExhausted
-                        ? "error.reconnectBudgetExhausted"
-                        : "error.reconnectLimit"));
+                EnterError(
+                    UserCopy.Current.Text(
+                        decision.Kind == ReconnectDecisionKind.BudgetExhausted
+                            ? "error.reconnectBudgetExhausted"
+                            : "error.reconnectLimit"
+                    )
+                );
                 return;
             }
 
@@ -509,11 +515,9 @@ public sealed class InterpretationSession : IDisposable
 
         try
         {
-            await _dualClient.StartAsync(
-                apiKey,
-                _tuningProvider().ForPair(languagePair),
-                languagePair,
-                cancellationToken).ConfigureAwait(false);
+            await _dualClient
+                .StartAsync(apiKey, _tuningProvider().ForPair(languagePair), languagePair, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch
         {
@@ -621,15 +625,15 @@ public sealed class InterpretationSession : IDisposable
             {
                 _healthBookkeeper.RecordCapture(
                     Pcm16AudioActivity.NormalizedPeakAmplitude(frame.Pcm16.Span)
-                        > _healthBookkeeper.Thresholds.AudioActivityPeakFloor);
+                        > _healthBookkeeper.Thresholds.AudioActivityPeakFloor
+                );
             }
 
             var queueWaitMilliseconds = Math.Max(
                 0,
-                (int)_timeProvider.GetElapsedTime(frame.CapturedAtTimestamp).TotalMilliseconds);
-            var atMilliseconds = Math.Max(
-                0,
-                (long)_timeProvider.GetElapsedTime(_startTimestamp).TotalMilliseconds);
+                (int)_timeProvider.GetElapsedTime(frame.CapturedAtTimestamp).TotalMilliseconds
+            );
+            var atMilliseconds = Math.Max(0, (long)_timeProvider.GetElapsedTime(_startTimestamp).TotalMilliseconds);
             AudioLossObservation observation;
             RealtimeSubtitleUpdate? invalidation = null;
             lock (_sync)
@@ -639,7 +643,8 @@ public sealed class InterpretationSession : IDisposable
                     frame.Sequence,
                     frame.DiscardedMilliseconds,
                     queueWaitMilliseconds,
-                    atMilliseconds);
+                    atMilliseconds
+                );
                 if (observation.DidLose)
                 {
                     invalidation = _subtitlePipeline.MarkAudioLoss();
@@ -649,15 +654,15 @@ public sealed class InterpretationSession : IDisposable
             if (invalidation is { } lossUpdate)
             {
                 _subtitlePipeline.EmitSubtitleUpdate(lossUpdate);
-                await _audioRouting.ResetAfterAudioLossAsync(BeforeAudioLossRoutingResetForTests)
-                    .ConfigureAwait(false);
+                await _audioRouting.ResetAfterAudioLossAsync(BeforeAudioLossRoutingResetForTests).ConfigureAwait(false);
             }
 
             if (observation.ShouldReconnect)
             {
                 throw new RealtimeTranslationException(
                     RealtimeTranslationErrorKind.RecoverableTransportFailure,
-                    UserCopy.Current.Text("error.audioInputStopped"));
+                    UserCopy.Current.Text("error.audioInputStopped")
+                );
             }
 
             lock (_sync)
@@ -679,13 +684,11 @@ public sealed class InterpretationSession : IDisposable
 
         throw new RealtimeTranslationException(
             RealtimeTranslationErrorKind.RecoverableTransportFailure,
-            UserCopy.Current.Text("error.audioInputStopped"));
+            UserCopy.Current.Text("error.audioInputStopped")
+        );
     }
 
-    private async Task ConsumeEventsAsync(
-        int generation,
-        RealtimeEventFeed feed,
-        CancellationToken cancellationToken)
+    private async Task ConsumeEventsAsync(int generation, RealtimeEventFeed feed, CancellationToken cancellationToken)
     {
         var events = feed.Events;
         while (true)
@@ -706,149 +709,141 @@ public sealed class InterpretationSession : IDisposable
 
             while (events.TryRead(out var streamEvent))
             {
-            if (!IsCurrentGeneration(generation))
-            {
-                return;
-            }
-
-            if (streamEvent.Epoch != feed.Epoch)
-            {
-                continue;
-            }
-
-            if (feed.DeliveryState.DidLoseEvents)
-            {
-                _subtitlePipeline.HandleEventLoss(feed);
-                if (IsCurrentGeneration(generation))
-                {
-                    throw feed.DeliveryState.ToException();
-                }
-
-                return;
-            }
-
-            if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError error)
-            {
-                var classification = EventDeliveryState.Classify(error);
-                if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
-                {
-                    continue;
-                }
-
-                feed.DeliveryState.TryRecordTermination(classification);
-                throw feed.DeliveryState.ToException();
-            }
-
-            // delta 文字列は monitor へ渡さない（検知は到着・進捗の事実だけを見る）。
-            lock (_sync)
-            {
-                switch (streamEvent.Event)
-                {
-                    case RealtimeTranslationServerEvent.InputTranscriptDelta input
-                        when streamEvent.Lane.IsSource && input.Delta.Length > 0:
-                        _healthBookkeeper.RecordSourceProgress();
-                        break;
-                    case RealtimeTranslationServerEvent.OutputTranscriptDelta output
-                        when output.Delta.Length > 0:
-                        _healthBookkeeper.RecordTranslationProgress(streamEvent.Lane);
-                        break;
-                }
-            }
-
-            if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptFailed failed)
-            {
-                RealtimeServerErrorClassification classification =
-                    RealtimeServerErrorClassification.ClassifyTranscriptionFailure(
-                        failed.ErrorType,
-                        failed.Code);
-                RealtimeSubtitleUpdate? invalidation;
-                lock (_sync)
-                {
-                    invalidation = _subtitlePipeline.DiscardFailedSource(failed.ItemId, failed.EventId);
-                }
-                feed.DeliveryState.NoteSourceFailureConsumed();
-
-                if (invalidation is { } failedUpdate)
-                {
-                    _subtitlePipeline.EmitSubtitleUpdate(failedUpdate);
-                    await _audioRouting.ResetForNextSegmentAsync().ConfigureAwait(false);
-                }
-
-                if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
-                {
-                    continue;
-                }
-
-                feed.DeliveryState.TryRecordTermination(classification);
-                throw feed.DeliveryState.ToException();
-            }
-
-            BeforeAssemblerIngestForTests?.Invoke();
-
-            RealtimeSubtitleProcessingResult? result = null;
-            var lostAfterRouting = false;
-            lock (_sync)
-            {
-                // Dispose/Stop が generation を進めたあとに、取り出し済みイベントで
-                // assembler を更新しない（flush 後の完全ペア欠落を防ぐ）。
-                if (_lifecycleGeneration != generation)
+                if (!IsCurrentGeneration(generation))
                 {
                     return;
                 }
 
+                if (streamEvent.Epoch != feed.Epoch)
+                {
+                    continue;
+                }
+
                 if (feed.DeliveryState.DidLoseEvents)
                 {
-                    lostAfterRouting = true;
-                }
-                else
-                {
-                    result = _subtitlePipeline.Process(streamEvent);
-                }
-            }
+                    _subtitlePipeline.HandleEventLoss(feed);
+                    if (IsCurrentGeneration(generation))
+                    {
+                        throw feed.DeliveryState.ToException();
+                    }
 
-            if (lostAfterRouting)
-            {
-                _subtitlePipeline.HandleEventLoss(feed);
-                if (IsCurrentGeneration(generation))
+                    return;
+                }
+
+                if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError error)
                 {
+                    var classification = EventDeliveryState.Classify(error);
+                    if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                    {
+                        continue;
+                    }
+
+                    feed.DeliveryState.TryRecordTermination(classification);
                     throw feed.DeliveryState.ToException();
                 }
 
-                return;
-            }
-
-            if (result is { } processed)
-            {
-                foreach (var update in processed.Updates)
+                // delta 文字列は monitor へ渡さない（検知は到着・進捗の事実だけを見る）。
+                lock (_sync)
                 {
-                    _subtitlePipeline.EmitSubtitleUpdate(update);
+                    switch (streamEvent.Event)
+                    {
+                        case RealtimeTranslationServerEvent.InputTranscriptDelta input
+                            when streamEvent.Lane.IsSource && input.Delta.Length > 0:
+                            _healthBookkeeper.RecordSourceProgress();
+                            break;
+                        case RealtimeTranslationServerEvent.OutputTranscriptDelta output when output.Delta.Length > 0:
+                            _healthBookkeeper.RecordTranslationProgress(streamEvent.Lane);
+                            break;
+                    }
                 }
 
-                switch (processed.RoutingAction)
+                if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptFailed failed)
                 {
-                    case RealtimeSubtitleRoutingAction.None:
-                        if (processed.IngestedUpdate.ShouldFinalize)
-                        {
-                            await _audioRouting.ResetForNextSegmentAsync().ConfigureAwait(false);
-                        }
+                    RealtimeServerErrorClassification classification =
+                        RealtimeServerErrorClassification.ClassifyTranscriptionFailure(failed.ErrorType, failed.Code);
+                    RealtimeSubtitleUpdate? invalidation;
+                    lock (_sync)
+                    {
+                        invalidation = _subtitlePipeline.DiscardFailedSource(failed.ItemId, failed.EventId);
+                    }
+                    feed.DeliveryState.NoteSourceFailureConsumed();
 
-                        break;
-                    case RealtimeSubtitleRoutingAction.Select select:
-                        await _audioRouting.ApplyAsync(
-                            select,
-                            cancellationToken).ConfigureAwait(false);
-                        break;
-                    case RealtimeSubtitleRoutingAction.Switch @switch:
-                        await _audioRouting.ApplyAsync(
-                            @switch,
-                            cancellationToken).ConfigureAwait(false);
-                        break;
+                    if (invalidation is { } failedUpdate)
+                    {
+                        _subtitlePipeline.EmitSubtitleUpdate(failedUpdate);
+                        await _audioRouting.ResetForNextSegmentAsync().ConfigureAwait(false);
+                    }
+
+                    if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                    {
+                        continue;
+                    }
+
+                    feed.DeliveryState.TryRecordTermination(classification);
+                    throw feed.DeliveryState.ToException();
+                }
+
+                BeforeAssemblerIngestForTests?.Invoke();
+
+                RealtimeSubtitleProcessingResult? result = null;
+                var lostAfterRouting = false;
+                lock (_sync)
+                {
+                    // Dispose/Stop が generation を進めたあとに、取り出し済みイベントで
+                    // assembler を更新しない（flush 後の完全ペア欠落を防ぐ）。
+                    if (_lifecycleGeneration != generation)
+                    {
+                        return;
+                    }
+
+                    if (feed.DeliveryState.DidLoseEvents)
+                    {
+                        lostAfterRouting = true;
+                    }
+                    else
+                    {
+                        result = _subtitlePipeline.Process(streamEvent);
+                    }
+                }
+
+                if (lostAfterRouting)
+                {
+                    _subtitlePipeline.HandleEventLoss(feed);
+                    if (IsCurrentGeneration(generation))
+                    {
+                        throw feed.DeliveryState.ToException();
+                    }
+
+                    return;
+                }
+
+                if (result is { } processed)
+                {
+                    foreach (var update in processed.Updates)
+                    {
+                        _subtitlePipeline.EmitSubtitleUpdate(update);
+                    }
+
+                    switch (processed.RoutingAction)
+                    {
+                        case RealtimeSubtitleRoutingAction.None:
+                            if (processed.IngestedUpdate.ShouldFinalize)
+                            {
+                                await _audioRouting.ResetForNextSegmentAsync().ConfigureAwait(false);
+                            }
+
+                            break;
+                        case RealtimeSubtitleRoutingAction.Select select:
+                            await _audioRouting.ApplyAsync(select, cancellationToken).ConfigureAwait(false);
+                            break;
+                        case RealtimeSubtitleRoutingAction.Switch @switch:
+                            await _audioRouting.ApplyAsync(@switch, cancellationToken).ConfigureAwait(false);
+                            break;
+                    }
                 }
             }
-            }
 
-            if (feed.DeliveryState.Completion.IsCompleted
-                || !await waitToRead.ConfigureAwait(false))
+            if (feed.DeliveryState.Completion.IsCompleted || !await waitToRead.ConfigureAwait(false))
             {
                 break;
             }
@@ -867,7 +862,8 @@ public sealed class InterpretationSession : IDisposable
 
         throw new RealtimeTranslationException(
             RealtimeTranslationErrorKind.RecoverableTransportFailure,
-            UserCopy.Current.Text("error.eventStreamStopped"));
+            UserCopy.Current.Text("error.eventStreamStopped")
+        );
     }
 
     private async Task RunTickerAsync(CancellationToken cancellationToken)

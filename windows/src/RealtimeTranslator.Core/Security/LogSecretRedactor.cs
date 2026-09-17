@@ -39,7 +39,8 @@ public static partial class LogSecretRedactor
     [GeneratedRegex(
         @"(?i)(?<![A-Za-z0-9])s\s*k\s*-\s*[A-Za-z0-9_\-](?:\s*[A-Za-z0-9_\-]){3,}",
         RegexOptions.None,
-        matchTimeoutMilliseconds: 200)]
+        matchTimeoutMilliseconds: 200
+    )]
     private static partial Regex ApiKeyPattern();
 
     [GeneratedRegex(@"(?i)bearer\s+\S+", RegexOptions.None, matchTimeoutMilliseconds: 200)]
@@ -54,6 +55,7 @@ public static partial class LogSecretRedactor
     [GeneratedRegex(
         @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
         RegexOptions.None,
-        matchTimeoutMilliseconds: 200)]
+        matchTimeoutMilliseconds: 200
+    )]
     private static partial Regex UuidPattern();
 }

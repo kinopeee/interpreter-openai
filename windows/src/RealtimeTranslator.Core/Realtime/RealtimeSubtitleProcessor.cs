@@ -9,18 +9,17 @@ internal abstract record RealtimeSubtitleRoutingAction
 {
     internal sealed record None : RealtimeSubtitleRoutingAction;
 
-    internal sealed record Select(RealtimeTranslationOutputLanguage? Target)
-        : RealtimeSubtitleRoutingAction;
+    internal sealed record Select(RealtimeTranslationOutputLanguage? Target) : RealtimeSubtitleRoutingAction;
 
-    internal sealed record Switch(RealtimeTranslationOutputLanguage? Target)
-        : RealtimeSubtitleRoutingAction;
+    internal sealed record Switch(RealtimeTranslationOutputLanguage? Target) : RealtimeSubtitleRoutingAction;
 }
 
 internal sealed record RealtimeSubtitleProcessingResult(
     IReadOnlyList<RealtimeSubtitleUpdate> Updates,
     RealtimeSubtitleRoutingAction RoutingAction,
     RealtimeSubtitleUpdate IngestedUpdate,
-    bool IsSourceUpdate);
+    bool IsSourceUpdate
+);
 
 internal sealed class RealtimeSubtitleProcessor
 {
@@ -88,7 +87,8 @@ internal sealed class RealtimeSubtitleProcessor
             IsTranslationCurrent: false,
             ShouldFinalize: false,
             _assembler.SegmentGeneration,
-            IsInvalidation: true);
+            IsInvalidation: true
+        );
     }
 
     internal RealtimeSubtitleUpdate? DiscardFailedSource(string? itemId, string? eventId)
@@ -126,14 +126,13 @@ internal sealed class RealtimeSubtitleProcessor
             IsTranslationCurrent: false,
             ShouldFinalize: false,
             _assembler.SegmentGeneration,
-            IsInvalidation: true);
+            IsInvalidation: true
+        );
     }
 
     internal RealtimeSubtitleUpdate? Tick(DateTimeOffset now) => _assembler.Tick(now);
 
-    internal RealtimeSubtitleProcessingResult? Process(
-        RealtimeTranslationStreamEvent streamEvent,
-        DateTimeOffset now)
+    internal RealtimeSubtitleProcessingResult? Process(RealtimeTranslationStreamEvent streamEvent, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(streamEvent);
 
@@ -143,11 +142,10 @@ internal sealed class RealtimeSubtitleProcessor
         }
 
         var deltaStart = _assembler.CurrentSourceLength;
-        var sourceDelta = streamEvent.Event
-            is RealtimeTranslationServerEvent.InputTranscriptDelta source
-            && streamEvent.Lane.IsSource
-            ? source.Delta
-            : null;
+        var sourceDelta =
+            streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptDelta source && streamEvent.Lane.IsSource
+                ? source.Delta
+                : null;
         var update = _assembler.Ingest(streamEvent, now);
         if (update is null)
         {
@@ -158,7 +156,8 @@ internal sealed class RealtimeSubtitleProcessor
             [update.Value],
             new RealtimeSubtitleRoutingAction.None(),
             update.Value,
-            sourceDelta is not null);
+            sourceDelta is not null
+        );
         if (sourceDelta is null)
         {
             return result;
@@ -172,7 +171,8 @@ internal sealed class RealtimeSubtitleProcessor
         string delta,
         int deltaStart,
         DateTimeOffset now,
-        RealtimeSubtitleProcessingResult result)
+        RealtimeSubtitleProcessingResult result
+    )
     {
         if (ActiveLanguagePair is not { } pair)
         {
@@ -182,9 +182,11 @@ internal sealed class RealtimeSubtitleProcessor
         RoutingSourceText = RoutingSourceTextWindow.Trim(RoutingSourceText + delta, pair);
         var evidence = SpokenLanguageDetector.RecentEvidence(RoutingSourceText, pair);
         OppositeScriptRun? oppositeRun = null;
-        if (pair != LanguagePair.EnEs
+        if (
+            pair != LanguagePair.EnEs
             && _selectedTranslationTarget is { } target
-            && pair.Counterpart(target) is { } currentLanguageForRun)
+            && pair.Counterpart(target) is { } currentLanguageForRun
+        )
         {
             _sourceBoundaryTracker.Observe(
                 _assembler.CurrentSourceText,
@@ -192,16 +194,17 @@ internal sealed class RealtimeSubtitleProcessor
                 _assembler.SegmentGeneration,
                 pair,
                 currentLanguageForRun,
-                0);
-            oppositeRun = _sourceBoundaryTracker.OppositeScriptRun(
-                _assembler.CurrentSourceText);
+                0
+            );
+            oppositeRun = _sourceBoundaryTracker.OppositeScriptRun(_assembler.CurrentSourceText);
         }
         var selection = TranslationTargetSelector.Select(
             pair,
             _selectedTranslationTarget,
             _reverseEvidenceCount,
             evidence,
-            oppositeRun);
+            oppositeRun
+        );
         _reverseEvidenceCount = selection.ReverseEvidenceCount;
 
         if (_selectedTranslationTarget is not { } currentTarget)
@@ -220,8 +223,7 @@ internal sealed class RealtimeSubtitleProcessor
 
         if (selection.Target == currentTarget)
         {
-            if (pair == LanguagePair.EnEs
-                && pair.Counterpart(currentTarget) is { } currentLanguage)
+            if (pair == LanguagePair.EnEs && pair.Counterpart(currentTarget) is { } currentLanguage)
             {
                 _sourceBoundaryTracker.Observe(
                     _assembler.CurrentSourceText,
@@ -229,27 +231,23 @@ internal sealed class RealtimeSubtitleProcessor
                     _assembler.SegmentGeneration,
                     pair,
                     currentLanguage,
-                    selection.ReverseEvidenceCount);
+                    selection.ReverseEvidenceCount
+                );
             }
-            _assembler.SetBoundaryCandidatePending(
-                _sourceBoundaryTracker.CandidateOffset is not null);
+            _assembler.SetBoundaryCandidatePending(_sourceBoundaryTracker.CandidateOffset is not null);
             return result;
         }
 
         var offset = _sourceBoundaryTracker.CandidateOffset ?? deltaStart;
         var split = _assembler.SplitForLanguageSwitch(offset, now);
         _sourceBoundaryTracker.Reset();
-        RoutingSourceText = RoutingSourceTextWindow.Trim(
-            _assembler.CurrentSourceText,
-            pair);
+        RoutingSourceText = RoutingSourceTextWindow.Trim(_assembler.CurrentSourceText, pair);
         _selectedTranslationTarget = selection.Target;
         _reverseEvidenceCount = 0;
         _assembler.ExpectLane(selection.Target);
         return result with
         {
-            Updates = split.Finalized is { } finalized
-                ? [finalized, split.Current]
-                : [split.Current],
+            Updates = split.Finalized is { } finalized ? [finalized, split.Current] : [split.Current],
             RoutingAction = new RealtimeSubtitleRoutingAction.Switch(selection.Target),
         };
     }
