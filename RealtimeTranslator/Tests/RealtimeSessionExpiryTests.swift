@@ -43,6 +43,16 @@ final class RealtimeSessionExpiryTests: XCTestCase {
         )
     }
 
+    // Given: 小数部なしの浮動小数点 expires_at を持つ session（1756324625.0）
+    // When: parseExpiresAt で読む
+    // Then: 整数値として返る（C# 側の受理規則と同じ）
+    func testParseIntegralFloatingExpiresAt() {
+        XCTAssertEqual(
+            RealtimeSessionExpiry.parseExpiresAt(fromSessionPayload: session(1_756_324_625.0)),
+            1_756_324_625
+        )
+    }
+
     // Given: expires_at が null の session
     // When: parseExpiresAt で読む
     // Then: 不明（nil）になる

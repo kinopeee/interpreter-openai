@@ -146,6 +146,14 @@
       }
     },
     {
+      "name": "session.created with integral floating expires_at",
+      "json": "{\"type\":\"session.created\",\"session\":{\"id\":\"sess_x\",\"type\":\"translation\",\"expires_at\":1756324625.0}}",
+      "expected": {
+        "kind": "sessionCreated",
+        "expiresAt": 1756324625
+      }
+    },
+    {
       "name": "session.created with string expires_at",
       "json": "{\"type\":\"session.created\",\"session\":{\"id\":\"sess_x\",\"type\":\"translation\",\"expires_at\":\"1756324625\"}}",
       "expected": {

@@ -52,6 +52,30 @@ public sealed class RealtimeSessionExpiryTests
         Assert.Null(RealtimeSessionExpiry.ParseExpiresAt(Session(JsonValue.Create(1756324625.5))));
     }
 
+    // Given: 小数部なしの浮動小数点 expires_at を持つ session（1756324625.0）
+    // When: ParseExpiresAt で読む
+    // Then: 整数値として返る（Swift 側の受理規則と同じ）
+    [Fact]
+    public void ParseIntegralFloatingExpiresAt()
+    {
+        Assert.Equal(
+            1756324625L,
+            RealtimeSessionExpiry.ParseExpiresAt(Session(JsonValue.Create(1756324625.0))));
+    }
+
+    // Given: double 表現可能だが 2^53 を超える・または非有限の expires_at
+    // When: ParseExpiresAt で読む
+    // Then: 不明（null）になる
+    [Theory]
+    [InlineData(1e300)]
+    [InlineData(1e16)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NaN)]
+    public void ParseOutOfRangeFloatingExpiresAtIsUnknown(double expiresAt)
+    {
+        Assert.Null(RealtimeSessionExpiry.ParseExpiresAt(Session(JsonValue.Create(expiresAt))));
+    }
+
     // Given: expires_at が null の session
     // When: ParseExpiresAt で読む
     // Then: 不明（null）になる
