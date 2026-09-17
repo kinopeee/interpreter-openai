@@ -398,12 +398,6 @@ async function setup({
     toolData(language).tool,
     sha256(canonicalJson(key)),
   );
-  const valid = await validateCache(cacheDir, key);
-  if (valid.valid) {
-    write(stdout, `reusing cache ${cacheDir}\n`);
-    return 0;
-  }
-  await fs.rm(cacheDir, { recursive: true, force: true });
   const partial = `${cacheDir}.partial-${process.pid}`;
   const parent = path.dirname(cacheDir);
   const prefix = `${path.basename(cacheDir)}.partial-`;
@@ -427,6 +421,12 @@ async function setup({
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
+  const valid = await validateCache(cacheDir, key);
+  if (valid.valid) {
+    write(stdout, `reusing cache ${cacheDir}\n`);
+    return 0;
+  }
+  await fs.rm(cacheDir, { recursive: true, force: true });
   await fs.mkdir(partial, { recursive: true });
   let result;
   try {

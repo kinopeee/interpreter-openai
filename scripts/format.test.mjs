@@ -559,6 +559,25 @@ test("setup removes stale partial caches but preserves live partial caches", asy
   );
   await assert.rejects(access(deadPartial));
   await assert.doesNotReject(access(livePartial));
+
+  /* Given: 有効なキャッシュがあり、所有者が終了した partial が残っている */
+  /* When: setup を再実行する */
+  /* Then: キャッシュ再利用で早期終了しても古い partial は削除される */
+  await mkdir(deadPartial, { recursive: true });
+  const second = streams();
+  assert.equal(
+    await createRunner({
+      root,
+      spawn,
+      platform: "linux",
+      arch: "x64",
+      stdout: second.stdout,
+      stderr: second.stderr,
+    }).run("csharp", "setup"),
+    0,
+  );
+  assert.match(second.stdoutText, /reusing cache/);
+  await assert.rejects(access(deadPartial));
 });
 
 test("tool version output is not used as provenance identity", async () => {
