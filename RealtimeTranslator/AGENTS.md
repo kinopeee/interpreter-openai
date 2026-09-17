@@ -66,6 +66,8 @@ xcodebuild test -scheme RealtimeTranslator \
   -enableCodeCoverage YES
 ```
 
+- 初回は `node scripts/format.mjs swift setup` で固定コミットから `swift-format` をビルドする（数分）。コミット前に `node scripts/format.mjs swift write` を実行する。CI（`.github/workflows/macos.yml`）は `swift check` を実行する。
+
 - 実行は`./scripts/run.sh`を使い、バイナリを直接起動しない。LaunchServices経由でTCC権限を認識させる。
 - Devin CLI などサンドボックス化されたエージェント環境では Keychain の署名鍵と `log` コマンドにアクセスできない（`xcodebuild` は「Signing certificate is invalid」、`codesign` は `errSecInternalComponent`、`log` は「Cannot run while sandboxed」で失敗する）。証明書の失効と誤認せず、署名付き `xcodebuild`・`./scripts/run.sh`・`log stream` / `log show` は利用者のターミナルで実行する。
 - macOS の `xcodebuild test` はローカルおよび `.github/workflows/release.yml` の package (macOS) ジョブでも検証する。

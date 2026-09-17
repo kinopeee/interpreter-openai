@@ -49,6 +49,8 @@ Linux 上で Windows Core を検証するコマンド:
 ./scripts/ci-windows-core.sh
 ```
 
+- 初回は `node scripts/format.mjs csharp setup` で `dotnet tool install` を `.devin/format/tools/` に行う。コミット前に `node scripts/format.mjs csharp write` を実行する。`.depot/workflows/windows-core.yml` と `.github/workflows/windows.yml` は `csharp check` を実行する。
+
 - 警告は`TreatWarningsAsErrors`で失敗する。抑制ではなく修正する。
 - 検証範囲と実機確認の要件はルートの「検証の選び方」に従う。権限、実API、実マイク、複数モニタ、フルスクリーン前面表示は [VALIDATION.md の Windows版](../VALIDATION.md#windows版) を使う。
 - Windows VM での起動・GUI検証は [windows-realtimetranslator-gui-testing](../.agents/skills/windows-tray-app-testing/SKILL.md)、マイクなしの字幕オーバーレイ視覚検証は [wpf-subtitle-overlay-visual-testing](../.agents/skills/wpf-subtitle-overlay-visual-testing/SKILL.md) を参照する。

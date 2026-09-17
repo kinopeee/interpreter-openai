@@ -20,6 +20,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/cache@v4
+        with:
+          path: .devin/format/tools
+          key: format-swift-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/format.mjs', '.devin/format/tool-versions.json', '.devin/format/swift-format.Package.resolved') }}
+
+      - name: Check Swift formatting
+        run: |
+          set -euo pipefail
+          node scripts/format.mjs swift setup
+          node scripts/format.mjs swift check
+
       - name: Generate the Xcode project
         run: |
           set -euo pipefail

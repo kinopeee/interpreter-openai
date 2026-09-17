@@ -57,6 +57,14 @@ OpenAI Realtime Translation によるリアルタイム字幕アプリ。macOS 2
 
 - `shared/fixtures/v<N>/` は両実装のバージョン付き契約正本。現行の subtitle 契約は v2、その他は v1 とし、Swift テストと Windows 版の同値性を保つ。既存の subtitle v1 も保持し、`scripts/ci-shared-contracts.sh` で全バージョンを検査する。
 
+## コード整形
+
+- `swift-format` / `CSharpier` は `.devin/format/tool-versions.json` で固定する。
+- `node scripts/format.mjs <swift|csharp> <setup|check|write>` を使う。`check` は macos / windows / windows-core workflow のCIで実行する。
+- Swift / C# の変更前に `write` を実行してからコミットする。
+- formatter設定は `.devin/format/` に置く。設定やバージョンは振る舞い変更と同じコミットで変更しない。
+- 整形コミットは `.git-blame-ignore-revs` に登録する（`git config blame.ignoreRevsFile .git-blame-ignore-revs`）。
+
 ## 検証の選び方
 
 | 変更内容 | 必要な検証 |
@@ -65,6 +73,8 @@ OpenAI Realtime Translation によるリアルタイム字幕アプリ。macOS 2
 | Swift / C# のロジック | 対象プラットフォームのビルド・テストと、変更した振る舞いの回帰検証 |
 | 共有契約・両実装に関わる仕様 | `./scripts/ci-shared-contracts.sh` と両実装の関連テスト |
 | UI・音声経路 | 対象プラットフォームのビルド・全テストに加え、影響する言語ペアの両方向で実際に1文ずつ話して確認 |
+
+- Swift / C# を変更した場合は `node scripts/format.mjs <lang> check` を通す。
 
 複数の区分に該当する場合は、その検証を組み合わせる。文書のみの変更にはアプリのビルド・実行テストを一律に要求しない。
 
