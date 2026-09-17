@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using RealtimeTranslator.Core.Audio;
 using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Realtime;
 using Xunit;
@@ -124,10 +125,10 @@ public sealed class InterpretationSessionTranslationLaneMergeTests
     private sealed class FakeAudioCapture : IRealtimeAudioCapture
     {
         private readonly object _sync = new();
-        private Channel<ReadOnlyMemory<byte>> _frames =
-            Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+        private Channel<CapturedAudioFrame> _frames =
+            Channel.CreateUnbounded<CapturedAudioFrame>();
 
-        public ChannelReader<ReadOnlyMemory<byte>> Frames
+        public ChannelReader<CapturedAudioFrame> Frames
         {
             get
             {
@@ -144,7 +145,7 @@ public sealed class InterpretationSessionTranslationLaneMergeTests
             {
                 if (_frames.Reader.Completion.IsCompleted)
                 {
-                    _frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+                    _frames = Channel.CreateUnbounded<CapturedAudioFrame>();
                 }
             }
 

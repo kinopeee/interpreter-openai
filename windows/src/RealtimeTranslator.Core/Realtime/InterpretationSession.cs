@@ -28,7 +28,7 @@ public interface IApiKeyStore
 /// <summary>24kHz / PCM16 / mono / 100ms frame を供給する録音源。</summary>
 public interface IRealtimeAudioCapture
 {
-    ChannelReader<ReadOnlyMemory<byte>> Frames { get; }
+    ChannelReader<CapturedAudioFrame> Frames { get; }
 
     Task StartAsync(CancellationToken cancellationToken = default);
 
@@ -52,6 +52,8 @@ public sealed class InterpretationSession : IDisposable
     private readonly TimeSpan _tickInterval;
     private readonly Func<LanguagePair> _languagePairProvider;
     private readonly RealtimeSubtitleProcessor _processor = new();
+    private readonly AudioLossTracker _audioLossTracker = new();
+    private readonly long _startTimestamp;
     private readonly object _sync = new();
     private readonly SemaphoreSlim _routingGate = new(1, 1);
     private readonly SessionHealthMonitor _healthMonitor;
@@ -79,6 +81,8 @@ public sealed class InterpretationSession : IDisposable
     internal Action? BeforeAssemblerIngestForTests { get; set; }
 
     internal Action? BeforeRoutingResetForTests { get; set; }
+
+    internal Func<Task>? BeforeAudioLossRoutingResetForTests { get; set; }
 
     public InterpretationSession(
         IApiKeyStore apiKeyStore,
@@ -112,6 +116,7 @@ public sealed class InterpretationSession : IDisposable
         _tickInterval = tickInterval ?? DefaultTickInterval;
         _languagePairProvider = languagePairProvider ?? (() => LanguagePair.JaEn);
         _healthMonitor = new SessionHealthMonitor(healthThresholds);
+        _startTimestamp = _timeProvider.GetTimestamp();
     }
 
     public event EventHandler<TranslationState>? StateChanged;
@@ -137,6 +142,17 @@ public sealed class InterpretationSession : IDisposable
             lock (_sync)
             {
                 return _state;
+            }
+        }
+    }
+
+    public AudioLossMetrics AudioLossMetrics
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _audioLossTracker.Metrics;
             }
         }
     }
@@ -190,6 +206,7 @@ public sealed class InterpretationSession : IDisposable
             generation = _lifecycleGeneration;
             _connectionCountInGeneration = 0;
             _reconnectBudget.Reset();
+            _audioLossTracker.Reset();
             // 録音開始時点のペアを世代全体で固定する。録音中の設定変更は再接続でも反映しない
             // （VALIDATION: 停止→次の録音開始後にだけ新しいペアが反映される）。
             _sessionLanguagePair = _languagePairProvider();
@@ -590,8 +607,43 @@ public sealed class InterpretationSession : IDisposable
             {
                 _healthMonitor.RecordCapture(
                     HealthNow(),
-                    Pcm16AudioActivity.NormalizedPeakAmplitude(frame.Span)
+                    Pcm16AudioActivity.NormalizedPeakAmplitude(frame.Pcm16.Span)
                         > _healthMonitor.Thresholds.AudioActivityPeakFloor);
+            }
+
+            var queueWaitMilliseconds = Math.Max(
+                0,
+                (int)_timeProvider.GetElapsedTime(frame.CapturedAtTimestamp).TotalMilliseconds);
+            var atMilliseconds = Math.Max(
+                0,
+                (long)_timeProvider.GetElapsedTime(_startTimestamp).TotalMilliseconds);
+            AudioLossObservation observation;
+            RealtimeSubtitleUpdate? invalidation = null;
+            lock (_sync)
+            {
+                observation = _audioLossTracker.Observe(
+                    frame.Generation,
+                    frame.Sequence,
+                    frame.DiscardedMilliseconds,
+                    queueWaitMilliseconds,
+                    atMilliseconds);
+                if (observation.DidLose)
+                {
+                    invalidation = _processor.MarkAudioLoss(_timeProvider.GetUtcNow());
+                }
+            }
+
+            if (invalidation is { } lossUpdate)
+            {
+                EmitSubtitleUpdate(lossUpdate);
+                await ResetAudioRoutingAfterAudioLossAsync().ConfigureAwait(false);
+            }
+
+            if (observation.ShouldReconnect)
+            {
+                throw new RealtimeTranslationException(
+                    RealtimeTranslationErrorKind.RecoverableTransportFailure,
+                    UserCopy.Current.Text("error.audioInputStopped"));
             }
 
             lock (_sync)
@@ -599,7 +651,7 @@ public sealed class InterpretationSession : IDisposable
                 _healthMonitor.RecordSendStart(HealthNow());
             }
 
-            await _dualClient.AppendAudioFrameAsync(frame, cancellationToken).ConfigureAwait(false);
+            await _dualClient.AppendAudioFrameAsync(frame.Pcm16, cancellationToken).ConfigureAwait(false);
             lock (_sync)
             {
                 _healthMonitor.RecordSendSuccess(HealthNow());
@@ -838,6 +890,33 @@ public sealed class InterpretationSession : IDisposable
         }
     }
 
+    private async Task ResetAudioRoutingAfterAudioLossAsync()
+    {
+        await _routingGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (BeforeAudioLossRoutingResetForTests is { } hook)
+            {
+                await hook().ConfigureAwait(false);
+            }
+
+            bool skip;
+            lock (_sync)
+            {
+                skip = _processor.HasSelectedTranslationTarget;
+            }
+
+            if (!skip)
+            {
+                await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _routingGate.Release();
+        }
+    }
+
     private async Task ApplySourceRoutingTransportAsync(
         RealtimeSubtitleRoutingAction action,
         CancellationToken cancellationToken)
@@ -975,8 +1054,10 @@ public sealed class InterpretationSession : IDisposable
         RealtimeSubtitleUpdate? pending;
         lock (_sync)
         {
-            pending = _processor.Tick(
-                _timeProvider.GetUtcNow() + RealtimeSubtitleAssembler.IdleFinalizeInterval);
+            pending = _processor.IsCurrentSegmentTainted
+                ? _processor.DiscardUnconfirmed()
+                : _processor.Tick(
+                    _timeProvider.GetUtcNow() + RealtimeSubtitleAssembler.IdleFinalizeInterval);
         }
 
         if (pending is { } update)
