@@ -35,7 +35,7 @@ public sealed class EventDeliveryState
     private int _lossCapacity;
     private EventDeliveryTermination _termination;
     private string? _terminationMessage;
-    private bool _didFailSourceItem;
+    private int _pendingSourceFailureCount;
 
     public EventDeliveryState(int epoch)
     {
@@ -99,22 +99,44 @@ public sealed class EventDeliveryState
         }
     }
 
-    public bool DidFailSourceItem
+    public int PendingSourceFailureCount
     {
         get
         {
             lock (_sync)
             {
-                return _didFailSourceItem;
+                return _pendingSourceFailureCount;
             }
         }
     }
 
-    public void MarkSourceItemFailed()
+    public bool HasPendingSourceFailure
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _pendingSourceFailureCount > 0;
+            }
+        }
+    }
+
+    public void NoteSourceFailureQueued()
     {
         lock (_sync)
         {
-            _didFailSourceItem = true;
+            _pendingSourceFailureCount++;
+        }
+    }
+
+    public void NoteSourceFailureConsumed()
+    {
+        lock (_sync)
+        {
+            if (_pendingSourceFailureCount > 0)
+            {
+                _pendingSourceFailureCount--;
+            }
         }
     }
 

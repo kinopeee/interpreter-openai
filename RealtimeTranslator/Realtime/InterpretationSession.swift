@@ -51,6 +51,7 @@ final class InterpretationSession {
     private var sessionLanguagePair: LanguagePair?
     private var activeFeed: EventFeed?
     private var handledLossRunToken: Int?
+    internal var afterFailedSourceTerminationForTests: (() -> Void)?
 
     var audioLossMetrics: AudioLossMetrics {
         audioLossTracker.metrics
@@ -311,6 +312,9 @@ final class InterpretationSession {
                 self.handleEventLoss(feed)
                 throw feed.deliveryState.makeError()
             }
+            if feed.deliveryState.termination != .none {
+                self.afterFailedSourceTerminationForTests?()
+            }
             // 欠落なしの終了理由は stream 上の error event が消費側へ届くので、そちらに任せる。
             // ただし tryRecordTermination の直後に error 投入が満杯で recordLoss すると
             // completed 済みのため waitForCompletion は再起床しない。欠落を再確認する。
@@ -334,6 +338,9 @@ final class InterpretationSession {
         _ = await eventTask.result
         if feed.deliveryState.didLoseEvents {
             handleEventLoss(feed)
+        }
+        if feed.deliveryState.termination != .none {
+            discardFailedSourceIfNeeded(feed)
         }
         try firstResult.get()
     }
@@ -453,6 +460,7 @@ final class InterpretationSession {
             }
 
             if case .inputTranscriptFailed(let itemID, let eventID, let code, let errorType) = streamEvent.event {
+                feed.deliveryState.noteSourceFailureConsumed()
                 let classification = EventDeliveryState.classifyTranscriptionFailure(
                     errorType: errorType,
                     code: code
@@ -549,7 +557,9 @@ final class InterpretationSession {
             }
         }
         processor.clearBoundaryCandidate()
-        if processor.isCurrentSegmentTainted {
+        if let feed = activeFeed, feed.deliveryState.hasPendingSourceFailure {
+            discardFailedSourceIfNeeded(feed)
+        } else if processor.isCurrentSegmentTainted {
             let invalidation = processor.discardUnconfirmed()
             displayScheduler.renderNow(invalidation)
         } else {
@@ -577,6 +587,7 @@ final class InterpretationSession {
             }
             if case .inputTranscriptFailed(let itemID, let eventID, _, _) = streamEvent.event {
                 guard streamEvent.epoch == feed.runToken else { continue }
+                feed.deliveryState.noteSourceFailureConsumed()
                 if let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID) {
                     displayScheduler.renderNow(invalidation)
                 }
@@ -630,7 +641,7 @@ final class InterpretationSession {
         if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
             return
         }
-        if let feed = activeFeed, feed.deliveryState.didFailSourceItem {
+        if let feed = activeFeed, feed.deliveryState.hasPendingSourceFailure {
             discardFailedSourceIfNeeded(feed)
             return
         }
@@ -659,10 +670,13 @@ final class InterpretationSession {
     }
 
     private func discardFailedSourceIfNeeded(_ feed: EventFeed) {
-        guard feed.deliveryState.didFailSourceItem else { return }
+        guard feed.deliveryState.hasPendingSourceFailure else { return }
         if let invalidation = processor.discardFailedSource(itemID: nil, eventID: nil) {
             displayScheduler.discardPending()
             displayScheduler.renderNow(invalidation)
+        }
+        while feed.deliveryState.hasPendingSourceFailure {
+            feed.deliveryState.noteSourceFailureConsumed()
         }
     }
 

@@ -197,8 +197,8 @@ actor RealtimeSourceTranscriptionConnection {
                             errorType: error?["type"] as? String,
                             code: error?["code"] as? String
                         )
+                        deliveryYielder?.deliveryState.noteSourceFailureQueued()
                         if classification.disposition != .keepAlive {
-                            deliveryYielder?.deliveryState.markSourceItemFailed()
                             deliveryYielder?.deliveryState.tryRecordTermination(classification)
                         }
                         guard deliveryYielder?.deliver(

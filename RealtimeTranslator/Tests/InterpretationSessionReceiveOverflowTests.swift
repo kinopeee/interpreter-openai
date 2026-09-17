@@ -424,12 +424,20 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         }
 
         // When: termination が完了してから failed イベントを配送する
-        await dual.publishSourceFailureAfterTermination(
-            itemID: "ordering-item",
-            eventID: nil,
-            code: nil,
-            errorType: "server_error"
-        )
+        let fallbackGate = CheckedContinuationBox()
+        session.afterFailedSourceTerminationForTests = {
+            fallbackGate.resume()
+        }
+        let failureTask = Task {
+            await dual.publishSourceFailureAfterTermination(
+                itemID: "ordering-item",
+                eventID: nil,
+                code: nil,
+                errorType: "server_error",
+                waitUntilFallback: fallbackGate
+            )
+        }
+        await failureTask.value
         await waitForCondition {
             session.state == .listening
                 && dual.startCallCount >= 2
@@ -593,8 +601,92 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         await session.stop()
 
         XCTAssertEqual(session.state, .idle)
+        XCTAssertTrue(delegate.snapshots.contains(where: \.isInvalidation))
         XCTAssertFalse(delegate.finalizedSnapshots.contains {
             $0.sourceText == "停止中の字幕" || $0.translatedText == "Stopping subtitle"
+        })
+    }
+
+    // Given: 停止前に未確定の字幕ペアを表示し、keepAlive failed が配送前にキューされた session
+    // When: merge 停止で failed イベントが drain へ入る前に失われる
+    // Then: 停止は完了し、未確定ペアを無効化して確定しない
+    func testStopDrainDroppedKeepAliveFailureInvalidatesPendingPair() async {
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+
+        await session.start()
+        await waitForCondition { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "停止drop字幕", eventID: nil, elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Dropped failure", eventID: nil, elapsedMs: 20)
+        )
+        await waitForCondition {
+            delegate.latestSnapshot?.current.sourceText == "停止drop字幕"
+                && delegate.latestSnapshot?.current.translatedText == "Dropped failure"
+        }
+
+        dual.queueSourceFailureWithoutDrain()
+        await session.stop()
+
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertTrue(delegate.snapshots.contains(where: \.isInvalidation))
+        XCTAssertFalse(delegate.finalizedSnapshots.contains {
+            $0.sourceText == "停止drop字幕" || $0.translatedText == "Dropped failure"
+        })
+    }
+
+    // Given: keepAlive failed を正常に消費して pending counter が空になった session
+    // When: その後に新しい字幕ペアを表示して停止する
+    // Then: 新しい字幕ペアは停止時に確定される
+    func testConsumedKeepAliveFailureDoesNotDiscardLaterPair() async {
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 50_000_000
+        )
+        session.delegate = delegate
+
+        await session.start()
+        await waitForCondition { session.state == .listening }
+        dual.queueAndPublishSourceFailure(
+            itemID: "consumed-item",
+            eventID: "consumed-event",
+            code: "audio_unintelligible",
+            errorType: nil
+        )
+        await waitForCondition { dual.pendingSourceFailureCount == 0 }
+
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "有効な後続字幕", eventID: nil, elapsedMs: 10)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Valid follow-up", eventID: nil, elapsedMs: 20)
+        )
+        await waitForCondition {
+            delegate.latestSnapshot?.current.sourceText == "有効な後続字幕"
+                && delegate.latestSnapshot?.current.translatedText == "Valid follow-up"
+        }
+
+        await session.stop()
+
+        XCTAssertTrue(delegate.finalizedSnapshots.contains {
+            $0.sourceText == "有効な後続字幕" && $0.translatedText == "Valid follow-up"
         })
     }
 

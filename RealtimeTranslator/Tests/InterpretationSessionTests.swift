@@ -1815,6 +1815,10 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
     }
 
+    var pendingSourceFailureCount: Int {
+        state.withLock { $0.deliveryState.pendingSourceFailureCount }
+    }
+
     var events: AsyncStream<RealtimeTranslationStreamEvent> {
         get async {
             state.withLock(\.eventStream)
@@ -1964,13 +1968,37 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         itemID: String?,
         eventID: String?,
         code: String?,
-        errorType: String?
+        errorType: String?,
+        waitUntilFallback: CheckedContinuationBox? = nil
     ) async {
         state.withLock { state in
-            state.deliveryState.markSourceItemFailed()
+            state.deliveryState.noteSourceFailureQueued()
             state.deliveryState.tryRecordTermination(.recoverableServerError)
         }
-        await Task.yield()
+        if let waitUntilFallback {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                waitUntilFallback.install(continuation)
+            }
+        }
+        publishSourceFailure(
+            itemID: itemID,
+            eventID: eventID,
+            code: code,
+            errorType: errorType
+        )
+    }
+
+    func queueSourceFailureWithoutDrain() {
+        state.withLock { $0.deliveryState.noteSourceFailureQueued() }
+    }
+
+    func queueAndPublishSourceFailure(
+        itemID: String?,
+        eventID: String?,
+        code: String?,
+        errorType: String?
+    ) {
+        state.withLock { $0.deliveryState.noteSourceFailureQueued() }
         publishSourceFailure(
             itemID: itemID,
             eventID: eventID,

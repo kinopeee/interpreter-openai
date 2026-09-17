@@ -44,7 +44,7 @@ final class EventDeliveryState: @unchecked Sendable {
         var lossStage: EventDeliveryStage?
         var lossCapacity: Int?
         var termination: EventDeliveryTermination = .none
-        var didFailSourceItem = false
+        var pendingSourceFailureCount = 0
         var completed = false
         var waiters: [CheckedContinuation<Void, Never>] = []
     }
@@ -72,12 +72,22 @@ final class EventDeliveryState: @unchecked Sendable {
         state.withLock { $0.termination }
     }
 
-    var didFailSourceItem: Bool {
-        state.withLock { $0.didFailSourceItem }
+    var pendingSourceFailureCount: Int {
+        state.withLock { $0.pendingSourceFailureCount }
     }
 
-    func markSourceItemFailed() {
-        state.withLock { $0.didFailSourceItem = true }
+    var hasPendingSourceFailure: Bool {
+        state.withLock { $0.pendingSourceFailureCount > 0 }
+    }
+
+    func noteSourceFailureQueued() {
+        state.withLock { $0.pendingSourceFailureCount += 1 }
+    }
+
+    func noteSourceFailureConsumed() {
+        state.withLock {
+            $0.pendingSourceFailureCount = max(0, $0.pendingSourceFailureCount - 1)
+        }
     }
 
     func recordLoss(stage: EventDeliveryStage, capacity: Int) {

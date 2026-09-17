@@ -75,6 +75,8 @@ public sealed class InterpretationSession : IDisposable
 
     internal Func<Task>? BeforeAudioLossRoutingResetForTests { get; set; }
 
+    internal Action? AfterFailedSourceFallbackForTests { get; set; }
+
     public InterpretationSession(
         IApiKeyStore apiKeyStore,
         IRealtimeAudioCapture audioCapture,
@@ -635,6 +637,7 @@ public sealed class InterpretationSession : IDisposable
 
             if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptFailed failed)
             {
+                feed.DeliveryState.NoteSourceFailureConsumed();
                 RealtimeServerErrorClassification classification =
                     RealtimeServerErrorClassification.ClassifyTranscriptionFailure(
                         failed.ErrorType,
@@ -928,7 +931,7 @@ public sealed class InterpretationSession : IDisposable
             HandleEventLoss(feed);
             return;
         }
-        if (feed is { DeliveryState.DidFailSourceItem: true })
+        if (feed is { DeliveryState.HasPendingSourceFailure: true })
         {
             DiscardFailedSourceIfNeeded(feed);
             return;
@@ -951,7 +954,7 @@ public sealed class InterpretationSession : IDisposable
 
     private void DiscardFailedSourceIfNeeded(RealtimeEventFeed feed)
     {
-        if (!feed.DeliveryState.DidFailSourceItem)
+        if (!feed.DeliveryState.HasPendingSourceFailure)
         {
             return;
         }
@@ -966,6 +969,12 @@ public sealed class InterpretationSession : IDisposable
         {
             EmitSubtitleUpdate(failedUpdate);
         }
+
+        while (feed.DeliveryState.HasPendingSourceFailure)
+        {
+            feed.DeliveryState.NoteSourceFailureConsumed();
+        }
+        AfterFailedSourceFallbackForTests?.Invoke();
     }
 
     /// <summary>
@@ -1001,7 +1010,8 @@ public sealed class InterpretationSession : IDisposable
             return;
         }
 
-        var events = feed?.Events ?? _dualClient.Feed.Events;
+        var currentFeed = feed ?? _dualClient.Feed;
+        var events = currentFeed.Events;
         while (events.TryRead(out var streamEvent))
         {
             if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError)
@@ -1011,12 +1021,12 @@ public sealed class InterpretationSession : IDisposable
 
             if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptFailed failed)
             {
-                var expectedEpoch = feed?.Epoch ?? _dualClient.Feed.Epoch;
-                if (streamEvent.Epoch != expectedEpoch)
+                if (streamEvent.Epoch != currentFeed.Epoch)
                 {
                     continue;
                 }
 
+                currentFeed.DeliveryState.NoteSourceFailureConsumed();
                 RealtimeSubtitleUpdate? invalidation;
                 lock (_sync)
                 {
