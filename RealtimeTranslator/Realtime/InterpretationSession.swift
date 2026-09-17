@@ -14,6 +14,18 @@ protocol InterpretationSessionDelegate: AnyObject {
         _ session: InterpretationSession,
         didEncounterMessage message: String
     )
+    /// 受信停止監視の検知（診断のみ）。
+    func interpretationSession(
+        _ session: InterpretationSession,
+        didEmitHealthDetection detection: SessionHealthDetection
+    )
+}
+
+extension InterpretationSessionDelegate {
+    func interpretationSession(
+        _: InterpretationSession,
+        didEmitHealthDetection _: SessionHealthDetection
+    ) {}
 }
 
 @MainActor
@@ -33,6 +45,9 @@ final class InterpretationSession {
     private let tuningProvider: @MainActor () -> RealtimeSessionTuning
     private let languagePairProvider: @MainActor () -> LanguagePair
     private var reconnectBudget: ReconnectBudget
+    /// 受信停止監視用の単調時計と壁時計（remaining は受信時に一度だけ壁時計で算出）。
+    private let healthNow: ReconnectBudget.Now
+    private let wallClockNow: @Sendable () -> TimeInterval
 
     private(set) var state: TranslationState = .idle {
         didSet {
@@ -51,6 +66,21 @@ final class InterpretationSession {
     private var sessionLanguagePair: LanguagePair?
     private var activeFeed: EventFeed?
     private var handledLossRunToken: Int?
+    private var healthMonitor = SessionHealthMonitor()
+    private var healthReceiveCounts: [RealtimeTranslationLane: Int] = [:]
+    private var healthGenerationEnded = true
+    /// 世代未開始（pre-Listening）の終了診断用に、接続試行の開始時刻と意図 epoch を保持する。
+    /// epoch は dual client の予約済み epoch（handshake 失敗時も予約値を保持し、
+    /// APIキー欠落時は直前の予約 epoch）。
+    private var healthAttemptStart: Duration?
+    private var healthAttemptEpoch = 0
+    private var healthAttemptGeneration = 0
+    private var lastHealthSnapshotLogAt: Duration?
+    private var connectionCountInGeneration = 0
+    /// テスト・診断用の最新 snapshot（検知には使わない）。
+    private(set) var latestHealthSnapshot: SessionHealthSnapshot?
+    /// テスト・診断用の最新 termination diagnostic（各試行で最大 1 件）。
+    private(set) var latestHealthTermination: SessionTerminationDiagnostic?
     internal var afterFailedSourceTerminationForTests: (() -> Void)?
 
     var audioLossMetrics: AudioLossMetrics {
@@ -68,7 +98,10 @@ final class InterpretationSession {
         tuningProvider: @escaping @MainActor () -> RealtimeSessionTuning = { .default },
         languagePairProvider: @escaping @MainActor () -> LanguagePair = { .jaEn },
         reconnectBudget: ReconnectBudget = ReconnectBudget(),
-        displayScheduler: SubtitleDisplayScheduler = SubtitleDisplayScheduler()
+        displayScheduler: SubtitleDisplayScheduler = SubtitleDisplayScheduler(),
+        healthNow: @escaping ReconnectBudget.Now = ReconnectBudget.continuousNow,
+        wallClockNow: @escaping @Sendable () -> TimeInterval = { Date().timeIntervalSince1970 },
+        healthThresholds: SessionHealthThresholds = SessionHealthThresholds()
     ) {
         self.apiKeyStore = apiKeyStore
         self.audioCapture = audioCapture
@@ -80,6 +113,9 @@ final class InterpretationSession {
         self.tuningProvider = tuningProvider
         self.languagePairProvider = languagePairProvider
         self.reconnectBudget = reconnectBudget
+        self.healthNow = healthNow
+        self.wallClockNow = wallClockNow
+        self.healthMonitor.thresholds = healthThresholds
         self.displayScheduler.delegate = self
     }
 
@@ -98,6 +134,7 @@ final class InterpretationSession {
 
         lifecycleGeneration += 1
         let generation = lifecycleGeneration
+        connectionCountInGeneration = 0
         reconnectBudget.reset()
         audioLossTracker.reset()
         // 録音開始時点のペアを世代全体で固定する。録音中の設定変更は再接続でも反映しない
@@ -145,25 +182,30 @@ final class InterpretationSession {
     private func runSessionLoop(generation: Int) async {
         while generation == lifecycleGeneration {
             var reconnectDetail: String?
+            var recoverableError: Error?
             do {
                 try await connectAndStream(generation: generation)
                 return
             } catch is CancellationError {
                 return
             } catch let error as RealtimeTranslationError where error.isRecoverable {
-                // recoverable: fall through to reconnect
+                // recoverable: 終了診断を記録して再接続へ進む
+                recoverableError = error
                 if case .recoverableTransportFailure(let detail) = error {
                     reconnectDetail = detail
                 }
             } catch let error as URLError where Self.isTransientURLError(error) {
                 // 一時的な URLSession 切断のみ再接続
-            } catch is URLSessionWebSocketTransportError {
+                recoverableError = error
+            } catch let error as URLSessionWebSocketTransportError {
                 // transport 境界の未接続など: fall through to reconnect
+                recoverableError = error
             } catch let error as NSError where Self.isTransientPOSIXError(error) {
                 // URLError に bridge されない POSIX 切断
-                _ = error
+                recoverableError = error
             } catch let error as RealtimeTranslationError {
                 guard generation == lifecycleGeneration else { return }
+                await recordHealthTermination(error)
                 await tearDownStreaming()
                 // epoch/buffer を捨てる前に完全ペアを確定し、オプトイン字幕記録へ渡す。
                 flushPendingFinalizeIfNeeded()
@@ -174,11 +216,13 @@ final class InterpretationSession {
                 case .inputDeviceChanged:
                     // マイク切断/切替は再接続。バナーに理由を残す。
                     reconnectDetail = error.localizedDescription
+                    recoverableError = error
                 case .pipelineOverloaded:
                     // フレーム経路の背圧は再接続で立て直す
-                    break
+                    recoverableError = error
                 default:
                     guard generation == lifecycleGeneration else { return }
+                    await recordHealthTermination(kind: .other)
                     await tearDownStreaming()
                     flushPendingFinalizeIfNeeded()
                     enterError(error)
@@ -187,6 +231,7 @@ final class InterpretationSession {
             } catch {
                 // 未知のアプリエラーは再接続せず即 error（予測可能性を優先）。
                 guard generation == lifecycleGeneration else { return }
+                await recordHealthTermination(kind: .other)
                 await tearDownStreaming()
                 flushPendingFinalizeIfNeeded()
                 enterError(error)
@@ -196,6 +241,11 @@ final class InterpretationSession {
             guard generation == lifecycleGeneration else { return }
             let decision = reconnectBudget.recordFailure()
             guard decision.kind == .wait else {
+                await recordHealthTermination(
+                    kind: decision.kind == .budgetExhausted
+                        ? .reconnectBudgetExhausted
+                        : .reconnectAttemptLimit
+                )
                 await tearDownStreaming()
                 flushPendingFinalizeIfNeeded()
                 enterErrorMessage(
@@ -216,6 +266,10 @@ final class InterpretationSession {
                 aggregator.setStatusBanner(reconnectingBanner(detail: nil))
             }
             publishSubtitles()
+            // recoverable 失敗も終了診断として記録する（診断のみ、挙動は変えない）。
+            if let recoverableError {
+                await recordHealthTermination(recoverableError)
+            }
             await tearDownStreaming(keepSubtitles: true)
 
             // 停止（cancel）で待ちを即座に打ち切る。ループ先頭の世代確認で再接続を始めない。
@@ -259,17 +313,29 @@ final class InterpretationSession {
     }
 
     private func connectAndStream(generation: Int) async throws {
+        connectionCountInGeneration += 1
+        healthAttemptStart = healthNow()
+        healthAttemptEpoch = await dualClient.reservedEpoch
+        healthAttemptGeneration = lifecycleGeneration
         let apiKey = try requireAPIKey()
         state = .connecting
         aggregator.setStatusBanner(UiCopy.text("banner.connecting"))
         publishSubtitles()
 
         let pair = sessionLanguagePair ?? languagePairProvider()
-        try await dualClient.start(
-            apiKey: apiKey,
-            tuning: tuningProvider().forPair(pair),
-            pair: pair
-        )
+        do {
+            try await dualClient.start(
+                apiKey: apiKey,
+                tuning: tuningProvider().forPair(pair),
+                pair: pair
+            )
+        } catch {
+            // start は network 処理の前に connectionEpoch を予約済み。失敗した handshake の
+            // epoch で診断するため読み直す。
+            healthAttemptEpoch = await dualClient.reservedEpoch
+            throw error
+        }
+        healthAttemptEpoch = await dualClient.reservedEpoch
         guard generation == lifecycleGeneration else {
             await dualClient.forceClose()
             return
@@ -293,6 +359,33 @@ final class InterpretationSession {
 
         state = .listening
         reconnectBudget.recordListening()
+
+        let monitorNow = healthNow()
+        healthMonitor.beginGeneration(
+            generation: generation,
+            epoch: epoch,
+            isRecovery: connectionCountInGeneration > 1,
+            now: monitorNow
+        )
+        healthGenerationEnded = false
+        lastHealthSnapshotLogAt = nil
+        // handshake の受信を初回 tick で「新規受信」と誤認しないよう現数でシードする。
+        for lane in Self.healthLanes {
+            healthReceiveCounts[lane] = feed.deliveryState.receiveCount(lane)
+        }
+        // 世代が始まった attempt の診断窓は monitor 側へ移す。
+        healthAttemptStart = nil
+        // 期限の remaining は受信時に一度だけ壁時計で算出し、以後は単調時計で追う。
+        let wallNow = wallClockNow()
+        for lane in Self.healthLanes {
+            let remaining = feed.deliveryState.sessionExpiry(lane).flatMap {
+                RealtimeSessionExpiry.remaining(
+                    expiresAtUnixSeconds: $0,
+                    wallNowUnixSeconds: Int64(wallNow)
+                )
+            }
+            healthMonitor.recordSessionExpiry(lane: lane, remaining: remaining, now: monitorNow)
+        }
         aggregator.setStatusBanner(UiCopy.text("banner.listening"))
         startTicker(intervalNanoseconds: activeTickerIntervalNanoseconds)
         publishSubtitles()
@@ -382,10 +475,23 @@ final class InterpretationSession {
         }
     }
 
+    /// 受信監視で数える対象 lane（source + 全 target）。
+    private static let healthLanes: [RealtimeTranslationLane] = [
+        .source,
+        .translation(.english),
+        .translation(.japanese),
+        .translation(.spanish),
+    ]
+
     private func feedAudio(generation: Int) async throws {
         for await frame in audioCapture.frames {
             guard generation == lifecycleGeneration else { return }
             guard state == .listening else { return }
+            healthMonitor.recordCapture(
+                now: healthNow(),
+                hasAudioActivity: PCM16AudioActivity.normalizedPeakAmplitude(of: frame.pcm16)
+                    > healthMonitor.thresholds.audioActivityPeakFloor
+            )
             let queueWaitMilliseconds = max(
                 0,
                 Int(
@@ -416,7 +522,9 @@ final class InterpretationSession {
             if observation.shouldReconnect {
                 throw RealtimeAudioCaptureError.pipelineOverloaded
             }
+            healthMonitor.recordSendStart(now: healthNow())
             try await dualClient.appendAudioFrame(frame.pcm16)
+            healthMonitor.recordSendSuccess(now: healthNow())
         }
         guard generation == lifecycleGeneration, state == .listening else { return }
         if let terminationError = audioCapture.terminationError {
@@ -441,6 +549,17 @@ final class InterpretationSession {
             guard streamEvent.epoch == feed.runToken else {
                 await dualClient.acknowledgeConsumedStreamEvent(runToken: feed.runToken)
                 continue
+            }
+
+            // delta 文字列は monitor へ渡さない（検知は到着・進捗の事実だけを見る）。
+            switch streamEvent.event {
+            case .inputTranscriptDelta(let delta, _, _) where streamEvent.lane == .source
+                && !delta.isEmpty:
+                healthMonitor.recordSourceProgress(now: healthNow())
+            case .outputTranscriptDelta(let delta, _, _) where !delta.isEmpty:
+                healthMonitor.recordTranslationProgress(lane: streamEvent.lane, now: healthNow())
+            default:
+                break
             }
 
             if case .error(let message, let code, let errorType) = streamEvent.event {
@@ -498,8 +617,10 @@ final class InterpretationSession {
                         await resetAudioRoutingForNextSegment()
                     }
                 case .select(let target):
+                    healthMonitor.setSelectedLane(target.map { .translation($0) }, now: healthNow())
                     try await dualClient.selectTranslationTarget(target)
                 case .switch(let target):
+                    healthMonitor.setSelectedLane(target.map { .translation($0) }, now: healthNow())
                     await dualClient.resetAudioRouting()
                     try await dualClient.selectTranslationTarget(target)
                 }
@@ -521,6 +642,7 @@ final class InterpretationSession {
     }
 
     private func performStop() async {
+        await recordHealthTermination(kind: .userStopped)
         // ingest を先に止め、既読を acknowledge させてから未読窓だけを武装する。
         // AsyncStream.finish() は未読を捨てるため、未消費の最新窓とこれ以降の close 窓を Dual 側で保持する。
         lifecycleGeneration += 1
@@ -623,6 +745,8 @@ final class InterpretationSession {
     }
 
     private func tearDownStreaming(keepSubtitles: Bool = false) async {
+        // recoverable・正常終了を問わず接続 teardown で健康世代を閉じる。
+        endHealthGeneration()
         await audioCapture.stop()
         await dualClient.forceClose()
         if let feed = activeFeed {
@@ -715,6 +839,7 @@ final class InterpretationSession {
 
     private func resetAudioRoutingForNextSegment() async {
         processor.resetRoutingForNextSegment()
+        healthMonitor.setSelectedLane(nil, now: healthNow())
         await dualClient.resetAudioRouting()
     }
 
@@ -776,6 +901,7 @@ final class InterpretationSession {
                         await self.resetAudioRoutingForNextSegment()
                     }
                 }
+                self.healthTick()
                 let snapshot = self.aggregator.tick()
                 self.delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
                 if self.state == .idle || self.state == .error {
@@ -784,6 +910,88 @@ final class InterpretationSession {
                 }
             }
         }
+    }
+
+    /// 各 lane の decode 受信数の差分で recordReceive し、evaluate を回す。
+    /// 検知に対して再接続や lane 変更は行わない（診断のみ）。
+    private func healthTick() {
+        guard let feed = activeFeed else { return }
+        let now = healthNow()
+        for lane in Self.healthLanes {
+            let count = feed.deliveryState.receiveCount(lane)
+            if count > (healthReceiveCounts[lane] ?? 0) {
+                healthMonitor.recordReceive(lane: lane, now: now)
+            }
+            healthReceiveCounts[lane] = count
+        }
+
+        let (snapshot, detections) = healthMonitor.evaluate(now: now)
+        latestHealthSnapshot = snapshot
+        for detection in detections {
+            #if DEBUG
+            AppLogger.session.notice(
+                "DBG_HEALTH \(detection.description, privacy: .public)"
+            )
+            #endif
+            delegate?.interpretationSession(self, didEmitHealthDetection: detection)
+        }
+        #if DEBUG
+        if lastHealthSnapshotLogAt == nil || now - lastHealthSnapshotLogAt! >= .seconds(5) {
+            lastHealthSnapshotLogAt = now
+            AppLogger.session.notice(
+                "DBG_HEALTH_SNAPSHOT \(snapshot.description, privacy: .public)"
+            )
+        }
+        #endif
+    }
+
+    /// セッションループ終了・停止時の診断。kind は自前 enum のみ（生 message は渡さない）。
+    /// 各世代で最初の終了経路だけを記録する。
+    private func recordHealthTermination(_ error: Error) async {
+        let kind: SessionTerminationKind
+        if let error = error as? RealtimeTranslationError {
+            kind = SessionTerminationKind(error)
+        } else {
+            kind = .other
+        }
+        await recordHealthTermination(kind: kind)
+    }
+
+    private func recordHealthTermination(kind: SessionTerminationKind) async {
+        let now = healthNow()
+        let diagnostic: SessionTerminationDiagnostic
+        if !healthGenerationEnded {
+            diagnostic = healthMonitor.recordTermination(kind: kind, now: now)
+            endHealthGeneration()
+        } else if let attemptStart = healthAttemptStart {
+            // 世代未開始（pre-Listening / handshake 失敗）の終了は attempt の
+            // 開始時刻・意図 epoch で記録する。monitor の stall 状態には触れない。
+            // handshake 中の stop では接続側の予約 epoch が先に進むため記録時に読み直す。
+            healthAttemptEpoch = await dualClient.reservedEpoch
+            diagnostic = SessionTerminationDiagnostic(
+                kind: kind,
+                connectionDuration: max(.zero, now - attemptStart),
+                generation: healthAttemptGeneration,
+                epoch: healthAttemptEpoch
+            )
+        } else {
+            return
+        }
+        // 1 試行につき 1 件だけ。
+        healthAttemptStart = nil
+        latestHealthTermination = diagnostic
+        #if DEBUG
+        AppLogger.session.notice(
+            "DBG_HEALTH_TERMINATION \(diagnostic.description, privacy: .public)"
+        )
+        #endif
+    }
+
+    private func endHealthGeneration() {
+        guard !healthGenerationEnded else { return }
+        healthGenerationEnded = true
+        healthMonitor.endGeneration(now: healthNow())
+        latestHealthSnapshot = healthMonitor.evaluate(now: healthNow()).snapshot
     }
 
     private func stopTicker() {

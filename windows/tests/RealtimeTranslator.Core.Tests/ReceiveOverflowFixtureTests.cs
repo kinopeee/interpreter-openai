@@ -82,7 +82,7 @@ public sealed class ReceiveOverflowFixtureTests
         {
             writer.TryDeliver(new RealtimeTranslationStreamEvent(
                 RealtimeTranslationLane.Source,
-                new RealtimeTranslationServerEvent.SessionCreated(),
+                new RealtimeTranslationServerEvent.SessionCreated(null),
                 state.Epoch));
         }
 

@@ -19,6 +19,9 @@ protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
     func closeGracefully() async -> [RealtimeTranslationStreamEvent]
     func forceClose() async
     var connectionEpoch: Int { get async }
+    /// start() で予約した接続 epoch。失敗後の forceClose で connectionEpoch が
+    /// 進んでも、失敗した handshake の予約値を保持する。
+    var reservedEpoch: Int { get async }
 }
 
 /// 原文 transcription 接続と翻訳 lane 群を束ねるオーケストレーター。
@@ -53,6 +56,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     private var frameQueues: TranslationFrameQueues
     private var pump: TranslationPumpSupervisor
     private(set) var connectionEpoch = 0
+    private(set) var reservedEpoch = 0
     private var isRunning = false
     private var appendedFrameCount = 0
     private var sourceSentFrameCount = 0
@@ -148,6 +152,7 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         mergedEvents.clearStopDrain()
         mergedEvents.recreate()
         connectionEpoch += 1
+        reservedEpoch = connectionEpoch
         let epoch = connectionEpoch
         mergedEvents.arm(epoch: epoch)
         isRunning = true

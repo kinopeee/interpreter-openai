@@ -18,6 +18,10 @@ public interface IDualRealtimeTranslationClient
 
     int ConnectionEpoch { get; }
 
+    /// StartAsync で予約した接続 epoch。失敗後の ForceClose で ConnectionEpoch が
+    /// 進んでも、失敗した handshake の予約値を保持する。
+    int ReservedEpoch { get; }
+
     RealtimeEventFeed Feed { get; }
 
     Task StartAsync(
@@ -60,6 +64,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     private readonly MergedEventBuffer _eventBuffer = new();
 
     private int _connectionEpoch;
+    private int _reservedEpoch;
     private bool _isRunning;
 
     private RealtimeTranslationOutputLanguage? _selectedTranslationTarget;
@@ -123,6 +128,17 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         }
     }
 
+    public int ReservedEpoch
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _reservedEpoch;
+            }
+        }
+    }
+
     public RealtimeEventFeed Feed
     {
         get
@@ -175,6 +191,7 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         lock (_sync)
         {
             _connectionEpoch += 1;
+            _reservedEpoch = _connectionEpoch;
             epoch = _connectionEpoch;
             _eventBuffer.Recreate(epoch);
             _isRunning = true;

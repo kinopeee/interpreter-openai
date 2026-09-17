@@ -83,7 +83,8 @@ enum RealtimeTranslationClientEvent: Sendable, Equatable {
 }
 
 enum RealtimeTranslationServerEvent: Sendable, Equatable {
-    case sessionCreated
+    /// `session.expires_at`（unix 秒）。不明（欠落・非数値・範囲外）は nil。
+    case sessionCreated(expiresAtUnixSeconds: Int?)
     case sessionUpdated
     case inputTranscriptDelta(delta: String, eventID: String?, elapsedMs: Int?)
     case inputTranscriptFailed(itemID: String?, eventID: String?, code: String?, errorType: String?)

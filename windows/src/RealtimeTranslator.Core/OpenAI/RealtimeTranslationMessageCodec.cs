@@ -92,7 +92,8 @@ public static class RealtimeTranslationMessageCodec
         switch (type)
         {
             case "session.created":
-                return new RealtimeTranslationServerEvent.SessionCreated();
+                return new RealtimeTranslationServerEvent.SessionCreated(
+                    RealtimeSessionExpiry.ParseExpiresAt(dictionary["session"]));
             case "session.updated":
                 return new RealtimeTranslationServerEvent.SessionUpdated();
             case "session.input_transcript.delta":

@@ -115,9 +115,13 @@ actor RealtimeTranslationConnection {
             let created = try await receiveHandshakeEvent(
                 timeoutNanoseconds: sessionUpdateTimeoutNanoseconds
             )
-            guard case .sessionCreated = created else {
+            guard case .sessionCreated(let expiresAt) = created else {
                 throw RealtimeTranslationError.invalidMessage
             }
+            state.recordSessionExpiry(
+                lane: .translation(target),
+                expiresAtUnixSeconds: expiresAt
+            )
 
             try await send(.sessionUpdate(config))
 
@@ -200,7 +204,9 @@ actor RealtimeTranslationConnection {
             from: transport,
             timeoutNanoseconds: timeoutNanoseconds
         )
-        return try RealtimeTranslationMessageCodec.decodeServerEvent(from: data)
+        let event = try RealtimeTranslationMessageCodec.decodeServerEvent(from: data)
+        deliveryYielder?.deliveryState.recordReceive(lane: .translation(target))
+        return event
     }
 
     private func startReceiveLoop(epoch currentEpoch: Int) {
@@ -211,6 +217,7 @@ actor RealtimeTranslationConnection {
                     let data = try await transport.receive()
                     guard currentEpoch == epoch else { return }
                     let event = try RealtimeTranslationMessageCodec.decodeServerEvent(from: data)
+                    deliveryYielder?.deliveryState.recordReceive(lane: .translation(target))
                     if case .sessionClosed = event {
                         didReceiveClosed = true
                     }

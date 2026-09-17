@@ -130,7 +130,7 @@ final class RealtimeTranslationMessageCodecTests: XCTestCase {
     func testDecodeCreatedUpdatedClosedError() throws {
         // Given: 制御系イベント
         let cases: [(String, RealtimeTranslationServerEvent)] = [
-            (#"{"type":"session.created"}"#, .sessionCreated),
+            (#"{"type":"session.created"}"#, .sessionCreated(expiresAtUnixSeconds: nil)),
             (#"{"type":"session.updated"}"#, .sessionUpdated),
             (#"{"type":"session.closed"}"#, .sessionClosed),
             (

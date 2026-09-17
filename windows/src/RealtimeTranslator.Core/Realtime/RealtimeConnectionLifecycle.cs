@@ -173,7 +173,8 @@ internal sealed class RealtimeConnectionLifecycle : IDisposable
         ServerEventDecoder<TServerEvent> decode,
         Func<TServerEvent, RealtimeServerErrorClassification?> tryClassifyError,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<TServerEvent>? onDecoded = null)
     {
         var started = Stopwatch.GetTimestamp();
         while (true)
@@ -181,6 +182,7 @@ internal sealed class RealtimeConnectionLifecycle : IDisposable
             var remaining = timeout - Stopwatch.GetElapsedTime(started);
             var serverEvent = await ReceiveDirectEventAsync(decode, timeout, cancellationToken, remaining)
                 .ConfigureAwait(false);
+            onDecoded?.Invoke(serverEvent);
             if (tryClassifyError(serverEvent) is { } classification)
             {
                 if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)

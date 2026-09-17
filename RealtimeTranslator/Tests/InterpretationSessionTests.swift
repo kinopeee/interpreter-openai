@@ -1679,6 +1679,8 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     var startError: Error?
     /// performStop が renderTask を消した直後に consumer へイベントを届ける。
     var onStop: (() -> Void)?
+    /// start 完了直前で待つゲート（handshake 後・listening 前の差し込み用）。
+    var startGate: CheckedContinuationBox?
 
     init(queue: RealtimeAudioFrameQueue? = nil) {
         self.queue = queue
@@ -1696,6 +1698,16 @@ final class FakeRealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         terminationError = nil
         if let startError {
             throw startError
+        }
+        if let startGate {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation {
+                    (cont: CheckedContinuation<Void, Error>) in
+                    startGate.installThrowing(cont)
+                }
+            } onCancel: {
+                startGate.resumeThrowing(CancellationError())
+            }
         }
         if queue == nil {
             continuation?.finish()
@@ -1762,6 +1774,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         var eventStream: AsyncStream<RealtimeTranslationStreamEvent>
         var eventContinuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation?
         var connectionEpoch = 0
+        var reservedEpoch = 0
         var deliveryState = EventDeliveryState(epoch: 0)
         var appendedFrames: [Data] = []
         var appendAudioFrameCallCount = 0
@@ -1786,6 +1799,8 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     var startGate: CheckedContinuationBox?
     var startFailuresRemaining = 0
     var startError: Error?
+    /// handshake 相当として start 完了時に source lane へ記録する受信数。
+    var handshakeReceiveCount = 0
     /// CloseGracefully 時に返す close drain イベント（停止時取り込みの回帰用）。
     var closeGracefullyEvents: [RealtimeTranslationStreamEvent] = []
     /// CloseGracefully 中に失敗したことにして forceClose へ回す（drain 自体は返す）。
@@ -1812,6 +1827,12 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     var connectionEpoch: Int {
         get async {
             state.withLock(\.connectionEpoch)
+        }
+    }
+
+    var reservedEpoch: Int {
+        get async {
+            state.withLock(\.reservedEpoch)
         }
     }
 
@@ -1845,34 +1866,49 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         startCallCount += 1
         lastTuning = tuning
         lastLanguagePair = pair
-        if let startGate {
-            try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation {
-                    (continuation: CheckedContinuation<Void, Error>) in
-                    if Task.isCancelled {
-                        continuation.resume(throwing: CancellationError())
-                        return
+        // 本物と同じく、network 処理（注入失敗を含む）の前に epoch を予約する。
+        state.withLock { state in
+            state.connectionEpoch += 1
+            state.reservedEpoch = state.connectionEpoch
+        }
+        do {
+            if let startGate {
+                try await withTaskCancellationHandler {
+                    try await withCheckedThrowingContinuation {
+                        (continuation: CheckedContinuation<Void, Error>) in
+                        if Task.isCancelled {
+                            continuation.resume(throwing: CancellationError())
+                            return
+                        }
+                        startGate.installThrowing(continuation)
                     }
-                    startGate.installThrowing(continuation)
+                } onCancel: {
+                    startGate.resumeThrowing(CancellationError())
                 }
-            } onCancel: {
-                startGate.resumeThrowing(CancellationError())
             }
-        }
-        try Task.checkCancellation()
-        if let startError {
-            // one-shot: 再接続後の start を成功させる
-            self.startError = nil
-            throw startError
-        }
-        if startFailuresRemaining > 0 {
-            startFailuresRemaining -= 1
-            throw RealtimeTranslationError.recoverableTransportFailure("forced start failure")
+            try Task.checkCancellation()
+            if let startError {
+                // one-shot: 再接続後の start を成功させる
+                self.startError = nil
+                throw startError
+            }
+            if startFailuresRemaining > 0 {
+                startFailuresRemaining -= 1
+                throw RealtimeTranslationError.recoverableTransportFailure("forced start failure")
+            }
+        } catch {
+            // 本物の catch → forceClose に合わせ、予約後に epoch をもう一度進める。
+            state.withLock { state in
+                state.connectionEpoch += 1
+            }
+            throw error
         }
 
         state.withLock { state in
-            state.connectionEpoch += 1
             state.deliveryState = EventDeliveryState(epoch: state.connectionEpoch)
+            for _ in 0..<handshakeReceiveCount {
+                state.deliveryState.recordReceive(lane: .source)
+            }
             state.eventContinuation?.finish()
             var continuation: AsyncStream<RealtimeTranslationStreamEvent>.Continuation!
             state.eventStream = AsyncStream { continuation = $0 }
@@ -1920,6 +1956,8 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
                 stage: .source,
                 capacity: RealtimeSourceTranscriptionConnection.eventBufferLimit
             )
+            // 実接続では decode 済みイベントごとに受信数を数える。fake も同じ面を再現する。
+            state.deliveryState.recordReceive(lane: .source)
             _ = yielder.deliver(
                 RealtimeTranslationStreamEvent(
                     lane: .source,
@@ -2032,6 +2070,16 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
         }
     }
 
+    /// handshake が届いたことにして session.expires_at を記録する。
+    func setSessionExpiry(_ expiresAtUnixSeconds: Int?, lane: RealtimeTranslationLane) {
+        state.withLock { state in
+            state.deliveryState.recordSessionExpiry(
+                lane: lane,
+                expiresAtUnixSeconds: expiresAtUnixSeconds
+            )
+        }
+    }
+
     func recordTermination(_ termination: EventDeliveryTermination) {
         state.withLock { state in
             state.deliveryState.tryRecordTermination(termination)
@@ -2090,6 +2138,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
                 stage: .merge,
                 capacity: DualRealtimeTranslationClient.mergedEventBufferLimit
             )
+            state.deliveryState.recordReceive(lane: .translation(target))
             _ = yielder.deliver(
                 RealtimeTranslationStreamEvent(
                     target: target,
@@ -2207,6 +2256,14 @@ final class InterpretationSessionDelegateSpy: InterpretationSessionDelegate {
     private(set) var snapshots: [SubtitleSnapshot] = []
     private(set) var latestSnapshot: SubtitleSnapshot?
     private(set) var finalizedSnapshots: [LiveSubtitle] = []
+    private(set) var healthDetections: [SessionHealthDetection] = []
+
+    func interpretationSession(
+        _: InterpretationSession,
+        didEmitHealthDetection detection: SessionHealthDetection
+    ) {
+        healthDetections.append(detection)
+    }
 
     func interpretationSession(
         _ session: InterpretationSession,

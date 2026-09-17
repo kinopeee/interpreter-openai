@@ -3206,6 +3206,497 @@ public sealed class InterpretationSessionTests
         Assert.Equal(TranslationState.Idle, session.State);
     }
 
+    // Given: 接続直後だけイベントが届き、その後受信が止まる
+    // When: 単調時計を受信停止閾値まで進める
+    // Then: receiveStalled が一度だけ HealthDetected へ通知される
+    [Fact]
+    public async Task ReceiveStalledFiresOnce()
+    {
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture();
+        var client = new FakeDualClient();
+        using var session = NewSession(client, audio: audio, timeProvider: clock);
+        var detections = new List<SessionHealthDetection>();
+        session.HealthDetected += (_, detection) => detections.Add(detection);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var activeFrame = new byte[4800];
+        activeFrame[0] = 0xFF;
+        activeFrame[1] = 0x7F;
+        client.PublishSourceDelta("こんにちは");
+        // ticker が受信を記録してから frame を送る（marker は直前受信以後の活動）。
+        await Task.Delay(100);
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+
+        // 活動を保ったまま時計を進める（capture/send の停滞を避ける）。
+        clock.Advance(TimeSpan.FromMilliseconds(15_000));
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+        clock.Advance(TimeSpan.FromMilliseconds(13_000));
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+        clock.Advance(TimeSpan.FromMilliseconds(2_100));
+
+        await WaitUntilAsync(
+            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
+
+        clock.Advance(TimeSpan.FromMilliseconds(31_000));
+        await Task.Delay(200);
+
+        Assert.Equal(
+            1,
+            detections.Count(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
+        await session.StopAsync();
+    }
+
+    // Given: 選択 lane へ翻訳 delta が来ず、原文の進捗だけが続く
+    // When: 原文進捗の停止が translationStall を超える
+    // Then: translationStalled が選択 lane 付きで通知される
+    [Fact]
+    public async Task SourceOnlyProgressEmitsTranslationStalled()
+    {
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture();
+        var client = new FakeDualClient();
+        using var session = NewSession(client, audio: audio, timeProvider: clock);
+        var detections = new List<SessionHealthDetection>();
+        session.HealthDetected += (_, detection) => detections.Add(detection);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        // 日本語の原文で en lane を選択させる。
+        client.PublishSourceDelta("これは日本語のテストです");
+        await WaitUntilAsync(() => client.SelectedTargets.Count == 1);
+
+        var activeFrame = new byte[4800];
+        activeFrame[0] = 0xFF;
+        activeFrame[1] = 0x7F;
+        clock.Advance(TimeSpan.FromMilliseconds(2_000));
+        client.PublishSourceDelta("まだ話しています");
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+
+        clock.Advance(TimeSpan.FromMilliseconds(13_000));
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+        clock.Advance(TimeSpan.FromMilliseconds(2_500));
+
+        await WaitUntilAsync(
+            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.TranslationStalled));
+        var detection = detections.First(d => d.Kind == SessionHealthDetectionKind.TranslationStalled);
+        Assert.Equal(
+            RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
+            detection.Lane);
+        await session.StopAsync();
+    }
+
+    // Given: 選択 lane がなく、未選択 lane の翻訳 delta だけが届く
+    // When: 時計を進めて evaluate する
+    // Then: 検知は発火せず snapshot の selectedLane は null のまま
+    [Fact]
+    public async Task UnselectedLaneProgressEmitsNothing()
+    {
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture();
+        var client = new FakeDualClient();
+        using var session = NewSession(client, audio: audio, timeProvider: clock);
+        var detections = new List<SessionHealthDetection>();
+        session.HealthDetected += (_, detection) => detections.Add(detection);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var activeFrame = new byte[4800];
+        activeFrame[0] = 0xFF;
+        activeFrame[1] = 0x7F;
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+
+        // 未選択の en lane に delta だけ届く（routing 判定前の echo 相当）。
+        clock.Advance(TimeSpan.FromMilliseconds(15_000));
+        audio.Emit(activeFrame);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "unselected");
+        await Task.Delay(100);
+
+        clock.Advance(TimeSpan.FromMilliseconds(1_000));
+        await Task.Delay(200);
+
+        Assert.Empty(detections);
+        Assert.Null(session.LatestHealthSnapshot?.SelectedLane);
+        await session.StopAsync();
+    }
+
+    // Given: session.expires_at 受信後に壁時計が +1 時間ずれる
+    // When: 単調時計を expiryNear / expired の期限まで進める
+    // Then: 検知時刻と remaining は壁時計の影響を受けない
+    [Fact]
+    public async Task WallClockShiftDoesNotAffectExpiry()
+    {
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture { StartGate = new TaskCompletionSource() };
+        var client = new FakeDualClient();
+        using var session = NewSession(client, audio: audio, timeProvider: clock);
+        var detections = new List<SessionHealthDetection>();
+        session.HealthDetected += (_, detection) => detections.Add(detection);
+
+        await session.StartAsync();
+        // audio StartAsync のゲートは handshake 完了後・listening 直前に来る。
+        await WaitUntilAsync(() => audio.StartCallCount == 1);
+        client.SetSessionExpiry(
+            clock.GetUtcNow().ToUnixTimeSeconds() + 130,
+            RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English));
+        audio.StartGate.TrySetResult();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var activeFrame = new byte[4800];
+        activeFrame[0] = 0xFF;
+        activeFrame[1] = 0x7F;
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+
+        // NTP 補正相当の壁時計ジャンプを挟む。
+        clock.AdvanceWallClockOnly(TimeSpan.FromHours(1));
+        clock.Advance(TimeSpan.FromMilliseconds(10_100));
+
+        await WaitUntilAsync(
+            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.ExpiryNear));
+        var near = detections.First(d => d.Kind == SessionHealthDetectionKind.ExpiryNear);
+        Assert.Equal(
+            RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
+            near.Lane);
+        Assert.Equal(TimeSpan.FromMilliseconds(10_100), near.Elapsed);
+        // remaining は接続時に確定した期限への残りで、壁時計のずれを含まない。
+        Assert.Equal(TimeSpan.FromMilliseconds(119_900), near.Remaining);
+
+        clock.Advance(TimeSpan.FromMilliseconds(120_000));
+        await WaitUntilAsync(
+            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.Expired));
+        await session.StopAsync();
+    }
+
+    // Given: APIキー・原文・訳文・サーバー文言に相当する秘密文字列を仕込む
+    // When: 検知・snapshot・終了診断の文字列表現を集める
+    // Then: いずれの文字列にも秘密文字列が含まれない
+    [Fact]
+    public async Task DiagnosticsContainNoSecrets()
+    {
+        var markers = new[] { "sk-test-secret-999", "秘密の原文", "secret translation", "raw server text" };
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture();
+        var client = new FakeDualClient();
+        using var session = NewSession(client, apiKey: "sk-test-secret-999", audio: audio, timeProvider: clock);
+        var detections = new List<SessionHealthDetection>();
+        session.HealthDetected += (_, detection) => detections.Add(detection);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var activeFrame = new byte[4800];
+        activeFrame[0] = 0xFF;
+        activeFrame[1] = 0x7F;
+        audio.Emit(activeFrame);
+        client.PublishSourceDelta("秘密の原文");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "secret translation");
+        client.PublishServerError("raw server text", "server_error");
+        await Task.Delay(200);
+
+        // 診断文字列をすべて集める（検知の ToString / snapshot / 終了診断）。
+        var diagnostics = detections.Select(d => d.ToString()).ToList();
+        if (session.LatestHealthSnapshot is { } snapshot)
+        {
+            diagnostics.Add(snapshot.ToString());
+        }
+
+        var monitor = new SessionHealthMonitor();
+        monitor.BeginGeneration(1, 1, false, TimeSpan.Zero);
+        diagnostics.Add(
+            monitor.RecordTermination(SessionTerminationKind.FatalServerError, TimeSpan.FromSeconds(5))
+                .ToString());
+
+        foreach (var diagnostic in diagnostics)
+        {
+            foreach (var marker in markers)
+            {
+                Assert.DoesNotContain(marker, diagnostic, StringComparison.Ordinal);
+            }
+        }
+
+        await session.StopAsync();
+    }
+
+    // Given: handshake で source lane の受信数が記録済みの接続
+    // When: Listening 直後に活動 frame が届き、その後受信が止まる
+    // Then: handshake 受信を新規受信と誤認せず receiveStalled が発火する（sourceStalled ではない）
+    [Fact]
+    public async Task HandshakeReceivesDoNotMaskReceiveStall()
+    {
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture();
+        var client = new FakeDualClient { HandshakeReceiveCount = 2 };
+        using var session = NewSession(client, audio: audio, timeProvider: clock);
+        var detections = new List<SessionHealthDetection>();
+        session.HealthDetected += (_, detection) => detections.Add(detection);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var activeFrame = new byte[4800];
+        activeFrame[0] = 0xFF;
+        activeFrame[1] = 0x7F;
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+
+        clock.Advance(TimeSpan.FromMilliseconds(15_000));
+        audio.Emit(activeFrame);
+        await Task.Delay(100);
+        clock.Advance(TimeSpan.FromMilliseconds(15_100));
+
+        await WaitUntilAsync(
+            () => detections.Any(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
+        Assert.DoesNotContain(detections, d => d.Kind == SessionHealthDetectionKind.SourceStalled);
+        await session.StopAsync();
+    }
+
+    // Given: 初回 handshake が認証失敗で落ちる接続
+    // When: StartAsync が Error へ終わる
+    // Then: 世代未開始でも attempt 情報の終了診断が epoch=1・非負の duration で記録される
+    [Fact]
+    public async Task InitialHandshakeFailureEmitsAttemptTermination()
+    {
+        var clock = new MonotonicClock();
+        var client = new FakeDualClient
+        {
+            StartException = new RealtimeTranslationException(
+                RealtimeTranslationErrorKind.AuthenticationFailed),
+        };
+        using var session = NewSession(client, timeProvider: clock);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(1, diagnostic.Epoch);
+        Assert.Equal(SessionTerminationKind.AuthenticationFailed, diagnostic.Kind);
+        Assert.True(diagnostic.ConnectionDuration >= TimeSpan.Zero);
+        await session.StopAsync();
+    }
+
+    // Given: Listening 中の接続（epoch 1）が recoverable 切断され、再接続 handshake が致命的に失敗する
+    // When: 2 回目の試行が Error へ終わる
+    // Then: 終了診断は epoch=2 で、試行開始からの非負の duration を持つ
+    [Fact]
+    public async Task ReconnectHandshakeFailureEmitsAttemptTermination()
+    {
+        var clock = new MonotonicClock();
+        var client = new FakeDualClient();
+        using var session = NewSession(client, timeProvider: clock);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.StartException = new RealtimeTranslationException(
+            RealtimeTranslationErrorKind.FatalServerError,
+            "upstream boom");
+        client.PublishServerError("transport glitch", "server_error");
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(2, diagnostic.Epoch);
+        Assert.Equal(SessionTerminationKind.FatalServerError, diagnostic.Kind);
+        Assert.True(diagnostic.ConnectionDuration >= TimeSpan.Zero);
+        await session.StopAsync();
+    }
+
+    // Given: API キー未設定のセッション
+    // When: StartAsync が Error へ終わる
+    // Then: RequireApiKey 失敗も attempt 診断として epoch=直前の接続epoch(0)・MissingApiKey で記録される
+    [Fact]
+    public async Task MissingApiKeyEmitsAttemptTermination()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(
+            client,
+            apiKey: null,
+            timeProvider: new MonotonicClock());
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(0, diagnostic.Epoch);
+        Assert.Equal(SessionTerminationKind.MissingApiKey, diagnostic.Kind);
+        await session.StopAsync();
+    }
+
+    // Given: Listening 中の接続（epoch 1）
+    // When: recoverable transport failure が届き再接続が走る
+    // Then: 終了診断が RecoverableTransportFailure・epoch=1 で記録され、再接続は通常どおり進む
+    [Fact]
+    public async Task RecoverableFailureRecordsTerminationBeforeReconnect()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, timeProvider: new MonotonicClock());
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishTransportError();
+        await WaitUntilAsync(
+            () => client.StartCount >= 2 && session.State == TranslationState.Listening);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(SessionTerminationKind.RecoverableTransportFailure, diagnostic.Kind);
+        Assert.Equal(1, diagnostic.Epoch);
+        await session.StopAsync();
+    }
+
+    // Given: 録音 A が Listening 到達後に停止し、次の StartAsync が handshake 失敗する fake
+    // When: 録音 B の StartAsync が Error へ終わる
+    // Then: 終了診断の epoch は Dual client の ReservedEpoch（A の Listening epoch より大きい）で記録される
+    //       （StopAsync が世代を進めるため B の試行 generation は 3）
+    [Fact]
+    public async Task HandshakeFailureEpochUsesDualReservedEpoch()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, timeProvider: new MonotonicClock());
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        var listeningEpoch = client.ConnectionEpoch;
+        await session.StopAsync();
+
+        client.StartException = new RealtimeTranslationException(
+            RealtimeTranslationErrorKind.FatalServerError,
+            "upstream boom");
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(3, diagnostic.Generation);
+        Assert.Equal(client.ReservedEpoch, diagnostic.Epoch);
+        Assert.True(diagnostic.Epoch > listeningEpoch);
+        await session.StopAsync();
+    }
+
+    // Given: Listening 直前の monitor 世代開始で StopAsync が世代を進めるセッション（hook で再現）
+    // When: 次の StartAsync が handshake 失敗で Error へ終わる
+    // Then: 終了診断は新しい試行の generation/epoch で記録され、止められた世代の monitor は再活性化しない
+    [Fact]
+    public async Task StaleGenerationDoesNotReactivateHealthMonitor()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, timeProvider: new MonotonicClock());
+        session.BeforeHealthGenerationBeginForTests = () => _ = session.StopAsync();
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Idle);
+
+        session.BeforeHealthGenerationBeginForTests = null;
+        client.StartException = new RealtimeTranslationException(
+            RealtimeTranslationErrorKind.FatalServerError);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(SessionTerminationKind.FatalServerError, diagnostic.Kind);
+        Assert.Equal(3, diagnostic.Generation);
+        Assert.Equal(client.ReservedEpoch, diagnostic.Epoch);
+        await session.StopAsync();
+    }
+
+    // Given: Dual Start（handshake）待ちで止まっているセッション（世代 1、attempt epoch 1）
+    // When: Listening 到達前に StopAsync する
+    // Then: attempt 診断は試行開始時の世代 generation=1・epoch=1・UserStopped で記録される
+    [Fact]
+    public async Task StopDuringHandshakeEmitsAttemptGeneration()
+    {
+        var client = new FakeDualClient();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StartGate = gate;
+        using var session = NewSession(client, timeProvider: new MonotonicClock());
+
+        var startTask = session.StartAsync();
+        await WaitUntilAsync(() => client.StartCount == 1);
+
+        var stopTask = session.StopAsync();
+        client.StartGate = null;
+        gate.SetResult();
+        await stopTask;
+        await startTask;
+        await WaitUntilAsync(() => session.State == TranslationState.Idle);
+
+        var diagnostic = session.LatestTerminationDiagnostic;
+        Assert.NotNull(diagnostic);
+        Assert.Equal(SessionTerminationKind.UserStopped, diagnostic.Kind);
+        Assert.Equal(1, diagnostic.Generation);
+        Assert.Equal(1, diagnostic.Epoch);
+    }
+
+    // Given: 再接続には成功するが Listening が安定期間に届かず試行上限まで失敗が続く
+    // When: attempt 上限を超えて Error に落ちる
+    // Then: 終了診断は ReconnectAttemptLimit で記録される
+    [Fact]
+    public async Task AttemptLimitEmitsReconnectAttemptLimit()
+    {
+        var client = new FakeDualClient();
+        var clock = new MonotonicClock();
+        using var session = NewSession(client, timeProvider: clock);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        var expectedStarts = 1;
+        for (var index = 0; index < InterpretationSession.MaxReconnectAttempts; index += 1)
+        {
+            clock.Advance(TimeSpan.FromSeconds(5));
+            client.PublishTransportError();
+            expectedStarts += 1;
+            await WaitUntilAsync(() =>
+                client.StartCount >= expectedStarts && session.State == TranslationState.Listening);
+        }
+
+        clock.Advance(TimeSpan.FromSeconds(5));
+        client.PublishTransportError();
+        await WaitUntilAsync(() => session.State == TranslationState.Error);
+
+        Assert.Equal(
+            SessionTerminationKind.ReconnectAttemptLimit,
+            session.LatestTerminationDiagnostic?.Kind);
+    }
+
+    // Given: 受信が一度もないセッション
+    // When: 接続直後の tick 群を回す
+    // Then: count=0 を受信と誤認せず SinceReceive は null のまま
+    [Fact]
+    public async Task FirstTicksDoNotFabricateReceives()
+    {
+        var clock = new MonotonicClock();
+        var audio = new FakeAudioCapture();
+        var client = new FakeDualClient();
+        using var session = NewSession(client, audio: audio, timeProvider: clock);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await Task.Delay(200);
+
+        Assert.NotNull(session.LatestHealthSnapshot);
+        Assert.Null(session.LatestHealthSnapshot!.SinceReceive);
+
+        await session.StopAsync();
+    }
+
     // Given: bounded channel の先頭 frame を transport gate で止めた Listening session
     // When: 40 frame を投入して gate を解放する
     // Then: drop を一度だけ無効化し、単発欠落では再接続しない
@@ -3565,6 +4056,19 @@ public sealed class InterpretationSessionTests
                 _frames.Writer.TryComplete();
             }
         }
+
+        private long _emitSequence;
+
+        /// <summary>frame を consumer へ届ける（受信停止監視の frame 供給用）。</summary>
+        public void Emit(ReadOnlyMemory<byte> frame)
+        {
+            lock (_sync)
+            {
+                _emitSequence += 1;
+                _frames.Writer.TryWrite(
+                    new CapturedAudioFrame(1, _emitSequence, frame, 0, _emitSequence * 100));
+            }
+        }
     }
 
     private sealed class FakeDualClient : IDualRealtimeTranslationClient
@@ -3576,6 +4080,7 @@ public sealed class InterpretationSessionTests
             Channel.CreateUnbounded<RealtimeTranslationStreamEvent>();
 
         private int _epoch;
+        private int _reservedEpoch;
         public EventDeliveryState DeliveryState { get; private set; } = new(0);
         public RealtimeEventFeed Feed => new(Events, ConnectionEpoch, DeliveryState);
 
@@ -3597,6 +4102,17 @@ public sealed class InterpretationSessionTests
                 lock (_sync)
                 {
                     return _epoch;
+                }
+            }
+        }
+
+        public int ReservedEpoch
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _reservedEpoch;
                 }
             }
         }
@@ -3628,6 +4144,12 @@ public sealed class InterpretationSessionTests
 
         /// <summary>StartAsync を指定回数だけ失敗させる（再接続上限テスト用）。</summary>
         public int RemainingStartFailures { get; set; }
+
+        /// <summary>StartAsync から 1 回だけ投げる非 recoverable 例外（handshake 失敗テスト用）。</summary>
+        public RealtimeTranslationException? StartException { get; set; }
+
+        /// <summary>handshake 相当として StartAsync 完了時に source lane へ記録する受信数。</summary>
+        public int HandshakeReceiveCount { get; set; }
 
         /// <summary>CloseGracefully 時に close drain イベントを流すテスト用フック。</summary>
         public Func<Task>? OnCloseGracefully { get; set; }
@@ -3675,6 +4197,9 @@ public sealed class InterpretationSessionTests
             {
                 StartCount += 1;
                 LastStartedPair = pair;
+                // 本物と同じく、network 処理（注入失敗を含む）の前に epoch を予約する。
+                _epoch += 1;
+                _reservedEpoch = _epoch;
                 LastStartedTuning = tuning;
                 if (ThrowOnNextStart)
                 {
@@ -3688,6 +4213,12 @@ public sealed class InterpretationSessionTests
                     throw new InvalidOperationException("repeated device failure");
                 }
 
+                if (StartException is { } startException)
+                {
+                    StartException = null;
+                    throw startException;
+                }
+
                 gateTask = StartGate?.Task;
             }
 
@@ -3698,8 +4229,11 @@ public sealed class InterpretationSessionTests
 
             lock (_sync)
             {
-                _epoch += 1;
                 DeliveryState = new EventDeliveryState(_epoch);
+                for (var i = 0; i < HandshakeReceiveCount; i++)
+                {
+                    DeliveryState.RecordReceive(RealtimeTranslationLane.Source);
+                }
                 _spokenLanguages.Clear();
                 _selectedTargets.Clear();
                 ResetAudioRoutingCount = 0;
@@ -3867,6 +4401,15 @@ public sealed class InterpretationSessionTests
             int? epoch = null)
             => PublishLane(RealtimeTranslationLane.Translation(target), serverEvent, epoch);
 
+        /// <summary>handshake が届いたことにして session.expires_at を記録する。</summary>
+        public void SetSessionExpiry(long? expiresAtUnixSeconds, RealtimeTranslationLane lane)
+        {
+            lock (_sync)
+            {
+                DeliveryState.RecordSessionExpiry(lane, expiresAtUnixSeconds);
+            }
+        }
+
         private void PublishLane(
             RealtimeTranslationLane lane,
             RealtimeTranslationServerEvent serverEvent,
@@ -3874,6 +4417,8 @@ public sealed class InterpretationSessionTests
         {
             lock (_sync)
             {
+                // 実接続では decode 済みメッセージごとに受信数を数える。fake も同じ面を再現する。
+                DeliveryState.RecordReceive(lane);
                 _events.Writer.TryWrite(
                     new RealtimeTranslationStreamEvent(lane, serverEvent, epoch ?? _epoch));
             }

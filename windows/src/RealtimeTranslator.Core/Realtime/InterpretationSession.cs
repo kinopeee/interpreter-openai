@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -55,6 +56,14 @@ public sealed class InterpretationSession : IDisposable
     private readonly long _startTimestamp;
     private readonly object _sync = new();
     private readonly SemaphoreSlim _routingGate = new(1, 1);
+    private readonly SessionHealthMonitor _healthMonitor;
+    private readonly Dictionary<RealtimeTranslationLane, int> _healthReceiveCounts = new();
+    /// <summary>世代未開始（pre-Listening）の終了診断用に、接続試行の開始時刻と意図 epoch を保持する。</summary>
+    private TimeSpan? _healthAttemptStart;
+    private int _healthAttemptEpoch;
+    private int _healthAttemptGeneration;
+    private bool _healthGenerationEnded = true;
+    private int _connectionCountInGeneration;
 
     private CancellationTokenSource? _sessionCts;
     private Task? _sessionTask;
@@ -77,6 +86,9 @@ public sealed class InterpretationSession : IDisposable
 
     internal Action? AfterFailedSourceFallbackForTests { get; set; }
 
+    /// <summary>テスト用。Listening 直前の monitor 世代開始 lock 直前に差し込む。</summary>
+    internal Action? BeforeHealthGenerationBeginForTests { get; set; }
+
     public InterpretationSession(
         IApiKeyStore apiKeyStore,
         IRealtimeAudioCapture audioCapture,
@@ -87,7 +99,8 @@ public sealed class InterpretationSession : IDisposable
         TimeSpan? tickInterval = null,
         Func<LanguagePair>? languagePairProvider = null,
         ReconnectPolicy? reconnectPolicy = null,
-        Func<TimeSpan, TimeSpan>? reconnectJitter = null)
+        Func<TimeSpan, TimeSpan>? reconnectJitter = null,
+        SessionHealthThresholds? healthThresholds = null)
     {
         ArgumentNullException.ThrowIfNull(apiKeyStore);
         ArgumentNullException.ThrowIfNull(audioCapture);
@@ -107,6 +120,7 @@ public sealed class InterpretationSession : IDisposable
         _reconnectBudget = new ReconnectBudget(policy, _timeProvider, reconnectJitter);
         _tickInterval = tickInterval ?? DefaultTickInterval;
         _languagePairProvider = languagePairProvider ?? (() => LanguagePair.JaEn);
+        _healthMonitor = new SessionHealthMonitor(healthThresholds);
         _startTimestamp = _timeProvider.GetTimestamp();
     }
 
@@ -116,6 +130,15 @@ public sealed class InterpretationSession : IDisposable
 
     /// <summary>ユーザー向け文言。サーバー文言は必ずサニタイズ済みのものを渡す。</summary>
     public event EventHandler<string>? MessageEncountered;
+
+    /// <summary>受信停止監視の検知（診断のみ）。content は含まない。</summary>
+    public event EventHandler<SessionHealthDetection>? HealthDetected;
+
+    /// <summary>テスト・診断用の最新 snapshot（検知には使わない）。</summary>
+    public SessionHealthSnapshot? LatestHealthSnapshot { get; private set; }
+
+    /// <summary>テスト・診断用の最新 termination diagnostic（各試行で最大 1 件）。</summary>
+    public SessionTerminationDiagnostic? LatestTerminationDiagnostic { get; private set; }
 
     public TranslationState State
     {
@@ -186,6 +209,7 @@ public sealed class InterpretationSession : IDisposable
             previousCts?.Dispose();
             _lifecycleGeneration += 1;
             generation = _lifecycleGeneration;
+            _connectionCountInGeneration = 0;
             _reconnectBudget.Reset();
             _audioLossTracker.Reset();
             // 録音開始時点のペアを世代全体で固定する。録音中の設定変更は再接続でも反映しない
@@ -247,6 +271,7 @@ public sealed class InterpretationSession : IDisposable
                 _sessionCts = null;
             }
 
+            RecordHealthTermination(SessionTerminationKind.UserStopped);
             SetState(TranslationState.Closing);
 
             // 先に音声と session consumer を止め、close drain イベントを破棄されないようにする。
@@ -380,6 +405,7 @@ public sealed class InterpretationSession : IDisposable
     {
         while (IsCurrentGeneration(generation) && !cancellationToken.IsCancellationRequested)
         {
+            Exception? recoverableError = null;
             try
             {
                 await ConnectAndStreamAsync(generation, cancellationToken).ConfigureAwait(false);
@@ -397,6 +423,7 @@ public sealed class InterpretationSession : IDisposable
                     return;
                 }
 
+                RecordHealthTermination(SessionTerminationKindMapping.FromException(error));
                 await TearDownStreamingAsync().ConfigureAwait(false);
                 // epoch を捨てる前に完全ペアを確定し、オプトイン字幕記録へ渡す。
                 FlushPendingFinalizeIfNeeded();
@@ -404,10 +431,12 @@ public sealed class InterpretationSession : IDisposable
                 return;
             }
 #pragma warning disable CA1031 // 想定外の失敗でも session task を落とさず再接続へ倒す。
-            catch (Exception)
+            catch (Exception error)
 #pragma warning restore CA1031
             {
-                // recoverable transport failure / 音声デバイス失敗。下の再接続へ進む。
+                // recoverable transport failure / 音声デバイス失敗。予算判定が wait を
+                // 返す場合だけ終了診断として記録する（予算超過ならそちらの kind で記録）。
+                recoverableError = error;
             }
 
             if (!IsCurrentGeneration(generation) || cancellationToken.IsCancellationRequested)
@@ -423,6 +452,10 @@ public sealed class InterpretationSession : IDisposable
 
             if (decision.Kind != ReconnectDecisionKind.Wait)
             {
+                RecordHealthTermination(
+                    decision.Kind == ReconnectDecisionKind.BudgetExhausted
+                        ? SessionTerminationKind.ReconnectBudgetExhausted
+                        : SessionTerminationKind.ReconnectAttemptLimit);
                 await TearDownStreamingAsync().ConfigureAwait(false);
                 FlushPendingFinalizeIfNeeded();
                 EnterError(UserCopy.Current.Text(
@@ -430,6 +463,12 @@ public sealed class InterpretationSession : IDisposable
                         ? "error.reconnectBudgetExhausted"
                         : "error.reconnectLimit"));
                 return;
+            }
+
+            // recoverable 失敗も終了診断として記録する（診断のみ、挙動は変えない）。
+            if (recoverableError is { } recoverable)
+            {
+                RecordHealthTermination(SessionTerminationKindMapping.FromException(recoverable));
             }
 
             SetState(TranslationState.Reconnecting);
@@ -448,6 +487,17 @@ public sealed class InterpretationSession : IDisposable
 
     private async Task ConnectAndStreamAsync(int generation, CancellationToken cancellationToken)
     {
+        // _dualClient.ReservedEpoch は Dual 側の lock を取るため _sync 保持中には読まない。
+        var entryAttemptEpoch = _dualClient.ReservedEpoch;
+        lock (_sync)
+        {
+            // RequireApiKey 失敗（missing key）も試行の終了診断へ乗せるため先に記録する。
+            _connectionCountInGeneration += 1;
+            _healthAttemptStart = HealthNow();
+            _healthAttemptEpoch = entryAttemptEpoch;
+            _healthAttemptGeneration = _lifecycleGeneration;
+        }
+
         var apiKey = RequireApiKey();
         SetState(TranslationState.Connecting);
 
@@ -457,11 +507,30 @@ public sealed class InterpretationSession : IDisposable
             languagePair = _sessionLanguagePair ?? _languagePairProvider();
         }
 
-        await _dualClient.StartAsync(
-            apiKey,
-            _tuningProvider().ForPair(languagePair),
-            languagePair,
-            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _dualClient.StartAsync(
+                apiKey,
+                _tuningProvider().ForPair(languagePair),
+                languagePair,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // StartAsync は network 処理の前に connectionEpoch を予約済み。失敗した
+            // handshake の epoch で診断するため読み直す。
+            var reservedEpoch = _dualClient.ReservedEpoch;
+            lock (_sync)
+            {
+                _healthAttemptEpoch = reservedEpoch;
+            }
+            throw;
+        }
+        var reservedAfterStart = _dualClient.ReservedEpoch;
+        lock (_sync)
+        {
+            _healthAttemptEpoch = reservedAfterStart;
+        }
         if (!IsCurrentGeneration(generation))
         {
             await _dualClient.ForceCloseAsync().ConfigureAwait(false);
@@ -475,6 +544,7 @@ public sealed class InterpretationSession : IDisposable
         FlushPendingFinalizeIfNeeded();
         lock (_sync)
         {
+            _healthAttemptEpoch = epoch;
             _processor.BeginEpoch(epoch, languagePair);
             _activeFeed = feed;
             _handledLossEpoch = null;
@@ -490,9 +560,56 @@ public sealed class InterpretationSession : IDisposable
         }
 
         SetState(TranslationState.Listening);
+        BeforeHealthGenerationBeginForTests?.Invoke();
+        var staleGeneration = false;
         lock (_sync)
         {
-            _reconnectBudget.RecordListening();
+            if (generation != _lifecycleGeneration)
+            {
+                // SetState とこの lock の間に StopAsync が世代を進めた場合、
+                // 止められた世代の monitor を再活性化しない。
+                staleGeneration = true;
+            }
+            else
+            {
+                _reconnectBudget.RecordListening();
+
+                var monitorNow = HealthNow();
+                _healthMonitor.BeginGeneration(
+                    generation,
+                    epoch,
+                    _connectionCountInGeneration > 1,
+                    monitorNow);
+                _healthGenerationEnded = false;
+                // handshake の受信を初回 tick で「新規受信」と誤認しないよう現数でシードする。
+                _healthReceiveCounts.Clear();
+                foreach (var lane in HealthLanes)
+                {
+                    _healthReceiveCounts[lane] = feed.DeliveryState.ReceiveCount(lane);
+                }
+
+                // 世代が始まった attempt の診断窓は monitor 側へ移す。
+                _healthAttemptStart = null;
+                // 期限の remaining は受信時に一度だけ壁時計で算出し、以後は単調時計で追う。
+                var wallNow = _timeProvider.GetUtcNow().ToUnixTimeSeconds();
+                foreach (var lane in HealthLanes)
+                {
+                    var expiry = feed.DeliveryState.SessionExpiry(lane);
+                    _healthMonitor.RecordSessionExpiry(
+                        lane,
+                        expiry is { } value
+                            && RealtimeSessionExpiry.RemainingSeconds(value, wallNow) is { } seconds
+                            ? TimeSpan.FromSeconds(seconds)
+                            : null,
+                        monitorNow);
+                }
+            }
+        }
+        if (staleGeneration)
+        {
+            await _audioCapture.StopAsync().ConfigureAwait(false);
+            await _dualClient.ForceCloseAsync().ConfigureAwait(false);
+            return;
         }
 
         using var streamCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -530,6 +647,14 @@ public sealed class InterpretationSession : IDisposable
                 return;
             }
 
+            lock (_sync)
+            {
+                _healthMonitor.RecordCapture(
+                    HealthNow(),
+                    Pcm16AudioActivity.NormalizedPeakAmplitude(frame.Pcm16.Span)
+                        > _healthMonitor.Thresholds.AudioActivityPeakFloor);
+            }
+
             var queueWaitMilliseconds = Math.Max(
                 0,
                 (int)_timeProvider.GetElapsedTime(frame.CapturedAtTimestamp).TotalMilliseconds);
@@ -565,7 +690,16 @@ public sealed class InterpretationSession : IDisposable
                     UserCopy.Current.Text("error.audioInputStopped"));
             }
 
+            lock (_sync)
+            {
+                _healthMonitor.RecordSendStart(HealthNow());
+            }
+
             await _dualClient.AppendAudioFrameAsync(frame.Pcm16, cancellationToken).ConfigureAwait(false);
+            lock (_sync)
+            {
+                _healthMonitor.RecordSendSuccess(HealthNow());
+            }
         }
 
         if (!IsCurrentGeneration(generation))
@@ -633,6 +767,23 @@ public sealed class InterpretationSession : IDisposable
 
                 feed.DeliveryState.TryRecordTermination(classification);
                 throw feed.DeliveryState.ToException();
+            }
+
+            // delta 文字列は monitor へ渡さない（検知は到着・進捗の事実だけを見る）。
+            lock (_sync)
+            {
+                var healthNow = HealthNow();
+                switch (streamEvent.Event)
+                {
+                    case RealtimeTranslationServerEvent.InputTranscriptDelta input
+                        when streamEvent.Lane.IsSource && input.Delta.Length > 0:
+                        _healthMonitor.RecordSourceProgress(healthNow);
+                        break;
+                    case RealtimeTranslationServerEvent.OutputTranscriptDelta output
+                        when output.Delta.Length > 0:
+                        _healthMonitor.RecordTranslationProgress(streamEvent.Lane, healthNow);
+                        break;
+                }
             }
 
             if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptFailed failed)
@@ -765,8 +916,10 @@ public sealed class InterpretationSession : IDisposable
 
             RealtimeSubtitleUpdate? update;
             var feed = GetActiveFeed();
+            IReadOnlyList<SessionHealthDetection> healthDetections;
             lock (_sync)
             {
+                healthDetections = HealthTick(feed);
                 if (feed is { DeliveryState.DidLoseEvents: true })
                 {
                     update = null;
@@ -775,6 +928,11 @@ public sealed class InterpretationSession : IDisposable
                 {
                     update = _processor.Tick(_timeProvider.GetUtcNow());
                 }
+            }
+
+            foreach (var detection in healthDetections)
+            {
+                HealthDetected?.Invoke(this, detection);
             }
 
             if (feed is { DeliveryState.DidLoseEvents: true })
@@ -842,11 +1000,29 @@ public sealed class InterpretationSession : IDisposable
             switch (action)
             {
                 case RealtimeSubtitleRoutingAction.Select select:
+                    lock (_sync)
+                    {
+                        _healthMonitor.SetSelectedLane(
+                            select.Target is { } selectTarget
+                                ? RealtimeTranslationLane.Translation(selectTarget)
+                                : null,
+                            HealthNow());
+                    }
+
                     await _dualClient.SelectTranslationTargetAsync(
                         select.Target,
                         cancellationToken).ConfigureAwait(false);
                     break;
                 case RealtimeSubtitleRoutingAction.Switch @switch:
+                    lock (_sync)
+                    {
+                        _healthMonitor.SetSelectedLane(
+                            @switch.Target is { } switchTarget
+                                ? RealtimeTranslationLane.Translation(switchTarget)
+                                : null,
+                            HealthNow());
+                    }
+
                     await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
                     await _dualClient.SelectTranslationTargetAsync(
                         @switch.Target,
@@ -877,6 +1053,11 @@ public sealed class InterpretationSession : IDisposable
             return;
         }
 
+        lock (_sync)
+        {
+            _healthMonitor.SetSelectedLane(null, HealthNow());
+        }
+
         await _dualClient.ResetAudioRoutingAsync().ConfigureAwait(false);
     }
 
@@ -892,6 +1073,17 @@ public sealed class InterpretationSession : IDisposable
         }
 
         IngestAlreadyQueuedEvents();
+
+        lock (_sync)
+        {
+            // recoverable・正常終了を問わず接続 teardown で健康世代を閉じる。
+            if (!_healthGenerationEnded)
+            {
+                _healthGenerationEnded = true;
+                _healthMonitor.EndGeneration(HealthNow());
+                LatestHealthSnapshot = _healthMonitor.Evaluate(HealthNow()).Snapshot;
+            }
+        }
 
         try
         {
@@ -1065,6 +1257,87 @@ public sealed class InterpretationSession : IDisposable
                     EmitSubtitleUpdate(update);
                 }
             }
+        }
+    }
+
+    /// <summary>受信監視で数える対象 lane（source + 全 target）。</summary>
+    private static readonly RealtimeTranslationLane[] HealthLanes =
+    [
+        RealtimeTranslationLane.Source,
+        RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English),
+        RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.Japanese),
+        RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.Spanish),
+    ];
+
+    /// <summary>monitor が使う単調時計（_sync の下で呼ぶ）。</summary>
+    private TimeSpan HealthNow() => _timeProvider.GetElapsedTime(0L);
+
+    /// <summary>
+    /// 各 lane の decode 受信数の差分で RecordReceive し、Evaluate を回す。
+    /// 検知に対して再接続や lane 変更は行わない（診断のみ）。_sync の下で呼ぶ。
+    /// </summary>
+    /// 戻り値は _sync 解放後に HealthDetected へ流す検知列。
+    private IReadOnlyList<SessionHealthDetection> HealthTick(RealtimeEventFeed? feed)
+    {
+        if (feed is null)
+        {
+            return Array.Empty<SessionHealthDetection>();
+        }
+
+        var now = HealthNow();
+        foreach (var lane in HealthLanes)
+        {
+            var count = feed.DeliveryState.ReceiveCount(lane);
+            if (count > (_healthReceiveCounts.TryGetValue(lane, out var previous) ? previous : 0))
+            {
+                _healthMonitor.RecordReceive(lane, now);
+            }
+
+            _healthReceiveCounts[lane] = count;
+        }
+
+        var (snapshot, detections) = _healthMonitor.Evaluate(now);
+        LatestHealthSnapshot = snapshot;
+        return detections;
+    }
+
+    /// <summary>
+    /// セッションループ終了・停止時の診断。kind は自前 enum のみ（生 message は渡さない）。
+    /// 各世代で最初の終了経路だけを記録する。
+    /// </summary>
+    private void RecordHealthTermination(SessionTerminationKind kind)
+    {
+        // handshake 中の stop では Dual 側の予約 epoch が _healthAttemptEpoch より
+        // 先に進むため、_sync 保持前に予約 epoch を読んでおく。
+        var reservedEpoch = _dualClient.ReservedEpoch;
+        lock (_sync)
+        {
+            var now = HealthNow();
+            if (!_healthGenerationEnded)
+            {
+                LatestTerminationDiagnostic = _healthMonitor.RecordTermination(kind, now);
+                _healthGenerationEnded = true;
+                _healthMonitor.EndGeneration(now);
+                LatestHealthSnapshot = _healthMonitor.Evaluate(now).Snapshot;
+            }
+            else if (_healthAttemptStart is { } attemptStart)
+            {
+                // 世代未開始（pre-Listening / handshake 失敗）の終了は attempt の
+                // 開始時刻・意図 epoch で記録する。monitor の stall 状態には触れない。
+                var duration = now - attemptStart;
+                LatestTerminationDiagnostic = new SessionTerminationDiagnostic(
+                    kind,
+                    duration < TimeSpan.Zero ? TimeSpan.Zero : duration,
+                    _healthAttemptGeneration,
+                    reservedEpoch);
+            }
+            else
+            {
+                return;
+            }
+
+            // 1 試行につき 1 件だけ。
+            _healthAttemptStart = null;
         }
     }
 

@@ -30,7 +30,13 @@ final class CodecFixtureTests: XCTestCase {
             let expected = try XCTUnwrap(fixture["expected"] as? [String: Any])
             switch SharedFixtures.text(expected["kind"]) {
             case "sessionCreated":
-                XCTAssertEqual(actual, .sessionCreated)
+                // expiresAt が expected にあればその値、無ければ nil を要求する。
+                XCTAssertEqual(
+                    actual,
+                    .sessionCreated(
+                        expiresAtUnixSeconds: SharedFixtures.optionalNumber(expected["expiresAt"])
+                    )
+                )
             case "sessionUpdated":
                 XCTAssertEqual(actual, .sessionUpdated)
             case "sessionClosed":
@@ -169,6 +175,36 @@ final class CodecFixtureTests: XCTestCase {
                 handshakeTimeoutNanoseconds: 1_000_000_000,
                 closeTimeoutNanoseconds: 500_000_000
             )
+            let inbound = Data(SharedFixtures.text(fixture["json"]).utf8)
+
+            if kind == "sessionCreated" {
+                // 原文接続の session.created は handshake で raw dict として読む。
+                // fixture の payload を handshake へ投げ、deliveryState の期限を検証する。
+                let deliveryState = EventDeliveryState(epoch: 1)
+                let payload = try XCTUnwrap(
+                    try SharedFixtures.parseUTF8(inbound) as? [String: Any]
+                )
+                try await transport.enqueueJSON(payload)
+                let startTask = Task {
+                    try await connection.start(
+                        apiKey: "sk-test",
+                        tuning: .default,
+                        pair: .jaEn,
+                        deliveryState: deliveryState
+                    )
+                }
+                try await waitUntilSent(transport, minimum: 1)
+                try await transport.enqueueJSON(["type": "session.updated"])
+                try await startTask.value
+                XCTAssertEqual(
+                    deliveryState.sessionExpiry(.source),
+                    SharedFixtures.optionalNumber(expected["expiresAt"]),
+                    name
+                )
+                await connection.forceClose()
+                continue
+            }
+
             try await startTranscription(connection, transport: transport)
             let stream = await connection.events
             let box = EventBox()
@@ -178,7 +214,6 @@ final class CodecFixtureTests: XCTestCase {
                 }
             }
 
-            let inbound = Data(SharedFixtures.text(fixture["json"]).utf8)
             if kind != "transcriptionFailed" && kind != "transcriptionCompleted" {
                 await transport.enqueueInbound(inbound)
             }

@@ -55,8 +55,13 @@ public sealed class SourceTranscriptionCodecFixtureTests
         switch (SharedFixtures.Text(expected["kind"]))
         {
             case "sessionCreated":
-                Assert.IsType<RealtimeSourceTranscriptionServerEvent.SessionCreated>(actual);
+            {
+                var typed = Assert.IsType<RealtimeSourceTranscriptionServerEvent.SessionCreated>(actual);
+                Assert.Equal(
+                    SharedFixtures.OptionalLong(expected["expiresAt"]),
+                    typed.ExpiresAtUnixSeconds);
                 break;
+            }
 
             case "sessionUpdated":
                 Assert.IsType<RealtimeSourceTranscriptionServerEvent.SessionUpdated>(actual);

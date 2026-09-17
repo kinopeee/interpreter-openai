@@ -47,7 +47,7 @@ WebSocket を同時に張る。翻訳側 target は pair の2言語である。
 
 | JSON `type` | 論理イベント | 備考 |
 |---|---|---|
-| `session.created` | SessionCreated | |
+| `session.created` | SessionCreated | `session.expires_at`（unix 秒）を保持する。下記「セッション期限」参照 |
 | `session.updated` | SessionUpdated | handshake 完了判定に使う |
 | `session.input_transcript.delta` | InputTranscriptDelta | `delta` / `event_id` / `elapsed_ms` |
 | `session.output_transcript.delta` | OutputTranscriptDelta | 同上 |
@@ -120,7 +120,7 @@ handshake 中の `error` も同じ分類で扱い、keepAlive は読み飛ばし
 
 | JSON `type` | 扱い |
 |---|---|
-| `session.created` / `session.updated` | handshake 判定 |
+| `session.created` / `session.updated` | handshake 判定。`session.created` に `session.expires_at` があれば同じ規則で保持する（transcription 側に公式な `expires_at` は未確認のため任意・未検証扱い） |
 | `conversation.item.input_audio_transcription.delta` | 原文 delta。`delta` が空なら捨てる。`event_id` を重複排除に使い、`item_id` は使わない（同一 turn で共通のため） |
 | `conversation.item.input_audio_transcription.completed` | commit 完了マーカー。close 待ちの解除に使う |
 | `conversation.item.input_audio_transcription.failed` | 原文の一部失敗。`error.type` / `error.code` を別々に保持し `error.message` は保持しない。分類は `server-error.json` の `transcriptionFailed`（許可リスト外は keepAlive）。keepAlive でも失敗 item の未確定字幕を無効化し確定・記録しない。commit 後の close 待ち解除にも使う（completed と同等）。`item_id`（無ければ `event_id`）で重複通知を一度だけ処理する |
@@ -155,3 +155,22 @@ handshake 中の `error` も同じ分類で扱い、keepAlive は読み飛ばし
 - 連続障害の開始は「最後に Listening を失った失敗」の時刻。失敗時点でそこからの経過が 120s 以上なら `error.reconnectBudgetExhausted`。総予算は attempt 上限より先に判定する。
 - Listening に入っただけでは attempt / 予算をリセットしない。短時間で再度落ちる接続を「復旧」と数えないため、Listening を 30s 以上維持したあとの失敗だけが attempt=0・予算開始を作り直す。
 - ユーザーの Stop は backoff 待機中でも即時に受け付け、待機後の再接続は走らない。
+
+## セッション期限（expires_at）
+
+`session.created` の `session.expires_at`（unix 秒）を codec が保持する。有効な値は JSON の数値かつ整数で 0 … Int64.max に限る（整数のみ。浮動小数点表現で届いた値は 2^53 以下かつ整数のものだけを受け付ける）。欠落・null・文字列・真偽値・負数・小数・非有限値はすべて「不明」として nil/null を記録し、codec エラーにはしない。
+
+期限までの残り時間 `remaining = expires_at − 壁時計` はセッションが Listening に入った時点で一度だけ算出し、以後は単調時計で追う。壁時計の途中補正（NTP 等）は検知時刻にも残りにも影響しない。
+
+`expiryNear`（残り 120s 以下）と `expired`（残り 0 以下）はいずれも診断のみで、再接続や lane 変更を起こさない。`session.updated` の `expires_at` は今回は使わない。
+
+## 受信停止監視（診断のみ）
+
+接続の健全性を観測する SessionHealthMonitor を持つ。閾値の正本は `shared/fixtures/v1/health.json` の `thresholds`、判定系列の契約は同ファイルの `scenarios`。
+
+- 位相: `idle` → `catchingUp`（再接続直後の猶予中かつ原文進捗なし）→ `silence`（音声活動なし）→ `awaitingLanguageDetection`（lane 未選択）→ `active`。
+- 検知 kind: `captureStalled`（frame が来ない、grace 対象外）、`sendStalled`（frame は来るが送信成功がない）、`receiveStalled`（直前受信以後の最初の音声活動からの経過）、`sourceStalled`（transport は生存するが原文進捗がない）、`translationStalled`（選択 lane の翻訳進捗が原文進捗に追従しない）、`expiryNear` / `expired`（上記の期限検知）。
+- transport の生存判定は「decode できた受信メッセージすべて」を数える。WebSocket の ping/pong は観測しない。
+- 検知は世代内 `(kind, lane)` ごとに 1 回だけ発火し、`beginGeneration`（再接続ごとの世代開始）で全状態をリセットする。検知から再接続・lane 変更・文言表示は一切起こさない（診断のみ）。
+- macOS は DEBUG ビルドのみ `DBG_HEALTH` / `DBG_HEALTH_SNAPSHOT`（5 s ごと）/ `DBG_HEALTH_TERMINATION` を notice ログへ出し、status file の3行目に `health=<kind> gen=<n> lane=<lane|->` を書く。Windows は `HealthDetected` イベントと `LatestHealthSnapshot` を公開する。いずれも数値と enum 名だけで、APIキー・音声・原文・訳文・サーバー生文言は含まない。
+- 終了診断は接続試行（attempt）ごとに最大 1 件記録する。kind は RealtimeTranslationError の分類をそのまま写す `missingAPIKey` / `notConnected` / `invalidMessage` / `authenticationFailed` / `fatalServerError` / `recoverableServerError` / `receiveOverflow` / `recoverableTransportFailure` / `sessionUpdateTimeout` / `closeTimeout` / `cancelled` に、エラー種にない終了分類 `reconnectBudgetExhausted`（連続障害の総予算枯渇）/ `reconnectAttemptLimit`（試行回数上限）/ `userStopped` / `other` を加えたもの。Listening 前（handshake・鍵欠落）の失敗は試行開始時刻と意図 epoch、試行開始時の世代で記録する。

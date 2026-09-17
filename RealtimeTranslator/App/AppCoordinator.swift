@@ -117,12 +117,21 @@ final class AppCoordinator: NSObject {
             openTranscriptSessionIfNeeded()
         }
 
+        // 前世代の health 検知を新しい接続世代へ持ち越さない。
+        latestHealthStatus = nil
         writeStatusFile("starting")
         Task { await interpretationSession.start() }
     }
 
+    /// DEBUG status file の3行目に出す最新の health 検知（kind/gen/lane のみ）。
+    private var latestHealthStatus: String?
+
     private func writeStatusFile(_ status: String) {
-        AppStatusFile.write(status, state: translationState.rawValue)
+        AppStatusFile.write(
+            status,
+            state: translationState.rawValue,
+            health: latestHealthStatus
+        )
     }
 
     func toggleSubtitlePositionEditing() {
@@ -337,6 +346,10 @@ extension AppCoordinator: InterpretationSessionDelegate {
         didUpdateState state: TranslationState
     ) {
         translationState = state
+        // 新しい接続世代（初回・再接続）や停止で前世代の health 検知を残さない。
+        if state == .idle || state == .connecting || state == .reconnecting {
+            latestHealthStatus = nil
+        }
         menuBarController.refresh()
         writeStatusFile(state.rawValue)
         if state == .idle {
@@ -385,6 +398,14 @@ extension AppCoordinator: InterpretationSessionDelegate {
             fontSize: settings.fontSize,
             translationState: translationState
         )
+    }
+
+    func interpretationSession(
+        _: InterpretationSession,
+        didEmitHealthDetection detection: SessionHealthDetection
+    ) {
+        latestHealthStatus = detection.statusLineFragment
+        writeStatusFile(translationState.rawValue)
     }
 
     func interpretationSession(

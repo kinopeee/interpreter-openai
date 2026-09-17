@@ -47,6 +47,8 @@ final class EventDeliveryState: @unchecked Sendable {
         var pendingSourceFailureCount = 0
         var completed = false
         var waiters: [CheckedContinuation<Void, Never>] = []
+        var receiveCounts: [RealtimeTranslationLane: Int] = [:]
+        var sessionExpiries: [RealtimeTranslationLane: Int] = [:]
     }
 
     let epoch: Int
@@ -70,6 +72,30 @@ final class EventDeliveryState: @unchecked Sendable {
 
     var termination: EventDeliveryTermination {
         state.withLock { $0.termination }
+    }
+
+    /// decode した全メッセージ（handshake 受信・keepAlive error・unknown を含む）で +1。
+    func recordReceive(lane: RealtimeTranslationLane) {
+        state.withLock { $0.receiveCounts[lane, default: 0] += 1 }
+    }
+
+    func receiveCount(_ lane: RealtimeTranslationLane) -> Int {
+        state.withLock { $0.receiveCounts[lane] ?? 0 }
+    }
+
+    /// `session.created` handshake 時に呼ぶ。不明なら nil を記録する。
+    func recordSessionExpiry(lane: RealtimeTranslationLane, expiresAtUnixSeconds: Int?) {
+        state.withLock { state in
+            if let expiresAtUnixSeconds {
+                state.sessionExpiries[lane] = expiresAtUnixSeconds
+            } else {
+                state.sessionExpiries.removeValue(forKey: lane)
+            }
+        }
+    }
+
+    func sessionExpiry(_ lane: RealtimeTranslationLane) -> Int? {
+        state.withLock { $0.sessionExpiries[lane] }
     }
 
     var pendingSourceFailureCount: Int {

@@ -72,6 +72,8 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 _pair = pair;
             }
 
+            var state = deliveryState ?? new EventDeliveryState(currentEpoch);
+
             try
             {
                 await _transport.ConnectAsync(
@@ -79,15 +81,18 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                     RealtimeRequestHeaders.For(apiKey, _safetyIdentifier),
                     cancellationToken).ConfigureAwait(false);
 
-                var created = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
+                var created = await ReceiveHandshakeEventAsync(state, cancellationToken).ConfigureAwait(false);
                 RealtimeConnectionLifecycle
                     .RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionCreated>(created);
+                state.RecordSessionExpiry(
+                    RealtimeTranslationLane.Source,
+                    ((RealtimeSourceTranscriptionServerEvent.SessionCreated)created).ExpiresAtUnixSeconds);
 
                 await SendAsync(
                     new RealtimeSourceTranscriptionClientEvent.SessionUpdate(tuning, pair),
                     cancellationToken).ConfigureAwait(false);
 
-                var updated = await ReceiveHandshakeEventAsync(cancellationToken).ConfigureAwait(false);
+                var updated = await ReceiveHandshakeEventAsync(state, cancellationToken).ConfigureAwait(false);
                 RealtimeConnectionLifecycle
                     .RequireHandshakeEvent<RealtimeSourceTranscriptionServerEvent.SessionUpdated>(updated);
 
@@ -103,7 +108,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
 
                 _lifecycle.StartReceiveLoop(
                     currentEpoch,
-                    deliveryState ?? new EventDeliveryState(currentEpoch),
+                    state,
                     EventDeliveryStage.Source,
                     ReceiveLoopAsync);
             }
@@ -236,12 +241,14 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
         _transport.SendAsync(RealtimeSourceTranscriptionCodec.Encode(clientEvent), cancellationToken);
 
     private Task<RealtimeSourceTranscriptionServerEvent> ReceiveHandshakeEventAsync(
+        EventDeliveryState state,
         CancellationToken cancellationToken) =>
         _lifecycle.ReceiveHandshakeEventAsync(
             RealtimeSourceTranscriptionCodec.DecodeServerEvent,
             TryClassifyError,
             _handshakeTimeout,
-            cancellationToken);
+            cancellationToken,
+            _ => state.RecordReceive(RealtimeTranslationLane.Source));
 
     private static RealtimeServerErrorClassification? TryClassifyError(
         RealtimeSourceTranscriptionServerEvent serverEvent) =>
@@ -267,6 +274,7 @@ public sealed class RealtimeSourceTranscriptionConnection : IDisposable
                 }
 
                 serverEvent = RealtimeSourceTranscriptionCodec.DecodeServerEvent(data);
+                deliveryState.RecordReceive(RealtimeTranslationLane.Source);
             }
             catch (OperationCanceledException)
             {

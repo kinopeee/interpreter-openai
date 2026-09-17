@@ -93,6 +93,9 @@ public partial class App : Application, IDisposable
         _session.StateChanged += OnSessionStateChanged;
         _session.SubtitleUpdated += OnSubtitleUpdated;
         _session.MessageEncountered += OnSessionMessage;
+        // 受信停止監視の診断（数値と enum 名のみ、content なし）。
+        _session.HealthDetected += (_, detection) =>
+            AppLogger.Info(LogCategory.Session, $"DBG_HEALTH {detection}");
 
         _tray = new TrayController(_settings.LanguagePair);
         // NotifyIcon コールバックは UI スレッドとは限らないため Dispatcher へ渡す。

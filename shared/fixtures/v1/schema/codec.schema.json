@@ -176,12 +176,20 @@
           "properties": {
             "kind": {
               "enum": [
-                "sessionCreated",
                 "sessionUpdated",
                 "transcriptionCompleted",
                 "ignored"
               ]
             }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "sessionCreated" },
+            "expiresAt": { "type": "integer", "minimum": 0 }
           }
         },
         {
@@ -229,12 +237,20 @@
           "properties": {
             "kind": {
               "enum": [
-                "sessionCreated",
                 "sessionUpdated",
                 "outputAudioDelta",
                 "sessionClosed"
               ]
             }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "sessionCreated" },
+            "expiresAt": { "type": "integer", "minimum": 0 }
           }
         },
         {
