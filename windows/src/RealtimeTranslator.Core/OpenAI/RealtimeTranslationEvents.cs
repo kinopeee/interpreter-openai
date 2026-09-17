@@ -37,6 +37,9 @@ public abstract record RealtimeTranslationServerEvent
     public sealed record InputTranscriptDelta(string Delta, string? EventId, int? ElapsedMs)
         : RealtimeTranslationServerEvent;
 
+    public sealed record InputTranscriptFailed(string? ItemId, string? EventId, string? Code, string? ErrorType)
+        : RealtimeTranslationServerEvent;
+
     public sealed record OutputTranscriptDelta(string Delta, string? EventId, int? ElapsedMs)
         : RealtimeTranslationServerEvent;
 

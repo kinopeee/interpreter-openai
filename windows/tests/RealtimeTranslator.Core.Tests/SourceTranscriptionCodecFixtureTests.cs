@@ -86,6 +86,16 @@ public sealed class SourceTranscriptionCodecFixtureTests
                 break;
             }
 
+            case "transcriptionFailed":
+            {
+                var typed = Assert.IsType<RealtimeSourceTranscriptionServerEvent.TranscriptionFailed>(actual);
+                Assert.Equal(SharedFixtures.OptionalText(expected["itemId"]), typed.ItemId);
+                Assert.Equal(SharedFixtures.OptionalText(expected["eventId"]), typed.EventId);
+                Assert.Equal(SharedFixtures.OptionalText(expected["code"]), typed.Code);
+                Assert.Equal(SharedFixtures.OptionalText(expected["errorType"]), typed.ErrorType);
+                break;
+            }
+
             case "error":
             {
                 var typed = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);

@@ -55,6 +55,18 @@ public readonly record struct RealtimeServerErrorClassification(
     public static RealtimeServerErrorClassification Classify(string? errorType, string? code, string message)
     {
         ArgumentNullException.ThrowIfNull(message);
+        return ClassifyCore(errorType, code, message, RealtimeServerErrorDisposition.Halt);
+    }
+
+    public static RealtimeServerErrorClassification ClassifyTranscriptionFailure(string? errorType, string? code) =>
+        ClassifyCore(errorType, code, string.Empty, RealtimeServerErrorDisposition.KeepAlive);
+
+    private static RealtimeServerErrorClassification ClassifyCore(
+        string? errorType,
+        string? code,
+        string message,
+        RealtimeServerErrorDisposition fallback)
+    {
 
         var normalizedCode = Normalize(code);
         var normalizedType = Normalize(errorType);
@@ -99,7 +111,12 @@ public readonly record struct RealtimeServerErrorClassification(
                 null);
         }
 
-        return Fatal(message);
+        return fallback == RealtimeServerErrorDisposition.KeepAlive
+            ? new(
+                RealtimeServerErrorDisposition.KeepAlive,
+                EventDeliveryTermination.None,
+                null)
+            : Fatal(message);
     }
 
     public RealtimeTranslationException ToException() => Termination switch

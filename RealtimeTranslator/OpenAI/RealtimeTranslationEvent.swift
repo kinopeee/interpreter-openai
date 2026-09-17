@@ -87,6 +87,7 @@ enum RealtimeTranslationServerEvent: Sendable, Equatable {
     case sessionCreated(expiresAtUnixSeconds: Int?)
     case sessionUpdated
     case inputTranscriptDelta(delta: String, eventID: String?, elapsedMs: Int?)
+    case inputTranscriptFailed(itemID: String?, eventID: String?, code: String?, errorType: String?)
     case outputTranscriptDelta(delta: String, eventID: String?, elapsedMs: Int?)
     case outputAudioDelta
     case sessionClosed

@@ -45,6 +45,14 @@ public abstract record RealtimeSourceTranscriptionServerEvent
     /// <summary>commit の待ち合わせを解除する。</summary>
     public sealed record TranscriptionCompleted : RealtimeSourceTranscriptionServerEvent;
 
+    public sealed record TranscriptionFailed(
+        string? ItemId,
+        string? EventId,
+        string? Code,
+        string? ErrorType,
+        RealtimeServerErrorClassification Classification)
+        : RealtimeSourceTranscriptionServerEvent;
+
     /// <summary>
     /// Message は表示用に正規化済み（認証失敗はローカライズ文言に置き換わる）。
     /// Classification は原文の type / code / message から一度だけ決めた分類で、Message から再分類してはならない。
@@ -159,6 +167,21 @@ public static class RealtimeSourceTranscriptionCodec
 
             case "conversation.item.input_audio_transcription.completed":
                 return new RealtimeSourceTranscriptionServerEvent.TranscriptionCompleted();
+
+            case "conversation.item.input_audio_transcription.failed":
+            {
+                var body = payload["error"] as JsonObject;
+                var itemId = ReadString(payload["item_id"]);
+                var eventId = ReadString(payload["event_id"]);
+                var code = ReadString(body?["code"]);
+                var errorType = ReadString(body?["type"]);
+                return new RealtimeSourceTranscriptionServerEvent.TranscriptionFailed(
+                    itemId,
+                    eventId,
+                    code,
+                    errorType,
+                    RealtimeServerErrorClassification.ClassifyTranscriptionFailure(errorType, code));
+            }
 
             case "error":
             {

@@ -79,6 +79,7 @@ final class InterpretationSession {
     private(set) var latestHealthSnapshot: SessionHealthSnapshot?
     /// テスト・診断用の最新 termination diagnostic（各試行で最大 1 件）。
     private(set) var latestHealthTermination: SessionTerminationDiagnostic?
+    internal var afterFailedSourceTerminationForTests: (() -> Void)?
 
     var audioLossMetrics: AudioLossMetrics {
         audioLossTracker.metrics
@@ -393,6 +394,9 @@ final class InterpretationSession {
                 self.handleEventLoss(feed)
                 throw feed.deliveryState.makeError()
             }
+            if feed.deliveryState.termination != .none {
+                self.afterFailedSourceTerminationForTests?()
+            }
             // 欠落なしの終了理由は stream 上の error event が消費側へ届くので、そちらに任せる。
             // ただし tryRecordTermination の直後に error 投入が満杯で recordLoss すると
             // completed 済みのため waitForCompletion は再起床しない。欠落を再確認する。
@@ -417,6 +421,7 @@ final class InterpretationSession {
         if feed.deliveryState.didLoseEvents {
             handleEventLoss(feed)
         }
+        discardFailedSourceIfNeeded(feed)
         try firstResult.get()
     }
 
@@ -560,6 +565,28 @@ final class InterpretationSession {
                 throw feed.deliveryState.makeError()
             }
 
+            if case .inputTranscriptFailed(let itemID, let eventID, let code, let errorType) = streamEvent.event {
+                let classification = EventDeliveryState.classifyTranscriptionFailure(
+                    errorType: errorType,
+                    code: code
+                )
+                let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID)
+                feed.deliveryState.noteSourceFailureConsumed()
+                if let invalidation {
+                    displayScheduler.discardPending()
+                    // halt/recover の flushPendingFinalizeIfNeeded が discardPending するため、
+                    // 間引きせず即時適用し、aggregator の未確定ペアを先に消す。
+                    displayScheduler.renderNow(invalidation)
+                    await resetAudioRoutingForNextSegment()
+                }
+                if classification.disposition == .keepAlive {
+                    await dualClient.acknowledgeConsumedStreamEvent(runToken: feed.runToken)
+                    continue
+                }
+                feed.deliveryState.tryRecordTermination(classification)
+                throw feed.deliveryState.makeError()
+            }
+
             // 原文 routing は専用 transcription の source lane だけを使う。
             // 適用または明示破棄のあとで acknowledge する。ack を先にすると、
             // この await 中に performStop が走ったとき未適用イベントが stop drain から外れる。
@@ -597,6 +624,7 @@ final class InterpretationSession {
             return
         }
         if feed.deliveryState.termination != .none {
+            discardFailedSourceIfNeeded(feed)
             throw feed.deliveryState.makeError()
         }
         throw RealtimeTranslationError.recoverableTransportFailure("event stream ended")
@@ -639,7 +667,9 @@ final class InterpretationSession {
             }
         }
         processor.clearBoundaryCandidate()
-        if processor.isCurrentSegmentTainted {
+        if let feed = activeFeed, feed.deliveryState.hasPendingSourceFailure {
+            discardFailedSourceIfNeeded(feed)
+        } else if processor.isCurrentSegmentTainted {
             let invalidation = processor.discardUnconfirmed()
             displayScheduler.renderNow(invalidation)
         } else {
@@ -663,6 +693,15 @@ final class InterpretationSession {
         guard !feed.deliveryState.didLoseEvents else { return }
         for streamEvent in events {
             if case .error = streamEvent.event {
+                continue
+            }
+            if case .inputTranscriptFailed(let itemID, let eventID, _, _) = streamEvent.event {
+                guard streamEvent.epoch == feed.runToken else { continue }
+                let invalidation = processor.discardFailedSource(itemID: itemID, eventID: eventID)
+                feed.deliveryState.noteSourceFailureConsumed()
+                if let invalidation {
+                    displayScheduler.renderNow(invalidation)
+                }
                 continue
             }
             guard let result = processSubtitleEvent(streamEvent, now: Date(), isReplay: true) else {
@@ -699,6 +738,9 @@ final class InterpretationSession {
         endHealthGeneration()
         await audioCapture.stop()
         await dualClient.forceClose()
+        if let feed = activeFeed {
+            discardFailedSourceIfNeeded(feed)
+        }
         activeFeed = nil
         handledLossRunToken = nil
         processor.deactivateLanguagePair()
@@ -713,6 +755,10 @@ final class InterpretationSession {
     /// 停止・再接続・致命エラーで epoch/buffer を捨てる直前に呼び、字幕記録の欠落を防ぐ。
     private func flushPendingFinalizeIfNeeded() {
         if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
+            return
+        }
+        if let feed = activeFeed, feed.deliveryState.hasPendingSourceFailure {
+            discardFailedSourceIfNeeded(feed)
             return
         }
         // スロットル中の live snapshot より assembler を正とする。
@@ -739,6 +785,17 @@ final class InterpretationSession {
         delegate?.interpretationSession(self, didUpdateSubtitles: snapshot)
     }
 
+    private func discardFailedSourceIfNeeded(_ feed: EventFeed) {
+        guard feed.deliveryState.hasPendingSourceFailure else { return }
+        if let invalidation = processor.discardFailedSource(itemID: nil, eventID: nil) {
+            displayScheduler.discardPending()
+            displayScheduler.renderNow(invalidation)
+        }
+        while feed.deliveryState.hasPendingSourceFailure {
+            feed.deliveryState.noteSourceFailureConsumed()
+        }
+    }
+
     private func requireAPIKey() throws -> String {
         guard let key = try apiKeyStore.load() else {
             throw RealtimeTranslationError.missingAPIKey
@@ -748,6 +805,11 @@ final class InterpretationSession {
 
     private func enqueueRender(_ update: RealtimeSubtitleUpdate) {
         if let feed = activeFeed, checkEventLoss(feed, generation: lifecycleGeneration) {
+            return
+        }
+        if update.isInvalidation {
+            displayScheduler.discardPending()
+            displayScheduler.renderNow(update)
             return
         }
         displayScheduler.enqueue(update)

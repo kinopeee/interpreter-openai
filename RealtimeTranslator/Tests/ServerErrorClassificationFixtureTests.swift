@@ -29,6 +29,27 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
         }
     }
 
+    // Given: source transcription failure の shared fixture 各 case
+    // When: transcription failure 用分類器へ type / code を渡す
+    // Then: keepAlive を既定値として disposition と termination が一致する
+    func testTranscriptionFailureClassificationMatchesFixture() throws {
+        let fixture = try SharedFixtures.load("server-error")
+        let contract = try XCTUnwrap(fixture["transcriptionFailed"] as? [String: Any])
+        XCTAssertEqual(SharedFixtures.text(contract["unknownDisposition"]), "keepAlive")
+        for item in try XCTUnwrap(contract["cases"] as? [[String: Any]]) {
+            let expected = try XCTUnwrap(item["expected"] as? [String: Any])
+            let actual = RealtimeServerErrorClassification.classifyTranscriptionFailure(
+                errorType: SharedFixtures.optionalText(item["errorType"]),
+                code: SharedFixtures.optionalText(item["code"])
+            )
+            XCTAssertEqual(parseDisposition(expected["disposition"]), actual.disposition)
+            XCTAssertEqual(
+                parseTermination(expected["termination"], sanitizedMessage: nil),
+                actual.termination
+            )
+        }
+    }
+
     // Given: fixture の許可リストと優先順位
     // When: macOS の定数と比較する
     // Then: transport code、終了理由の優先順位、回復可能サーバーエラーの文言が一致する

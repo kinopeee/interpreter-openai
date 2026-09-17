@@ -205,6 +205,18 @@
         },
         {
           "type": "object",
+          "required": ["kind", "itemId", "eventId", "code", "errorType"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "transcriptionFailed" },
+            "itemId": { "type": ["string", "null"] },
+            "eventId": { "type": ["string", "null"] },
+            "code": { "type": ["string", "null"] },
+            "errorType": { "type": ["string", "null"] }
+          }
+        },
+        {
+          "type": "object",
           "required": ["kind", "message", "code"],
           "additionalProperties": false,
           "properties": {

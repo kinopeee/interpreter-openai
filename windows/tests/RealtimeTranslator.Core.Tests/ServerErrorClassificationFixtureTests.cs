@@ -54,7 +54,33 @@ public sealed class ServerErrorClassificationFixtureTests
         Assert.Equal(sanitized, actual.SanitizedMessage);
         if (actual.Termination != EventDeliveryTermination.FatalServerError)
         {
-            Assert.Null(actual.SanitizedMessage);
+            if (actual.Termination != EventDeliveryTermination.FatalServerError)
+            {
+                Assert.Null(actual.SanitizedMessage);
+            }
+        }
+    }
+
+    // Given: source transcription failure の shared fixture 各 case
+    // When: transcription failure 用分類器へ type / code を渡す
+    // Then: keepAlive を既定値として disposition と termination が一致する
+    [Fact]
+    public void TranscriptionFailureClassificationMatchesFixture()
+    {
+        var contract = SharedFixtures.Load("server-error")["transcriptionFailed"]!.AsObject();
+        Assert.Equal("keepAlive", SharedFixtures.Text(contract["unknownDisposition"]));
+        foreach (var item in contract["cases"]!.AsArray())
+        {
+            var expected = item!["expected"]!;
+            var actual = RealtimeServerErrorClassification.ClassifyTranscriptionFailure(
+                SharedFixtures.OptionalText(item["errorType"]),
+                SharedFixtures.OptionalText(item["code"]));
+            Assert.Equal(ParseDisposition(expected["disposition"]), actual.Disposition);
+            Assert.Equal(ParseTermination(expected["termination"]), actual.Termination);
+            if (actual.Termination != EventDeliveryTermination.FatalServerError)
+            {
+                Assert.Null(actual.SanitizedMessage);
+            }
         }
     }
 

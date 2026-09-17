@@ -84,6 +84,8 @@ public sealed class InterpretationSession : IDisposable
 
     internal Func<Task>? BeforeAudioLossRoutingResetForTests { get; set; }
 
+    internal Action? AfterFailedSourceFallbackForTests { get; set; }
+
     public InterpretationSession(
         IApiKeyStore apiKeyStore,
         IRealtimeAudioCapture audioCapture,
@@ -742,6 +744,34 @@ public sealed class InterpretationSession : IDisposable
                 }
             }
 
+            if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptFailed failed)
+            {
+                RealtimeServerErrorClassification classification =
+                    RealtimeServerErrorClassification.ClassifyTranscriptionFailure(
+                        failed.ErrorType,
+                        failed.Code);
+                RealtimeSubtitleUpdate? invalidation;
+                lock (_sync)
+                {
+                    invalidation = _processor.DiscardFailedSource(failed.ItemId, failed.EventId);
+                }
+                feed.DeliveryState.NoteSourceFailureConsumed();
+
+                if (invalidation is { } failedUpdate)
+                {
+                    EmitSubtitleUpdate(failedUpdate);
+                    await ResetAudioRoutingForNextSegmentAsync().ConfigureAwait(false);
+                }
+
+                if (classification.Disposition == RealtimeServerErrorDisposition.KeepAlive)
+                {
+                    continue;
+                }
+
+                feed.DeliveryState.TryRecordTermination(classification);
+                throw feed.DeliveryState.ToException();
+            }
+
             BeforeAssemblerIngestForTests?.Invoke();
 
             RealtimeSubtitleProcessingResult? result = null;
@@ -818,6 +848,7 @@ public sealed class InterpretationSession : IDisposable
             return;
         }
 
+        DiscardFailedSourceIfNeeded(feed);
         if (feed.DeliveryState.Termination != EventDeliveryTermination.None)
         {
             throw feed.DeliveryState.ToException();
@@ -1029,6 +1060,10 @@ public sealed class InterpretationSession : IDisposable
                 // ForceClose 中の遅延 source でも言語境界を分割できるよう、
                 // ペアと tracker は二度目の回収が終わるまで残す。通信先は変えない。
                 IngestAlreadyQueuedEvents();
+                if (feed is { DeliveryState.HasPendingSourceFailure: true })
+                {
+                    DiscardFailedSourceIfNeeded(feed);
+                }
                 lock (_sync)
                 {
                     _processor.DeactivateLanguagePair();
@@ -1050,6 +1085,11 @@ public sealed class InterpretationSession : IDisposable
             HandleEventLoss(feed);
             return;
         }
+        if (feed is { DeliveryState.HasPendingSourceFailure: true })
+        {
+            DiscardFailedSourceIfNeeded(feed);
+            return;
+        }
 
         RealtimeSubtitleUpdate? pending;
         lock (_sync)
@@ -1064,6 +1104,31 @@ public sealed class InterpretationSession : IDisposable
         {
             EmitSubtitleUpdate(update);
         }
+    }
+
+    private void DiscardFailedSourceIfNeeded(RealtimeEventFeed feed)
+    {
+        if (!feed.DeliveryState.HasPendingSourceFailure)
+        {
+            return;
+        }
+
+        RealtimeSubtitleUpdate? invalidation;
+        lock (_sync)
+        {
+            invalidation = _processor.DiscardFailedSource(null, null);
+        }
+
+        if (invalidation is { } failedUpdate)
+        {
+            EmitSubtitleUpdate(failedUpdate);
+        }
+
+        while (feed.DeliveryState.HasPendingSourceFailure)
+        {
+            feed.DeliveryState.NoteSourceFailureConsumed();
+        }
+        AfterFailedSourceFallbackForTests?.Invoke();
     }
 
     /// <summary>
@@ -1099,11 +1164,34 @@ public sealed class InterpretationSession : IDisposable
             return;
         }
 
-        var events = feed?.Events ?? _dualClient.Feed.Events;
+        var currentFeed = feed ?? _dualClient.Feed;
+        var events = currentFeed.Events;
         while (events.TryRead(out var streamEvent))
         {
             if (streamEvent.Event is RealtimeTranslationServerEvent.ServerError)
             {
+                continue;
+            }
+
+            if (streamEvent.Event is RealtimeTranslationServerEvent.InputTranscriptFailed failed)
+            {
+                if (streamEvent.Epoch != currentFeed.Epoch)
+                {
+                    continue;
+                }
+
+                RealtimeSubtitleUpdate? invalidation;
+                lock (_sync)
+                {
+                    invalidation = _processor.DiscardFailedSource(failed.ItemId, failed.EventId);
+                }
+                currentFeed.DeliveryState.NoteSourceFailureConsumed();
+
+                if (invalidation is { } failedUpdate)
+                {
+                    EmitSubtitleUpdate(failedUpdate);
+                }
+
                 continue;
             }
 

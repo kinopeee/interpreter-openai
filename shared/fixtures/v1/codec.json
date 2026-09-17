@@ -523,6 +523,31 @@
       }
     },
     {
+      "name": "failed with error type only keeps type and item",
+      "json": "{\"type\":\"conversation.item.input_audio_transcription.failed\",\"event_id\":\"evt_f1\",\"item_id\":\"item_a\",\"error\":{\"type\":\"server_error\",\"message\":\"upstream failed\"}}",
+      "expected": { "kind": "transcriptionFailed", "itemId": "item_a", "eventId": "evt_f1", "code": null, "errorType": "server_error" }
+    },
+    {
+      "name": "failed with error code only keeps code",
+      "json": "{\"type\":\"conversation.item.input_audio_transcription.failed\",\"item_id\":\"item_b\",\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"slow down\"}}",
+      "expected": { "kind": "transcriptionFailed", "itemId": "item_b", "eventId": null, "code": "rate_limit_exceeded", "errorType": null }
+    },
+    {
+      "name": "failed with both type and code keeps them separately",
+      "json": "{\"type\":\"conversation.item.input_audio_transcription.failed\",\"event_id\":\"evt_f3\",\"item_id\":\"item_c\",\"error\":{\"type\":\"invalid_request_error\",\"code\":\"insufficient_quota\",\"message\":\"quota\"}}",
+      "expected": { "kind": "transcriptionFailed", "itemId": "item_c", "eventId": "evt_f3", "code": "insufficient_quota", "errorType": "invalid_request_error" }
+    },
+    {
+      "name": "failed with unknown values decodes without message",
+      "json": "{\"type\":\"conversation.item.input_audio_transcription.failed\",\"item_id\":\"item_d\",\"error\":{\"type\":\"transcription_error\",\"code\":\"audio_unintelligible\",\"message\":\"こんにちは sk-secret-leak\"}}",
+      "expected": { "kind": "transcriptionFailed", "itemId": "item_d", "eventId": null, "code": "audio_unintelligible", "errorType": "transcription_error" }
+    },
+    {
+      "name": "failed without error body decodes with nulls",
+      "json": "{\"type\":\"conversation.item.input_audio_transcription.failed\"}",
+      "expected": { "kind": "transcriptionFailed", "itemId": null, "eventId": null, "code": null, "errorType": null }
+    },
+    {
       "name": "transcription errors keep the original server code",
       "json": "{\"type\":\"error\",\"error\":{\"message\":\"boom\",\"code\":\"server_error\"}}",
       "expected": {

@@ -13,7 +13,9 @@ actor RealtimeSourceTranscriptionConnection {
 
     private var epoch = 0
     private var isReady = false
-    private var didReceiveCompleted = false
+    private var didReceiveCommitOutcome = false
+    /// commit 送信完了後だけ立てる。送信待ち中の録音時 outcome を commit 結果にしない。
+    private var isAwaitingCommitOutcome = false
     private var languagePair: LanguagePair = .jaEn
     /// 接続開始時のnoise_reduction。live updateでは変更しない。
     private var connectedNoiseReduction: RealtimeTranslationNoiseReduction = .farField
@@ -54,7 +56,8 @@ actor RealtimeSourceTranscriptionConnection {
             stage: .source,
             capacity: Self.eventBufferLimit
         )
-        didReceiveCompleted = false
+        didReceiveCommitOutcome = false
+        isAwaitingCommitOutcome = false
 
         let apiKey = try RealtimeTranslationError.requireNormalizedAPIKey(apiKey)
 
@@ -122,11 +125,14 @@ actor RealtimeSourceTranscriptionConnection {
             return
         }
         isReady = false
+        // 録音中の failed / completed を、この commit の結果として使わない。
+        didReceiveCommitOutcome = false
+        isAwaitingCommitOutcome = true
         try await sendJSON(["type": "input_audio_buffer.commit"])
 
         let deadline = ContinuousClock.now + .nanoseconds(Int64(closeTimeoutNanoseconds))
         while ContinuousClock.now < deadline {
-            if didReceiveCompleted {
+            if didReceiveCommitOutcome {
                 await forceClose()
                 return
             }
@@ -144,6 +150,7 @@ actor RealtimeSourceTranscriptionConnection {
 
     func forceClose() async {
         isReady = false
+        isAwaitingCommitOutcome = false
         epoch += 1
         receiveTask?.cancel()
         receiveTask = nil
@@ -184,7 +191,34 @@ actor RealtimeSourceTranscriptionConnection {
                             )
                         ) == true else { return }
                     case "conversation.item.input_audio_transcription.completed":
-                        didReceiveCompleted = true
+                        if isAwaitingCommitOutcome {
+                            didReceiveCommitOutcome = true
+                        }
+                    case "conversation.item.input_audio_transcription.failed":
+                        if isAwaitingCommitOutcome {
+                            didReceiveCommitOutcome = true
+                        }
+                        let error = object["error"] as? [String: Any]
+                        let classification = EventDeliveryState.classifyTranscriptionFailure(
+                            errorType: error?["type"] as? String,
+                            code: error?["code"] as? String
+                        )
+                        deliveryYielder?.deliveryState.noteSourceFailureQueued()
+                        if classification.disposition != .keepAlive {
+                            deliveryYielder?.deliveryState.tryRecordTermination(classification)
+                        }
+                        guard deliveryYielder?.deliver(
+                            RealtimeTranslationStreamEvent(
+                                lane: .source,
+                                event: .inputTranscriptFailed(
+                                    itemID: object["item_id"] as? String,
+                                    eventID: object["event_id"] as? String,
+                                    code: error?["code"] as? String,
+                                    errorType: error?["type"] as? String
+                                ),
+                                epoch: currentEpoch
+                            )
+                        ) == true else { return }
                     case "error":
                         let serverError = Self.serverError(object)
                         let classification = EventDeliveryState.classify(

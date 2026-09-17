@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -574,10 +575,100 @@ public sealed class RealtimeConnectionTests
         var secondDelta = Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptDelta>(second.Event);
         Assert.Equal(" world", secondDelta.Delta);
 
+        var closeTask = connection.CloseGracefullyAsync();
+        await WaitUntilAsync(() => transport.Sent.Any(payload => TypeOf(payload) == "input_audio_buffer.commit"));
         transport.EnqueueJson("""{"type":"conversation.item.input_audio_transcription.completed"}""");
-        await connection.CloseGracefullyAsync();
+        await closeTask;
 
         Assert.Equal("input_audio_buffer.commit", TypeOf(transport.Sent[^1]));
+    }
+
+    // Given: ready な原文 transcription 接続
+    // When: commit 後に failed を受信して graceful close する
+    // Then: completed と同様に 500ms 未満で close が完了する
+    [Fact]
+    public async Task SourceConnectionClosesOnTranscriptionFailed()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            closeTimeout: TimeSpan.FromMilliseconds(500));
+        await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        var closeTask = connection.CloseGracefullyAsync();
+        await WaitUntilAsync(() => transport.Sent.Any(payload => TypeOf(payload) == "input_audio_buffer.commit"));
+        var started = Stopwatch.StartNew();
+        transport.EnqueueJson(
+            """{"type":"conversation.item.input_audio_transcription.failed","item_id":"close-item","event_id":"close-event","error":{"code":"audio_unintelligible","message":"こんにちは sk-leak-1234"}}""");
+        await closeTask;
+        started.Stop();
+
+        Assert.True(started.Elapsed < TimeSpan.FromMilliseconds(500));
+        var streamEvent = await ReadOneAsync(connection.Events);
+        Assert.Equal(
+            new RealtimeTranslationServerEvent.InputTranscriptFailed(
+                "close-item",
+                "close-event",
+                "audio_unintelligible",
+                null),
+            streamEvent.Event);
+        await connection.ForceCloseAsync();
+    }
+
+    // Given: commit 送信中に completed を即時受信する原文接続
+    // When: graceful close する
+    // Then: commit 中の completed で close が完了する
+    [Fact]
+    public async Task SourceConnectionClosesWhenCompletedArrivesDuringCommitSend()
+    {
+        var transport = new FakeRealtimeServerTransport
+        {
+            AutoCloseResponses = true,
+            AfterSendAsync = async type =>
+            {
+                if (type == "input_audio_buffer.commit")
+                {
+                    await Task.Yield();
+                }
+            }
+        };
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            closeTimeout: TimeSpan.FromMilliseconds(500));
+        await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        var started = Stopwatch.StartNew();
+        await connection.CloseGracefullyAsync();
+        started.Stop();
+
+        Assert.True(started.Elapsed < TimeSpan.FromMilliseconds(500));
+        await connection.ForceCloseAsync();
+    }
+
+    // Given: failed payload が error.message に秘密情報を含む ready な接続
+    // When: source event を受信する
+    // Then: message を保持せず item / event / code / type だけを返す
+    [Fact]
+    public async Task SourceConnectionFailedEventDoesNotRetainMessage()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
+        await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        transport.EnqueueJson(
+            """{"type":"conversation.item.input_audio_transcription.failed","item_id":"privacy-item","event_id":"privacy-event","error":{"code":"audio_unintelligible","message":"こんにちは sk-leak-1234"}}""");
+        var streamEvent = await ReadOneAsync(connection.Events);
+
+        Assert.Equal(
+            new RealtimeTranslationServerEvent.InputTranscriptFailed(
+                "privacy-item",
+                "privacy-event",
+                "audio_unintelligible",
+                null),
+            streamEvent.Event);
+        await connection.ForceCloseAsync();
     }
 
     // Given: 接続していない原文 transcription 接続
@@ -704,6 +795,32 @@ public sealed class RealtimeConnectionTests
         Assert.Equal("input_audio_buffer.commit", TypeOf(transport.Sent[^1]));
     }
 
+    // Given: 録音中に failed を受信済みの原文接続
+    // When: commit 後に completed / failed が来ない
+    // Then: 録音中の failed を commit 結果にせず CloseTimeout になる
+    [Fact]
+    public async Task SourceConnectionLiveFailedDoesNotSatisfyLaterCommitWait()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(
+            transport,
+            "test-safety",
+            closeTimeout: ShortTimeout);
+        await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
+
+        transport.EnqueueJson(
+            """{"type":"conversation.item.input_audio_transcription.failed","item_id":"live-item","event_id":"live-event","error":{"code":"audio_unintelligible"}}""");
+        var streamEvent = await ReadOneAsync(connection.Events);
+        Assert.IsType<RealtimeTranslationServerEvent.InputTranscriptFailed>(streamEvent.Event);
+
+        var error = await Assert.ThrowsAsync<RealtimeTranslationException>(
+            () => connection.CloseGracefullyAsync());
+
+        Assert.Equal(RealtimeTranslationErrorKind.CloseTimeout, error.Kind);
+        Assert.Equal("input_audio_buffer.commit", TypeOf(transport.Sent[^1]));
+        await connection.ForceCloseAsync();
+    }
+
     // Given: ready な原文接続で、相手は既に落ちて commit 送信だけ失敗する
     // When: CloseGracefullyAsync する
     // Then: 送信失敗を外へ出さず completed 待ちへ進み、transport を解放する
@@ -718,10 +835,12 @@ public sealed class RealtimeConnectionTests
         await connection.StartAsync("sk-test", RealtimeSessionTuning.Default);
 
         transport.FailNextSend();
-        transport.EnqueueJson("""{"type":"conversation.item.input_audio_transcription.completed"}""");
-
+        var closeTask = connection.CloseGracefullyAsync();
         var started = Stopwatch.StartNew();
-        await connection.CloseGracefullyAsync();
+        // commit 送信失敗後の待ちに入ってから completed を届ける。
+        await Task.Delay(50);
+        transport.EnqueueJson("""{"type":"conversation.item.input_audio_transcription.completed"}""");
+        await closeTask;
         started.Stop();
 
         Assert.True(started.Elapsed < TimeSpan.FromMilliseconds(500));
