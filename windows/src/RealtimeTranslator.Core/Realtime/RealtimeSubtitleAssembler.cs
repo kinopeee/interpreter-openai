@@ -28,6 +28,8 @@ public sealed class RealtimeSubtitleAssembler
     /// 短い idle cutoff は訳文を切り落とすため 8 秒を使う。
     /// </summary>
     public static readonly TimeSpan IdleFinalizeInterval = TimeSpan.FromSeconds(8);
+    /// <summary><c>shared/fixtures/v1/audio.json</c> の loss.taintedSegmentWindowMs と一致する。</summary>
+    public static readonly TimeSpan AudioLossTaintWindow = TimeSpan.FromSeconds(8);
 
     private int _epoch;
     private int _segmentGeneration;
@@ -46,6 +48,8 @@ public sealed class RealtimeSubtitleAssembler
     private bool _awaitingSourceAfterFinalize;
     private bool _boundaryCandidatePending;
     private bool _translationIsCurrent;
+    private DateTimeOffset? _audioLossTaintedUntil;
+    private bool _currentSegmentTainted;
 
     public RealtimeSubtitleAssembler(LanguagePair languagePair = LanguagePair.JaEn)
     {
@@ -66,6 +70,8 @@ public sealed class RealtimeSubtitleAssembler
         _awaitingSourceAfterFinalize = false;
         _boundaryCandidatePending = false;
         _translationIsCurrent = false;
+        _audioLossTaintedUntil = null;
+        _currentSegmentTainted = false;
     }
 
     public void BeginNewEpoch(int epoch) => Reset(epoch);
@@ -82,6 +88,16 @@ public sealed class RealtimeSubtitleAssembler
         _expectedLane = null;
         _awaitingSourceAfterFinalize = false;
         _boundaryCandidatePending = false;
+        _audioLossTaintedUntil = null;
+        _currentSegmentTainted = false;
+    }
+
+    public bool IsCurrentSegmentTainted => _currentSegmentTainted;
+
+    public void MarkAudioLoss(DateTimeOffset now)
+    {
+        DiscardUnconfirmed();
+        _audioLossTaintedUntil = now + AudioLossTaintWindow;
     }
 
     public void SetBoundaryCandidatePending(bool pending) =>
@@ -135,16 +151,21 @@ public sealed class RealtimeSubtitleAssembler
         if (hasCompletePair)
         {
             ApplyFinalizedCutoffs();
-            finalized = new RealtimeSubtitleUpdate(
-                prefix,
-                CurrentTranslation,
-                IsTranslationCurrent: true,
-                ShouldFinalize: true,
-                SegmentGeneration: _segmentGeneration);
+            if (!_currentSegmentTainted)
+            {
+                finalized = new RealtimeSubtitleUpdate(
+                    prefix,
+                    CurrentTranslation,
+                    IsTranslationCurrent: true,
+                    ShouldFinalize: true,
+                    SegmentGeneration: _segmentGeneration);
+            }
         }
 
+        var keepTaint = _currentSegmentTainted && suffix.Length > 0;
         ClearSegmentBuffers(advancingGeneration: true);
         _sourceText = suffix;
+        _currentSegmentTainted = keepTaint;
         _awaitingSourceAfterFinalize = suffix.Length == 0;
         _boundaryCandidatePending = false;
         _lastActivityAt = now;
@@ -201,6 +222,13 @@ public sealed class RealtimeSubtitleAssembler
         {
             ClearSegmentBuffers(advancingGeneration: true);
             extendingExistingSource = false;
+        }
+
+        if (_sourceText.Length == 0)
+        {
+            _currentSegmentTainted = _audioLossTaintedUntil is { } deadline
+                && now <= deadline;
+            _audioLossTaintedUntil = null;
         }
 
         _sourceText += delta;
@@ -329,6 +357,11 @@ public sealed class RealtimeSubtitleAssembler
         if (CurrentTranslation.Length > 0 && _translationIsCurrent)
         {
             // 未確定の境界候補（文末の製品名など）は、切替未確定のまま idle した完全ペアを止めない。
+            if (_currentSegmentTainted)
+            {
+                return AbandonStaleSegment(now);
+            }
+
             return FinalizeCurrent(elapsedHint: null, now);
         }
 
@@ -340,6 +373,11 @@ public sealed class RealtimeSubtitleAssembler
         if (CurrentTranslation.Length > 0)
         {
             // 旧訳文は確定しないが、次発話の原文が同一セグメントへ連結しないよう境界だけ進める。
+            if (_currentSegmentTainted)
+            {
+                return AbandonStaleSegment(now);
+            }
+
             AbandonStaleSegment(now);
         }
 
@@ -364,6 +402,7 @@ public sealed class RealtimeSubtitleAssembler
         // 次の source 開始まで表示内容は aggregator 側で保持する。
         ClearSegmentBuffers(advancingGeneration: true);
         _awaitingSourceAfterFinalize = true;
+        _currentSegmentTainted = false;
         _lastActivityAt = now;
         return update;
     }
@@ -385,12 +424,20 @@ public sealed class RealtimeSubtitleAssembler
             _segmentGeneration);
     }
 
-    private void AbandonStaleSegment(DateTimeOffset now)
+    private RealtimeSubtitleUpdate AbandonStaleSegment(DateTimeOffset now)
     {
         ApplyFinalizedCutoffs();
         ClearSegmentBuffers(advancingGeneration: true);
         _awaitingSourceAfterFinalize = true;
+        _currentSegmentTainted = false;
         _lastActivityAt = now;
+        return new RealtimeSubtitleUpdate(
+            string.Empty,
+            string.Empty,
+            IsTranslationCurrent: false,
+            ShouldFinalize: false,
+            _segmentGeneration,
+            IsInvalidation: true);
     }
 
     private void ApplyFinalizedCutoffs()

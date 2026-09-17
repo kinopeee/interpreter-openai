@@ -495,10 +495,10 @@ public sealed class InterpretationSessionReceiveOverflowTests
 
     private sealed class FakeAudioCapture : IRealtimeAudioCapture
     {
-        private readonly Channel<ReadOnlyMemory<byte>> _frames =
-            Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+        private readonly Channel<CapturedAudioFrame> _frames =
+            Channel.CreateUnbounded<CapturedAudioFrame>();
 
-        public ChannelReader<ReadOnlyMemory<byte>> Frames => _frames.Reader;
+        public ChannelReader<CapturedAudioFrame> Frames => _frames.Reader;
 
         public Task StartAsync(CancellationToken cancellationToken = default) =>
             Task.CompletedTask;

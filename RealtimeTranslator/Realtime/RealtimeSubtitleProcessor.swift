@@ -23,6 +23,8 @@ struct RealtimeSubtitleProcessor: Sendable {
 
     var currentSourceLength: Int { assembler.currentSourceLength }
     var currentSegmentGeneration: Int { assembler.currentSegmentGeneration }
+    var isCurrentSegmentTainted: Bool { assembler.isCurrentSegmentTainted }
+    var hasSelectedTranslationTarget: Bool { selectedTranslationTarget != nil }
 
     mutating func beginEpoch(_ epoch: Int, pair: LanguagePair) {
         assembler.beginNewEpoch(epoch)
@@ -57,6 +59,23 @@ struct RealtimeSubtitleProcessor: Sendable {
         routingSourceText = ""
         selectedTranslationTarget = nil
         reverseEvidenceCount = 0
+        return RealtimeSubtitleUpdate(
+            sourceText: "",
+            translatedText: "",
+            isTranslationCurrent: false,
+            shouldFinalize: false,
+            segmentGeneration: assembler.currentSegmentGeneration,
+            isInvalidation: true
+        )
+    }
+
+    mutating func markAudioLoss(now: Date) -> RealtimeSubtitleUpdate {
+        assembler.markAudioLoss(now: now)
+        clearBoundaryCandidate()
+        routingSourceText = ""
+        selectedTranslationTarget = nil
+        reverseEvidenceCount = 0
+        assembler.expectLane(nil)
         return RealtimeSubtitleUpdate(
             sourceText: "",
             translatedText: "",

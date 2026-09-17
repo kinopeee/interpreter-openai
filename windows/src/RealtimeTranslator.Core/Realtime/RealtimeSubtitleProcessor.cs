@@ -38,6 +38,10 @@ internal sealed class RealtimeSubtitleProcessor
 
     internal int SegmentGeneration => _assembler.SegmentGeneration;
 
+    internal bool IsCurrentSegmentTainted => _assembler.IsCurrentSegmentTainted;
+
+    public bool HasSelectedTranslationTarget => _selectedTranslationTarget is not null;
+
     internal void BeginEpoch(int epoch, LanguagePair pair)
     {
         _assembler.SetLanguagePair(pair);
@@ -76,6 +80,23 @@ internal sealed class RealtimeSubtitleProcessor
         RoutingSourceText = string.Empty;
         _selectedTranslationTarget = null;
         _reverseEvidenceCount = 0;
+        return new RealtimeSubtitleUpdate(
+            string.Empty,
+            string.Empty,
+            IsTranslationCurrent: false,
+            ShouldFinalize: false,
+            _assembler.SegmentGeneration,
+            IsInvalidation: true);
+    }
+
+    internal RealtimeSubtitleUpdate MarkAudioLoss(DateTimeOffset now)
+    {
+        _assembler.MarkAudioLoss(now);
+        ClearBoundaryCandidate();
+        RoutingSourceText = string.Empty;
+        _selectedTranslationTarget = null;
+        _reverseEvidenceCount = 0;
+        _assembler.ExpectLane(null);
         return new RealtimeSubtitleUpdate(
             string.Empty,
             string.Empty,

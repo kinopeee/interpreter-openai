@@ -9,7 +9,8 @@
     "packetizer",
     "packetizerContinuity",
     "float32ToPcm16",
-    "gain"
+    "gain",
+    "loss"
   ],
   "additionalProperties": false,
   "properties": {
@@ -186,6 +187,107 @@
                 }
               }
             ]
+          }
+        }
+      }
+    },
+    "loss": {
+      "type": "object",
+      "required": [
+        "description",
+        "sendQueueFrameCapacity",
+        "frameDurationMs",
+        "reconnect",
+        "taintedSegmentWindowMs",
+        "afterLoss",
+        "cases"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string" },
+        "sendQueueFrameCapacity": { "type": "integer", "minimum": 1 },
+        "frameDurationMs": { "type": "integer", "minimum": 1 },
+        "reconnect": {
+          "type": "object",
+          "required": ["lostMsThreshold", "windowMs", "rationale"],
+          "additionalProperties": false,
+          "properties": {
+            "lostMsThreshold": { "type": "integer", "minimum": 1 },
+            "windowMs": { "type": "integer", "minimum": 1 },
+            "rationale": { "type": "string" }
+          }
+        },
+        "taintedSegmentWindowMs": { "type": "integer", "minimum": 1 },
+        "afterLoss": {
+          "type": "object",
+          "required": [
+            "discardsUnconfirmedSubtitle",
+            "preservesFinalizedSubtitle",
+            "taintedSegmentIsNotFinalized",
+            "taintedSegmentIsNotRecorded",
+            "singleDropDoesNotReconnect",
+            "diagnosticsExcludeAudioAndText"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "discardsUnconfirmedSubtitle": { "const": true },
+            "preservesFinalizedSubtitle": { "const": true },
+            "taintedSegmentIsNotFinalized": { "const": true },
+            "taintedSegmentIsNotRecorded": { "const": true },
+            "singleDropDoesNotReconnect": { "const": true },
+            "diagnosticsExcludeAudioAndText": { "const": true }
+          }
+        },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "frames", "expected"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "frames": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "generation",
+                    "sequence",
+                    "discardedMs",
+                    "queueWaitMs",
+                    "atMs"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "generation": { "type": "integer", "minimum": 0 },
+                    "sequence": { "type": "integer", "minimum": 0 },
+                    "discardedMs": { "type": "integer", "minimum": 0 },
+                    "queueWaitMs": { "type": "integer", "minimum": 0 },
+                    "atMs": { "type": "integer", "minimum": 0 }
+                  }
+                }
+              },
+              "expected": {
+                "type": "object",
+                "required": [
+                  "droppedFrames",
+                  "lostMs",
+                  "lossEvents",
+                  "maxQueueWaitMs",
+                  "reconnectAt"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "droppedFrames": { "type": "integer", "minimum": 0 },
+                  "lostMs": { "type": "integer", "minimum": 0 },
+                  "lossEvents": { "type": "integer", "minimum": 0 },
+                  "maxQueueWaitMs": { "type": "integer", "minimum": 0 },
+                  "reconnectAt": { "type": ["integer", "null"], "minimum": 0 }
+                }
+              }
+            }
           }
         }
       }

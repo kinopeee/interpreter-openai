@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import os
 import XCTest
 @testable import RealtimeTranslator
 
@@ -10,12 +11,12 @@ final class RealtimeAudioFrameYieldOutcomeTests: XCTestCase {
         )
         var iterator = stream.makeAsyncIterator()
         XCTAssertTrue(
-            RealtimeAudioFrameYieldOutcome.didAccept(continuation.yield(Data([1])))
+            !RealtimeAudioFrameYieldOutcome.isTerminated(continuation.yield(Data([1])))
         )
 
         // When: 2件目をyieldしてoldest dropが返る
         let secondResult = continuation.yield(Data([2]))
-        let accepted = RealtimeAudioFrameYieldOutcome.didAccept(secondResult)
+        let accepted = !RealtimeAudioFrameYieldOutcome.isTerminated(secondResult)
 
         // Then: 新規frameは受理済みなので継続扱い（pipelineOverloadedにしない）
         guard case .dropped(let dropped) = secondResult else {
@@ -38,7 +39,7 @@ final class RealtimeAudioFrameYieldOutcomeTests: XCTestCase {
         continuation.finish()
 
         // When: finish後にyieldする
-        let accepted = RealtimeAudioFrameYieldOutcome.didAccept(
+        let accepted = !RealtimeAudioFrameYieldOutcome.isTerminated(
             continuation.yield(Data([9]))
         )
 
@@ -76,7 +77,8 @@ final class AudioBufferOwnershipTests: XCTestCase {
         )
         let tap = AnalyzerAudioTap(
             continuation: continuation,
-            bufferPool: bufferPool
+            bufferPool: bufferPool,
+            discardedFrames: OSAllocatedUnfairLock(initialState: 0)
         )
 
         // When: tapへ渡した直後に音声エンジン所有の元バッファを書き換える
@@ -135,7 +137,11 @@ final class AudioBufferOwnershipTests: XCTestCase {
                 capacity: 3
             )
         )
-        let tap = AnalyzerAudioTap(continuation: continuation, bufferPool: pool)
+        let tap = AnalyzerAudioTap(
+            continuation: continuation,
+            bufferPool: pool,
+            discardedFrames: OSAllocatedUnfairLock(initialState: 0)
+        )
 
         // When: 1件を処理中に、streamへ新旧2bufferを連続投入する
         sourceData[0][0] = 1
@@ -158,5 +164,62 @@ final class AudioBufferOwnershipTests: XCTestCase {
         processing.release()
         newest.release()
         XCTAssertEqual(pool.availableCount, 3)
+    }
+
+    func testPreconversionDiscardDurationRoundsCumulatively() async throws {
+        // Given: 48kHz入力と、3件のdropを発生させられるtap
+        let format = try XCTUnwrap(
+            AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: 48_000,
+                channels: 1,
+                interleaved: false
+            )
+        )
+        let source = try XCTUnwrap(
+            AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 512)
+        )
+        source.frameLength = 512
+        let (stream, continuation) = AsyncStream<CapturedAudioBuffer>.makeStream(
+            bufferingPolicy: .bufferingNewest(1)
+        )
+        let pool = try XCTUnwrap(
+            CapturedAudioBufferPool(
+                format: format,
+                frameCapacity: 512,
+                capacity: 5
+            )
+        )
+        let discardedFrames = OSAllocatedUnfairLock(initialState: 0)
+        let tap = AnalyzerAudioTap(
+            continuation: continuation,
+            bufferPool: pool,
+            discardedFrames: discardedFrames
+        )
+
+        // When: 512フレームbufferを4件連続投入し、後続3件をdropさせる
+        tap.receive(source)
+        var iterator = stream.makeAsyncIterator()
+        let processingValue = await iterator.next()
+        let processing = try XCTUnwrap(processingValue)
+        for _ in 0..<4 {
+            tap.receive(source)
+        }
+        let discarded = discardedFrames.withLock { $0 }
+        let newestValue = await iterator.next()
+        let newest = try XCTUnwrap(newestValue)
+        continuation.finish()
+        processing.release()
+        newest.release()
+
+        // Then: 1536フレームを一度だけ換算した32msになる
+        XCTAssertEqual(discarded, 1_536)
+        XCTAssertEqual(
+            RealtimeAudioCaptureService.discardedMilliseconds(
+                forFrames: discarded,
+                inputSampleRate: format.sampleRate
+            ),
+            32
+        )
     }
 }

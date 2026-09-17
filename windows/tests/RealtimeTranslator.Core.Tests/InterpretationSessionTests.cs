@@ -3206,6 +3206,210 @@ public sealed class InterpretationSessionTests
         Assert.Equal(TranslationState.Idle, session.State);
     }
 
+    // Given: bounded channel の先頭 frame を transport gate で止めた Listening session
+    // When: 40 frame を投入して gate を解放する
+    // Then: drop を一度だけ無効化し、単発欠落では再接続しない
+    [Fact]
+    public async Task AudioLossInvalidatesWithoutReconnectForSingleQueueDrop()
+    {
+        var client = new FakeDualClient
+        {
+            AppendAudioFrameGate = new(TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        var audio = new FakeAudioCapture();
+        audio.UseBoundedFrameChannel();
+        using var session = NewSession(client, audio: audio);
+        var invalidations = 0;
+        session.SubtitleUpdated += (_, update) =>
+        {
+            if (update.IsInvalidation)
+            {
+                Interlocked.Increment(ref invalidations);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        audio.Write(new CapturedAudioFrame(1, 0, new byte[4_800], 0, 0));
+        await WaitUntilAsync(() => client.AppendAudioFrameCount == 1);
+
+        for (var sequence = 1; sequence <= 40; sequence++)
+        {
+            audio.Write(new CapturedAudioFrame(1, sequence, new byte[4_800], 0, sequence));
+        }
+
+        client.AppendAudioFrameGate.TrySetResult();
+        await WaitUntilAsync(() => Volatile.Read(ref invalidations) == 1);
+
+        Assert.Equal(1, client.StartCount);
+        Assert.Equal(800, session.AudioLossMetrics.LostMilliseconds);
+        await session.StopAsync();
+    }
+
+    // Given: 再接続閾値未満の欠落を受け取る Listening session
+    // When: 800ms 相当の sequence 欠落を通知する
+    // Then: dual routing だけを一度リセットし、再接続しない
+    [Fact]
+    public async Task AudioLossResetsDualRoutingWithoutReconnect()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        using var session = NewSession(client, audio: audio);
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        var resetCountBeforeLoss = client.ResetAudioRoutingCount;
+
+        audio.Write(new CapturedAudioFrame(1, 0, new byte[4_800], 0, 0));
+        audio.Write(new CapturedAudioFrame(1, 9, new byte[4_800], 0, 900));
+
+        await WaitUntilAsync(() => session.AudioLossMetrics.LostMilliseconds == 800);
+        await WaitUntilAsync(
+            () => client.ResetAudioRoutingCount == resetCountBeforeLoss + 1);
+
+        Assert.Equal(resetCountBeforeLoss + 1, client.ResetAudioRoutingCount);
+        Assert.Equal(1, client.StartCount);
+        await session.StopAsync();
+    }
+
+    // Given: loss reset 待ちの routing gate と Listening session
+    // When: loss reset 中に新しい原文で target 選択が完了する
+    // Then: 新しい target を維持し、古い loss の routing reset を省略する
+    [Fact]
+    public async Task AudioLossDoesNotResetRoutingAfterFreshTargetSelection()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        using var session = NewSession(client, audio: audio);
+        var sourceObserved = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        session.SubtitleUpdated += (_, update) =>
+        {
+            if (update.SourceText == "こんにちは")
+            {
+                sourceObserved.TrySetResult();
+            }
+        };
+        session.BeforeAudioLossRoutingResetForTests = async () =>
+        {
+            client.PublishSourceDelta("こんにちは");
+            await sourceObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        var resetCountBeforeLoss = client.ResetAudioRoutingCount;
+
+        audio.Write(new CapturedAudioFrame(1, 0, new byte[4_800], 0, 0));
+        audio.Write(new CapturedAudioFrame(1, 9, new byte[4_800], 0, 900));
+
+        await WaitUntilAsync(() => session.AudioLossMetrics.LostMilliseconds == 800);
+        await WaitUntilAsync(() => client.SelectedTargets.Count > 0);
+
+        Assert.Equal(resetCountBeforeLoss, client.ResetAudioRoutingCount);
+        Assert.Equal(RealtimeTranslationOutputLanguage.English, client.SelectedTargets[^1]);
+        Assert.Equal(1, client.StartCount);
+        await session.StopAsync();
+    }
+
+    // Given: 同一窓内に32枚分の欠落を二度記録する Listening session
+    // When: 二つ目の欠落 frame を処理する
+    // Then: 既存の recoverable path で再接続し Listening に戻る
+    [Fact]
+    public async Task AudioLossReconnectsAfterTwoQueueDropsWithinWindow()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        using var session = NewSession(client, audio: audio);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        audio.Write(new CapturedAudioFrame(1, 0, new byte[4_800], 0, 0));
+        audio.Write(new CapturedAudioFrame(1, 33, new byte[4_800], 0, 3_400));
+        audio.Write(new CapturedAudioFrame(1, 34, new byte[4_800], 0, 3_500));
+        audio.Write(new CapturedAudioFrame(1, 67, new byte[4_800], 0, 6_900));
+
+        await WaitUntilAsync(() => client.StartCount >= 2);
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        Assert.True(client.StartCount >= 2);
+        await session.StopAsync();
+    }
+
+    // Given: 送信キュー欠落と変換前破棄が同じ frame で発生する
+    // When: session が frame 列を観測する
+    // Then: 両方の独立した区間を一度ずつ metrics に加算する
+    [Fact]
+    public async Task AudioLossMetricsCountQueueGapAndDiscardOnce()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        using var session = NewSession(client, audio: audio);
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        audio.Write(new CapturedAudioFrame(1, 0, new byte[4_800], 0, 0));
+        audio.Write(new CapturedAudioFrame(1, 1, new byte[4_800], 0, 100));
+        audio.Write(new CapturedAudioFrame(1, 2, new byte[4_800], 0, 200));
+        audio.Write(new CapturedAudioFrame(1, 35, new byte[4_800], 700, 4_300));
+
+        await WaitUntilAsync(() => session.AudioLossMetrics.LossEvents == 1);
+
+        Assert.Equal(3_900, session.AudioLossMetrics.LostMilliseconds);
+        await session.StopAsync();
+    }
+
+    // Given: 音声欠落のあと汚染窓内に完全ペアがある Listening session
+    // When: transport error で再接続 flush する
+    // Then: 汚染ペアは ShouldFinalize せず、再接続して Listening に戻る
+    [Fact]
+    public async Task ReconnectFlushDoesNotFinalizeTaintedPair()
+    {
+        var client = new FakeDualClient();
+        var audio = new FakeAudioCapture();
+        using var session = NewSession(client, audio: audio);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+        audio.Write(new CapturedAudioFrame(1, 0, new byte[4_800], 0, 0));
+        audio.Write(new CapturedAudioFrame(1, 33, new byte[4_800], 0, 3_400));
+        await WaitUntilAsync(() => session.AudioLossMetrics.LostMilliseconds == 3_200);
+
+        client.PublishSourceDelta("こんにちは");
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Hello");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.TranslatedText.Contains("Hello", StringComparison.Ordinal)
+                    && !update.ShouldFinalize);
+            }
+        });
+
+        client.PublishTransportError();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening && client.StartCount >= 2);
+
+        lock (updates)
+        {
+            Assert.DoesNotContain(
+                updates,
+                update => update.ShouldFinalize
+                    && update.SourceText == "こんにちは"
+                    && update.TranslatedText == "Hello");
+        }
+
+        await session.StopAsync();
+    }
+
     private static InterpretationSession NewSession(
         FakeDualClient client,
         string? apiKey = "sk-test",
@@ -3269,8 +3473,8 @@ public sealed class InterpretationSessionTests
     private sealed class FakeAudioCapture : IRealtimeAudioCapture
     {
         private readonly object _sync = new();
-        private Channel<ReadOnlyMemory<byte>> _frames =
-            Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+        private Channel<CapturedAudioFrame> _frames =
+            Channel.CreateUnbounded<CapturedAudioFrame>();
 
         public int StartCallCount { get; private set; }
 
@@ -3284,7 +3488,23 @@ public sealed class InterpretationSessionTests
         /// <summary>次の StartAsync だけ失敗させる（handshake 後のデバイス障害用）。</summary>
         public bool ThrowOnNextStart { get; set; }
 
-        public ChannelReader<ReadOnlyMemory<byte>> Frames
+        public void UseBoundedFrameChannel()
+        {
+            lock (_sync)
+            {
+                _frames = AudioFrameChannel.CreateBounded();
+            }
+        }
+
+        public void Write(CapturedAudioFrame frame)
+        {
+            lock (_sync)
+            {
+                Assert.True(_frames.Writer.TryWrite(frame));
+            }
+        }
+
+        public ChannelReader<CapturedAudioFrame> Frames
         {
             get
             {
@@ -3304,7 +3524,7 @@ public sealed class InterpretationSessionTests
                 // 再接続時に完了済み channel を使い回すと即 recoverable になるため張り直す。
                 if (_frames.Reader.Completion.IsCompleted)
                 {
-                    _frames = Channel.CreateUnbounded<ReadOnlyMemory<byte>>();
+                    _frames = Channel.CreateUnbounded<CapturedAudioFrame>();
                 }
 
                 if (ThrowOnNextStart)
@@ -3394,6 +3614,11 @@ public sealed class InterpretationSessionTests
         public RealtimeSessionTuning? LastTuning { get; private set; }
 
         public bool ThrowOnNextStart { get; set; }
+
+        public TaskCompletionSource? AppendAudioFrameGate { get; set; }
+
+        private int _appendAudioFrameCount;
+        public int AppendAudioFrameCount => Volatile.Read(ref _appendAudioFrameCount);
 
         /// <summary>UpdateTranscriptionTuningAsync で RealtimeTranslationException を投げる。</summary>
         public bool ThrowRealtimeOnUpdateTuning { get; set; }
@@ -3487,7 +3712,13 @@ public sealed class InterpretationSessionTests
 
         public Task AppendAudioFrameAsync(
             ReadOnlyMemory<byte> pcm16LittleEndian,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _appendAudioFrameCount);
+            return AppendAudioFrameGate is { } gate
+                ? gate.Task.WaitAsync(cancellationToken)
+                : Task.CompletedTask;
+        }
 
         public Task SelectTranslationTargetAsync(
             RealtimeTranslationOutputLanguage? target,

@@ -20,6 +20,8 @@ struct RealtimeSubtitleAssembler: Sendable {
     // continuing the same sentence. A short idle cutoff truncates the translation.
     /// shared/fixtures の assembler.idleFinalizeSeconds と一致させる。
     static let idleFinalizeInterval: TimeInterval = 8
+    /// shared/fixtures/v1/audio.json の loss.taintedSegmentWindowMs と一致させる。
+    static let audioLossTaintWindow: TimeInterval = 8
 
     private var epoch = 0
     private var segmentGeneration = 0
@@ -41,6 +43,8 @@ struct RealtimeSubtitleAssembler: Sendable {
     private var awaitingSourceAfterFinalize = false
     private var boundaryCandidatePending = false
     private var translationIsCurrent = false
+    private var audioLossTaintedUntil: Date?
+    private var currentSegmentTainted = false
 
     init(languagePair: LanguagePair = .jaEn) {
         self.languagePair = languagePair
@@ -56,6 +60,10 @@ struct RealtimeSubtitleAssembler: Sendable {
 
     var currentSourceLength: Int {
         sourceText.utf16.count
+    }
+
+    var isCurrentSegmentTainted: Bool {
+        currentSegmentTainted
     }
 
     mutating func setLanguagePair(_ pair: LanguagePair) {
@@ -74,6 +82,8 @@ struct RealtimeSubtitleAssembler: Sendable {
         awaitingSourceAfterFinalize = false
         boundaryCandidatePending = false
         translationIsCurrent = false
+        audioLossTaintedUntil = nil
+        currentSegmentTainted = false
     }
 
     mutating func beginNewEpoch(_ epoch: Int) {
@@ -84,7 +94,14 @@ struct RealtimeSubtitleAssembler: Sendable {
         clearSegmentBuffers(advancingGeneration: true)
         awaitingSourceAfterFinalize = false
         boundaryCandidatePending = false
+        audioLossTaintedUntil = nil
+        currentSegmentTainted = false
         lastActivityAt = Date()
+    }
+
+    mutating func markAudioLoss(now: Date) {
+        discardUnconfirmed()
+        audioLossTaintedUntil = now.addingTimeInterval(Self.audioLossTaintWindow)
     }
 
     mutating func setBoundaryCandidatePending(_ pending: Bool) {
@@ -138,17 +155,21 @@ struct RealtimeSubtitleAssembler: Sendable {
         var finalized: RealtimeSubtitleUpdate?
         if hasCompletePair {
             applyFinalizedCutoffs()
-            finalized = RealtimeSubtitleUpdate(
-                sourceText: prefix,
-                translatedText: currentTranslation,
-                isTranslationCurrent: true,
-                shouldFinalize: true,
-                segmentGeneration: segmentGeneration
-            )
+            if !currentSegmentTainted {
+                finalized = RealtimeSubtitleUpdate(
+                    sourceText: prefix,
+                    translatedText: currentTranslation,
+                    isTranslationCurrent: true,
+                    shouldFinalize: true,
+                    segmentGeneration: segmentGeneration
+                )
+            }
         }
 
+        let keepTaint = currentSegmentTainted && !suffix.isEmpty
         clearSegmentBuffers(advancingGeneration: true)
         sourceText = suffix
+        currentSegmentTainted = keepTaint
         awaitingSourceAfterFinalize = suffix.isEmpty
         boundaryCandidatePending = false
         lastActivityAt = now
@@ -214,6 +235,12 @@ struct RealtimeSubtitleAssembler: Sendable {
         } else if shouldStartNewSegmentForSourceUpdate() {
             clearSegmentBuffers(advancingGeneration: true)
             extendingExistingSource = false
+        }
+        if sourceText.isEmpty {
+            if let audioLossTaintedUntil {
+                currentSegmentTainted = now <= audioLossTaintedUntil
+                self.audioLossTaintedUntil = nil
+            }
         }
         // nil-id キーは新 segment の clear より後に登録する。先に入れると safety-net が消える。
         // live の同一本文反復は残す。replay では live 適用済みだけ落とす。
@@ -345,6 +372,9 @@ struct RealtimeSubtitleAssembler: Sendable {
         let translation = currentTranslation
         if !translation.isEmpty, translationIsCurrent {
             // 未確定の境界候補（文末の製品名など）は、切替未確定のまま idle した完全ペアを止めない。
+            if currentSegmentTainted {
+                return abandonStaleSegment(now: now)
+            }
             return finalizeCurrent(elapsedHint: nil, now: now)
         }
         if boundaryCandidatePending {
@@ -352,7 +382,10 @@ struct RealtimeSubtitleAssembler: Sendable {
         }
         if !translation.isEmpty {
             // 旧訳文は確定しないが、次発話の原文が同一セグメントへ連結しないよう境界だけ進める。
-            abandonStaleSegment(now: now)
+            if currentSegmentTainted {
+                return abandonStaleSegment(now: now)
+            }
+            _ = abandonStaleSegment(now: now)
         }
         return nil
     }
@@ -375,6 +408,7 @@ struct RealtimeSubtitleAssembler: Sendable {
         // 次のsource開始まで表示内容はaggregator側で保持する。
         clearSegmentBuffers(advancingGeneration: true)
         awaitingSourceAfterFinalize = true
+        currentSegmentTainted = false
         lastActivityAt = now
         return update
     }
@@ -394,11 +428,20 @@ struct RealtimeSubtitleAssembler: Sendable {
         )
     }
 
-    private mutating func abandonStaleSegment(now: Date) {
+    private mutating func abandonStaleSegment(now: Date) -> RealtimeSubtitleUpdate {
         applyFinalizedCutoffs()
         clearSegmentBuffers(advancingGeneration: true)
         awaitingSourceAfterFinalize = true
+        currentSegmentTainted = false
         lastActivityAt = now
+        return RealtimeSubtitleUpdate(
+            sourceText: "",
+            translatedText: "",
+            isTranslationCurrent: false,
+            shouldFinalize: false,
+            segmentGeneration: segmentGeneration,
+            isInvalidation: true
+        )
     }
 
     private mutating func applyFinalizedCutoffs() {

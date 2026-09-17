@@ -50,6 +50,9 @@ public static class AppLogger
     public static void Info(LogCategory category, string message) =>
         _sink.Write(category, EventLevel.Informational, Redact(message));
 
+    public static void Debug(LogCategory category, string message) =>
+        _sink.Write(category, EventLevel.Verbose, Redact(message));
+
     public static void Warning(LogCategory category, string message) =>
         _sink.Write(category, EventLevel.Warning, Redact(message));
 
