@@ -401,25 +401,24 @@ async function setup({
   const partial = `${cacheDir}.partial-${process.pid}`;
   const parent = path.dirname(cacheDir);
   const prefix = `${path.basename(cacheDir)}.partial-`;
+  let entries = [];
   try {
-    for (const entry of await fs.readdir(parent)) {
-      if (entry.startsWith(prefix)) {
-        const pid = Number(entry.slice(prefix.length));
-        if (
-          Number.isInteger(pid) &&
-          pid > 0 &&
-          pid !== process.pid &&
-          isAlive(pid)
-        )
-          continue;
-        await fs.rm(path.join(parent, entry), {
-          recursive: true,
-          force: true,
-        });
-      }
-    }
+    entries = await fs.readdir(parent);
   } catch (error) {
-    if (error.code !== "ENOENT") throw error;
+    if (error.code !== "ENOENT")
+      write(stderr, `could not list ${parent}: ${error.message}\n`);
+  }
+  for (const entry of entries) {
+    if (!entry.startsWith(prefix)) continue;
+    const pid = Number(entry.slice(prefix.length));
+    if (Number.isInteger(pid) && pid > 0 && pid !== process.pid && isAlive(pid))
+      continue;
+    const stale = path.join(parent, entry);
+    try {
+      await fs.rm(stale, { recursive: true, force: true });
+    } catch (error) {
+      write(stderr, `could not remove ${stale}: ${error.message}\n`);
+    }
   }
   const valid = await validateCache(cacheDir, key);
   if (valid.valid) {

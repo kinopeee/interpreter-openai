@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
 import {
   access,
+  chmod,
   mkdtemp,
   mkdir,
   readFile,
@@ -578,6 +579,32 @@ test("setup removes stale partial caches but preserves live partial caches", asy
   );
   assert.match(second.stdoutText, /reusing cache/);
   await assert.rejects(access(deadPartial));
+
+  /* Given: 有効なキャッシュがあり、削除できない古い partial が残っている */
+  /* When: setup を再実行する */
+  /* Then: 削除失敗は警告に留め、有効なキャッシュを再利用して 0 を返す */
+  await mkdir(deadPartial, { recursive: true });
+  await writeFile(path.join(deadPartial, "lock"), "");
+  await chmod(deadPartial, 0o555);
+  try {
+    const third = streams();
+    assert.equal(
+      await createRunner({
+        root,
+        spawn,
+        platform: "linux",
+        arch: "x64",
+        stdout: third.stdout,
+        stderr: third.stderr,
+      }).run("csharp", "setup"),
+      0,
+    );
+    assert.match(third.stdoutText, /reusing cache/);
+    assert.match(third.stderrText, /could not remove/);
+    await assert.doesNotReject(access(deadPartial));
+  } finally {
+    await chmod(deadPartial, 0o755);
+  }
 });
 
 test("tool version output is not used as provenance identity", async () => {
