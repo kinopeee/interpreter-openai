@@ -99,7 +99,10 @@ function probeSpawn(calls, language, overrides = {}) {
   return async (cmd, args, options) => {
     calls.push({ cmd, args, cwd: options.cwd });
     if (overrides[cmd]) return overrides[cmd](args, options);
-    if (cmd.includes(".devin/format/tools/") && overrides.formatter)
+    if (
+      cmd.split(path.sep).join("/").includes(".devin/format/tools/") &&
+      overrides.formatter
+    )
       return overrides.formatter(args, options);
     if (cmd === "git") return defaultSpawn(cmd, args, options);
     if (language === "swift" && cmd === "swift" && args[0] === "--version") {
