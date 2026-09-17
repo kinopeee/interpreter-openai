@@ -61,7 +61,7 @@ OpenAI Realtime Translation によるリアルタイム字幕アプリ。macOS 2
 
 - `swift-format` / `CSharpier` は `.devin/format/tool-versions.json` で固定する。
 - `node scripts/format.mjs <swift|csharp> <setup|check|write>` を使う。`check` は macos / windows / windows-core workflow のCIで実行する。
-- Swift / C# の変更前に `write` を実行してからコミットする。
+- Swift / C# を変更したら、コミット前に `write` を実行する。
 - formatter設定は `.devin/format/` に置く。設定やバージョンは振る舞い変更と同じコミットで変更しない。
 - 整形コミットは `.git-blame-ignore-revs` に登録する（`git config blame.ignoreRevsFile .git-blame-ignore-revs`）。
 
@@ -74,10 +74,9 @@ OpenAI Realtime Translation によるリアルタイム字幕アプリ。macOS 2
 | 共有契約・両実装に関わる仕様 | `./scripts/ci-shared-contracts.sh` と両実装の関連テスト |
 | UI・音声経路 | 対象プラットフォームのビルド・全テストに加え、影響する言語ペアの両方向で実際に1文ずつ話して確認 |
 
-- Swift / C# を変更した場合は `node scripts/format.mjs <lang> check` を通す。
-
 複数の区分に該当する場合は、その検証を組み合わせる。文書のみの変更にはアプリのビルド・実行テストを一律に要求しない。
 
+- Swift / C# を変更した場合は `node scripts/format.mjs <swift|csharp> check` を通す。
 - 最低限、イベントcodec、100 ms packet化、専用原文transcription、原文送信分離とrolling preroll、言語切替セグメント分割、送信timeout、受信欠落とエラー優先順位、字幕lane選択、旧epoch破棄、停止時close drainの回帰検証を維持する。
 - 非同期境界、空文字、句読点、停止時finalize、多重起動、秘密情報非漏洩の回帰を優先する。
 - 純粋ロジックは macOS で XCTest、Windows で xUnit を使い、各テストに日本語の Given/When/Then コメントを付ける。
