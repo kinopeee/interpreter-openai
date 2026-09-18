@@ -100,9 +100,9 @@ struct SettingsView: View {
         do {
             try apiKeyStore.save(apiKeyDraft)
             apiKeyDraft = ""
-            storedKeyState = .valid
             statusIsError = false
             statusMessage = UiCopy.text("settings.apiKeySaveOk.mac")
+            refreshStoredKeyState()
         } catch {
             statusIsError = true
             statusMessage = error.localizedDescription
@@ -113,9 +113,9 @@ struct SettingsView: View {
         do {
             try apiKeyStore.delete()
             apiKeyDraft = ""
-            storedKeyState = .missing
             statusIsError = false
             statusMessage = UiCopy.text("settings.apiKeyDeleteOk")
+            refreshStoredKeyState()
         } catch {
             statusIsError = true
             statusMessage = error.localizedDescription
