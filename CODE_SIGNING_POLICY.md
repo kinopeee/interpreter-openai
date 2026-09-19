@@ -127,11 +127,13 @@ foreach ($file in $files) {
 }
 ```
 
-Each file's `Status` must be `Valid` and the signer must chain to the
-certificate published by the signing provider. For a release signed through the
-SignPath Foundation program that is the SignPath Foundation certificate; for
-another provider, set `$expectedChainMarker` to that provider's published
-identity. The release ZIP must also match its separately published `.sha256`
+Each file's `Status` must be `Valid`, and the certificate chain must include a
+certificate whose subject contains the identity marker published by the
+signing provider. For a release signed through the SignPath Foundation program
+the marker is `SignPath Foundation`; for another provider, set
+`$expectedChainMarker` to that provider's published identity. This check
+matches the subject marker only; it does not pin the exact certificate or
+public key. The release ZIP must also match its separately published `.sha256`
 file:
 
 ```powershell
@@ -146,10 +148,13 @@ If a signing credential, build workflow, release artifact, or maintainer
 account may have been compromised:
 
 1. Stop approving signing requests and publishing releases.
-2. Preserve the relevant GitHub Actions and SignPath audit records.
-3. Notify SignPath and the SignPath Foundation.
+2. Preserve the relevant GitHub Actions audit records and the signing
+   provider's audit records.
+3. Notify the active signing provider and the certificate issuer (for the
+   SignPath Foundation program: SignPath and the SignPath Foundation; for
+   Apple Developer ID: Apple).
 4. Remove affected release assets.
-5. Request certificate revocation when required.
+5. Request certificate revocation from the certificate issuer when required.
 6. Publish a corrected release only after the incident is contained.
 
 Security-sensitive reports should be sent to the project owner through
