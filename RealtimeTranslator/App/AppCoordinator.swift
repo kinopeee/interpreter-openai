@@ -56,7 +56,14 @@ final class AppCoordinator: NSObject {
 
     func moveSubtitles(toScreenAt index: Int) {
         guard subtitleWindow.moveToScreen(at: index) else { return }
-        settings.savePanelOrigin(subtitleWindow.currentOrigin)
+        if SubtitlePanelOriginPolicy.shouldPersistOrigin(
+            isEditingPosition: false,
+            isMirroringActive: DisplayMirroringDetector.isMirroringActive()
+        ) {
+            settings.savePanelOrigin(subtitleWindow.currentOrigin)
+        } else {
+            AppLogger.general.info("subtitle panel origin not saved: displays are mirrored")
+        }
         menuBarController.refresh()
     }
 
@@ -149,7 +156,16 @@ final class AppCoordinator: NSObject {
         subtitleWindow.setPositionEditingEnabled(isEditingSubtitlePosition)
         refreshMirroringHint()
         if !isEditingSubtitlePosition {
-            settings.savePanelOrigin(subtitleWindow.currentOrigin)
+            if SubtitlePanelOriginPolicy.shouldPersistOrigin(
+                isEditingPosition: isEditingSubtitlePosition,
+                isMirroringActive: DisplayMirroringDetector.isMirroringActive()
+            ) {
+                settings.savePanelOrigin(subtitleWindow.currentOrigin)
+            } else {
+                // ミラーリング中は主画面へクランプされた一時的な位置のため、外部ディスプレイの保存位置を壊さないよう保存しない。
+                // ドラッグした位置はメモリ上の customOrigin に残り、このセッション中のみ有効。
+                AppLogger.general.info("subtitle panel origin not saved: displays are mirrored")
+            }
         }
         menuBarController.refresh()
     }
