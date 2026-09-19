@@ -9,16 +9,22 @@
 
 ## Signing provider and current status
 
-The project is preparing an application to the SignPath Foundation open-source
-code-signing program. Windows artifacts published before that application is
-approved are unsigned.
+The project applied to the SignPath Foundation open-source code-signing
+program. The September 2026 review did not approve the application: the
+program requires a level of public adoption and external references
+(community usage, independent articles or discussions, institutional backing)
+that the project does not yet show. The decision was not about code quality,
+and the project may reapply once it gains broader recognition.
 
-After approval, releases signed through that program will carry this credit:
+Windows artifacts therefore remain unsigned. The sections below describe the
+requirements that will apply if the project is later accepted into that
+program or adopts another signing provider. If signing starts, releases signed
+through the SignPath Foundation program will carry this credit:
 
 > Free code signing provided by SignPath.io, certificate by SignPath Foundation
 
-The certificate and its private key are managed by SignPath and the SignPath
-Foundation. They are never copied into this repository or stored as GitHub
+Any signing certificate and its private key would be managed by the signing
+provider. They are never copied into this repository or stored as GitHub
 Actions secrets.
 
 ## Team roles
@@ -39,12 +45,12 @@ authentication for GitHub and SignPath.
 
 ## Source and build provenance
 
-Until the SignPath Foundation application is approved, Windows release artifacts
-remain unsigned. The current `.github/workflows/release.yml` Windows job
-packages those unsigned artifacts after tests pass. It does not submit files to
-SignPath or verify Authenticode signatures.
+Until a signing path is established, Windows release artifacts remain
+unsigned. The current `.github/workflows/release.yml` Windows job packages
+those unsigned artifacts after tests pass. It does not submit files to SignPath
+or verify Authenticode signatures.
 
-After approval, signed Windows release artifacts must:
+Once signing starts, signed Windows release artifacts must:
 
 1. Be built from this repository by `.github/workflows/release.yml`.
 2. Be built from a release tag matching the repository's `vX.Y.Z` tag policy.
@@ -76,7 +82,7 @@ after the signed files have been downloaded from SignPath.
 
 ## Release verification
 
-After SignPath approval, the release workflow must verify the Authenticode
+Once signing starts, the release workflow must verify the Authenticode
 signature of every file in the signing scope before packaging. Users can also
 verify the extracted application:
 
