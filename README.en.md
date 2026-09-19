@@ -106,7 +106,7 @@ Changes to prompt, keywords, and recognition delay are applied to the session wi
 | Font size | Subtitle text size (18–48 pt, default 32 pt). |
 | Controls | Start/stop from the menu bar, or `Control + Option + Space`. |
 | Subtitle position | Drag with "Edit subtitle position" in the menu bar; turning editing off saves the position. With multiple displays the panel moves to the screen under the pointer. |
-| Display screen | Pick a display in the "Subtitle display screen" menu to move the panel to that screen's bottom center and save it. While displays are mirrored, turn on PowerPoint Presenter View instead. |
+| Display screen | Pick a display in the "Subtitle display screen" menu to move the panel to that screen's bottom center and save it. While displays are mirrored, turn on PowerPoint Presenter View instead. Finishing position editing while displays are mirrored does not change the saved position. |
 
 ## Architecture
 
