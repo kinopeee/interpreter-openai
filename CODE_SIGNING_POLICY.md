@@ -23,9 +23,16 @@ through the SignPath Foundation program will carry this credit:
 
 > Free code signing provided by SignPath.io, certificate by SignPath Foundation
 
-Any signing certificate and its private key would be managed by the signing
-provider. They are never copied into this repository or stored as GitHub
-Actions secrets.
+A Windows code-signing certificate issued through the SignPath Foundation
+program, and its private key, would be managed by SignPath and the SignPath
+Foundation. They would never be copied into this repository or stored as
+GitHub Actions secrets.
+
+This policy covers Windows artifacts. macOS artifacts are signed with the
+project's Apple Developer ID certificate and notarized by
+`.github/workflows/release.yml`; that certificate and the App Store Connect API
+key are stored as GitHub Actions secrets, decoded only into a temporary
+keychain inside the release job, and removed when the job ends.
 
 ## Team roles
 
