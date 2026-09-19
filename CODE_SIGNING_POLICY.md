@@ -30,9 +30,11 @@ GitHub Actions secrets.
 
 This policy covers Windows artifacts. macOS artifacts are signed with the
 project's Apple Developer ID certificate and notarized by
-`.github/workflows/release.yml`; that certificate and the App Store Connect API
-key are stored as GitHub Actions secrets, decoded only into a temporary
-keychain inside the release job, and removed when the job ends.
+`.github/workflows/release.yml`. That certificate and the App Store Connect API
+key are stored as GitHub Actions secrets. Inside the release job the certificate
+is imported into a temporary keychain and the API key is written to a temporary
+`.p8` file; the cleanup step, which runs even after earlier failures, deletes
+both when the job ends.
 
 ## Team roles
 
@@ -57,35 +59,39 @@ unsigned. The current `.github/workflows/release.yml` Windows job packages
 those unsigned artifacts after tests pass. It does not submit files to SignPath
 or verify Authenticode signatures.
 
-Once signing starts, signed Windows release artifacts must:
+Once signing starts, with any provider, signed Windows release artifacts must:
 
 1. Be built from this repository by `.github/workflows/release.yml`.
 2. Be built from a release tag matching the repository's `vX.Y.Z` tag policy.
 3. Pass the Windows tests before signing.
 4. Be produced by the checked-in `scripts/publish-windows.ps1` script.
-5. Be submitted to SignPath by the same GitHub Actions run that built them.
-6. Be manually approved in SignPath before publication.
+5. Be submitted for signing by the same GitHub Actions run that built them.
+
+When signing through the SignPath Foundation program, they must additionally:
+
+1. Be submitted to the project's SignPath project by that run.
+2. Be manually approved in SignPath by a signing approver before publication.
 
 Files built locally or uploaded manually are not eligible for project signing.
 
 ## Signing scope
 
-The SignPath project may sign only PE files produced from source maintained in
-this repository:
+Project signing covers only PE files produced from source maintained in this
+repository:
 
 - `RealtimeTranslator.App.exe`
 - `RealtimeTranslator.App.dll`
 - `RealtimeTranslator.Core.dll`
 - `RealtimeTranslator.Platform.dll`
 
-The project does not use its SignPath certificate to re-sign third-party
+The project does not use its code-signing certificate to re-sign third-party
 libraries, .NET runtime files, operating-system components, or other upstream
 binaries. ZIP archives, checksum files, documentation, and configuration files
 are not Authenticode-signed.
 
 The signed files are packaged into
 `RealtimeTranslator-<tag>-win-x64.zip`. The SHA-256 checksum is generated only
-after the signed files have been downloaded from SignPath.
+after the signed files have been returned by the signing provider.
 
 ## Release verification
 
@@ -100,7 +106,8 @@ $files = @(
   '.\RealtimeTranslator.Core.dll',
   '.\RealtimeTranslator.Platform.dll'
 )
-# Replace with the published SignPath Foundation signer identity after approval.
+# Replace with the signer identity published by the signing provider
+# (for the SignPath Foundation program: 'SignPath Foundation').
 $expectedChainMarker = 'SignPath Foundation'
 foreach ($file in $files) {
   $signature = Get-AuthenticodeSignature $file
@@ -120,10 +127,12 @@ foreach ($file in $files) {
 }
 ```
 
-For a SignPath-signed release, each file's `Status` must be `Valid` and the
-signer must chain to the certificate supplied by the SignPath Foundation. After
-approval, replace `$expectedChainMarker` with that published identity. The
-release ZIP must also match its separately published `.sha256` file:
+Each file's `Status` must be `Valid` and the signer must chain to the
+certificate published by the signing provider. For a release signed through the
+SignPath Foundation program that is the SignPath Foundation certificate; for
+another provider, set `$expectedChainMarker` to that provider's published
+identity. The release ZIP must also match its separately published `.sha256`
+file:
 
 ```powershell
 $expected = (Get-Content .\RealtimeTranslator-<tag>-win-x64.zip.sha256 -Raw).Trim().Split()[0].ToLowerInvariant()
