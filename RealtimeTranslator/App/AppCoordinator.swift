@@ -56,7 +56,14 @@ final class AppCoordinator: NSObject {
 
     func moveSubtitles(toScreenAt index: Int) {
         guard subtitleWindow.moveToScreen(at: index) else { return }
-        settings.savePanelOrigin(subtitleWindow.currentOrigin)
+        if SubtitlePanelOriginPolicy.shouldPersistOrigin(
+            isEditingPosition: false,
+            isMirroringActive: DisplayMirroringDetector.isMirroringActive()
+        ) {
+            settings.savePanelOrigin(subtitleWindow.currentOrigin)
+        } else {
+            AppLogger.general.info("subtitle panel origin not saved: displays are mirrored")
+        }
         menuBarController.refresh()
     }
 
