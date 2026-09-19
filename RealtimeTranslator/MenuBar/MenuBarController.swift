@@ -6,6 +6,7 @@ final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private weak var coordinator: AppCoordinator?
     private var startStopItem: NSMenuItem?
+    private var screenSubmenu: NSMenu?
 
     init(coordinator: AppCoordinator) {
         self.coordinator = coordinator
@@ -101,6 +102,14 @@ final class MenuBarController: NSObject {
         editPositionItem.state = coordinator?.isEditingSubtitlePosition == true ? .on : .off
         menu.addItem(editPositionItem)
 
+        let screenItem = NSMenuItem(title: UiCopy.text("menu.subtitleScreen"), action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        populateScreenSubmenu(submenu)
+        screenItem.submenu = submenu
+        screenSubmenu = submenu
+        menu.addItem(screenItem)
+
         let settingsItem = NSMenuItem(
             title: UiCopy.text("menu.settings"),
             action: #selector(openSettings),
@@ -120,6 +129,33 @@ final class MenuBarController: NSObject {
 
         statusItem.menu = menu
         updateIcon()
+    }
+
+    private func populateScreenSubmenu(_ submenu: NSMenu) {
+        submenu.removeAllItems()
+        let currentIndex = coordinator?.currentSubtitleScreenIndex
+        for (index, screen) in NSScreen.screens.enumerated() {
+            let item = NSMenuItem(
+                title: "\(index + 1). \(screen.localizedName)",
+                action: #selector(selectSubtitleScreen(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.tag = index
+            item.state = index == currentIndex ? .on : .off
+            submenu.addItem(item)
+        }
+        if coordinator?.isDisplayMirroringActive == true {
+            submenu.addItem(.separator())
+            let mirroringItem = NSMenuItem(
+                title: UiCopy.text("menu.subtitleScreen.mirroring"), action: nil, keyEquivalent: "")
+            mirroringItem.isEnabled = false
+            submenu.addItem(mirroringItem)
+        }
+    }
+
+    @objc private func selectSubtitleScreen(_ sender: NSMenuItem) {
+        coordinator?.moveSubtitles(toScreenAt: sender.tag)
     }
 
     private func pairDisplayPair() -> LanguagePair {
@@ -189,5 +225,6 @@ extension MenuBarController: NSMenuDelegate {
                 item.isEnabled = hasEntries
             }
         }
+        if let screenSubmenu { populateScreenSubmenu(screenSubmenu) }
     }
 }

@@ -404,6 +404,16 @@
       "en": "Edit subtitle position"
     },
     {
+      "key": "menu.subtitleScreen",
+      "ja": "字幕を表示するディスプレイ",
+      "en": "Subtitle display screen"
+    },
+    {
+      "key": "menu.subtitleScreen.mirroring",
+      "ja": "ミラーリング中 — PowerPoint は発表者ツールを ON にしてください",
+      "en": "Mirroring active — turn on Presenter View in PowerPoint"
+    },
+    {
       "key": "menu.settings",
       "ja": "設定…",
       "en": "Settings…"
@@ -487,6 +497,11 @@
       "key": "banner.closing",
       "ja": "録音を終了中…",
       "en": "Ending recording…"
+    },
+    {
+      "key": "banner.displayMirroring",
+      "ja": "ミラーリング中は字幕を別画面へ移せません。PowerPoint の発表者ツールを ON にしてください",
+      "en": "Displays are mirrored; turn on PowerPoint Presenter View to move subtitles"
     },
     {
       "key": "overlay.recording",

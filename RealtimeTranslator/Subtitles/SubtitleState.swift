@@ -39,6 +39,13 @@ struct SubtitleSnapshot: Equatable, Sendable {
         isInvalidation: false
     )
 
+    /// statusBanner だけを差し替えたコピーを返す。元の snapshot は変更しない。
+    func replacingStatusBanner(_ banner: String?) -> SubtitleSnapshot {
+        var copy = self
+        copy.statusBanner = banner
+        return copy
+    }
+
     var presentation: SubtitlePresentation {
         SubtitlePresentation(
             current: SubtitlePresentation.Block(current),

@@ -92,6 +92,96 @@ final class SubtitleWindowGeometryTests: XCTestCase {
         XCTAssertEqual(index, 1)
     }
 
+    func testPrefersScreenUnderPointerOverLargestOverlap() {
+        // Given: 主画面との重なりが大きいパネルと、副画面上のポインタ
+        let screenFrames = [
+            CGRect(x: 0, y: 0, width: 1_440, height: 900),
+            CGRect(x: 1_440, y: 600, width: 1_920, height: 1_080),
+        ]
+        let proposedFrame = CGRect(x: 1_000, y: 650, width: 800, height: 200)
+
+        // When: ポインタ位置付きでドラッグ先画面を選択する
+        let index = SubtitleWindowGeometry.screenIndex(
+            bestMatching: proposedFrame,
+            in: screenFrames,
+            fallbackIndex: 0,
+            pointerLocation: CGPoint(x: 1_500, y: 610)
+        )
+
+        // Then: 面積ではなくポインタのある副画面を選択する
+        XCTAssertEqual(index, 1)
+
+        // When: ポインタなしで同じパネルを選択する
+        let indexWithoutPointer = SubtitleWindowGeometry.screenIndex(
+            bestMatching: proposedFrame,
+            in: screenFrames,
+            fallbackIndex: 0,
+            pointerLocation: nil
+        )
+
+        // Then: 従来通り重なり面積の大きい主画面を選択する
+        XCTAssertEqual(indexWithoutPointer, 0)
+    }
+
+    func testSelectsPointerScreenWhenFrameIsInGap() {
+        // Given: 画面間の隙間にあるパネルと、副画面上のポインタ
+        let screenFrames = [
+            CGRect(x: 0, y: 0, width: 1_000, height: 800),
+            CGRect(x: 1_200, y: 0, width: 1_000, height: 800),
+        ]
+        let proposedFrame = CGRect(x: 1_010, y: 100, width: 180, height: 100)
+
+        // When: ポインタ位置付きでドラッグ先画面を選択する
+        let index = SubtitleWindowGeometry.screenIndex(
+            bestMatching: proposedFrame,
+            in: screenFrames,
+            fallbackIndex: 0,
+            pointerLocation: CGPoint(x: 1_300, y: 200)
+        )
+
+        // Then: 重なりがなくてもポインタのある副画面を選択する
+        XCTAssertEqual(index, 1)
+    }
+
+    func testFallsBackToAreaRuleWhenPointerIsOutsideAllScreens() {
+        // Given: どの画面にもないポインタと、面積の大半が右画面にあるパネル
+        let screenFrames = [
+            CGRect(x: 0, y: 0, width: 1_000, height: 800),
+            CGRect(x: 1_000, y: 0, width: 1_000, height: 800),
+        ]
+        let proposedFrame = CGRect(x: 800, y: 200, width: 600, height: 200)
+
+        // When: ポインタ位置付きでドラッグ先画面を選択する
+        let index = SubtitleWindowGeometry.screenIndex(
+            bestMatching: proposedFrame,
+            in: screenFrames,
+            fallbackIndex: 0,
+            pointerLocation: CGPoint(x: -500, y: -500)
+        )
+
+        // Then: ポインタを無視して面積規則で右画面を選択する
+        XCTAssertEqual(index, 1)
+    }
+
+    func testUsesFallbackWhenNoIntersectionAndNoPointer() {
+        // Given: どの画面とも重ならないパネルとポインタなし
+        let screenFrames = [
+            CGRect(x: 0, y: 0, width: 1_000, height: 800),
+            CGRect(x: 1_000, y: 0, width: 1_000, height: 800),
+        ]
+        let proposedFrame = CGRect(x: 5_000, y: 5_000, width: 100, height: 100)
+
+        // When: fallbackを指定してドラッグ先画面を選択する
+        let index = SubtitleWindowGeometry.screenIndex(
+            bestMatching: proposedFrame,
+            in: screenFrames,
+            fallbackIndex: 1
+        )
+
+        // Then: 指定したfallback画面を選択する
+        XCTAssertEqual(index, 1)
+    }
+
     func testClampsBothPanelsAtLeftEdge() {
         // Given: 字幕パネルが画面左端から50ptはみ出す配置
         let visibleFrame = testVisibleFrame
