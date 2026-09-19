@@ -69,6 +69,7 @@ final class SubtitleWindowController: NSObject {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.relayoutIfNeeded()
+                self?.onScreenParametersChanged?()
             }
         }
     }
@@ -139,6 +140,27 @@ final class SubtitleWindowController: NSObject {
         panel.frame.origin
     }
 
+    var currentScreenIndex: Int? {
+        let screens = NSScreen.screens
+        if let screen = panel.screen, let index = screens.firstIndex(where: { $0 === screen }) {
+            return index
+        }
+        return SubtitleWindowGeometry.screenIndex(
+            containing: panel.frame.origin, in: screens.map(\.frame), fallbackIndex: nil)
+    }
+
+    @discardableResult
+    func moveToScreen(at index: Int) -> Bool {
+        let screens = NSScreen.screens
+        guard screens.indices.contains(index) else { return false }
+        let layout = layout(in: screens[index], requestedOrigin: nil)
+        apply(layout)
+        customOrigin = layout.subtitleFrame.origin
+        return true
+    }
+
+    var onScreenParametersChanged: (() -> Void)?
+
     private var dragMonitor: Any?
 
     private func installDragMonitor() {
@@ -172,7 +194,8 @@ final class SubtitleWindowController: NSObject {
             let current = NSEvent.mouseLocation
             let delta = NSPoint(x: current.x - startMouse.x, y: current.y - startMouse.y)
             movePanels(
-                to: NSPoint(x: startOrigin.x + delta.x, y: startOrigin.y + delta.y)
+                to: NSPoint(x: startOrigin.x + delta.x, y: startOrigin.y + delta.y),
+                pointerLocation: current
             )
         case .leftMouseUp:
             customOrigin = panel.frame.origin
@@ -204,10 +227,11 @@ final class SubtitleWindowController: NSObject {
         apply(layout(in: screen, requestedOrigin: requestedOrigin))
     }
 
-    private func movePanels(to requestedOrigin: CGPoint) {
+    private func movePanels(to requestedOrigin: CGPoint, pointerLocation: CGPoint? = nil) {
         guard
             let screen = targetScreen(
-                bestMatchingSubtitleOrigin: requestedOrigin
+                bestMatchingSubtitleOrigin: requestedOrigin,
+                pointerLocation: pointerLocation
             )
         else {
             return
@@ -240,7 +264,8 @@ final class SubtitleWindowController: NSObject {
     }
 
     private func targetScreen(
-        bestMatchingSubtitleOrigin origin: CGPoint
+        bestMatchingSubtitleOrigin origin: CGPoint,
+        pointerLocation: CGPoint? = nil
     ) -> NSScreen? {
         let screens = NSScreen.screens
         guard !screens.isEmpty else { return nil }
@@ -253,7 +278,8 @@ final class SubtitleWindowController: NSObject {
             let index = SubtitleWindowGeometry.screenIndex(
                 bestMatching: CGRect(origin: origin, size: panel.frame.size),
                 in: screens.map(\.frame),
-                fallbackIndex: fallbackIndex
+                fallbackIndex: fallbackIndex,
+                pointerLocation: pointerLocation
             )
         else {
             return fallbackScreen

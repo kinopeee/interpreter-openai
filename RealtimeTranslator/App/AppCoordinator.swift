@@ -34,6 +34,7 @@ final class AppCoordinator: NSObject {
     private var settingsCloseObserver: NSObjectProtocol?
     private var lastSnapshot = SubtitleSnapshot.empty
     private var didAnnounceTranscriptCap = false
+    private var isShowingMirroringHint = false
     /// 現在の録音区間でセッション開始マーカーを既に書いたか。
     private var hasOpenTranscriptSession = false
 
@@ -48,6 +49,15 @@ final class AppCoordinator: NSObject {
 
     var languagePair: LanguagePair {
         settings.languagePair
+    }
+
+    var currentSubtitleScreenIndex: Int? { subtitleWindow.currentScreenIndex }
+    var isDisplayMirroringActive: Bool { DisplayMirroringDetector.isMirroringActive() }
+
+    func moveSubtitles(toScreenAt index: Int) {
+        guard subtitleWindow.moveToScreen(at: index) else { return }
+        settings.savePanelOrigin(subtitleWindow.currentOrigin)
+        menuBarController.refresh()
     }
 
     func start() {
@@ -67,13 +77,12 @@ final class AppCoordinator: NSObject {
         subtitleWindow.setRecordingHandler { [weak self] in
             self?.toggleTranslation()
         }
+        subtitleWindow.onScreenParametersChanged = { [weak self] in
+            self?.refreshMirroringHint()
+        }
         subtitleWindow.applySavedOrigin(settings.customPanelOrigin())
         lastSnapshot = idleSnapshot
-        subtitleWindow.update(
-            snapshot: idleSnapshot,
-            fontSize: settings.fontSize,
-            translationState: translationState
-        )
+        renderSubtitleWindow()
         subtitleWindow.show()
         registerHotKeys()
         menuBarController.refresh()
@@ -141,6 +150,7 @@ final class AppCoordinator: NSObject {
         if !isEditingSubtitlePosition {
             settings.savePanelOrigin(subtitleWindow.currentOrigin)
         }
+        refreshMirroringHint()
         menuBarController.refresh()
     }
 
@@ -333,11 +343,27 @@ final class AppCoordinator: NSObject {
         var snapshot = lastSnapshot
         snapshot.statusBanner = message
         lastSnapshot = snapshot
+        renderSubtitleWindow()
+    }
+
+    private func renderSubtitleWindow() {
         subtitleWindow.update(
-            snapshot: snapshot,
+            snapshot: displayedSnapshotWithHints(),
             fontSize: settings.fontSize,
             translationState: translationState
         )
+    }
+
+    private func displayedSnapshotWithHints() -> SubtitleSnapshot {
+        guard isShowingMirroringHint else { return lastSnapshot }
+        return lastSnapshot.replacingStatusBanner(UiCopy.text("banner.displayMirroring"))
+    }
+
+    private func refreshMirroringHint() {
+        let shouldShow = isEditingSubtitlePosition && DisplayMirroringDetector.isMirroringActive()
+        guard shouldShow != isShowingMirroringHint else { return }
+        isShowingMirroringHint = shouldShow
+        renderSubtitleWindow()
     }
 }
 
@@ -359,11 +385,7 @@ extension AppCoordinator: InterpretationSessionDelegate {
         if state == .idle, lastSnapshot.current.isEmpty {
             lastSnapshot = idleSnapshot
         }
-        subtitleWindow.update(
-            snapshot: lastSnapshot,
-            fontSize: settings.fontSize,
-            translationState: state
-        )
+        renderSubtitleWindow()
     }
 
     func interpretationSession(
@@ -394,11 +416,7 @@ extension AppCoordinator: InterpretationSessionDelegate {
         } else {
             lastSnapshot = displayedSnapshot
         }
-        subtitleWindow.update(
-            snapshot: lastSnapshot,
-            fontSize: settings.fontSize,
-            translationState: translationState
-        )
+        renderSubtitleWindow()
     }
 
     func interpretationSession(

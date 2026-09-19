@@ -74,9 +74,17 @@ enum SubtitleWindowGeometry {
     static func screenIndex(
         bestMatching proposedFrame: CGRect,
         in screenFrames: [CGRect],
-        fallbackIndex: Int?
+        fallbackIndex: Int?,
+        pointerLocation: CGPoint? = nil
     ) -> Int? {
         guard !screenFrames.isEmpty else { return nil }
+
+        if let pointerLocation,
+            pointerLocation.x.isFinite, pointerLocation.y.isFinite,
+            let index = screenFrames.firstIndex(where: { contains(pointerLocation, in: $0) })
+        {
+            return index
+        }
 
         let candidates: [(index: Int, area: CGFloat)] = screenFrames.indices
             .map { index in
