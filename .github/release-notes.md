@@ -6,13 +6,9 @@ Realtime Translator の配布物です。OpenAI API キーはご自身のもの�
 - [Code signing policy / コード署名ポリシー](https://github.com/kinopeee/interpreter-openai/blob/main/CODE_SIGNING_POLICY.md)
 
 <!-- リリース作成時にWindows署名状態を更新する。
-     SignPath承認前: 次の「未署名」行を残す。
-     承認後: 「未署名」行を削除し、SignPathクレジットだけを残す。 -->
-- このリリースのWindows成果物は未署名です。Windows向けコード署名はSignPath Foundationへ申請準備中です。
-
-承認後、SignPath経由で署名したリリースには次のクレジットを表示します。
-
-> Free code signing provided by SignPath.io, certificate by SignPath Foundation
+     署名経路が確立するまで: 次の「未署名」行を残す。
+     署名開始後: 「未署名」行を削除し、署名提供元のクレジットに置き換える。 -->
+- このリリースのWindows成果物は未署名です。SignPath Foundation の無償コード署名プログラムへ申請しましたが、2026年9月の審査では公開実績（採用状況や外部での言及など）が同プログラムの基準に達していないとして承認されませんでした。プロジェクトの認知が広がった時点で再申請できます。それまでの Windows 版は未署名のまま公開し、SHA-256 での検証を推奨します。
 
 ## Windows (`RealtimeTranslator-<tag>-win-x64.zip`)
 

@@ -9,17 +9,32 @@
 
 ## Signing provider and current status
 
-The project is preparing an application to the SignPath Foundation open-source
-code-signing program. Windows artifacts published before that application is
-approved are unsigned.
+The project applied to the SignPath Foundation open-source code-signing
+program. The September 2026 review did not approve the application: the
+program requires a level of public adoption and external references
+(community usage, independent articles or discussions, institutional backing)
+that the project does not yet show. The decision was not about code quality,
+and the project may reapply once it gains broader recognition.
 
-After approval, releases signed through that program will carry this credit:
+Windows artifacts therefore remain unsigned. The sections below describe the
+requirements that will apply if the project is later accepted into that
+program or adopts another signing provider. If signing starts, releases signed
+through the SignPath Foundation program will carry this credit:
 
 > Free code signing provided by SignPath.io, certificate by SignPath Foundation
 
-The certificate and its private key are managed by SignPath and the SignPath
-Foundation. They are never copied into this repository or stored as GitHub
-Actions secrets.
+A Windows code-signing certificate issued through the SignPath Foundation
+program, and its private key, would be managed by SignPath and the SignPath
+Foundation. They would never be copied into this repository or stored as
+GitHub Actions secrets.
+
+This policy covers Windows artifacts. macOS artifacts are signed with the
+project's Apple Developer ID certificate and notarized by
+`.github/workflows/release.yml`. That certificate and the App Store Connect API
+key are stored as GitHub Actions secrets. Inside the release job the certificate
+is imported into a temporary keychain and the API key is written to a temporary
+`.p8` file; the cleanup step, which runs even after earlier failures, deletes
+both when the job ends.
 
 ## Team roles
 
@@ -39,44 +54,48 @@ authentication for GitHub and SignPath.
 
 ## Source and build provenance
 
-Until the SignPath Foundation application is approved, Windows release artifacts
-remain unsigned. The current `.github/workflows/release.yml` Windows job
-packages those unsigned artifacts after tests pass. It does not submit files to
-SignPath or verify Authenticode signatures.
+Until a signing path is established, Windows release artifacts remain
+unsigned. The current `.github/workflows/release.yml` Windows job packages
+those unsigned artifacts after tests pass. It does not submit files to SignPath
+or verify Authenticode signatures.
 
-After approval, signed Windows release artifacts must:
+Once signing starts, with any provider, signed Windows release artifacts must:
 
 1. Be built from this repository by `.github/workflows/release.yml`.
 2. Be built from a release tag matching the repository's `vX.Y.Z` tag policy.
 3. Pass the Windows tests before signing.
 4. Be produced by the checked-in `scripts/publish-windows.ps1` script.
-5. Be submitted to SignPath by the same GitHub Actions run that built them.
-6. Be manually approved in SignPath before publication.
+5. Be submitted for signing by the same GitHub Actions run that built them.
+
+When signing through the SignPath Foundation program, they must additionally:
+
+1. Be submitted to the project's SignPath project by that run.
+2. Be manually approved in SignPath by a signing approver before publication.
 
 Files built locally or uploaded manually are not eligible for project signing.
 
 ## Signing scope
 
-The SignPath project may sign only PE files produced from source maintained in
-this repository:
+Project signing covers only PE files produced from source maintained in this
+repository:
 
 - `RealtimeTranslator.App.exe`
 - `RealtimeTranslator.App.dll`
 - `RealtimeTranslator.Core.dll`
 - `RealtimeTranslator.Platform.dll`
 
-The project does not use its SignPath certificate to re-sign third-party
+The project does not use its code-signing certificate to re-sign third-party
 libraries, .NET runtime files, operating-system components, or other upstream
 binaries. ZIP archives, checksum files, documentation, and configuration files
 are not Authenticode-signed.
 
 The signed files are packaged into
 `RealtimeTranslator-<tag>-win-x64.zip`. The SHA-256 checksum is generated only
-after the signed files have been downloaded from SignPath.
+after the signed files have been returned by the signing provider.
 
 ## Release verification
 
-After SignPath approval, the release workflow must verify the Authenticode
+Once signing starts, the release workflow must verify the Authenticode
 signature of every file in the signing scope before packaging. Users can also
 verify the extracted application:
 
@@ -87,7 +106,8 @@ $files = @(
   '.\RealtimeTranslator.Core.dll',
   '.\RealtimeTranslator.Platform.dll'
 )
-# Replace with the published SignPath Foundation signer identity after approval.
+# Replace with the signer identity published by the signing provider
+# (for the SignPath Foundation program: 'SignPath Foundation').
 $expectedChainMarker = 'SignPath Foundation'
 foreach ($file in $files) {
   $signature = Get-AuthenticodeSignature $file
@@ -107,10 +127,14 @@ foreach ($file in $files) {
 }
 ```
 
-For a SignPath-signed release, each file's `Status` must be `Valid` and the
-signer must chain to the certificate supplied by the SignPath Foundation. After
-approval, replace `$expectedChainMarker` with that published identity. The
-release ZIP must also match its separately published `.sha256` file:
+Each file's `Status` must be `Valid`, and the certificate chain must include a
+certificate whose subject contains the identity marker published by the
+signing provider. For a release signed through the SignPath Foundation program
+the marker is `SignPath Foundation`; for another provider, set
+`$expectedChainMarker` to that provider's published identity. This check
+matches the subject marker only; it does not pin the exact certificate or
+public key. The release ZIP must also match its separately published `.sha256`
+file:
 
 ```powershell
 $expected = (Get-Content .\RealtimeTranslator-<tag>-win-x64.zip.sha256 -Raw).Trim().Split()[0].ToLowerInvariant()
@@ -124,10 +148,13 @@ If a signing credential, build workflow, release artifact, or maintainer
 account may have been compromised:
 
 1. Stop approving signing requests and publishing releases.
-2. Preserve the relevant GitHub Actions and SignPath audit records.
-3. Notify SignPath and the SignPath Foundation.
+2. Preserve the relevant GitHub Actions audit records and the signing
+   provider's audit records.
+3. Notify the active signing provider and the certificate issuer (for the
+   SignPath Foundation program: SignPath and the SignPath Foundation; for
+   Apple Developer ID: Apple).
 4. Remove affected release assets.
-5. Request certificate revocation when required.
+5. Request certificate revocation from the certificate issuer when required.
 6. Publish a corrected release only after the incident is contained.
 
 Security-sensitive reports should be sent to the project owner through

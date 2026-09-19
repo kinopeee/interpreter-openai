@@ -13,11 +13,11 @@ Windows版の手順は [Windows版](#windows版) を参照してください。�
 - [プライバシーポリシー](PRIVACY.md)
 - [Code signing policy / コード署名ポリシー](CODE_SIGNING_POLICY.md)
 
-Windows向けコード署名はSignPath Foundationへ申請準備中です。承認前に公開された
-Windows版Release成果物は未署名です。承認後、SignPath経由で署名したリリースには
-次のクレジットを表示します。
-
-> Free code signing provided by SignPath.io, certificate by SignPath Foundation
+Windows版Release成果物は未署名です。SignPath Foundation の無償コード署名プログラムへ
+申請しましたが、2026年9月の審査では公開実績（採用状況や外部での言及など）が
+同プログラムの基準に達していないとして承認されませんでした。認知が広がった時点で
+再申請できるため、署名経路が確立するまでは未署名のまま公開し、SHA-256 での検証を
+推奨します。署名を開始した場合は、この節とリリースノートに署名提供元とクレジットを記載します。
 
 ## 要件
 

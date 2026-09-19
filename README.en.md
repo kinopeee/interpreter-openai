@@ -13,11 +13,14 @@ For Windows setup, see [Windows](#windows). The sections below describe the macO
 - [Privacy Policy](PRIVACY.md)
 - [Code Signing Policy](CODE_SIGNING_POLICY.md)
 
-The project is preparing an application to the SignPath Foundation for Windows
-code signing. Windows release artifacts published before approval are unsigned.
-After approval, releases signed through SignPath will carry this credit:
-
-> Free code signing provided by SignPath.io, certificate by SignPath Foundation
+Windows release artifacts are unsigned. The project applied to the SignPath
+Foundation free code-signing program, but the September 2026 review did not
+approve the application because the project does not yet show the level of
+public adoption and external references the program requires. The project may
+reapply once it gains broader recognition. Until a signing path is established,
+Windows releases stay unsigned and SHA-256 verification is recommended. If
+signing starts, this section and the release notes will name the signing
+provider and carry its credit.
 
 ## Requirements
 
