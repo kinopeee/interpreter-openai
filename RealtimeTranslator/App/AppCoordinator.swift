@@ -147,10 +147,10 @@ final class AppCoordinator: NSObject {
     func toggleSubtitlePositionEditing() {
         isEditingSubtitlePosition.toggle()
         subtitleWindow.setPositionEditingEnabled(isEditingSubtitlePosition)
+        refreshMirroringHint()
         if !isEditingSubtitlePosition {
             settings.savePanelOrigin(subtitleWindow.currentOrigin)
         }
-        refreshMirroringHint()
         menuBarController.refresh()
     }
 
