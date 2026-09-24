@@ -258,8 +258,8 @@ final class AudioFixtureTests: XCTestCase {
             AdaptiveMicrophoneGain.noiseFloorMinimum
         )
         XCTAssertEqual(
-            Float(SharedFixtures.real(constants["noiseFloorRise"])),
-            AdaptiveMicrophoneGain.noiseFloorRise
+            SharedFixtures.number(constants["noiseFloorWindowFrames"]),
+            AdaptiveMicrophoneGain.noiseFloorWindowFrames
         )
         XCTAssertEqual(
             Float(SharedFixtures.real(constants["gainRise"])),
@@ -328,6 +328,34 @@ final class AudioFixtureTests: XCTestCase {
                         "\(name) [\(index)] appliedGain"
                     )
                 }
+            }
+
+            if let checkpoints = fixture["expectedCheckpoints"] as? [Any] {
+                for checkpointItem in checkpoints {
+                    let checkpoint = try XCTUnwrap(checkpointItem as? [String: Any])
+                    let index = SharedFixtures.number(checkpoint["index"])
+                    XCTAssertEqual(
+                        SharedFixtures.real(checkpoint["gain"]),
+                        Double(trace[index].gain),
+                        accuracy: tolerance,
+                        "\(name) [\(index)] gain"
+                    )
+                    XCTAssertEqual(
+                        SharedFixtures.real(checkpoint["appliedGain"]),
+                        Double(trace[index].appliedGain),
+                        accuracy: tolerance,
+                        "\(name) [\(index)] appliedGain"
+                    )
+                }
+            }
+
+            if let expectedMaxGain = fixture["expectedMaxGain"] {
+                XCTAssertEqual(
+                    SharedFixtures.real(expectedMaxGain),
+                    Double(trace.map(\.gain).max() ?? 0),
+                    accuracy: tolerance,
+                    "\(name) maxGain"
+                )
             }
 
             let expectedFinal = try XCTUnwrap(fixture["expectedFinal"] as? [String: Any])

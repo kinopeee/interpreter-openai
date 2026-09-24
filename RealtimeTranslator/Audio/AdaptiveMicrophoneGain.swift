@@ -21,8 +21,8 @@ struct AdaptiveMicrophoneGain: Sendable {
     static let noiseCeiling: Float = 0.01
     /// noiseFloor の下限。デジタル無音 (rms=0) で noiseFloor が 0 に固定されないようにする。
     static let noiseFloorMinimum: Float = 0.0001
-    /// 非発話中に noiseFloor が上がるペース。
-    static let noiseFloorRise: Float = 1.01
+    /// noiseFloor の推定に使う直近フレーム数。揃うまでフロアは未確定とし、noiseCap で下げない。
+    static let noiseFloorWindowFrames = 30
     /// フレームあたりのゲイン上昇上限。
     static let gainRise: Float = 1.12
     /// フレームあたりのゲイン下降上限。
@@ -36,7 +36,7 @@ struct AdaptiveMicrophoneGain: Sendable {
     private(set) var gain: Float
     /// 直前フレームへ実際に掛けたゲイン。ランプの起点になる。
     private(set) var appliedGain: Float
-    private var noiseFloor: Float?
+    private var rmsHistory: [Float] = []
 
     init(initialGain: Float = defaultInitialGain, isEnabled: Bool = true) {
         gain = Self.clamp(initialGain)
@@ -54,26 +54,32 @@ struct AdaptiveMicrophoneGain: Sendable {
         let rms = max(0, rms)
         let peak = max(0, peak)
 
+        // 直近 30 フレームの floored RMS の最小値を noiseFloor とする。
+        // 語間の無音が窓内にあれば発話中もフロアは低く保たれ、
+        // 定常ノイズは窓が入れ替わる 3 秒以内にフロアへ反映される。
         let floored = max(rms, Self.noiseFloorMinimum)
-        if let floor = noiseFloor, floored >= floor {
-            noiseFloor = min(floor * Self.noiseFloorRise, floored)
-        } else {
-            noiseFloor = floored
+        rmsHistory.append(floored)
+        if rmsHistory.count > Self.noiseFloorWindowFrames {
+            rmsHistory.removeFirst()
         }
 
-        let floor = noiseFloor ?? floored
+        let floor = rmsHistory.min() ?? floored
+        let confirmed = rmsHistory.count == Self.noiseFloorWindowFrames
         let noiseCap = Self.clamp(Self.noiseCeiling / floor)
         let isSpeech = rms >= Self.speechAbsoluteFloor && rms >= floor * Self.speechRatio
 
         if isSpeech {
-            let desired = min(Self.clamp(Self.targetRms / rms), noiseCap)
+            var desired = Self.clamp(Self.targetRms / rms)
+            if confirmed {
+                desired = min(desired, noiseCap)
+            }
             if desired > gain {
                 gain = min(desired, gain * Self.gainRise)
             } else if desired < gain {
                 gain = max(desired, gain * Self.gainFall)
             }
-        } else if gain > noiseCap {
-            // 持続するノイズ上昇では noiseCap まで徐々に下げる。
+        } else if confirmed, gain > noiseCap {
+            // フロア確定後の持続ノイズでは noiseCap まで徐々に下げる。
             gain = max(noiseCap, gain * Self.gainFall)
         }
 

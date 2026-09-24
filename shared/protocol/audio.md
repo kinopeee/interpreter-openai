@@ -55,13 +55,14 @@ feeder の順序は 変換 → float フレーム化 → 各フレームで AGC 
 | 発話絶対フロア | 0.003 |
 | ノイズ上限 | 0.01 |
 | ノイズフロア下限 | 0.0001 |
-| ノイズフロア上昇率 | 1.01 |
+| ノイズフロア窓（フレーム数） | 30 |
 | ゲイン上昇率 | 1.12 |
 | ゲイン下降率 | 0.8 |
 | クリップ天井 | 0.9 |
 | ランプサンプル数 | 120 |
 
-状態: `gain`（持続）、`appliedGain`（直前の適用ゲイン）、`noiseFloor`（未観測は空）、`isEnabled`。
+状態: `gain`（持続）、`appliedGain`（直前の適用ゲイン）、`rmsHistory`（直近最大 30 フレームの `floored` RMS）、`isEnabled`。
+`noiseFloor = min(rmsHistory)`（未観測は空）。`rmsHistory` が 30 フレーム揃うまでノイズフロアは**未確定**とし、ノイズ上限によるゲイン低下を行わない。
 初期化: `gain = clamp(initialGain)`（非有限なら最小ゲイン。Windows 版は従来どおり `ArgumentOutOfRangeException`）、`appliedGain = isEnabled ? gain : 1.0`。
 `clamp(x) = min(maximumGain, max(minimumGain, x))`。
 
@@ -75,14 +76,16 @@ feeder の順序は 変換 → float フレーム化 → 各フレームで AGC 
 1. `isEnabled == false` → `1.0` を返し、状態を変えない（ゲインは 1.0 素通し）。
 2. `rms` または `peak` が非有限 → 現在の `appliedGain` を返し、状態を変えない。
 3. `rms = max(0, rms)`、`peak = max(0, peak)`。
-4. `floored = max(rms, 0.0001)`。`noiseFloor` 未観測または `floored < noiseFloor` → `noiseFloor = floored`。それ以外 → `noiseFloor = min(noiseFloor * 1.01, floored)`。
-   `noiseFloor` は下限 0.0001 を下回らないため、デジタル無音で 0 に固定されることはない。
+4. `floored = max(rms, 0.0001)` を `rmsHistory` の末尾へ追加し、30 を超えたら先頭を捨てる。`noiseFloor = min(rmsHistory)`、`confirmed = rmsHistory.count == 30`。
+   語間の無音が窓内にあれば発話中もフロアは低く保たれ、定常ノイズは 3 秒（30 フレーム）以内にフロアへ反映される。下限 0.0001 のためデジタル無音で 0 に固定されることはない。
 5. `noiseCap = clamp(0.01 / noiseFloor)`。
 6. `isSpeech = rms >= 0.003 && rms >= noiseFloor * 3.16`。
-7. 発話時: `desired = min(clamp(0.1 / rms), noiseCap)`。
+7. 発話時: `desired = clamp(0.1 / rms)`、`confirmed` なら `desired = min(desired, noiseCap)`。
    - `desired > gain` → `gain = min(desired, gain * 1.12)`（フレームあたり最大 12% の上昇）。
    - `desired < gain` → `gain = max(desired, gain * 0.8)`。
-   非発話時: `gain > noiseCap` なら `gain = max(noiseCap, gain * 0.8)`。それ以外は不変。
+   非発話時: `confirmed && gain > noiseCap` なら `gain = max(noiseCap, gain * 0.8)`。それ以外は不変。
+   録音開始直後から話し続けても最初のポーズまで初期ゲインが保たれ、下げられることはない。
+   既知の限界: 窓（3 秒）の間 RMS がまったく下がらない一定音量の発話はノイズとして扱われ、ゲインが下がる。
 8. `applied = peak > 0 ? min(gain, 0.9 / peak) : gain`。`appliedGain = clamp(applied)` を返す。
    クリップ limiter は当該フレームの適用ゲインだけを下げ、持続する `gain` は変えない。
 

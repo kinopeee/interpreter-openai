@@ -1,5 +1,7 @@
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace RealtimeTranslator.Core.Audio;
 
@@ -33,8 +35,8 @@ public sealed class AdaptiveMicrophoneGain
     /// <summary>noiseFloor の下限。デジタル無音 (rms=0) で noiseFloor が 0 に固定されないようにする。</summary>
     public const float NoiseFloorMinimum = 0.0001f;
 
-    /// <summary>非発話中に noiseFloor が上がるペース。</summary>
-    public const float NoiseFloorRise = 1.01f;
+    /// <summary>noiseFloor の推定に使う直近フレーム数。揃うまでフロアは未確定とし、noiseCap で下げない。</summary>
+    public const int NoiseFloorWindowFrames = 30;
 
     /// <summary>フレームあたりのゲイン上昇上限。</summary>
     public const float GainRise = 1.12f;
@@ -48,7 +50,7 @@ public sealed class AdaptiveMicrophoneGain
     /// <summary>適用ゲインを previous→current へ線形に遷移させる先頭サンプル数。</summary>
     public const int RampSamples = 120;
 
-    private float? _noiseFloor;
+    private readonly List<float> _rmsHistory = [];
 
     public AdaptiveMicrophoneGain(float initialGain = DefaultInitialGain, bool isEnabled = true)
     {
@@ -87,16 +89,29 @@ public sealed class AdaptiveMicrophoneGain
         rms = MathF.Max(0f, rms);
         peak = MathF.Max(0f, peak);
 
+        // 直近 30 フレームの floored RMS の最小値を noiseFloor とする。
+        // 語間の無音が窓内にあれば発話中もフロアは低く保たれ、
+        // 定常ノイズは窓が入れ替わる 3 秒以内にフロアへ反映される。
         var floored = MathF.Max(rms, NoiseFloorMinimum);
-        _noiseFloor =
-            _noiseFloor is not { } floor || floored < floor ? floored : MathF.Min(floor * NoiseFloorRise, floored);
+        _rmsHistory.Add(floored);
+        if (_rmsHistory.Count > NoiseFloorWindowFrames)
+        {
+            _rmsHistory.RemoveAt(0);
+        }
 
-        var noiseCap = Clamp(NoiseCeiling / _noiseFloor.Value);
-        var isSpeech = rms >= SpeechAbsoluteFloor && rms >= _noiseFloor.Value * SpeechRatio;
+        var noiseFloor = _rmsHistory.Min();
+        var confirmed = _rmsHistory.Count == NoiseFloorWindowFrames;
+        var noiseCap = Clamp(NoiseCeiling / noiseFloor);
+        var isSpeech = rms >= SpeechAbsoluteFloor && rms >= noiseFloor * SpeechRatio;
 
         if (isSpeech)
         {
-            var desired = MathF.Min(Clamp(TargetRms / rms), noiseCap);
+            var desired = Clamp(TargetRms / rms);
+            if (confirmed)
+            {
+                desired = MathF.Min(desired, noiseCap);
+            }
+
             if (desired > Gain)
             {
                 Gain = MathF.Min(desired, Gain * GainRise);
@@ -106,9 +121,9 @@ public sealed class AdaptiveMicrophoneGain
                 Gain = MathF.Max(desired, Gain * GainFall);
             }
         }
-        else if (Gain > noiseCap)
+        else if (confirmed && Gain > noiseCap)
         {
-            // 持続するノイズ上昇では noiseCap まで徐々に下げる。
+            // フロア確定後の持続ノイズでは noiseCap まで徐々に下げる。
             Gain = MathF.Max(noiseCap, Gain * GainFall);
         }
 

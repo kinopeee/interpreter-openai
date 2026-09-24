@@ -238,7 +238,10 @@ public sealed class AudioFixtureTests
             (float)SharedFixtures.Real(constants["noiseFloorMinimum"]),
             AdaptiveMicrophoneGain.NoiseFloorMinimum
         );
-        Assert.Equal((float)SharedFixtures.Real(constants["noiseFloorRise"]), AdaptiveMicrophoneGain.NoiseFloorRise);
+        Assert.Equal(
+            SharedFixtures.Number(constants["noiseFloorWindowFrames"]),
+            AdaptiveMicrophoneGain.NoiseFloorWindowFrames
+        );
         Assert.Equal((float)SharedFixtures.Real(constants["gainRise"]), AdaptiveMicrophoneGain.GainRise);
         Assert.Equal((float)SharedFixtures.Real(constants["gainFall"]), AdaptiveMicrophoneGain.GainFall);
         Assert.Equal((float)SharedFixtures.Real(constants["clipCeiling"]), AdaptiveMicrophoneGain.ClipCeiling);
@@ -285,6 +288,22 @@ public sealed class AudioFixtureTests
             }
         }
 
+        if (fixture["expectedCheckpoints"] is { } checkpointsNode)
+        {
+            foreach (var checkpointItem in checkpointsNode.AsArray())
+            {
+                var checkpoint = checkpointItem!.AsObject();
+                var index = SharedFixtures.Number(checkpoint["index"]);
+                Assert.Equal(SharedFixtures.Real(checkpoint["gain"]), trace[index].Gain, tolerance);
+                Assert.Equal(SharedFixtures.Real(checkpoint["appliedGain"]), trace[index].AppliedGain, tolerance);
+            }
+        }
+
+        if (fixture["expectedMaxGain"] is { } maxGainNode)
+        {
+            Assert.Equal(SharedFixtures.Real(maxGainNode), trace.Max(entry => entry.Gain), tolerance);
+        }
+
         var expectedFinal = fixture["expectedFinal"]!.AsObject();
         Assert.Equal(SharedFixtures.Real(expectedFinal["gain"]), agc.Gain, tolerance);
         Assert.Equal(SharedFixtures.Real(expectedFinal["appliedGain"]), agc.AppliedGain, tolerance);
@@ -324,23 +343,99 @@ public sealed class AudioFixtureTests
         }
     }
 
+    // Given: 録音開始直後から発話が続く系列（未確定フロア）
+    // When: 観測する
+    // Then: フロア未確定の間は下げず、小さなポーズのあとは発話として上がる
+    [Fact]
+    public void SpeechFromStartKeepsGainUntilFirstPause()
+    {
+        var agc = new AdaptiveMicrophoneGain(initialGain: 4.0f);
+        var frames = new[] { (0.01f, 0.03f), (0.02f, 0.06f), (0.01f, 0.03f) }.Concat(
+            Enumerable.Repeat((0.02f, 0.06f), 4)
+        );
+        foreach (var (rms, peak) in frames)
+        {
+            agc.Observe(rms, peak);
+            Assert.Equal(4.0f, agc.Gain);
+        }
+
+        agc.Observe(0.001f, 0.003f);
+        agc.Observe(0.02f, 0.06f);
+        Assert.Equal(4.48f, agc.Gain, 0.0005);
+        agc.Observe(0.02f, 0.06f);
+        Assert.Equal(5.0f, agc.Gain, 0.0005);
+    }
+
+    // Given: フロア確定 (30フレーム) に満たない一定ノイズ
+    // When: 29 フレーム、30 フレーム、31 フレームと観測する
+    // Then: 未確定の間は gain を下げず、確定と同時に noiseCap へ下がる
+    [Fact]
+    public void UnconfirmedNoiseFloorNeverLowersGain()
+    {
+        var agc = new AdaptiveMicrophoneGain(initialGain: 4.0f);
+        for (var index = 0; index < 29; index += 1)
+        {
+            agc.Observe(0.004f, 0.012f);
+            Assert.Equal(4.0f, agc.Gain);
+        }
+
+        agc.Observe(0.004f, 0.012f);
+        Assert.Equal(3.2f, agc.Gain, 0.0005);
+        agc.Observe(0.004f, 0.012f);
+        Assert.Equal(2.56f, agc.Gain, 0.0005);
+    }
+
+    // Given: 発話中にクリック（大ピーク）が1フレーム混じる系列
+    // When: 観測する
+    // Then: クリックは appliedGain だけを下げ、直後の発話で gain が回復する
+    [Fact]
+    public void GainRecoversAfterClickDuringSpeech()
+    {
+        var agc = new AdaptiveMicrophoneGain(initialGain: 4.0f);
+        for (var index = 0; index < 30; index += 1)
+        {
+            agc.Observe(0.001f, 0.003f);
+        }
+
+        for (var index = 0; index < 3; index += 1)
+        {
+            agc.Observe(0.02f, 0.06f);
+        }
+
+        Assert.Equal(5.0f, agc.Gain, 0.0005);
+
+        agc.Observe(0.06f, 0.9f);
+        Assert.Equal(4.0f, agc.Gain, 0.0005);
+        Assert.Equal(1.0f, agc.AppliedGain, 0.0005);
+        agc.Observe(0.02f, 0.06f);
+        Assert.Equal(4.48f, agc.Gain, 0.0005);
+        agc.Observe(0.02f, 0.06f);
+        Assert.Equal(5.0f, agc.Gain, 0.0005);
+    }
+
     // Given: 無音で noiseFloor が下限に落ちた状態
     // When: 一定ノイズのフレームを続けて観測する
-    // Then: noiseCap 以下へ gain が下がり、発話として暴騰し続けない
+    // Then: 窓がノイズで埋まるまで上がり、確定後は noiseCap (2.5) まで下がる
     [Fact]
     public void SteadyNoiseAfterSilenceFallsToNoiseCap()
     {
         var agc = new AdaptiveMicrophoneGain(initialGain: 4.0f);
+        var trace = new List<float>();
         for (var index = 0; index < 5; index += 1)
         {
             agc.Observe(0f, 0f);
+            trace.Add(agc.Gain);
         }
 
-        for (var index = 0; index < 400; index += 1)
+        for (var index = 0; index < 200; index += 1)
         {
             agc.Observe(0.004f, 0.012f);
+            trace.Add(agc.Gain);
         }
 
+        Assert.Equal(8.0f, trace[12], 0.0005);
+        Assert.Equal(8.0f, trace[33], 0.0005);
+        Assert.Equal(2.5f, trace[40], 0.0005);
         Assert.Equal(2.5f, agc.Gain, 0.0005);
         Assert.Equal(2.5f, agc.AppliedGain, 0.0005);
     }

@@ -222,7 +222,7 @@
             "speechAbsoluteFloor",
             "noiseCeiling",
             "noiseFloorMinimum",
-            "noiseFloorRise",
+            "noiseFloorWindowFrames",
             "gainRise",
             "gainFall",
             "clipCeiling",
@@ -239,7 +239,7 @@
             "speechAbsoluteFloor": { "const": 0.003 },
             "noiseCeiling": { "const": 0.01 },
             "noiseFloorMinimum": { "const": 0.0001 },
-            "noiseFloorRise": { "const": 1.01 },
+            "noiseFloorWindowFrames": { "const": 30 },
             "gainRise": { "const": 1.12 },
             "gainFall": { "const": 0.8 },
             "clipCeiling": { "const": 0.9 },
@@ -294,6 +294,21 @@
                   }
                 }
               },
+              "expectedCheckpoints": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["index", "gain", "appliedGain"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": { "type": "integer", "minimum": 0 },
+                    "gain": { "type": "number" },
+                    "appliedGain": { "type": "number" }
+                  }
+                }
+              },
+              "expectedMaxGain": { "type": "number" },
               "expectedFinal": {
                 "type": "object",
                 "required": ["gain", "appliedGain"],

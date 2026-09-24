@@ -129,18 +129,80 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
         XCTAssertLessThan(pcm[0], pcm[AdaptiveMicrophoneGain.rampSamples])
     }
 
+    // Given: 録音開始直後から発話が続く系列（未確定フロア）
+    // When: 観測する
+    // Then: フロア未確定の間は下げず、小さなポーズのあとは発話として上がる
+    func testSpeechFromStartKeepsGainUntilFirstPause() {
+        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
+        var trace: [Float] = []
+        for (rms, peak) in [(Float(0.01), Float(0.03)), (0.02, 0.06), (0.01, 0.03)]
+            + Array(repeating: (Float(0.02), Float(0.06)), count: 4)
+        {
+            _ = agc.observe(rms: rms, peak: peak)
+            trace.append(agc.gain)
+        }
+        XCTAssertTrue(trace.allSatisfy { $0 == 4.0 })
+
+        _ = agc.observe(rms: 0.001, peak: 0.003)
+        _ = agc.observe(rms: 0.02, peak: 0.06)
+        XCTAssertEqual(agc.gain, 4.48, accuracy: 0.0005)
+        _ = agc.observe(rms: 0.02, peak: 0.06)
+        XCTAssertEqual(agc.gain, 5.0, accuracy: 0.0005)
+    }
+
+    // Given: フロア確定 (30フレーム) に満たない一定ノイズ
+    // When: 29 フレーム、30 フレーム、31 フレームと観測する
+    // Then: 未確定の間は gain を下げず、確定と同時に noiseCap へ下がる
+    func testUnconfirmedNoiseFloorNeverLowersGain() {
+        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
+        for _ in 0..<29 {
+            _ = agc.observe(rms: 0.004, peak: 0.012)
+            XCTAssertEqual(agc.gain, 4.0)
+        }
+        _ = agc.observe(rms: 0.004, peak: 0.012)
+        XCTAssertEqual(agc.gain, 3.2, accuracy: 0.0005)
+        _ = agc.observe(rms: 0.004, peak: 0.012)
+        XCTAssertEqual(agc.gain, 2.56, accuracy: 0.0005)
+    }
+
+    // Given: 発話中にクリック（大ピーク）が1フレーム混じる系列
+    // When: 観測する
+    // Then: クリックは appliedGain だけを下げ、直後の発話で gain が回復する
+    func testGainRecoversAfterClickDuringSpeech() {
+        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
+        for _ in 0..<30 {
+            _ = agc.observe(rms: 0.001, peak: 0.003)
+        }
+        for _ in 0..<3 {
+            _ = agc.observe(rms: 0.02, peak: 0.06)
+        }
+        XCTAssertEqual(agc.gain, 5.0, accuracy: 0.0005)
+
+        _ = agc.observe(rms: 0.06, peak: 0.9)
+        XCTAssertEqual(agc.gain, 4.0, accuracy: 0.0005)
+        XCTAssertEqual(agc.appliedGain, 1.0, accuracy: 0.0005)
+        _ = agc.observe(rms: 0.02, peak: 0.06)
+        XCTAssertEqual(agc.gain, 4.48, accuracy: 0.0005)
+        _ = agc.observe(rms: 0.02, peak: 0.06)
+        XCTAssertEqual(agc.gain, 5.0, accuracy: 0.0005)
+    }
+
     // Given: 無音で noiseFloor が下限に落ちた状態
     // When: 一定ノイズのフレームを続けて観測する
-    // Then: noiseCap 以下へ gain が下がり、発話として暴騰し続けない
+    // Then: 窓がノイズで埋まるまで上がり、確定後は noiseCap (2.5) まで下がる
     func testSteadyNoiseAfterSilenceFallsToNoiseCap() {
         var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
+        var trace: [(gain: Float, appliedGain: Float)] = []
         for _ in 0..<5 {
-            _ = agc.observe(rms: 0, peak: 0)
+            trace.append((agc.gain, agc.observe(rms: 0, peak: 0)))
         }
-        for _ in 0..<400 {
-            _ = agc.observe(rms: 0.004, peak: 0.012)
+        for _ in 0..<200 {
+            trace.append((agc.gain, agc.observe(rms: 0.004, peak: 0.012)))
         }
 
+        XCTAssertEqual(trace[12].gain, 8.0, accuracy: 0.0005)
+        XCTAssertEqual(trace[33].gain, 8.0, accuracy: 0.0005)
+        XCTAssertEqual(trace[40].gain, 2.5, accuracy: 0.0005)
         XCTAssertEqual(agc.gain, 2.5, accuracy: 0.0005)
         XCTAssertEqual(agc.appliedGain, 2.5, accuracy: 0.0005)
     }

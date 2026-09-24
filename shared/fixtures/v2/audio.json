@@ -279,7 +279,7 @@
       "speechAbsoluteFloor": 0.003,
       "noiseCeiling": 0.01,
       "noiseFloorMinimum": 0.0001,
-      "noiseFloorRise": 1.01,
+      "noiseFloorWindowFrames": 30,
       "gainRise": 1.12,
       "gainFall": 0.8,
       "clipCeiling": 0.9,
@@ -374,50 +374,113 @@
             "repeat": 30
           }
         ],
+        "expectedCheckpoints": [
+          {
+            "index": 0,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 15,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 28,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 29,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          }
+        ],
+        "expectedMaxGain": 4.0,
         "expectedFinal": {
           "gain": 4.0,
           "appliedGain": 4.0
         }
       },
       {
-        "name": "noise above the ceiling lowers the gain to the noise cap",
+        "name": "noise above the ceiling lowers the gain to the noise cap once the floor is confirmed",
         "initialGain": 4.0,
         "frames": [
           {
             "rms": 0.004,
             "peak": 0.012,
-            "repeat": 6
+            "repeat": 36
           }
         ],
-        "expectedTrace": [
+        "expectedCheckpoints": [
           {
+            "index": 0,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 18,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 28,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 29,
             "gain": 3.2,
             "appliedGain": 3.2
           },
           {
+            "index": 30,
             "gain": 2.56,
             "appliedGain": 2.56
           },
           {
-            "gain": 2.5,
-            "appliedGain": 2.5
-          },
-          {
-            "gain": 2.5,
-            "appliedGain": 2.5
-          },
-          {
-            "gain": 2.5,
-            "appliedGain": 2.5
-          },
-          {
+            "index": 35,
             "gain": 2.5,
             "appliedGain": 2.5
           }
         ],
+        "expectedMaxGain": 4.0,
         "expectedFinal": {
           "gain": 2.5,
           "appliedGain": 2.5
+        }
+      },
+      {
+        "name": "an unconfirmed noise floor never lowers the gain",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 29
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 0,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 14,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 28,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          }
+        ],
+        "expectedMaxGain": 4.0,
+        "expectedFinal": {
+          "gain": 4.0,
+          "appliedGain": 4.0
         }
       },
       {
@@ -581,7 +644,7 @@
           {
             "rms": 0.005,
             "peak": 0.015,
-            "repeat": 3
+            "repeat": 30
           },
           {
             "rms": 0.02,
@@ -589,55 +652,266 @@
             "repeat": 8
           }
         ],
-        "expectedTrace": [
+        "expectedCheckpoints": [
           {
+            "index": 0,
             "gain": 1.0,
             "appliedGain": 1.0
           },
           {
+            "index": 19,
             "gain": 1.0,
             "appliedGain": 1.0
           },
           {
+            "index": 28,
             "gain": 1.0,
             "appliedGain": 1.0
           },
           {
+            "index": 29,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 30,
             "gain": 1.12,
             "appliedGain": 1.12
           },
           {
-            "gain": 1.2544,
-            "appliedGain": 1.2544
+            "index": 35,
+            "gain": 1.973823,
+            "appliedGain": 1.973823
           },
           {
-            "gain": 1.404928,
-            "appliedGain": 1.404928
+            "index": 37,
+            "gain": 2.0,
+            "appliedGain": 2.0
+          }
+        ],
+        "expectedMaxGain": 2.0,
+        "expectedFinal": {
+          "gain": 2.0,
+          "appliedGain": 2.0
+        }
+      },
+      {
+        "name": "speech from the first frame keeps the initial gain until the first pause",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.01,
+            "peak": 0.03
           },
           {
-            "gain": 1.573519,
-            "appliedGain": 1.573519
+            "rms": 0.02,
+            "peak": 0.06
           },
           {
-            "gain": 1.762342,
-            "appliedGain": 1.762342
+            "rms": 0.01,
+            "peak": 0.03
           },
           {
-            "gain": 1.88409,
-            "appliedGain": 1.88409
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 4
           },
           {
-            "gain": 1.865436,
-            "appliedGain": 1.865436
+            "rms": 0.001,
+            "peak": 0.003
           },
           {
-            "gain": 1.846966,
-            "appliedGain": 1.846966
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 4
+          }
+        ],
+        "expectedTrace": [
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.48,
+            "appliedGain": 4.48
+          },
+          {
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "gain": 5.0,
+            "appliedGain": 5.0
           }
         ],
         "expectedFinal": {
-          "gain": 1.846966,
-          "appliedGain": 1.846966
+          "gain": 5.0,
+          "appliedGain": 5.0
+        }
+      },
+      {
+        "name": "a quiet pause inside the window keeps the floor low during speech",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 30
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 29
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 29
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 29
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 0,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 28,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 29,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 30,
+            "gain": 4.48,
+            "appliedGain": 4.48
+          },
+          {
+            "index": 35,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 59,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 118,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          }
+        ],
+        "expectedMaxGain": 5.0,
+        "expectedFinal": {
+          "gain": 5.0,
+          "appliedGain": 5.0
+        }
+      },
+      {
+        "name": "a click during speech recovers within the following speech frames",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 30
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 3
+          },
+          {
+            "rms": 0.06,
+            "peak": 0.9
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 6
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 32,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 33,
+            "gain": 4.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 34,
+            "gain": 4.48,
+            "appliedGain": 4.48
+          },
+          {
+            "index": 35,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 39,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          }
+        ],
+        "expectedMaxGain": 5.0,
+        "expectedFinal": {
+          "gain": 5.0,
+          "appliedGain": 5.0
         }
       },
       {
@@ -741,26 +1015,65 @@
         }
       },
       {
-        "name": "a sustained noise step is eventually capped",
+        "name": "a sustained noise step is capped within the noise floor window",
         "initialGain": 4.0,
         "frames": [
           {
             "rms": 0.001,
-            "peak": 0.003
+            "peak": 0.003,
+            "repeat": 30
           },
           {
             "rms": 0.004,
             "peak": 0.012,
-            "repeat": 200
+            "repeat": 60
           }
         ],
+        "expectedCheckpoints": [
+          {
+            "index": 29,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 30,
+            "gain": 4.48,
+            "appliedGain": 4.48
+          },
+          {
+            "index": 45,
+            "gain": 8.0,
+            "appliedGain": 8.0
+          },
+          {
+            "index": 59,
+            "gain": 6.4,
+            "appliedGain": 6.4
+          },
+          {
+            "index": 60,
+            "gain": 5.12,
+            "appliedGain": 5.12
+          },
+          {
+            "index": 66,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 89,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          }
+        ],
+        "expectedMaxGain": 8.0,
         "expectedFinal": {
           "gain": 2.5,
           "appliedGain": 2.5
         }
       },
       {
-        "name": "silence then steady noise is eventually capped",
+        "name": "silence then steady noise is capped within the noise floor window",
         "initialGain": 4.0,
         "frames": [
           {
@@ -771,9 +1084,52 @@
           {
             "rms": 0.004,
             "peak": 0.012,
-            "repeat": 400
+            "repeat": 60
           }
         ],
+        "expectedCheckpoints": [
+          {
+            "index": 4,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 5,
+            "gain": 4.48,
+            "appliedGain": 4.48
+          },
+          {
+            "index": 12,
+            "gain": 8.0,
+            "appliedGain": 8.0
+          },
+          {
+            "index": 33,
+            "gain": 8.0,
+            "appliedGain": 8.0
+          },
+          {
+            "index": 34,
+            "gain": 6.4,
+            "appliedGain": 6.4
+          },
+          {
+            "index": 35,
+            "gain": 5.12,
+            "appliedGain": 5.12
+          },
+          {
+            "index": 40,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 64,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          }
+        ],
+        "expectedMaxGain": 8.0,
         "expectedFinal": {
           "gain": 2.5,
           "appliedGain": 2.5
