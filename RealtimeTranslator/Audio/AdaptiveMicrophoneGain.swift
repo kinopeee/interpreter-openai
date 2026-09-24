@@ -2,7 +2,7 @@ import Foundation
 
 /// 100 ms フレーム単位の適応マイクゲイン（shared/protocol/audio.md の v2 契約）。
 ///
-/// 発話フレームの RMS だけで持続ゲインを動かし、雑音だけの区間では上げない。
+/// 音量が変動する発話フレームの RMS だけで持続ゲインを動かし、雑音だけの区間では上げない。
 /// クリップ防止のリミッタはそのフレームだけに効き、持続ゲインを変えない。
 /// feederタスクから直列に呼ぶ前提。
 struct AdaptiveMicrophoneGain: Sendable {
@@ -21,6 +21,12 @@ struct AdaptiveMicrophoneGain: Sendable {
     static let digitalSilenceRms: Float = 0.00001
     /// 雑音フロアを求める窓（直近 3 秒）。
     static let noiseWindowFrames = 30
+    /// 録音開始から noiseWindowFrames フレームの間に仮定する雑音フロアの上限（約 -60 dBFS）。
+    static let startupNoiseFloor: Float = 0.001
+    /// 音量変動を見る窓（直近 500 ms）。
+    static let modulationFrames = 5
+    /// 変動窓の最大 RMS / 最小 RMS がこれ以上なら音量が変動している（約 6 dB）。
+    static let modulationRatio: Float = 2.0
     static let gainRiseFactor: Float = 1.12
     static let gainFallFactor: Float = 0.8
     /// フレーム内リミッタの目標ピーク。
@@ -35,12 +41,16 @@ struct AdaptiveMicrophoneGain: Sendable {
     private(set) var appliedGain: Float
     private var noiseWindow: [Float] = []
     private var noiseWindowNext = 0
+    private var modulationWindow: [Float] = []
+    private var modulationWindowNext = 0
+    private var observedFrames = 0
 
     init(initialGain: Float = defaultInitialGain, isEnabled: Bool = true) {
         self.isEnabled = isEnabled
         gain = isEnabled ? Self.clamp(initialGain) : Self.minimumGain
         appliedGain = gain
         noiseWindow.reserveCapacity(Self.noiseWindowFrames)
+        modulationWindow.reserveCapacity(Self.modulationFrames)
     }
 
     /// 有限なサンプルだけから RMS とピークを求める。有限なサンプルが無ければ 0。
@@ -66,15 +76,19 @@ struct AdaptiveMicrophoneGain: Sendable {
         let rms = max(0, rms)
         let peak = max(0, peak)
 
+        observedFrames = min(observedFrames + 1, Self.noiseWindowFrames + 1)
         if rms >= Self.digitalSilenceRms {
-            pushNoiseWindow(rms)
+            Self.push(rms, into: &noiseWindow, next: &noiseWindowNext, capacity: Self.noiseWindowFrames)
+            Self.push(
+                rms,
+                into: &modulationWindow,
+                next: &modulationWindowNext,
+                capacity: Self.modulationFrames
+            )
         }
 
-        if let noiseFloor = noiseWindow.min(),
-            rms >= Self.speechAbsoluteFloor,
-            rms >= noiseFloor * Self.speechRatio
-        {
-            // 発話フレームだけ持続ゲインを動かす。雑音だけの区間では上げない。
+        if isModulated, rms >= Self.speechAbsoluteFloor, rms >= noiseFloor * Self.speechRatio {
+            // 発話フレームだけ持続ゲインを動かす。音量が一定の雑音だけの区間では上げない。
             let desired = Self.clamp(Self.targetRms / rms)
             if desired > gain {
                 gain = Self.clamp(min(desired, gain * Self.gainRiseFactor))
@@ -89,6 +103,12 @@ struct AdaptiveMicrophoneGain: Sendable {
         return appliedGain
     }
 
+    /// ランプの開始ゲイン。リミッタで下げるフレームでは、先頭サンプルからピークを
+    /// clipCeiling 以下に抑えるため、前フレームの適用ゲインより低くする。
+    static func rampStartGain(previous: Float, peak: Float) -> Float {
+        peak > 0 ? clamp(min(previous, clipCeiling / peak)) : previous
+    }
+
     /// 1 フレームのレベルを取り込み、ランプ付きでゲインを掛けた PCM16 LE を返す。
     mutating func process(frame: UnsafeBufferPointer<Float>) -> Data {
         let previous = appliedGain
@@ -96,19 +116,33 @@ struct AdaptiveMicrophoneGain: Sendable {
         let applied = observe(rms: level.rms, peak: level.peak)
         return PCM16LittleEndianEncoder.encode(
             floatSamples: frame,
-            fromGain: previous,
+            fromGain: Self.rampStartGain(previous: previous, peak: level.peak),
             toGain: applied,
             rampSamples: Self.rampSamples
         )
     }
 
-    private mutating func pushNoiseWindow(_ rms: Float) {
-        if noiseWindow.count < Self.noiseWindowFrames {
-            noiseWindow.append(rms)
+    private var noiseFloor: Float {
+        let floor = noiseWindow.min() ?? .infinity
+        // 録音開始直後は基準がないため、話し続けていても発話と判定できるよう上限を仮定する。
+        return observedFrames <= Self.noiseWindowFrames ? min(floor, Self.startupNoiseFloor) : floor
+    }
+
+    private var isModulated: Bool {
+        guard modulationWindow.count >= 2,
+            let minimum = modulationWindow.min(),
+            let maximum = modulationWindow.max()
+        else { return false }
+        return maximum >= minimum * Self.modulationRatio
+    }
+
+    private static func push(_ rms: Float, into window: inout [Float], next: inout Int, capacity: Int) {
+        if window.count < capacity {
+            window.append(rms)
         } else {
-            noiseWindow[noiseWindowNext] = rms
+            window[next] = rms
         }
-        noiseWindowNext = (noiseWindowNext + 1) % Self.noiseWindowFrames
+        next = (next + 1) % capacity
     }
 
     private static func clamp(_ value: Float) -> Float {

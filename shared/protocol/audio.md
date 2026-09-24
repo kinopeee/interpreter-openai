@@ -42,25 +42,30 @@ v2 から、ゲインはリサンプル後の Float32 を **100 ms（2,400 sampl
 | speechAbsoluteFloor | 0.003 | これ未満の RMS は発話にしない（約 -50 dBFS） |
 | digitalSilenceRms | 0.00001 | これ未満の RMS は雑音窓へ入れない（ミュート等のデジタル無音） |
 | noiseWindowFrames | 30 | 雑音フロアを求める窓（直近 3 秒） |
+| startupNoiseFloor | 0.001 | 録音開始から noiseWindowFrames フレームの間に仮定する雑音フロアの上限（約 -60 dBFS） |
+| modulationFrames | 5 | 音量変動を見る窓（直近 500 ms） |
+| modulationRatio | 2.0 | 変動窓の最大 RMS / 最小 RMS がこれ以上なら音量が変動している（約 6 dB） |
 | gainRiseFactor / gainFallFactor | 1.12 / 0.8 | 1 フレームあたりの上昇・下降の上限（約 +1 dB / -2 dB） |
 | clipCeiling | 0.9 | フレーム内リミッタの目標ピーク |
 | rampSamples | 120 | 適用ゲインを切り替える線形ランプ（5 ms） |
 
-状態は、持続ゲイン `gain`、直前フレームの適用ゲイン `appliedGain`（初期値は `gain`）、直近の RMS を保持する雑音窓の 3 つ。`clamp` は `[minimumGain, maximumGain]` への丸めで、非有限値は `minimumGain` にする。初期ゲインは `clamp` する。
+状態は、持続ゲイン `gain`、直前フレームの適用ゲイン `appliedGain`（初期値は `gain`）、直近の RMS を保持する雑音窓と変動窓、観測したフレーム数。`clamp` は `[minimumGain, maximumGain]` への丸めで、非有限値は `minimumGain` にする。初期ゲインは `clamp` する。
 
 フレームの `rms` と `peak`（絶対値の最大）は有限なサンプルだけから求める。有限なサンプルが無い、または空のフレームは `rms = peak = 0`。
 
 1 フレームの処理:
 
 1. `rms` か `peak` が有限でなければ、状態を変えずに直前の `appliedGain` を返す。負の値は 0 として扱う。
-2. `rms >= digitalSilenceRms` なら `rms` を雑音窓へ追加する。窓が `noiseWindowFrames` を超えたら最古を捨てる。
-3. 雑音窓が空でなく、`rms >= speechAbsoluteFloor` かつ `rms >= min(雑音窓) * speechRatio` なら発話フレーム。現在フレームも窓に含むため、最初のフレームは発話にならない。
-4. 発話フレームだけ `gain` を動かす。`desired = clamp(targetRms / rms)`。
+2. 観測したフレーム数を 1 増やす（デジタル無音も数える）。`rms >= digitalSilenceRms` なら `rms` を雑音窓と変動窓へ追加する。各窓が `noiseWindowFrames` / `modulationFrames` を超えたら最古を捨てる。
+3. 雑音フロアは `min(雑音窓)`（空なら無限大）。観測したフレーム数が `noiseWindowFrames` 以下の間は `min(雑音フロア, startupNoiseFloor)` とする。録音開始から話し続けても、最初の 3 秒は基準がある。
+4. 変動窓が 2 フレーム以上あり `max(変動窓) >= min(変動窓) * modulationRatio` で、かつ `rms >= speechAbsoluteFloor` と `rms >= 雑音フロア * speechRatio` を満たせば発話フレーム。音量が一定の雑音（ファン・空調など）は変動がないため発話にならない。背景雑音が段階的に上がった場合も、上がる前のフレームが変動窓に残る最大 `modulationFrames - 1` フレームしか発話にならない。最初のフレームは変動窓が 1 フレームなので発話にならない。
+5. 発話フレームだけ `gain` を動かす。`desired = clamp(targetRms / rms)`。
    - `desired > gain` なら `gain = clamp(min(desired, gain * gainRiseFactor))`
    - `desired < gain` なら `gain = clamp(max(desired, gain * gainFallFactor))`
    - 非発話フレームでは `gain` を変えない（雑音だけでゲインを上げない）。
-5. `appliedGain = clamp(peak > 0 ? min(gain, clipCeiling / peak) : gain)`。リミッタはそのフレームだけに効き、`gain` を変えない（クリック音で持続ゲインを下げない）。
-6. サンプル `i`（0 始まり）に掛けるゲインは、`i < rampSamples` なら `previous + (applied - previous) * ((i + 1) / rampSamples)`、それ以外は `applied`。`previous` はこのフレームの処理前の `appliedGain`。その後は「Float32 → PCM16 変換」の規則で変換する。
+6. `appliedGain = clamp(peak > 0 ? min(gain, clipCeiling / peak) : gain)`。リミッタはそのフレームだけに効き、`gain` を変えない。ただし RMS が発話判定を満たすクリック音は、発話フレームとして手順 5 で `gain` を最大 `gainFallFactor` 倍まで下げ得る。
+7. ランプの開始値を `start = peak > 0 ? clamp(min(previous, clipCeiling / peak)) : previous` とする。`previous` はこのフレームの処理前の `appliedGain`。リミッタで下げるフレームでは、先頭サンプルからピークを `clipCeiling` 以下に抑える。
+8. サンプル `i`（0 始まり）に掛けるゲインは、`i < rampSamples` なら `start + (applied - start) * ((i + 1) / rampSamples)`、それ以外は `applied`。その後は「Float32 → PCM16 変換」の規則で変換する。
 
 自動ゲインを無効にした場合は、`gain` と `appliedGain` を常に 1.0 とし、状態を更新しない。設定の反映は次の録音開始から。
 

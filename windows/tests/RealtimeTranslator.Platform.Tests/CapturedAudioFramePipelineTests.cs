@@ -617,8 +617,8 @@ public sealed class CapturedAudioFramePipelineTests
     }
 
     // Given: 自動ゲインが有効な 2 つの pipeline と、雑音のあとに発話相当が続く同じ入力
-    // When: 片方は 100 ms、もう片方は 70 ms 単位で読み出し、最後に FlushRemainder する
-    // Then: ゲインは 100 ms frame 単位で決まるため、読み出し単位に依存せず同じ PCM16 になる
+    // When: 片方は 100 ms、もう片方は 70 ms 単位で入力が尽きるまで読み出し、最後に FlushRemainder する
+    // Then: 70 ms 読み出しは 2 回目で最初の frame を出し、ゲインは 100 ms frame 単位で決まるため同じ PCM16 になる
     [Fact]
     public void AppliesGainPerHundredMillisecondFrameRegardlessOfReadSize()
     {
@@ -631,9 +631,14 @@ public sealed class CapturedAudioFramePipelineTests
         byFrame.Push(input, input.Length);
         byChunk.Push(input, input.Length);
 
-        var framed = ReadAll(byFrame, Pcm16FramePacketizer.SamplesPerFrame);
-        var chunked = ReadAll(byChunk, 1_680);
+        var totalSamples = input.Length / sizeof(short);
+        var (framed, _) = ReadAll(byFrame, Pcm16FramePacketizer.SamplesPerFrame, totalSamples);
+        var (chunked, chunkedReadCounts) = ReadAll(byChunk, 1_680, totalSamples);
 
+        Assert.Equal(8, chunkedReadCounts.Count);
+        Assert.Equal(0, chunkedReadCounts[0]);
+        Assert.Equal(1, chunkedReadCounts[1]);
+        Assert.Equal(5, chunkedReadCounts.Sum());
         Assert.Equal(6, framed.Count);
         Assert.Equal(framed.Count, chunked.Count);
         for (var index = 0; index < framed.Count; index++)
@@ -666,22 +671,27 @@ public sealed class CapturedAudioFramePipelineTests
         Assert.False(pipeline.HasUnsentAudio);
     }
 
-    private static List<byte[]> ReadAll(CapturedAudioFramePipeline pipeline, int sampleCount)
+    /// <summary>
+    /// 入力が尽きるまで <paramref name="sampleCount"/> 単位で読み出し、端数を FlushRemainder する。
+    /// 端数だけの読み出しは空を返すため、空で打ち切らず読み出し回数を入力長から決める。
+    /// </summary>
+    private static (List<byte[]> Frames, List<int> ReadCounts) ReadAll(
+        CapturedAudioFramePipeline pipeline,
+        int sampleCount,
+        int totalSamples
+    )
     {
         var frames = new List<byte[]>();
-        while (true)
+        var readCounts = new List<int>();
+        for (var read = 0; read < totalSamples / sampleCount; read++)
         {
             var batch = pipeline.ReadFrames(sampleCount);
-            if (batch.Count == 0)
-            {
-                break;
-            }
-
+            readCounts.Add(batch.Count);
             frames.AddRange(batch);
         }
 
         frames.AddRange(pipeline.FlushRemainder());
-        return frames;
+        return (frames, readCounts);
     }
 
     private static byte[] SineWave(int totalSamples, int channels, double amplitude = 0.5)

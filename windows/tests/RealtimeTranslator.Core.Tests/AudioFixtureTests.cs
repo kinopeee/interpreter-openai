@@ -172,6 +172,12 @@ public sealed class AudioFixtureTests
             AdaptiveMicrophoneGain.DigitalSilenceRms
         );
         Assert.Equal(SharedFixtures.Number(constants["noiseWindowFrames"]), AdaptiveMicrophoneGain.NoiseWindowFrames);
+        Assert.Equal(
+            (float)SharedFixtures.Real(constants["startupNoiseFloor"]),
+            AdaptiveMicrophoneGain.StartupNoiseFloor
+        );
+        Assert.Equal(SharedFixtures.Number(constants["modulationFrames"]), AdaptiveMicrophoneGain.ModulationFrames);
+        Assert.Equal((float)SharedFixtures.Real(constants["modulationRatio"]), AdaptiveMicrophoneGain.ModulationRatio);
         Assert.Equal((float)SharedFixtures.Real(constants["gainRiseFactor"]), AdaptiveMicrophoneGain.GainRiseFactor);
         Assert.Equal((float)SharedFixtures.Real(constants["gainFallFactor"]), AdaptiveMicrophoneGain.GainFallFactor);
         Assert.Equal((float)SharedFixtures.Real(constants["clipCeiling"]), AdaptiveMicrophoneGain.ClipCeiling);
@@ -234,8 +240,8 @@ public sealed class AudioFixtureTests
         Assert.Equal(SharedFixtures.Real(fixture["expectedPeak"]), peak, tolerance);
     }
 
-    // Given: 前フレームと今回の適用ゲイン、一定値のサンプルで満たした 100 ms frame
-    // When: ランプ付きで PCM16 へ変換する
+    // Given: 前フレームと今回の適用ゲイン、フレームのピーク、一定値のサンプルで満たした 100 ms frame
+    // When: リミッタで抑えた開始値からランプ付きで PCM16 へ変換する
     // Then: 指定インデックスの値が期待値と一致する
     [Theory]
     [MemberData(nameof(GainRampCases))]
@@ -247,10 +253,14 @@ public sealed class AudioFixtureTests
         var frame = new float[AdaptiveMicrophoneGain.FrameSamples];
         Array.Fill(frame, (float)SharedFixtures.Real(fixture["sample"]));
 
-        // When: ランプ付きで変換する
+        // When: 開始値を求めてランプ付きで変換する
+        var start = AdaptiveMicrophoneGain.RampStartGain(
+            (float)SharedFixtures.Real(fixture["previousAppliedGain"]),
+            (float)SharedFixtures.Real(fixture["peak"])
+        );
         var encoded = Pcm16LittleEndianEncoder.EncodeWithRamp(
             frame,
-            (float)SharedFixtures.Real(fixture["previousAppliedGain"]),
+            start,
             (float)SharedFixtures.Real(fixture["appliedGain"]),
             AdaptiveMicrophoneGain.RampSamples
         );
@@ -333,7 +343,7 @@ public sealed class AudioFixtureTests
 
     // Given: 初期ゲイン 4 で雑音 frame を処理した適応ゲイン
     // When: 大きな音（ピーク 0.6）の frame を処理する
-    // Then: 先頭は前の適用ゲインからランプし、ランプ後はリミッタで 0.9 付近に収まり、持続ゲインは 20% 減に留まる
+    // Then: 先頭サンプルからリミッタで 0.9 付近に収まり（クリップしない）、持続ゲインは 20% 減に留まる
     [Fact]
     public void ProcessFrameRampsFromPreviousAppliedGainAndLimitsPeaks()
     {
@@ -349,9 +359,9 @@ public sealed class AudioFixtureTests
         Array.Fill(loud, 0.6f);
         var loudPcm = gain.ProcessFrame(loud);
 
-        // Then: ランプ先頭はクリップ、ランプ後はリミッタ後の値
+        // Then: 先頭もランプ後もリミッタ後の値
         Assert.Equal(AdaptiveMicrophoneGain.FrameSamples * 2, loudPcm.Length);
-        Assert.Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(loudPcm.AsSpan(0, 2)));
+        Assert.Equal(29490, BinaryPrimitives.ReadInt16LittleEndian(loudPcm.AsSpan(0, 2)));
         var lastIndex = AdaptiveMicrophoneGain.FrameSamples - 1;
         Assert.Equal(29490, BinaryPrimitives.ReadInt16LittleEndian(loudPcm.AsSpan(lastIndex * 2, 2)));
         Assert.Equal(1.5f, gain.AppliedGain, 0.0005f);

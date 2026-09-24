@@ -4,7 +4,7 @@ namespace RealtimeTranslator.Core.Audio;
 
 /// <summary>
 /// 100 ms フレーム単位の適応マイクゲイン（shared/protocol/audio.md の v2 契約）。
-/// 発話フレームの RMS だけで持続ゲインを動かし、雑音だけの区間では上げない。
+/// 音量が変動する発話フレームの RMS だけで持続ゲインを動かし、雑音だけの区間では上げない。
 /// クリップ防止のリミッタはそのフレームだけに効き、持続ゲインを変えない。
 /// feeder から直列に呼ぶ前提。
 /// </summary>
@@ -30,6 +30,15 @@ public sealed class AdaptiveMicrophoneGain
     /// <summary>雑音フロアを求める窓（直近 3 秒）。</summary>
     public const int NoiseWindowFrames = 30;
 
+    /// <summary>録音開始から <see cref="NoiseWindowFrames"/> フレームの間に仮定する雑音フロアの上限（約 -60 dBFS）。</summary>
+    public const float StartupNoiseFloor = 0.001f;
+
+    /// <summary>音量変動を見る窓（直近 500 ms）。</summary>
+    public const int ModulationFrames = 5;
+
+    /// <summary>変動窓の最大 RMS / 最小 RMS がこれ以上なら音量が変動している（約 6 dB）。</summary>
+    public const float ModulationRatio = 2.0f;
+
     public const float GainRiseFactor = 1.12f;
     public const float GainFallFactor = 0.8f;
 
@@ -42,6 +51,10 @@ public sealed class AdaptiveMicrophoneGain
     private readonly float[] _noiseWindow = new float[NoiseWindowFrames];
     private int _noiseWindowCount;
     private int _noiseWindowNext;
+    private readonly float[] _modulationWindow = new float[ModulationFrames];
+    private int _modulationWindowCount;
+    private int _modulationWindowNext;
+    private int _observedFrames;
 
     public AdaptiveMicrophoneGain(float initialGain = DefaultInitialGain, bool isEnabled = true)
     {
@@ -101,14 +114,16 @@ public sealed class AdaptiveMicrophoneGain
         rms = MathF.Max(0f, rms);
         peak = MathF.Max(0f, peak);
 
+        _observedFrames = Math.Min(_observedFrames + 1, NoiseWindowFrames + 1);
         if (rms >= DigitalSilenceRms)
         {
-            PushNoiseWindow(rms);
+            Push(_noiseWindow, ref _noiseWindowCount, ref _noiseWindowNext, rms);
+            Push(_modulationWindow, ref _modulationWindowCount, ref _modulationWindowNext, rms);
         }
 
-        if (_noiseWindowCount > 0 && rms >= SpeechAbsoluteFloor && rms >= NoiseFloor() * SpeechRatio)
+        if (IsModulated() && rms >= SpeechAbsoluteFloor && rms >= NoiseFloor() * SpeechRatio)
         {
-            // 発話フレームだけ持続ゲインを動かす。雑音だけの区間では上げない。
+            // 発話フレームだけ持続ゲインを動かす。音量が一定の雑音だけの区間では上げない。
             var desired = Clamp(TargetRms / rms);
             if (desired > Gain)
             {
@@ -126,31 +141,62 @@ public sealed class AdaptiveMicrophoneGain
         return AppliedGain;
     }
 
+    /// <summary>
+    /// ランプの開始ゲイン。リミッタで下げるフレームでは、先頭サンプルからピークを
+    /// <see cref="ClipCeiling"/> 以下に抑えるため、前フレームの適用ゲインより低くする。
+    /// </summary>
+    public static float RampStartGain(float previousAppliedGain, float peak) =>
+        peak > 0f ? Clamp(MathF.Min(previousAppliedGain, ClipCeiling / peak)) : previousAppliedGain;
+
     /// <summary>1 フレームのレベルを取り込み、ランプ付きでゲインを掛けた PCM16 LE を返す。</summary>
     public byte[] ProcessFrame(ReadOnlySpan<float> frame)
     {
         var previous = AppliedGain;
         var (rms, peak) = MeasureLevel(frame);
         var applied = ObserveLevel(rms, peak);
-        return Pcm16LittleEndianEncoder.EncodeWithRamp(frame, previous, applied, RampSamples);
+        var start = RampStartGain(previous, peak);
+        return Pcm16LittleEndianEncoder.EncodeWithRamp(frame, start, applied, RampSamples);
     }
 
     private float NoiseFloor()
     {
-        var floor = float.PositiveInfinity;
-        for (var index = 0; index < _noiseWindowCount; index++)
-        {
-            floor = MathF.Min(floor, _noiseWindow[index]);
-        }
-
-        return floor;
+        var floor = Min(_noiseWindow, _noiseWindowCount);
+        // 録音開始直後は基準がないため、話し続けていても発話と判定できるよう上限を仮定する。
+        return _observedFrames <= NoiseWindowFrames ? MathF.Min(floor, StartupNoiseFloor) : floor;
     }
 
-    private void PushNoiseWindow(float rms)
+    private bool IsModulated()
     {
-        _noiseWindow[_noiseWindowNext] = rms;
-        _noiseWindowNext = (_noiseWindowNext + 1) % NoiseWindowFrames;
-        _noiseWindowCount = Math.Min(_noiseWindowCount + 1, NoiseWindowFrames);
+        if (_modulationWindowCount < 2)
+        {
+            return false;
+        }
+
+        var maximum = 0f;
+        for (var index = 0; index < _modulationWindowCount; index++)
+        {
+            maximum = MathF.Max(maximum, _modulationWindow[index]);
+        }
+
+        return maximum >= Min(_modulationWindow, _modulationWindowCount) * ModulationRatio;
+    }
+
+    private static float Min(float[] window, int count)
+    {
+        var minimum = float.PositiveInfinity;
+        for (var index = 0; index < count; index++)
+        {
+            minimum = MathF.Min(minimum, window[index]);
+        }
+
+        return minimum;
+    }
+
+    private static void Push(float[] window, ref int count, ref int next, float rms)
+    {
+        window[next] = rms;
+        next = (next + 1) % window.Length;
+        count = Math.Min(count + 1, window.Length);
     }
 
     private static float Clamp(float value)

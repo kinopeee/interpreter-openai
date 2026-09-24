@@ -81,6 +81,9 @@
       "speechAbsoluteFloor": 0.003,
       "digitalSilenceRms": 0.00001,
       "noiseWindowFrames": 30,
+      "startupNoiseFloor": 0.001,
+      "modulationFrames": 5,
+      "modulationRatio": 2,
       "gainRiseFactor": 1.12,
       "gainFallFactor": 0.8,
       "clipCeiling": 0.9,
@@ -107,21 +110,56 @@
         "expected": { "gain": 1, "appliedGain": 1 }
       },
       {
-        "name": "quiet speech above the noise floor rises by at most twelve percent per frame",
+        "name": "quiet speech after noise rises by at most twelve percent per frame",
         "initialGain": 1,
-        "frames": [{ "rms": 0.001, "peak": 0.004 }, { "rms": 0.01, "peak": 0.05 }],
+        "frames": [{ "rms": 0.001, "peak": 0.003 }, { "rms": 0.01, "peak": 0.05 }],
         "expected": { "gain": 1.12, "appliedGain": 1.12 }
       },
       {
         "name": "two quiet speech frames compound",
         "initialGain": 1,
-        "frames": [{ "rms": 0.001, "peak": 0.004 }, { "rms": 0.01, "peak": 0.05 }, { "rms": 0.01, "peak": 0.05 }],
+        "frames": [{ "rms": 0.001, "peak": 0.003 }, { "rms": 0.01, "peak": 0.05 }, { "rms": 0.004, "peak": 0.02 }],
         "expected": { "gain": 1.2544, "appliedGain": 1.2544 }
       },
       {
-        "name": "sustained quiet speech saturates at the maximum",
+        "name": "speech from the start of recording raises the gain",
         "initialGain": 1,
-        "frames": [{ "rms": 0.001, "peak": 0.004 }, { "rms": 0.01, "peak": 0.05, "repeat": 29 }],
+        "frames": [
+          { "rms": 0.01, "peak": 0.05 },
+          { "rms": 0.004, "peak": 0.02 },
+          { "rms": 0.01, "peak": 0.05 },
+          { "rms": 0.004, "peak": 0.02 },
+          { "rms": 0.01, "peak": 0.05 },
+          { "rms": 0.004, "peak": 0.02 }
+        ],
+        "expected": { "gain": 1.762342, "appliedGain": 1.762342 }
+      },
+      {
+        "name": "sustained varying speech saturates at the maximum",
+        "initialGain": 1,
+        "frames": [
+          { "rms": 0.001, "peak": 0.003 },
+          { "rms": 0.01, "peak": 0.05 },
+          { "rms": 0.004, "peak": 0.02 },
+          { "rms": 0.01, "peak": 0.05 },
+          { "rms": 0.004, "peak": 0.02 },
+          { "rms": 0.01, "peak": 0.05 },
+          { "rms": 0.004, "peak": 0.02 },
+          { "rms": 0.01, "peak": 0.05 },
+          { "rms": 0.004, "peak": 0.02 },
+          { "rms": 0.01, "peak": 0.05 },
+          { "rms": 0.004, "peak": 0.02 },
+          { "rms": 0.01, "peak": 0.05 },
+          { "rms": 0.004, "peak": 0.02 },
+          { "rms": 0.01, "peak": 0.05 },
+          { "rms": 0.004, "peak": 0.02 },
+          { "rms": 0.01, "peak": 0.05 },
+          { "rms": 0.004, "peak": 0.02 },
+          { "rms": 0.01, "peak": 0.05 },
+          { "rms": 0.004, "peak": 0.02 },
+          { "rms": 0.01, "peak": 0.05 },
+          { "rms": 0.004, "peak": 0.02 }
+        ],
         "expected": { "gain": 8, "appliedGain": 8 }
       },
       {
@@ -131,15 +169,27 @@
         "expected": { "gain": 1, "appliedGain": 1 }
       },
       {
-        "name": "fluctuating noise within ten decibels never raises the gain",
+        "name": "steady speech-level noise from the start never raises the gain",
+        "initialGain": 1,
+        "frames": [{ "rms": 0.01, "peak": 0.03, "repeat": 50 }],
+        "expected": { "gain": 1, "appliedGain": 1 }
+      },
+      {
+        "name": "after startup noise within ten decibels of the floor never raises the gain",
         "initialGain": 1,
         "frames": [
-          { "rms": 0.004, "peak": 0.012 },
+          { "rms": 0.004, "peak": 0.012, "repeat": 30 },
           { "rms": 0.008, "peak": 0.024 },
           { "rms": 0.005, "peak": 0.015 },
           { "rms": 0.01, "peak": 0.03 }
         ],
         "expected": { "gain": 1, "appliedGain": 1 }
+      },
+      {
+        "name": "a step in background noise raises the gain for at most four frames",
+        "initialGain": 1,
+        "frames": [{ "rms": 0.001, "peak": 0.003, "repeat": 30 }, { "rms": 0.006, "peak": 0.018, "repeat": 30 }],
+        "expected": { "gain": 1.573519, "appliedGain": 1.573519 }
       },
       {
         "name": "speech below the absolute floor does not raise the gain",
@@ -148,7 +198,7 @@
         "expected": { "gain": 1, "appliedGain": 1 }
       },
       {
-        "name": "digital silence does not enter the noise window",
+        "name": "digital silence does not count as level variation",
         "initialGain": 1,
         "frames": [{ "rms": 0, "peak": 0 }, { "rms": 0.01, "peak": 0.03 }],
         "expected": { "gain": 1, "appliedGain": 1 }
@@ -157,6 +207,7 @@
         "name": "the noise floor remembers the quietest of the last thirty frames",
         "initialGain": 1,
         "frames": [
+          { "rms": 0.003, "peak": 0.009, "repeat": 31 },
           { "rms": 0.001, "peak": 0.003 },
           { "rms": 0.003, "peak": 0.009, "repeat": 28 },
           { "rms": 0.009, "peak": 0.027 }
@@ -167,6 +218,7 @@
         "name": "the noise floor forgets frames older than thirty",
         "initialGain": 1,
         "frames": [
+          { "rms": 0.003, "peak": 0.009, "repeat": 31 },
           { "rms": 0.001, "peak": 0.003 },
           { "rms": 0.003, "peak": 0.009, "repeat": 29 },
           { "rms": 0.009, "peak": 0.027 }
@@ -192,7 +244,7 @@
         "expected": { "gain": 4, "appliedGain": 1.5 }
       },
       {
-        "name": "a click limits its own frame",
+        "name": "a speech-level click is limited in its frame and lowers the gain by at most twenty percent",
         "initialGain": 4,
         "frames": [{ "rms": 0.001, "peak": 0.003 }, { "rms": 0.02, "peak": 0.1 }, { "rms": 0.05, "peak": 0.9 }],
         "expected": { "gain": 3.584, "appliedGain": 1 }
@@ -240,6 +292,7 @@
         "previousAppliedGain": 2,
         "appliedGain": 2,
         "sample": 0.1,
+        "peak": 0.1,
         "indices": [0, 119, 120, 2399],
         "expected": [6553, 6553, 6553, 6553]
       },
@@ -248,16 +301,27 @@
         "previousAppliedGain": 4,
         "appliedGain": 2,
         "sample": 0.1,
+        "peak": 0.1,
         "indices": [0, 59, 119, 120, 2399],
         "expected": [13052, 9830, 6553, 6553, 6553]
       },
       {
-        "name": "rising gain ramps and clips",
+        "name": "rising gain ramps over five milliseconds",
         "previousAppliedGain": 1,
-        "appliedGain": 8,
-        "sample": 0.2,
+        "appliedGain": 5,
+        "sample": 0.15,
+        "peak": 0.15,
         "indices": [0, 59, 119, 120, 2399],
-        "expected": [6936, 29490, 32767, 32767, 32767]
+        "expected": [5079, 14745, 24575, 24575, 24575]
+      },
+      {
+        "name": "a limiter drop applies from the first sample",
+        "previousAppliedGain": 4,
+        "appliedGain": 1.5,
+        "sample": 0.6,
+        "peak": 0.6,
+        "indices": [0, 59, 119, 120, 2399],
+        "expected": [29490, 29490, 29490, 29490, 29490]
       }
     ]
   },

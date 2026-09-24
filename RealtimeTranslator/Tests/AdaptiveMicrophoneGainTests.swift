@@ -7,11 +7,12 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
         var agc = AdaptiveMicrophoneGain(initialGain: 1.0)
         _ = agc.observe(rms: 0.001, peak: 0.004)
 
-        // When: 雑音より十分大きい小声の発話フレームを複数回観測する
+        // When: 雑音より十分大きく、音節ごとに音量が変わる小声の発話フレームを複数回観測する
         var previous = agc.gain
         var raisedEveryFrame = true
-        for _ in 0..<10 {
-            let next = agc.observe(rms: 0.01, peak: 0.05)
+        for index in 0..<10 {
+            let rms: Float = index.isMultiple(of: 2) ? 0.01 : 0.004
+            let next = agc.observe(rms: rms, peak: rms * 5)
             if next <= previous || next > previous * AdaptiveMicrophoneGain.gainRiseFactor + 0.0001 {
                 raisedEveryFrame = false
             }
@@ -22,6 +23,20 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
         XCTAssertTrue(raisedEveryFrame)
         XCTAssertGreaterThan(agc.gain, 1.0)
         XCTAssertLessThanOrEqual(agc.gain, AdaptiveMicrophoneGain.maximumGain)
+    }
+
+    func testSteadyLevelAfterNoiseStopsRaisingGainWithinModulationWindow() {
+        // Given: 雑音フレームを1つ観測した初期ゲイン1.0
+        var agc = AdaptiveMicrophoneGain(initialGain: 1.0)
+        _ = agc.observe(rms: 0.001, peak: 0.003)
+
+        // When: 音量が一定のフレーム（ファンなど）を続けて観測する
+        for _ in 0..<20 {
+            _ = agc.observe(rms: 0.006, peak: 0.018)
+        }
+
+        // Then: 変動窓に雑音フレームが残る4フレームだけ上がり、その後は止まる
+        XCTAssertEqual(agc.gain, 1.5735, accuracy: 0.0005)
     }
 
     func testSteadyNoiseDoesNotInflateGain() {
@@ -122,9 +137,9 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
         let loud = [Float](repeating: 0.6, count: AdaptiveMicrophoneGain.frameSamples)
         let values = pcmValues(loud.withUnsafeBufferPointer { agc.process(frame: $0) })
 
-        // Then: 先頭は前の適用ゲインからのランプでクリップ、ランプ後はリミッタで約0.9
+        // Then: 先頭サンプルからリミッタで約0.9に収まり、クリップしない
         XCTAssertEqual(values.count, AdaptiveMicrophoneGain.frameSamples)
-        XCTAssertEqual(values.first, Int16.max)
+        XCTAssertEqual(values.first, 29490)
         XCTAssertEqual(values.last, 29490)
         XCTAssertEqual(agc.appliedGain, 1.5, accuracy: 0.0005)
         XCTAssertEqual(agc.gain, 3.2, accuracy: 0.0005)

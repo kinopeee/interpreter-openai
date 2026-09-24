@@ -148,6 +148,8 @@ final class AudioFixtureTests: XCTestCase {
             ("speechRatio", AdaptiveMicrophoneGain.speechRatio),
             ("speechAbsoluteFloor", AdaptiveMicrophoneGain.speechAbsoluteFloor),
             ("digitalSilenceRms", AdaptiveMicrophoneGain.digitalSilenceRms),
+            ("startupNoiseFloor", AdaptiveMicrophoneGain.startupNoiseFloor),
+            ("modulationRatio", AdaptiveMicrophoneGain.modulationRatio),
             ("gainRiseFactor", AdaptiveMicrophoneGain.gainRiseFactor),
             ("gainFallFactor", AdaptiveMicrophoneGain.gainFallFactor),
             ("clipCeiling", AdaptiveMicrophoneGain.clipCeiling),
@@ -158,6 +160,10 @@ final class AudioFixtureTests: XCTestCase {
         XCTAssertEqual(
             SharedFixtures.number(constants["noiseWindowFrames"]),
             AdaptiveMicrophoneGain.noiseWindowFrames
+        )
+        XCTAssertEqual(
+            SharedFixtures.number(constants["modulationFrames"]),
+            AdaptiveMicrophoneGain.modulationFrames
         )
         XCTAssertEqual(SharedFixtures.number(constants["rampSamples"]), AdaptiveMicrophoneGain.rampSamples)
     }
@@ -239,8 +245,8 @@ final class AudioFixtureTests: XCTestCase {
         }
     }
 
-    // Given: 前フレームと今回の適用ゲイン、一定値のサンプルで満たした 100 ms frame
-    // When: ランプ付きで PCM16 へ変換する
+    // Given: 前フレームと今回の適用ゲイン、フレームのピーク、一定値のサンプルで満たした 100 ms frame
+    // When: リミッタで抑えた開始値からランプ付きで PCM16 へ変換する
     // Then: 指定インデックスの値が期待値と一致する
     func testGainRampMatchesFixture() throws {
         let gainFixture = try XCTUnwrap(
@@ -254,10 +260,14 @@ final class AudioFixtureTests: XCTestCase {
                 repeating: Float(SharedFixtures.real(fixture["sample"])),
                 count: AdaptiveMicrophoneGain.frameSamples
             )
+            let start = AdaptiveMicrophoneGain.rampStartGain(
+                previous: Float(SharedFixtures.real(fixture["previousAppliedGain"])),
+                peak: Float(SharedFixtures.real(fixture["peak"]))
+            )
             let encoded = frame.withUnsafeBufferPointer { buffer in
                 PCM16LittleEndianEncoder.encode(
                     floatSamples: buffer,
-                    fromGain: Float(SharedFixtures.real(fixture["previousAppliedGain"])),
+                    fromGain: start,
                     toGain: Float(SharedFixtures.real(fixture["appliedGain"])),
                     rampSamples: AdaptiveMicrophoneGain.rampSamples
                 )
