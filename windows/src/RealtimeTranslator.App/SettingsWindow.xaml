@@ -62,56 +62,58 @@
     </TabItem>
 
     <TabItem x:Name="SpeechTab">
-      <StackPanel Margin="16">
-        <TextBlock x:Name="RecognitionSectionTitle" FontWeight="Bold" Margin="0,0,0,8" />
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-          <TextBlock x:Name="NoiseReductionLabel" MinWidth="90" Width="140" VerticalAlignment="Center" TextWrapping="Wrap" />
-          <ComboBox x:Name="NoiseReductionBox" Width="220" DisplayMemberPath="DisplayName" SelectionChanged="OnNoiseReductionChanged" />
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="16">
+          <TextBlock x:Name="RecognitionSectionTitle" FontWeight="Bold" Margin="0,0,0,8" />
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBlock x:Name="NoiseReductionLabel" MinWidth="90" Width="140" VerticalAlignment="Center" TextWrapping="Wrap" />
+            <ComboBox x:Name="NoiseReductionBox" Width="220" DisplayMemberPath="DisplayName" SelectionChanged="OnNoiseReductionChanged" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBlock x:Name="TranscriptionDelayLabel" MinWidth="90" Width="140" VerticalAlignment="Center" TextWrapping="Wrap" />
+            <ComboBox x:Name="TranscriptionDelayBox" Width="220" DisplayMemberPath="DisplayName" SelectionChanged="OnTranscriptionDelayChanged" />
+          </StackPanel>
+          <TextBlock x:Name="DelayHelpText"
+                     Foreground="Gray"
+                     TextWrapping="Wrap"
+                     Margin="0,0,0,10" />
+
+          <CheckBox x:Name="AutomaticGainCheckBox"
+                    Margin="0,0,0,4"
+                    Checked="OnAutomaticGainChanged"
+                    Unchecked="OnAutomaticGainChanged" />
+          <TextBlock x:Name="AutomaticGainHelpText"
+                     Foreground="Gray"
+                     TextWrapping="Wrap"
+                     Margin="0,0,0,10" />
+
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+            <ComboBox x:Name="PresetBox" Width="220" DisplayMemberPath="DisplayName" />
+            <Button x:Name="ApplyPresetButton" Margin="8,0,0,0" Padding="10,2" Click="OnApplyPreset" />
+            <Button x:Name="RestoreDefaultsButton" Margin="8,0,0,0" Padding="10,2" Click="OnRestoreDefaults" />
+          </StackPanel>
+
+          <TextBlock x:Name="HintsSectionTitle" FontWeight="Bold" Margin="0,0,0,6" />
+          <TextBlock x:Name="PromptTitleText" Margin="0,0,0,4" />
+          <TextBox x:Name="PromptBox" TextChanged="OnPromptChanged" TextWrapping="Wrap" MinHeight="52" AcceptsReturn="False" />
+          <TextBlock x:Name="PromptHelpText" Foreground="Gray" Margin="0,4,0,4" TextWrapping="Wrap" />
+          <TextBlock x:Name="PromptCounterText" Foreground="Gray" Margin="0,0,0,10" />
+
+          <TextBlock x:Name="KeywordsTitleText" Foreground="Gray" Margin="0,0,0,4" />
+          <TextBox x:Name="KeywordsBox"
+                   TextChanged="OnKeywordsChanged"
+                   AcceptsReturn="True"
+                   VerticalScrollBarVisibility="Auto"
+                   Height="110" />
+          <TextBlock x:Name="KeywordCounterText" Foreground="Gray" Margin="0,4,0,0" />
+          <TextBlock x:Name="KeywordWarningText" Foreground="DarkOrange" Margin="0,4,0,0" />
+
+          <TextBlock x:Name="TuningLiveHelpText"
+                     Foreground="Gray"
+                     TextWrapping="Wrap"
+                     Margin="0,12,0,0" />
         </StackPanel>
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-          <TextBlock x:Name="TranscriptionDelayLabel" MinWidth="90" Width="140" VerticalAlignment="Center" TextWrapping="Wrap" />
-          <ComboBox x:Name="TranscriptionDelayBox" Width="220" DisplayMemberPath="DisplayName" SelectionChanged="OnTranscriptionDelayChanged" />
-        </StackPanel>
-        <TextBlock x:Name="DelayHelpText"
-                   Foreground="Gray"
-                   TextWrapping="Wrap"
-                   Margin="0,0,0,10" />
-
-        <CheckBox x:Name="AutomaticGainCheckBox"
-                  Margin="0,0,0,4"
-                  Checked="OnAutomaticGainChanged"
-                  Unchecked="OnAutomaticGainChanged" />
-        <TextBlock x:Name="AutomaticGainHelpText"
-                   Foreground="Gray"
-                   TextWrapping="Wrap"
-                   Margin="0,0,0,10" />
-
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-          <ComboBox x:Name="PresetBox" Width="220" DisplayMemberPath="DisplayName" />
-          <Button x:Name="ApplyPresetButton" Margin="8,0,0,0" Padding="10,2" Click="OnApplyPreset" />
-          <Button x:Name="RestoreDefaultsButton" Margin="8,0,0,0" Padding="10,2" Click="OnRestoreDefaults" />
-        </StackPanel>
-
-        <TextBlock x:Name="HintsSectionTitle" FontWeight="Bold" Margin="0,0,0,6" />
-        <TextBlock x:Name="PromptTitleText" Margin="0,0,0,4" />
-        <TextBox x:Name="PromptBox" TextChanged="OnPromptChanged" TextWrapping="Wrap" MinHeight="52" AcceptsReturn="False" />
-        <TextBlock x:Name="PromptHelpText" Foreground="Gray" Margin="0,4,0,4" TextWrapping="Wrap" />
-        <TextBlock x:Name="PromptCounterText" Foreground="Gray" Margin="0,0,0,10" />
-
-        <TextBlock x:Name="KeywordsTitleText" Foreground="Gray" Margin="0,0,0,4" />
-        <TextBox x:Name="KeywordsBox"
-                 TextChanged="OnKeywordsChanged"
-                 AcceptsReturn="True"
-                 VerticalScrollBarVisibility="Auto"
-                 Height="110" />
-        <TextBlock x:Name="KeywordCounterText" Foreground="Gray" Margin="0,4,0,0" />
-        <TextBlock x:Name="KeywordWarningText" Foreground="DarkOrange" Margin="0,4,0,0" />
-
-        <TextBlock x:Name="TuningLiveHelpText"
-                   Foreground="Gray"
-                   TextWrapping="Wrap"
-                   Margin="0,12,0,0" />
-      </StackPanel>
+      </ScrollViewer>
     </TabItem>
 
     <TabItem x:Name="SubtitlesTab">
