@@ -111,7 +111,7 @@ disabled の場合は previous / applied とも 1.0 で平坦（ゲイン 1.0 �
 ## 送信前の欠落検知
 
 送信前の音声欠落は、変換前バッファと送信キューを別々に観測する。
-`shared/fixtures/v1/audio.json` の `loss` が両実装の正本である。
+`shared/fixtures/v2/audio.json` の `loss` が両実装の正本である。
 
 - フレームには capture lifecycle の `generation`、世代内の 0 始まり `sequence`、
   変換前バッファの累積破棄時間 `discardedMs` を付ける。
