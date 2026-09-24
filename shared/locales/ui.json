@@ -209,6 +209,16 @@
       "en": "Higher values improve recognition of short utterances and delay subtitle display."
     },
     {
+      "key": "settings.automaticGain",
+      "ja": "マイク音量を自動調整する",
+      "en": "Adjust microphone level automatically"
+    },
+    {
+      "key": "settings.automaticGainHelp",
+      "ja": "話している間だけ音量を調整し、雑音だけの区間では上げません。次回の録音開始から反映されます。",
+      "en": "Adjusts the level only while you speak and does not raise it for background noise alone. Applies the next time you start recording."
+    },
+    {
       "key": "settings.applyPreset",
       "ja": "プリセットを適用",
       "en": "Apply preset"

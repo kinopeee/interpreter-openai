@@ -1,0 +1,321 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v2/schema/audio.schema.json",
+  "title": "Audio pipeline fixtures",
+  "type": "object",
+  "required": ["version", "format", "packetizer", "packetizerContinuity", "float32ToPcm16", "gain", "loss"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 2 },
+    "description": { "type": "string" },
+    "format": {
+      "type": "object",
+      "required": [
+        "sampleRate",
+        "bytesPerSample",
+        "frameDurationMilliseconds",
+        "samplesPerFrame",
+        "bytesPerFrame",
+        "channels",
+        "endianness"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sampleRate": { "const": 24000 },
+        "bytesPerSample": { "const": 2 },
+        "frameDurationMilliseconds": { "const": 100 },
+        "samplesPerFrame": { "const": 2400 },
+        "bytesPerFrame": { "const": 4800 },
+        "channels": { "const": 1 },
+        "endianness": { "const": "little" }
+      }
+    },
+    "packetizer": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "steps", "expectedPendingBytes", "flush"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["kind", "byteCount", "expectedFrameCount"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "const": "append" },
+                    "byteCount": { "type": "integer", "minimum": 0 },
+                    "expectedFrameCount": { "type": "integer", "minimum": 0 }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["kind"],
+                  "additionalProperties": false,
+                  "properties": { "kind": { "const": "reset" } }
+                }
+              ]
+            }
+          },
+          "expectedPendingBytes": { "type": "integer", "minimum": 0 },
+          "flush": {
+            "type": "object",
+            "required": ["expectedFrameBytes"],
+            "additionalProperties": false,
+            "properties": {
+              "expectedFrameBytes": { "type": ["integer", "null"] },
+              "expectedTrailingZeroBytes": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "packetizerContinuity": {
+      "type": "object",
+      "required": [
+        "name",
+        "appendByteCounts",
+        "totalInputBytes",
+        "expectedEmittedFrameCount",
+        "expectedFlushFrameBytes",
+        "expectedTrailingZeroBytes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "appendByteCounts": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } },
+        "totalInputBytes": { "type": "integer", "minimum": 0 },
+        "expectedEmittedFrameCount": { "type": "integer", "minimum": 0 },
+        "expectedFlushFrameBytes": { "type": ["integer", "null"] },
+        "expectedTrailingZeroBytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "float32ToPcm16": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "sample", "gain", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "sample": { "type": "number" },
+          "gain": { "type": "number" },
+          "expected": { "type": "integer", "minimum": -32768, "maximum": 32767 }
+        }
+      }
+    },
+    "gain": {
+      "type": "object",
+      "required": ["constants", "tolerance", "cases", "level", "ramp"],
+      "additionalProperties": false,
+      "properties": {
+        "constants": {
+          "type": "object",
+          "required": [
+            "frameSamples",
+            "minimumGain",
+            "maximumGain",
+            "defaultInitialGain",
+            "targetRms",
+            "speechRatio",
+            "speechAbsoluteFloor",
+            "digitalSilenceRms",
+            "noiseWindowFrames",
+            "gainRiseFactor",
+            "gainFallFactor",
+            "clipCeiling",
+            "rampSamples"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "frameSamples": { "const": 2400 },
+            "minimumGain": { "const": 1 },
+            "maximumGain": { "const": 8 },
+            "defaultInitialGain": { "const": 4 },
+            "targetRms": { "const": 0.1 },
+            "speechRatio": { "const": 3.16 },
+            "speechAbsoluteFloor": { "const": 0.003 },
+            "digitalSilenceRms": { "const": 0.00001 },
+            "noiseWindowFrames": { "const": 30 },
+            "gainRiseFactor": { "const": 1.12 },
+            "gainFallFactor": { "const": 0.8 },
+            "clipCeiling": { "const": 0.9 },
+            "rampSamples": { "const": 120 }
+          }
+        },
+        "tolerance": { "type": "number", "exclusiveMinimum": 0 },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "initialGain", "frames", "expected"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "initialGain": { "type": "number" },
+              "enabled": { "type": "boolean" },
+              "frames": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["rms", "peak"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "rms": { "type": "number" },
+                    "peak": { "type": "number" },
+                    "repeat": { "type": "integer", "minimum": 1 }
+                  }
+                }
+              },
+              "expected": {
+                "type": "object",
+                "required": ["gain", "appliedGain"],
+                "additionalProperties": false,
+                "properties": { "gain": { "type": "number" }, "appliedGain": { "type": "number" } }
+              }
+            }
+          }
+        },
+        "level": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "samples", "expectedRms", "expectedPeak"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "samples": { "type": "array", "items": { "type": "number" } },
+              "expectedRms": { "type": "number", "minimum": 0 },
+              "expectedPeak": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        "ramp": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "previousAppliedGain", "appliedGain", "sample", "indices", "expected"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "previousAppliedGain": { "type": "number" },
+              "appliedGain": { "type": "number" },
+              "sample": { "type": "number" },
+              "indices": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "integer", "minimum": 0, "maximum": 2399 }
+              },
+              "expected": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "integer", "minimum": -32768, "maximum": 32767 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "loss": {
+      "type": "object",
+      "required": [
+        "description",
+        "sendQueueFrameCapacity",
+        "frameDurationMs",
+        "reconnect",
+        "taintedSegmentWindowMs",
+        "afterLoss",
+        "cases"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string" },
+        "sendQueueFrameCapacity": { "type": "integer", "minimum": 1 },
+        "frameDurationMs": { "type": "integer", "minimum": 1 },
+        "reconnect": {
+          "type": "object",
+          "required": ["lostMsThreshold", "windowMs", "rationale"],
+          "additionalProperties": false,
+          "properties": {
+            "lostMsThreshold": { "type": "integer", "minimum": 1 },
+            "windowMs": { "type": "integer", "minimum": 1 },
+            "rationale": { "type": "string" }
+          }
+        },
+        "taintedSegmentWindowMs": { "type": "integer", "minimum": 1 },
+        "afterLoss": {
+          "type": "object",
+          "required": [
+            "discardsUnconfirmedSubtitle",
+            "preservesFinalizedSubtitle",
+            "taintedSegmentIsNotFinalized",
+            "taintedSegmentIsNotRecorded",
+            "singleDropDoesNotReconnect",
+            "diagnosticsExcludeAudioAndText"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "discardsUnconfirmedSubtitle": { "const": true },
+            "preservesFinalizedSubtitle": { "const": true },
+            "taintedSegmentIsNotFinalized": { "const": true },
+            "taintedSegmentIsNotRecorded": { "const": true },
+            "singleDropDoesNotReconnect": { "const": true },
+            "diagnosticsExcludeAudioAndText": { "const": true }
+          }
+        },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "frames", "expected"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "frames": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["generation", "sequence", "discardedMs", "queueWaitMs", "atMs"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "generation": { "type": "integer", "minimum": 0 },
+                    "sequence": { "type": "integer", "minimum": 0 },
+                    "discardedMs": { "type": "integer", "minimum": 0 },
+                    "queueWaitMs": { "type": "integer", "minimum": 0 },
+                    "atMs": { "type": "integer", "minimum": 0 }
+                  }
+                }
+              },
+              "expected": {
+                "type": "object",
+                "required": ["droppedFrames", "lostMs", "lossEvents", "maxQueueWaitMs", "reconnectAt"],
+                "additionalProperties": false,
+                "properties": {
+                  "droppedFrames": { "type": "integer", "minimum": 0 },
+                  "lostMs": { "type": "integer", "minimum": 0 },
+                  "lossEvents": { "type": "integer", "minimum": 0 },
+                  "maxQueueWaitMs": { "type": "integer", "minimum": 0 },
+                  "reconnectAt": { "type": ["integer", "null"], "minimum": 0 }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,379 @@
+{
+  "$schema": "./schema/audio.schema.json",
+  "version": 2,
+  "description": "PCM16 パケット化・Float32→PCM16 変換・100 ms フレーム単位の適応ゲイン・送信前欠落の期待値。v2 で適応ゲインを RMS・雑音フロア・フレーム内リミッタ方式へ変更した。",
+  "format": {
+    "sampleRate": 24000,
+    "bytesPerSample": 2,
+    "frameDurationMilliseconds": 100,
+    "samplesPerFrame": 2400,
+    "bytesPerFrame": 4800,
+    "channels": 1,
+    "endianness": "little"
+  },
+  "packetizer": [
+    {
+      "name": "exactly one frame",
+      "steps": [{ "kind": "append", "byteCount": 4800, "expectedFrameCount": 1 }],
+      "expectedPendingBytes": 0,
+      "flush": { "expectedFrameBytes": null }
+    },
+    {
+      "name": "partial input produces no frame",
+      "steps": [{ "kind": "append", "byteCount": 4799, "expectedFrameCount": 0 }],
+      "expectedPendingBytes": 4799,
+      "flush": { "expectedFrameBytes": 4800, "expectedTrailingZeroBytes": 1 }
+    },
+    {
+      "name": "empty input is ignored",
+      "steps": [{ "kind": "append", "byteCount": 0, "expectedFrameCount": 0 }],
+      "expectedPendingBytes": 0,
+      "flush": { "expectedFrameBytes": null }
+    },
+    {
+      "name": "multiple frames and a remainder",
+      "steps": [{ "kind": "append", "byteCount": 12000, "expectedFrameCount": 2 }],
+      "expectedPendingBytes": 2400,
+      "flush": { "expectedFrameBytes": 4800, "expectedTrailingZeroBytes": 2400 }
+    },
+    {
+      "name": "remainders accumulate across appends",
+      "steps": [
+        { "kind": "append", "byteCount": 3000, "expectedFrameCount": 0 },
+        { "kind": "append", "byteCount": 3000, "expectedFrameCount": 1 }
+      ],
+      "expectedPendingBytes": 1200,
+      "flush": { "expectedFrameBytes": 4800, "expectedTrailingZeroBytes": 3600 }
+    },
+    {
+      "name": "reset drops the remainder",
+      "steps": [{ "kind": "append", "byteCount": 1000, "expectedFrameCount": 0 }, { "kind": "reset" }],
+      "expectedPendingBytes": 0,
+      "flush": { "expectedFrameBytes": null }
+    }
+  ],
+  "packetizerContinuity": {
+    "name": "concatenating all emitted frames plus the padded flush reproduces the input followed by silence",
+    "appendByteCounts": [1234, 5678, 9012],
+    "totalInputBytes": 15924,
+    "expectedEmittedFrameCount": 3,
+    "expectedFlushFrameBytes": 4800,
+    "expectedTrailingZeroBytes": 3276
+  },
+  "float32ToPcm16": [
+    { "name": "zero", "sample": 0, "gain": 1, "expected": 0 },
+    { "name": "full scale positive", "sample": 1, "gain": 1, "expected": 32767 },
+    { "name": "full scale negative", "sample": -1, "gain": 1, "expected": -32767 },
+    { "name": "clips above one", "sample": 2.5, "gain": 1, "expected": 32767 },
+    { "name": "clips below minus one", "sample": -2.5, "gain": 1, "expected": -32767 },
+    { "name": "gain is applied before clipping", "sample": 0.5, "gain": 4, "expected": 32767 },
+    { "name": "gain scales a quiet sample", "sample": 0.1, "gain": 2, "expected": 6553 },
+    { "name": "rounds half away from zero", "sample": 0.5, "gain": 1, "expected": 16384 }
+  ],
+  "gain": {
+    "constants": {
+      "frameSamples": 2400,
+      "minimumGain": 1,
+      "maximumGain": 8,
+      "defaultInitialGain": 4,
+      "targetRms": 0.1,
+      "speechRatio": 3.16,
+      "speechAbsoluteFloor": 0.003,
+      "digitalSilenceRms": 0.00001,
+      "noiseWindowFrames": 30,
+      "gainRiseFactor": 1.12,
+      "gainFallFactor": 0.8,
+      "clipCeiling": 0.9,
+      "rampSamples": 120
+    },
+    "tolerance": 0.0005,
+    "cases": [
+      {
+        "name": "initial gain is clamped to the maximum",
+        "initialGain": 100,
+        "frames": [{ "rms": 0, "peak": 0 }],
+        "expected": { "gain": 8, "appliedGain": 8 }
+      },
+      {
+        "name": "initial gain is clamped to the minimum",
+        "initialGain": 0.1,
+        "frames": [{ "rms": 0, "peak": 0 }],
+        "expected": { "gain": 1, "appliedGain": 1 }
+      },
+      {
+        "name": "the first frame is never speech",
+        "initialGain": 1,
+        "frames": [{ "rms": 0.01, "peak": 0.05 }],
+        "expected": { "gain": 1, "appliedGain": 1 }
+      },
+      {
+        "name": "quiet speech above the noise floor rises by at most twelve percent per frame",
+        "initialGain": 1,
+        "frames": [{ "rms": 0.001, "peak": 0.004 }, { "rms": 0.01, "peak": 0.05 }],
+        "expected": { "gain": 1.12, "appliedGain": 1.12 }
+      },
+      {
+        "name": "two quiet speech frames compound",
+        "initialGain": 1,
+        "frames": [{ "rms": 0.001, "peak": 0.004 }, { "rms": 0.01, "peak": 0.05 }, { "rms": 0.01, "peak": 0.05 }],
+        "expected": { "gain": 1.2544, "appliedGain": 1.2544 }
+      },
+      {
+        "name": "sustained quiet speech saturates at the maximum",
+        "initialGain": 1,
+        "frames": [{ "rms": 0.001, "peak": 0.004 }, { "rms": 0.01, "peak": 0.05, "repeat": 29 }],
+        "expected": { "gain": 8, "appliedGain": 8 }
+      },
+      {
+        "name": "steady noise never raises the gain",
+        "initialGain": 1,
+        "frames": [{ "rms": 0.004, "peak": 0.012, "repeat": 50 }],
+        "expected": { "gain": 1, "appliedGain": 1 }
+      },
+      {
+        "name": "fluctuating noise within ten decibels never raises the gain",
+        "initialGain": 1,
+        "frames": [
+          { "rms": 0.004, "peak": 0.012 },
+          { "rms": 0.008, "peak": 0.024 },
+          { "rms": 0.005, "peak": 0.015 },
+          { "rms": 0.01, "peak": 0.03 }
+        ],
+        "expected": { "gain": 1, "appliedGain": 1 }
+      },
+      {
+        "name": "speech below the absolute floor does not raise the gain",
+        "initialGain": 1,
+        "frames": [{ "rms": 0.0001, "peak": 0.0003 }, { "rms": 0.002, "peak": 0.006 }],
+        "expected": { "gain": 1, "appliedGain": 1 }
+      },
+      {
+        "name": "digital silence does not enter the noise window",
+        "initialGain": 1,
+        "frames": [{ "rms": 0, "peak": 0 }, { "rms": 0.01, "peak": 0.03 }],
+        "expected": { "gain": 1, "appliedGain": 1 }
+      },
+      {
+        "name": "the noise floor remembers the quietest of the last thirty frames",
+        "initialGain": 1,
+        "frames": [
+          { "rms": 0.001, "peak": 0.003 },
+          { "rms": 0.003, "peak": 0.009, "repeat": 28 },
+          { "rms": 0.009, "peak": 0.027 }
+        ],
+        "expected": { "gain": 1.12, "appliedGain": 1.12 }
+      },
+      {
+        "name": "the noise floor forgets frames older than thirty",
+        "initialGain": 1,
+        "frames": [
+          { "rms": 0.001, "peak": 0.003 },
+          { "rms": 0.003, "peak": 0.009, "repeat": 29 },
+          { "rms": 0.009, "peak": 0.027 }
+        ],
+        "expected": { "gain": 1, "appliedGain": 1 }
+      },
+      {
+        "name": "loud speech falls by at most twenty percent per frame",
+        "initialGain": 8,
+        "frames": [{ "rms": 0.001, "peak": 0.003 }, { "rms": 0.2, "peak": 0.6 }],
+        "expected": { "gain": 6.4, "appliedGain": 1.5 }
+      },
+      {
+        "name": "speech at the target keeps the gain",
+        "initialGain": 2,
+        "frames": [{ "rms": 0.001, "peak": 0.003 }, { "rms": 0.05, "peak": 0.2 }],
+        "expected": { "gain": 2, "appliedGain": 2 }
+      },
+      {
+        "name": "the limiter caps the applied gain without changing the persistent gain",
+        "initialGain": 4,
+        "frames": [{ "rms": 0.001, "peak": 0.003 }, { "rms": 0.0005, "peak": 0.6 }],
+        "expected": { "gain": 4, "appliedGain": 1.5 }
+      },
+      {
+        "name": "a click limits its own frame",
+        "initialGain": 4,
+        "frames": [{ "rms": 0.001, "peak": 0.003 }, { "rms": 0.02, "peak": 0.1 }, { "rms": 0.05, "peak": 0.9 }],
+        "expected": { "gain": 3.584, "appliedGain": 1 }
+      },
+      {
+        "name": "the gain recovers on the frame after a click",
+        "initialGain": 4,
+        "frames": [
+          { "rms": 0.001, "peak": 0.003 },
+          { "rms": 0.02, "peak": 0.1 },
+          { "rms": 0.05, "peak": 0.9 },
+          { "rms": 0.02, "peak": 0.1 }
+        ],
+        "expected": { "gain": 4.01408, "appliedGain": 4.01408 }
+      },
+      {
+        "name": "a peak above the ceiling at unity gain stays at unity",
+        "initialGain": 1,
+        "frames": [{ "rms": 0.001, "peak": 0.003 }, { "rms": 0.001, "peak": 1.5 }],
+        "expected": { "gain": 1, "appliedGain": 1 }
+      },
+      {
+        "name": "negative levels are treated as zero",
+        "initialGain": 4,
+        "frames": [{ "rms": -1, "peak": -1 }],
+        "expected": { "gain": 4, "appliedGain": 4 }
+      },
+      {
+        "name": "disabled gain always applies unity",
+        "initialGain": 4,
+        "enabled": false,
+        "frames": [{ "rms": 0.001, "peak": 0.003 }, { "rms": 0.01, "peak": 0.05 }, { "rms": 0.0005, "peak": 0.6 }],
+        "expected": { "gain": 1, "appliedGain": 1 }
+      }
+    ],
+    "level": [
+      { "name": "empty frame", "samples": [], "expectedRms": 0, "expectedPeak": 0 },
+      { "name": "zeros", "samples": [0, 0, 0], "expectedRms": 0, "expectedPeak": 0 },
+      { "name": "symmetric square wave", "samples": [0.5, 0.5, -0.5, -0.5], "expectedRms": 0.5, "expectedPeak": 0.5 },
+      { "name": "mixed amplitudes", "samples": [0.3, -0.4], "expectedRms": 0.3535534, "expectedPeak": 0.4 }
+    ],
+    "ramp": [
+      {
+        "name": "unchanged gain has no ramp",
+        "previousAppliedGain": 2,
+        "appliedGain": 2,
+        "sample": 0.1,
+        "indices": [0, 119, 120, 2399],
+        "expected": [6553, 6553, 6553, 6553]
+      },
+      {
+        "name": "falling gain ramps over five milliseconds",
+        "previousAppliedGain": 4,
+        "appliedGain": 2,
+        "sample": 0.1,
+        "indices": [0, 59, 119, 120, 2399],
+        "expected": [13052, 9830, 6553, 6553, 6553]
+      },
+      {
+        "name": "rising gain ramps and clips",
+        "previousAppliedGain": 1,
+        "appliedGain": 8,
+        "sample": 0.2,
+        "indices": [0, 59, 119, 120, 2399],
+        "expected": [6936, 29490, 32767, 32767, 32767]
+      }
+    ]
+  },
+  "loss": {
+    "description": "送信前（変換前バッファ・送信キュー）の音声欠落の検知と扱い。連番の欠番は送信キューの drop、discardedMs は capture 側が数えた変換前バッファの破棄時間（世代内で累積、内容なし）。両者は別区間なので二重計上しない。",
+    "sendQueueFrameCapacity": 32,
+    "frameDurationMs": 100,
+    "reconnect": {
+      "lostMsThreshold": 6400,
+      "windowMs": 30000,
+      "rationale": "送信キュー 32 枚 = 3,200ms の単発 drop では再接続しない。stablePeriodMs（reconnect.json）と同じ 30 秒窓で欠落合計が容量 2 回分に達した場合だけ既存の ReconnectBudget を通す。"
+    },
+    "taintedSegmentWindowMs": 8000,
+    "afterLoss": {
+      "discardsUnconfirmedSubtitle": true,
+      "preservesFinalizedSubtitle": true,
+      "taintedSegmentIsNotFinalized": true,
+      "taintedSegmentIsNotRecorded": true,
+      "singleDropDoesNotReconnect": true,
+      "diagnosticsExcludeAudioAndText": true
+    },
+    "cases": [
+      {
+        "name": "contiguous frames",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 20, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 0, "queueWaitMs": 30, "atMs": 100 },
+          { "generation": 1, "sequence": 2, "discardedMs": 0, "queueWaitMs": 25, "atMs": 200 },
+          { "generation": 1, "sequence": 3, "discardedMs": 0, "queueWaitMs": 40, "atMs": 300 },
+          { "generation": 1, "sequence": 4, "discardedMs": 0, "queueWaitMs": 35, "atMs": 400 }
+        ],
+        "expected": { "droppedFrames": 0, "lostMs": 0, "lossEvents": 0, "maxQueueWaitMs": 40, "reconnectAt": null }
+      },
+      {
+        "name": "single send-queue drop stays below reconnect",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 10, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 0, "queueWaitMs": 10, "atMs": 100 },
+          { "generation": 1, "sequence": 2, "discardedMs": 0, "queueWaitMs": 10, "atMs": 200 },
+          { "generation": 1, "sequence": 35, "discardedMs": 0, "queueWaitMs": 10, "atMs": 3600 }
+        ],
+        "expected": { "droppedFrames": 32, "lostMs": 3200, "lossEvents": 1, "maxQueueWaitMs": 10, "reconnectAt": null }
+      },
+      {
+        "name": "pre-conversion discard only",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 0, "queueWaitMs": 0, "atMs": 100 },
+          { "generation": 1, "sequence": 2, "discardedMs": 500, "queueWaitMs": 0, "atMs": 700 }
+        ],
+        "expected": { "droppedFrames": 0, "lostMs": 500, "lossEvents": 1, "maxQueueWaitMs": 0, "reconnectAt": null }
+      },
+      {
+        "name": "both stages in one frame are counted once each",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 0, "queueWaitMs": 0, "atMs": 100 },
+          { "generation": 1, "sequence": 2, "discardedMs": 0, "queueWaitMs": 0, "atMs": 200 },
+          { "generation": 1, "sequence": 35, "discardedMs": 700, "queueWaitMs": 0, "atMs": 4300 }
+        ],
+        "expected": { "droppedFrames": 32, "lostMs": 3900, "lossEvents": 1, "maxQueueWaitMs": 0, "reconnectAt": null }
+      },
+      {
+        "name": "sustained loss inside window reconnects",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 33, "discardedMs": 0, "queueWaitMs": 0, "atMs": 3400 },
+          { "generation": 1, "sequence": 34, "discardedMs": 0, "queueWaitMs": 0, "atMs": 3500 },
+          { "generation": 1, "sequence": 67, "discardedMs": 0, "queueWaitMs": 0, "atMs": 6900 }
+        ],
+        "expected": { "droppedFrames": 64, "lostMs": 6400, "lossEvents": 2, "maxQueueWaitMs": 0, "reconnectAt": 6900 }
+      },
+      {
+        "name": "loss outside window does not accumulate",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 33, "discardedMs": 0, "queueWaitMs": 0, "atMs": 3400 },
+          { "generation": 1, "sequence": 34, "discardedMs": 0, "queueWaitMs": 0, "atMs": 3500 },
+          { "generation": 1, "sequence": 67, "discardedMs": 0, "queueWaitMs": 0, "atMs": 33501 }
+        ],
+        "expected": { "droppedFrames": 64, "lostMs": 6400, "lossEvents": 2, "maxQueueWaitMs": 0, "reconnectAt": null }
+      },
+      {
+        "name": "new capture generation resets sequence and discard baseline",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 0, "queueWaitMs": 0, "atMs": 100 },
+          { "generation": 1, "sequence": 2, "discardedMs": 0, "queueWaitMs": 0, "atMs": 200 },
+          { "generation": 2, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 300 },
+          { "generation": 2, "sequence": 1, "discardedMs": 0, "queueWaitMs": 0, "atMs": 400 }
+        ],
+        "expected": { "droppedFrames": 0, "lostMs": 0, "lossEvents": 0, "maxQueueWaitMs": 0, "reconnectAt": null }
+      },
+      {
+        "name": "discard before the first frame of a generation counts once",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 300, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 300, "queueWaitMs": 0, "atMs": 100 }
+        ],
+        "expected": { "droppedFrames": 0, "lostMs": 300, "lossEvents": 1, "maxQueueWaitMs": 0, "reconnectAt": null }
+      },
+      {
+        "name": "sequence gap after generation change counts within new generation only",
+        "frames": [
+          { "generation": 1, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 0 },
+          { "generation": 1, "sequence": 1, "discardedMs": 0, "queueWaitMs": 0, "atMs": 100 },
+          { "generation": 2, "sequence": 0, "discardedMs": 0, "queueWaitMs": 0, "atMs": 200 },
+          { "generation": 2, "sequence": 5, "discardedMs": 0, "queueWaitMs": 0, "atMs": 700 }
+        ],
+        "expected": { "droppedFrames": 4, "lostMs": 400, "lossEvents": 1, "maxQueueWaitMs": 0, "reconnectAt": null }
+      },
+      {
+        "name": "dropped prefix before the first observed frame",
+        "frames": [{ "generation": 1, "sequence": 8, "discardedMs": 0, "queueWaitMs": 0, "atMs": 800 }],
+        "expected": { "droppedFrames": 8, "lostMs": 800, "lossEvents": 1, "maxQueueWaitMs": 0, "reconnectAt": null }
+      }
+    ]
+  }
+}

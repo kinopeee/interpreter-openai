@@ -20,7 +20,7 @@ struct RealtimeSubtitleAssembler: Sendable {
     // continuing the same sentence. A short idle cutoff truncates the translation.
     /// shared/fixtures の assembler.idleFinalizeSeconds と一致させる。
     static let idleFinalizeInterval: TimeInterval = 8
-    /// shared/fixtures/v1/audio.json の loss.taintedSegmentWindowMs と一致させる。
+    /// shared/fixtures/v2/audio.json の loss.taintedSegmentWindowMs と一致させる。
     static let audioLossTaintWindow: TimeInterval = 8
 
     private var epoch = 0

@@ -28,7 +28,7 @@ public sealed class RealtimeSubtitleAssembler
     /// </summary>
     public static readonly TimeSpan IdleFinalizeInterval = TimeSpan.FromSeconds(8);
 
-    /// <summary><c>shared/fixtures/v1/audio.json</c> の loss.taintedSegmentWindowMs と一致する。</summary>
+    /// <summary><c>shared/fixtures/v2/audio.json</c> の loss.taintedSegmentWindowMs と一致する。</summary>
     public static readonly TimeSpan AudioLossTaintWindow = TimeSpan.FromSeconds(8);
 
     private int _epoch;
