@@ -218,7 +218,6 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
                     }
                     guard await emit(pcm16) else { return }
                 }
-                // accumulator 先行化で pending は常に空だが、将来のために drain を残す。
                 if let padded = packetizer.flushWithSilencePadding() {
                     _ = await self?.yieldFrame(padded, generation: generation)
                 }

@@ -149,7 +149,7 @@ public sealed class AdaptiveMicrophoneGain
         {
             var gain =
                 index < RampSamples
-                    ? previousAppliedGain + ((appliedGain - previousAppliedGain) * (index + 1) / RampSamples)
+                    ? previousAppliedGain + ((appliedGain - previousAppliedGain) * ((index + 1) / (float)RampSamples))
                     : appliedGain;
             BinaryPrimitives.WriteInt16LittleEndian(
                 data.AsSpan(index * 2, 2),
