@@ -1,76 +1,114 @@
 import Foundation
 
-/// マイク入力のピークを追跡し、目標レベルへ近づける適応ゲイン。
+/// 100 ms フレーム単位の適応マイクゲイン（shared/protocol/audio.md の v2 契約）。
 ///
-/// feederタスクから直列に呼ぶ前提。クリップ時は即減衰、静かな入力はゆっくり増幅する。
+/// 発話フレームの RMS だけで持続ゲインを動かし、雑音だけの区間では上げない。
+/// クリップ防止のリミッタはそのフレームだけに効き、持続ゲインを変えない。
+/// feederタスクから直列に呼ぶ前提。
 struct AdaptiveMicrophoneGain: Sendable {
+    static let frameSamples = PCM16FramePacketizer.samplesPerFrame
     static let minimumGain: Float = 1.0
     static let maximumGain: Float = 8.0
-    /// 目標ピーク (約 -6 dBFS)。
-    static let targetPeak: Float = 0.5
-    /// これ未満のピークは無音扱いとし、ゲインを上げない。
-    static let silenceFloor: Float = 0.005
-    /// クリップとみなす増幅後ピーク。
-    static let clipThreshold: Float = 0.95
     /// shared/fixtures の defaultInitialGain と一致させる。
     static let defaultInitialGain: Float = 4.0
+    /// 発話フレームの目標 RMS（約 -20 dBFS）。
+    static let targetRms: Float = 0.1
+    /// 雑音フロアからこの倍率（約 +10 dB）以上なら発話とみなす。
+    static let speechRatio: Float = 3.16
+    /// これ未満の RMS は発話にしない（約 -50 dBFS）。
+    static let speechAbsoluteFloor: Float = 0.003
+    /// これ未満の RMS はデジタル無音として雑音窓へ入れない。
+    static let digitalSilenceRms: Float = 0.00001
+    /// 雑音フロアを求める窓（直近 3 秒）。
+    static let noiseWindowFrames = 30
+    static let gainRiseFactor: Float = 1.12
+    static let gainFallFactor: Float = 0.8
+    /// フレーム内リミッタの目標ピーク。
+    static let clipCeiling: Float = 0.9
+    /// 適用ゲインの切り替えを線形に移すサンプル数（5 ms）。
+    static let rampSamples = 120
 
+    let isEnabled: Bool
+    /// 発話フレームだけで動く持続ゲイン。
     private(set) var gain: Float
-    private var trackedPeak: Float
+    /// 直近フレームに適用したゲイン（リミッタ適用後）。
+    private(set) var appliedGain: Float
+    private var noiseWindow: [Float] = []
+    private var noiseWindowNext = 0
 
-    init(initialGain: Float = defaultInitialGain) {
-        gain = Self.clamp(initialGain)
-        trackedPeak = 0
+    init(initialGain: Float = defaultInitialGain, isEnabled: Bool = true) {
+        self.isEnabled = isEnabled
+        gain = isEnabled ? Self.clamp(initialGain) : Self.minimumGain
+        appliedGain = gain
+        noiseWindow.reserveCapacity(Self.noiseWindowFrames)
     }
 
-    /// floatサンプルからピークを取り込み、次バッファ用のゲインを返す。
-    mutating func observe(floatSamples: UnsafePointer<Float>, frameCount: Int) -> Float {
-        guard frameCount > 0 else { return gain }
-
+    /// 有限なサンプルだけから RMS とピークを求める。有限なサンプルが無ければ 0。
+    static func measureLevel(_ samples: UnsafeBufferPointer<Float>) -> (rms: Float, peak: Float) {
+        var sumOfSquares = 0.0
+        var count = 0
         var peak: Float = 0
-        var sawFinite = false
-        for index in 0..<frameCount where floatSamples[index].isFinite {
-            sawFinite = true
-            peak = max(peak, abs(floatSamples[index]))
+        for sample in samples where sample.isFinite {
+            sumOfSquares += Double(sample) * Double(sample)
+            count += 1
+            peak = max(peak, abs(sample))
         }
-        return sawFinite ? observePeak(peak) : gain
+        guard count > 0 else { return (0, 0) }
+        return (Float((sumOfSquares / Double(count)).squareRoot()), peak)
     }
 
-    /// テスト用: 生ピークを直接渡してゲインを更新する。
-    mutating func observePeak(_ peak: Float) -> Float {
-        // 非有限値で追跡状態を壊さない。
-        guard peak.isFinite else { return gain }
+    /// 1 フレームの RMS とピークを取り込み、このフレームに適用するゲインを返す。
+    mutating func observe(rms: Float, peak: Float) -> Float {
+        guard isEnabled else { return Self.minimumGain }
+        // 非有限値で状態を壊さない。
+        guard rms.isFinite, peak.isFinite else { return appliedGain }
 
-        let nonNegativePeak = max(0, peak)
-        // 減衰付きピーク追跡 (新しいピークは即反映、減衰は緩やか)。
-        if nonNegativePeak >= trackedPeak {
-            trackedPeak = nonNegativePeak
+        let rms = max(0, rms)
+        let peak = max(0, peak)
+
+        if rms >= Self.digitalSilenceRms {
+            pushNoiseWindow(rms)
+        }
+
+        if let noiseFloor = noiseWindow.min(),
+            rms >= Self.speechAbsoluteFloor,
+            rms >= noiseFloor * Self.speechRatio
+        {
+            // 発話フレームだけ持続ゲインを動かす。雑音だけの区間では上げない。
+            let desired = Self.clamp(Self.targetRms / rms)
+            if desired > gain {
+                gain = Self.clamp(min(desired, gain * Self.gainRiseFactor))
+            } else if desired < gain {
+                gain = Self.clamp(max(desired, gain * Self.gainFallFactor))
+            }
+        }
+
+        // リミッタはこのフレームだけに効かせ、持続ゲインは変えない。
+        let applied = peak > 0 ? min(gain, Self.clipCeiling / peak) : gain
+        appliedGain = Self.clamp(applied)
+        return appliedGain
+    }
+
+    /// 1 フレームのレベルを取り込み、ランプ付きでゲインを掛けた PCM16 LE を返す。
+    mutating func process(frame: UnsafeBufferPointer<Float>) -> Data {
+        let previous = appliedGain
+        let level = Self.measureLevel(frame)
+        let applied = observe(rms: level.rms, peak: level.peak)
+        return PCM16LittleEndianEncoder.encode(
+            floatSamples: frame,
+            fromGain: previous,
+            toGain: applied,
+            rampSamples: Self.rampSamples
+        )
+    }
+
+    private mutating func pushNoiseWindow(_ rms: Float) {
+        if noiseWindow.count < Self.noiseWindowFrames {
+            noiseWindow.append(rms)
         } else {
-            trackedPeak = trackedPeak * 0.9 + nonNegativePeak * 0.1
+            noiseWindow[noiseWindowNext] = rms
         }
-
-        let amplifiedPeak = trackedPeak * gain
-        if amplifiedPeak >= Self.clipThreshold, trackedPeak > 0 {
-            // Fast attack: クリップを即座に解消する。
-            let desired = Self.targetPeak / trackedPeak
-            gain = Self.clamp(min(gain, desired))
-            return gain
-        }
-
-        guard trackedPeak >= Self.silenceFloor else {
-            // 無音ではゲインを動かさない (暴騰防止)。
-            return gain
-        }
-
-        let desired = Self.targetPeak / trackedPeak
-        let clampedDesired = Self.clamp(desired)
-        if clampedDesired > gain {
-            // Slow release: 1ステップあたり最大5%まで上げる。
-            gain = Self.clamp(min(clampedDesired, gain * 1.05))
-        } else if clampedDesired < gain {
-            gain = Self.clamp(max(clampedDesired, gain * 0.85))
-        }
-        return gain
+        noiseWindowNext = (noiseWindowNext + 1) % Self.noiseWindowFrames
     }
 
     private static func clamp(_ value: Float) -> Float {

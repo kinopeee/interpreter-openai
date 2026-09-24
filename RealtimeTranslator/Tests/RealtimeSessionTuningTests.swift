@@ -317,4 +317,30 @@ final class RealtimeSessionTuningTests: XCTestCase {
             UiLanguagePreference.en.rawValue
         )
     }
+
+    @MainActor
+    func testAppSettingsAutomaticGainDefaultsToEnabledAndPersists() {
+        // Given: 自動ゲインを保存していない状態（既存ユーザー相当）
+        let defaults = UserDefaults.standard
+        let previousValue = defaults.object(forKey: "automaticGainEnabled")
+        defer {
+            if let previousValue {
+                defaults.set(previousValue, forKey: "automaticGainEnabled")
+            } else {
+                defaults.removeObject(forKey: "automaticGainEnabled")
+            }
+        }
+        defaults.removeObject(forKey: "automaticGainEnabled")
+
+        // When: 読み込み、無効へ変えて読み直す
+        let settings = AppSettings()
+        let initial = settings.automaticGainEnabled
+        settings.automaticGainEnabled = false
+        let reloaded = AppSettings()
+
+        // Then: 未保存は有効、変更後は無効が残る
+        XCTAssertTrue(initial)
+        XCTAssertFalse(reloaded.automaticGainEnabled)
+        XCTAssertEqual(defaults.object(forKey: "automaticGainEnabled") as? Bool, false)
+    }
 }

@@ -7,7 +7,7 @@ final class AudioFixtureTests: XCTestCase {
     // Then: 24 kHz / 100 ms / 2,400 sample / 4,800 byte が一致する
     func testFormatMatchesFixture() throws {
         let format = try XCTUnwrap(
-            try SharedFixtures.load("audio")["format"] as? [String: Any]
+            try SharedFixtures.load("audio", version: 2)["format"] as? [String: Any]
         )
         XCTAssertEqual(SharedFixtures.number(format["sampleRate"]), PCM16FramePacketizer.sampleRate)
         XCTAssertEqual(
@@ -32,8 +32,8 @@ final class AudioFixtureTests: XCTestCase {
     // When: packetizer へ流し込む
     // Then: 期待するフレーム分割と残バイトになる
     func testPacketizerMatchesFixture() throws {
-        for name in try SharedFixtures.caseNames("audio", "packetizer") {
-            let fixture = try SharedFixtures.case("audio", "packetizer", name)
+        for name in try SharedFixtures.caseNames("audio", "packetizer", version: 2) {
+            let fixture = try SharedFixtures.case("audio", "packetizer", name, version: 2)
             var packetizer = PCM16FramePacketizer()
             let steps = try XCTUnwrap(fixture["steps"] as? [Any])
             for stepItem in steps {
@@ -78,7 +78,7 @@ final class AudioFixtureTests: XCTestCase {
     // Then: 出力フレームを連結すると入力バイト列が欠落なく復元される
     func testPacketizerPreservesTheInputStream() throws {
         let fixture = try XCTUnwrap(
-            try SharedFixtures.load("audio")["packetizerContinuity"] as? [String: Any]
+            try SharedFixtures.load("audio", version: 2)["packetizerContinuity"] as? [String: Any]
         )
         var packetizer = PCM16FramePacketizer()
         var input = Data()
@@ -116,8 +116,8 @@ final class AudioFixtureTests: XCTestCase {
     // When: PCM16 へ変換する
     // Then: クリップと丸めを含めて期待値と一致する
     func testFloat32ToPcm16MatchesFixture() throws {
-        for name in try SharedFixtures.caseNames("audio", "float32ToPcm16") {
-            let fixture = try SharedFixtures.case("audio", "float32ToPcm16", name)
+        for name in try SharedFixtures.caseNames("audio", "float32ToPcm16", version: 2) {
+            let fixture = try SharedFixtures.case("audio", "float32ToPcm16", name, version: 2)
             var sample = Float(SharedFixtures.real(fixture["sample"]))
             let encoded = PCM16LittleEndianEncoder.encode(
                 floatSamples: &sample,
@@ -131,73 +131,144 @@ final class AudioFixtureTests: XCTestCase {
         }
     }
 
-    // Given: shared fixture の適応ゲイン定数
+    // Given: shared fixture v2 の適応ゲイン定数
     // When: Swift 実装の定数と照合する
-    // Then: 最小/最大ゲイン、目標ピーク、無音/クリップ閾値が一致する
+    // Then: フレーム長・ゲイン範囲・発話判定・雑音窓・上昇/下降率・リミッタ・ランプが一致する
     func testGainConstantsMatchFixture() throws {
         let constants = try XCTUnwrap(
-            (try SharedFixtures.load("audio")["gain"] as? [String: Any])?["constants"] as? [String: Any]
+            (try SharedFixtures.load("audio", version: 2)["gain"] as? [String: Any])?["constants"]
+                as? [String: Any]
         )
+        XCTAssertEqual(SharedFixtures.number(constants["frameSamples"]), AdaptiveMicrophoneGain.frameSamples)
+        let floatConstants: [(String, Float)] = [
+            ("minimumGain", AdaptiveMicrophoneGain.minimumGain),
+            ("maximumGain", AdaptiveMicrophoneGain.maximumGain),
+            ("defaultInitialGain", AdaptiveMicrophoneGain.defaultInitialGain),
+            ("targetRms", AdaptiveMicrophoneGain.targetRms),
+            ("speechRatio", AdaptiveMicrophoneGain.speechRatio),
+            ("speechAbsoluteFloor", AdaptiveMicrophoneGain.speechAbsoluteFloor),
+            ("digitalSilenceRms", AdaptiveMicrophoneGain.digitalSilenceRms),
+            ("gainRiseFactor", AdaptiveMicrophoneGain.gainRiseFactor),
+            ("gainFallFactor", AdaptiveMicrophoneGain.gainFallFactor),
+            ("clipCeiling", AdaptiveMicrophoneGain.clipCeiling),
+        ]
+        for (key, value) in floatConstants {
+            XCTAssertEqual(Float(SharedFixtures.real(constants[key])), value, key)
+        }
         XCTAssertEqual(
-            Float(SharedFixtures.real(constants["minimumGain"])),
-            AdaptiveMicrophoneGain.minimumGain
+            SharedFixtures.number(constants["noiseWindowFrames"]),
+            AdaptiveMicrophoneGain.noiseWindowFrames
         )
-        XCTAssertEqual(
-            Float(SharedFixtures.real(constants["maximumGain"])),
-            AdaptiveMicrophoneGain.maximumGain
-        )
-        XCTAssertEqual(
-            Float(SharedFixtures.real(constants["targetPeak"])),
-            AdaptiveMicrophoneGain.targetPeak
-        )
-        XCTAssertEqual(
-            Float(SharedFixtures.real(constants["silenceFloor"])),
-            AdaptiveMicrophoneGain.silenceFloor
-        )
-        XCTAssertEqual(
-            Float(SharedFixtures.real(constants["clipThreshold"])),
-            AdaptiveMicrophoneGain.clipThreshold
-        )
-        XCTAssertEqual(
-            Float(SharedFixtures.real(constants["defaultInitialGain"])),
-            AdaptiveMicrophoneGain.defaultInitialGain
-        )
+        XCTAssertEqual(SharedFixtures.number(constants["rampSamples"]), AdaptiveMicrophoneGain.rampSamples)
     }
 
-    // Given: fixture のピーク推移シナリオ
-    // When: 順に適応ゲインを更新する
-    // Then: 各ステップのゲイン値が期待値と一致する
+    // Given: fixture のフレーム列（RMS とピーク、繰り返し回数、有効/無効）
+    // When: 順に適応ゲインへ取り込む
+    // Then: 最後の持続ゲインと適用ゲインが期待値と一致する
     func testGainMatchesFixture() throws {
         let gainFixture = try XCTUnwrap(
-            try SharedFixtures.load("audio")["gain"] as? [String: Any]
+            try SharedFixtures.load("audio", version: 2)["gain"] as? [String: Any]
         )
         let tolerance = SharedFixtures.real(gainFixture["tolerance"])
         let cases = try XCTUnwrap(gainFixture["cases"] as? [Any])
         for caseItem in cases {
             let fixture = try XCTUnwrap(caseItem as? [String: Any])
             let name = SharedFixtures.text(fixture["name"])
+            let isEnabled = fixture["enabled"] == nil || SharedFixtures.flag(fixture["enabled"])
             var gain = AdaptiveMicrophoneGain(
-                initialGain: Float(SharedFixtures.real(fixture["initialGain"]))
+                initialGain: Float(SharedFixtures.real(fixture["initialGain"])),
+                isEnabled: isEnabled
             )
-            var last = gain.gain
-            if fixture["repeatPeak"] != nil {
-                let repeatCount = SharedFixtures.number(fixture["repeatCount"])
-                let peak = Float(SharedFixtures.real(fixture["repeatPeak"]))
+            var last = gain.appliedGain
+            let frames = try XCTUnwrap(fixture["frames"] as? [Any])
+            for frameItem in frames {
+                let frame = try XCTUnwrap(frameItem as? [String: Any])
+                let repeatCount = SharedFixtures.optionalNumber(frame["repeat"]) ?? 1
                 for _ in 0..<repeatCount {
-                    last = gain.observePeak(peak)
-                }
-            } else {
-                let peaks = try XCTUnwrap(fixture["peaks"] as? [Any])
-                for peakValue in peaks {
-                    last = gain.observePeak(Float(SharedFixtures.real(peakValue)))
+                    last = gain.observe(
+                        rms: Float(SharedFixtures.real(frame["rms"])),
+                        peak: Float(SharedFixtures.real(frame["peak"]))
+                    )
                 }
             }
+            let expected = try XCTUnwrap(fixture["expected"] as? [String: Any])
             XCTAssertEqual(
-                SharedFixtures.real(fixture["expectedGain"]),
-                Double(last),
-                accuracy: tolerance
+                SharedFixtures.real(expected["gain"]),
+                Double(gain.gain),
+                accuracy: tolerance,
+                name
             )
-            XCTAssertEqual(last, gain.gain)
+            XCTAssertEqual(
+                SharedFixtures.real(expected["appliedGain"]),
+                Double(last),
+                accuracy: tolerance,
+                name
+            )
+            XCTAssertEqual(isEnabled ? gain.appliedGain : AdaptiveMicrophoneGain.minimumGain, last, name)
+        }
+    }
+
+    // Given: fixture のサンプル列
+    // When: フレームの RMS とピークを求める
+    // Then: 期待値と一致する
+    func testGainLevelMatchesFixture() throws {
+        let gainFixture = try XCTUnwrap(
+            try SharedFixtures.load("audio", version: 2)["gain"] as? [String: Any]
+        )
+        let tolerance = SharedFixtures.real(gainFixture["tolerance"])
+        let cases = try XCTUnwrap(gainFixture["level"] as? [Any])
+        for caseItem in cases {
+            let fixture = try XCTUnwrap(caseItem as? [String: Any])
+            let name = SharedFixtures.text(fixture["name"])
+            let samples = try XCTUnwrap(fixture["samples"] as? [Any]).map {
+                Float(SharedFixtures.real($0))
+            }
+            let level = samples.withUnsafeBufferPointer { AdaptiveMicrophoneGain.measureLevel($0) }
+            XCTAssertEqual(
+                SharedFixtures.real(fixture["expectedRms"]),
+                Double(level.rms),
+                accuracy: tolerance,
+                name
+            )
+            XCTAssertEqual(
+                SharedFixtures.real(fixture["expectedPeak"]),
+                Double(level.peak),
+                accuracy: tolerance,
+                name
+            )
+        }
+    }
+
+    // Given: 前フレームと今回の適用ゲイン、一定値のサンプルで満たした 100 ms frame
+    // When: ランプ付きで PCM16 へ変換する
+    // Then: 指定インデックスの値が期待値と一致する
+    func testGainRampMatchesFixture() throws {
+        let gainFixture = try XCTUnwrap(
+            try SharedFixtures.load("audio", version: 2)["gain"] as? [String: Any]
+        )
+        let cases = try XCTUnwrap(gainFixture["ramp"] as? [Any])
+        for caseItem in cases {
+            let fixture = try XCTUnwrap(caseItem as? [String: Any])
+            let name = SharedFixtures.text(fixture["name"])
+            let frame = [Float](
+                repeating: Float(SharedFixtures.real(fixture["sample"])),
+                count: AdaptiveMicrophoneGain.frameSamples
+            )
+            let encoded = frame.withUnsafeBufferPointer { buffer in
+                PCM16LittleEndianEncoder.encode(
+                    floatSamples: buffer,
+                    fromGain: Float(SharedFixtures.real(fixture["previousAppliedGain"])),
+                    toGain: Float(SharedFixtures.real(fixture["appliedGain"])),
+                    rampSamples: AdaptiveMicrophoneGain.rampSamples
+                )
+            }
+            let values = encoded.withUnsafeBytes { raw in Array(raw.bindMemory(to: Int16.self)) }
+            let indices = try XCTUnwrap(fixture["indices"] as? [Any]).map { SharedFixtures.number($0) }
+            let expected = try XCTUnwrap(fixture["expected"] as? [Any]).map { SharedFixtures.number($0) }
+            XCTAssertEqual(indices.count, expected.count, name)
+            for (index, value) in zip(indices, expected) {
+                XCTAssertEqual(Int(values[index]), value, "\(name) index \(index)")
+            }
         }
     }
 
@@ -209,20 +280,6 @@ final class AudioFixtureTests: XCTestCase {
         let infinityGain = AdaptiveMicrophoneGain(initialGain: .infinity)
         XCTAssertEqual(nanGain.gain, AdaptiveMicrophoneGain.minimumGain)
         XCTAssertEqual(infinityGain.gain, AdaptiveMicrophoneGain.minimumGain)
-    }
-
-    // Given: 有限な初期ゲイン
-    // When: 非有限ピークのあと有効ピークを観測する
-    // Then: 状態は壊れず通常のクリップ減衰が動く
-    func testNonFinitePeaksDoNotCorruptGainState() {
-        var gain = AdaptiveMicrophoneGain(initialGain: 4.0)
-        XCTAssertEqual(gain.observePeak(.nan), 4.0)
-        XCTAssertEqual(gain.observePeak(.infinity), 4.0)
-        let recovered = gain.observePeak(0.3)
-        XCTAssertTrue(recovered.isFinite)
-        XCTAssertGreaterThanOrEqual(recovered, AdaptiveMicrophoneGain.minimumGain)
-        XCTAssertLessThanOrEqual(recovered, AdaptiveMicrophoneGain.maximumGain)
-        XCTAssertEqual(recovered, 0.5 / 0.3, accuracy: 0.01)
     }
 
     /// 0 padding と区別できるよう、非ゼロの繰り返しパターンを作る。

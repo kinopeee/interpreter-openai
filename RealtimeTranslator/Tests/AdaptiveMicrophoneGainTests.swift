@@ -2,61 +2,66 @@ import XCTest
 @testable import RealtimeTranslator
 
 final class AdaptiveMicrophoneGainTests: XCTestCase {
-    func testQuietInputRaisesGainGradually() {
-        // Given: 初期ゲイン4.0、目標ピーク0.5に対して小さな入力
-        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
-        let quietPeak: Float = 0.05
+    func testQuietSpeechAfterNoiseRaisesGainGradually() {
+        // Given: 雑音フレームを1つ観測した初期ゲイン1.0
+        var agc = AdaptiveMicrophoneGain(initialGain: 1.0)
+        _ = agc.observe(rms: 0.001, peak: 0.004)
 
-        // When: 同じ小音量を複数回観測する
+        // When: 雑音より十分大きい小声の発話フレームを複数回観測する
         var previous = agc.gain
-        var raised = false
-        for _ in 0..<40 {
-            let next = agc.observePeak(quietPeak)
-            if next > previous {
-                raised = true
+        var raisedEveryFrame = true
+        for _ in 0..<10 {
+            let next = agc.observe(rms: 0.01, peak: 0.05)
+            if next <= previous || next > previous * AdaptiveMicrophoneGain.gainRiseFactor + 0.0001 {
+                raisedEveryFrame = false
             }
             previous = next
         }
 
-        // Then: ゲインは漸増し、上限8.0を超えない
-        XCTAssertTrue(raised)
-        XCTAssertGreaterThan(agc.gain, 4.0)
+        // Then: ゲインは1フレームあたり最大12%ずつ上がり、上限8.0を超えない
+        XCTAssertTrue(raisedEveryFrame)
+        XCTAssertGreaterThan(agc.gain, 1.0)
         XCTAssertLessThanOrEqual(agc.gain, AdaptiveMicrophoneGain.maximumGain)
     }
 
-    func testClippingInputLowersGainImmediately() {
-        // Given: 初期ゲイン4.0で、増幅後にクリップするピーク
-        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
+    func testSteadyNoiseDoesNotInflateGain() {
+        // Given: 初期ゲイン1.0
+        var agc = AdaptiveMicrophoneGain(initialGain: 1.0)
 
-        // When: 0.3 × 4.0 = 1.2 でクリップする入力を1回観測する
-        let gain = agc.observePeak(0.3)
-
-        // Then: 目標ピーク0.5 / 0.3 ≈ 1.67 付近へ即減衰する
-        XCTAssertLessThan(gain, 4.0)
-        XCTAssertEqual(gain, 0.5 / 0.3, accuracy: 0.01)
-    }
-
-    func testSilenceDoesNotInflateGain() {
-        // Given: 初期ゲイン4.0
-        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
-
-        // When: 無音相当のピークを連続観測する
-        for _ in 0..<50 {
-            _ = agc.observePeak(0)
+        // When: 旧実装の無音フロア(0.005)を超える雑音だけを連続観測する
+        for _ in 0..<100 {
+            _ = agc.observe(rms: 0.006, peak: 0.02)
         }
 
-        // Then: ゲインは動かない (暴騰しない)
-        XCTAssertEqual(agc.gain, 4.0)
+        // Then: 発話と判定されずゲインは動かない
+        XCTAssertEqual(agc.gain, 1.0)
+    }
+
+    func testClickLimitsOnlyItsOwnFrame() {
+        // Given: 雑音と発話を観測した初期ゲイン4.0
+        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
+        _ = agc.observe(rms: 0.001, peak: 0.003)
+        _ = agc.observe(rms: 0.02, peak: 0.1)
+        let gainBeforeClick = agc.gain
+
+        // When: 瞬間的に大きいクリック音のフレームを観測する
+        let appliedOnClick = agc.observe(rms: 0.0005, peak: 0.9)
+
+        // Then: そのフレームの適用ゲインだけ1.0へ抑え、持続ゲインは下げない
+        XCTAssertEqual(appliedOnClick, 1.0)
+        XCTAssertEqual(agc.gain, gainBeforeClick)
+        XCTAssertEqual(agc.observe(rms: 0.0005, peak: 0.01), gainBeforeClick)
     }
 
     func testGainIsClampedToConfiguredRange() {
         // Given: 極端な初期値
-        var high = AdaptiveMicrophoneGain(initialGain: 100)
-        var low = AdaptiveMicrophoneGain(initialGain: 0.01)
+        let high = AdaptiveMicrophoneGain(initialGain: 100)
+        let low = AdaptiveMicrophoneGain(initialGain: 0.01)
 
         // When/Then: 生成時点でclampされる
         XCTAssertEqual(high.gain, AdaptiveMicrophoneGain.maximumGain)
         XCTAssertEqual(low.gain, AdaptiveMicrophoneGain.minimumGain)
+        XCTAssertEqual(high.appliedGain, AdaptiveMicrophoneGain.maximumGain)
     }
 
     func testNonFiniteInitialGainFallsBackToMinimum() {
@@ -72,70 +77,77 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
         }
     }
 
-    func testNonFinitePeakDoesNotCorruptTrackedState() {
-        // Given: 有限 seed を観測した対象と、同じ有限列だけの基準
-        // followUp は seed より小さくし、新ピーク上書きで破損が隠れないようにする
+    func testNonFiniteLevelsDoNotCorruptState() {
+        // Given: 同じ雑音フレームを観測した対象と基準
         var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
         var baseline = AdaptiveMicrophoneGain(initialGain: 4.0)
-        let seedPeak: Float = 0.2
-        let followUpPeak: Float = 0.1
-        _ = agc.observePeak(seedPeak)
-        _ = baseline.observePeak(seedPeak)
+        _ = agc.observe(rms: 0.001, peak: 0.003)
+        _ = baseline.observe(rms: 0.001, peak: 0.003)
 
-        // When: 非有限ピークを挟んだあと、seed より小さい有限ピークを観測する
-        let gainBeforeNaN = agc.gain
-        XCTAssertEqual(agc.observePeak(.nan), gainBeforeNaN)
-        XCTAssertEqual(agc.gain, gainBeforeNaN)
+        // When: 対象だけ非有限値を挟んでから発話フレームを観測する
+        XCTAssertEqual(agc.observe(rms: .nan, peak: 0.1), 4.0)
+        XCTAssertEqual(agc.observe(rms: 0.02, peak: .infinity), 4.0)
+        let after = agc.observe(rms: 0.02, peak: 0.1)
+        let expected = baseline.observe(rms: 0.02, peak: 0.1)
 
-        let gainBeforeInfinity = agc.gain
-        XCTAssertEqual(agc.observePeak(.infinity), gainBeforeInfinity)
-        XCTAssertEqual(agc.gain, gainBeforeInfinity)
-
-        let after = agc.observePeak(followUpPeak)
-        let expected = baseline.observePeak(followUpPeak)
-
-        // Then: trackedPeak が壊れていなければ基準と同じゲインになる
-        XCTAssertEqual(after, expected, accuracy: 0.0001)
-        XCTAssertEqual(agc.gain, baseline.gain, accuracy: 0.0001)
+        // Then: 非有限値は状態を変えず、基準と同じゲインになる
+        XCTAssertEqual(after, expected)
+        XCTAssertEqual(agc.gain, baseline.gain)
     }
 
-    func testAllNonFiniteSamplesKeepCurrentGain() {
-        // Given: 有限 seed 後に非有限だけのバッファを渡す対象と、有限列だけの基準
-        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
-        var baseline = AdaptiveMicrophoneGain(initialGain: 4.0)
-        let seedPeak: Float = 0.2
-        let followUpPeak: Float = 0.1
-        _ = agc.observePeak(seedPeak)
-        _ = baseline.observePeak(seedPeak)
-        var samples: [Float] = [.nan, .infinity, -.infinity]
-        let gainBefore = agc.gain
+    func testMeasureLevelIgnoresNonFiniteSamples() {
+        // Given: 有限サンプルと NaN / ±Infinity が混在するフレーム、非有限だけのフレーム
+        let mixed: [Float] = [.nan, 0.3, -0.4, .infinity]
+        let nonFinite: [Float] = [.nan, -.infinity]
 
-        // When: 非有限バッファを observe し、続けて seed より小さい有限ピークを観測する
-        let gain = samples.withUnsafeBufferPointer { buffer in
-            agc.observe(floatSamples: buffer.baseAddress!, frameCount: buffer.count)
-        }
-        XCTAssertEqual(gain, gainBefore)
-        XCTAssertEqual(agc.gain, gainBefore)
+        // When: レベルを測る
+        let level = mixed.withUnsafeBufferPointer { AdaptiveMicrophoneGain.measureLevel($0) }
+        let empty = nonFinite.withUnsafeBufferPointer { AdaptiveMicrophoneGain.measureLevel($0) }
 
-        let after = agc.observePeak(followUpPeak)
-        let expected = baseline.observePeak(followUpPeak)
-
-        // Then: 非有限ではゲインを動かさず、その後の挙動も基準と一致する
-        XCTAssertEqual(after, expected, accuracy: 0.0001)
-        XCTAssertEqual(agc.gain, baseline.gain, accuracy: 0.0001)
+        // Then: 有限サンプルだけの RMS と絶対値ピーク、有限が無ければ 0
+        XCTAssertEqual(level.rms, 0.3535534, accuracy: 0.0005)
+        XCTAssertEqual(level.peak, 0.4)
+        XCTAssertEqual(empty.rms, 0)
+        XCTAssertEqual(empty.peak, 0)
     }
 
-    func testMixedFiniteAndNonFiniteSamplesUseFinitePeakOnly() {
-        // Given: 有限サンプルと NaN が混在するバッファ
+    func testProcessRampsFromPreviousAppliedGainAndLimitsPeaks() {
+        // Given: 初期ゲイン4.0で雑音フレームを処理済み
         var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
-        var samples: [Float] = [.nan, 0.3, .infinity]
+        let noise = [Float](repeating: 0.001, count: AdaptiveMicrophoneGain.frameSamples)
+        let noisePCM = noise.withUnsafeBufferPointer { agc.process(frame: $0) }
+        XCTAssertEqual(pcmValues(noisePCM).first, 131)
 
-        // When: observe する
-        let gain = samples.withUnsafeBufferPointer { buffer in
-            agc.observe(floatSamples: buffer.baseAddress!, frameCount: buffer.count)
-        }
+        // When: ピーク0.6の大きな音のフレームを処理する
+        let loud = [Float](repeating: 0.6, count: AdaptiveMicrophoneGain.frameSamples)
+        let values = pcmValues(loud.withUnsafeBufferPointer { agc.process(frame: $0) })
 
-        // Then: 有限ピーク 0.3 だけを使い、クリップ減衰する
-        XCTAssertEqual(gain, 0.5 / 0.3, accuracy: 0.01)
+        // Then: 先頭は前の適用ゲインからのランプでクリップ、ランプ後はリミッタで約0.9
+        XCTAssertEqual(values.count, AdaptiveMicrophoneGain.frameSamples)
+        XCTAssertEqual(values.first, Int16.max)
+        XCTAssertEqual(values.last, 29490)
+        XCTAssertEqual(agc.appliedGain, 1.5, accuracy: 0.0005)
+        XCTAssertEqual(agc.gain, 3.2, accuracy: 0.0005)
+    }
+
+    func testDisabledGainEncodesAtUnity() {
+        // Given: 自動ゲインを無効にした適応ゲイン
+        var agc = AdaptiveMicrophoneGain(initialGain: 4.0, isEnabled: false)
+        let frame = [Float](repeating: 0.1, count: AdaptiveMicrophoneGain.frameSamples)
+
+        // When: 雑音と発話相当のフレームを処理する
+        _ = agc.observe(rms: 0.001, peak: 0.003)
+        let values = pcmValues(frame.withUnsafeBufferPointer { agc.process(frame: $0) })
+
+        // Then: ゲイン1.0のまま変換し、状態も動かない
+        XCTAssertFalse(agc.isEnabled)
+        XCTAssertEqual(values.first, 3277)
+        XCTAssertEqual(values.last, 3277)
+        XCTAssertEqual(agc.gain, AdaptiveMicrophoneGain.minimumGain)
+        XCTAssertEqual(agc.appliedGain, AdaptiveMicrophoneGain.minimumGain)
+    }
+
+    private func pcmValues(_ data: Data) -> [Int16] {
+        data.withUnsafeBytes { raw in Array(raw.bindMemory(to: Int16.self)) }
     }
 }

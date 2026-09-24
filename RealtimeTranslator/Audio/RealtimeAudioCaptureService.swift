@@ -61,6 +61,8 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     private static let targetSampleRate = 24_000.0
 
     private let audioEngine = AVAudioEngine()
+    /// 録音開始ごとに1回読む自動ゲインの有効/無効。
+    private let automaticGainProvider: @MainActor () -> Bool
     private let discardedFrames = OSAllocatedUnfairLock(initialState: 0)
     private var frameQueue: RealtimeAudioFrameQueue
     private var captureContinuation: AsyncStream<CapturedAudioBuffer>.Continuation?
@@ -72,7 +74,8 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
     private(set) var frames: AsyncStream<CapturedAudioFrame>
     private(set) var terminationError: Error?
 
-    init() {
+    init(automaticGainProvider: @escaping @MainActor () -> Bool = { true }) {
+        self.automaticGainProvider = automaticGainProvider
         frameQueue = RealtimeAudioFrameQueue()
         frames = frameQueue.frames
     }
@@ -160,27 +163,28 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         )
         isTapInstalled = true
 
+        let automaticGainEnabled = automaticGainProvider()
         feederTask = Task.detached(priority: .userInitiated) { [weak self] in
-            var packetizer = PCM16FramePacketizer()
-            var adaptiveGain = AdaptiveMicrophoneGain()
+            var accumulator = Float32FrameAccumulator()
+            var adaptiveGain = AdaptiveMicrophoneGain(isEnabled: automaticGainEnabled)
             var emittedFrameCount = 0
             do {
                 for await captured in captureStream {
                     defer { captured.release() }
                     try Task.checkCancellation()
                     let converted = try converter.convert(captured.buffer)
-                    let pcm16 = try Self.encodePCM16(
-                        from: converted,
-                        adaptiveGain: &adaptiveGain
-                    )
-                    let frames = packetizer.append(pcm16)
-                    for frame in frames {
+                    let floatFrames = try Self.floatFrames(from: converted, accumulator: &accumulator)
+                    for floatFrame in floatFrames {
+                        // ゲインは100 ms frameごとに決める（入力バッファ長に依存させない）。
+                        let frame = floatFrame.withUnsafeBufferPointer { adaptiveGain.process(frame: $0) }
                         emittedFrameCount += 1
                         #if DEBUG
                         if emittedFrameCount == 1 || emittedFrameCount.isMultiple(of: 25) {
                             let peak = Self.peakAmplitude(inPCM16LE: frame)
+                            let gain = adaptiveGain.gain
+                            let applied = adaptiveGain.appliedGain
                             AppLogger.audio.notice(
-                                "DBG_CAPTURE_FRAME count=\(emittedFrameCount, privacy: .public) bytes=\(frame.count, privacy: .public) peak=\(peak, privacy: .public)"
+                                "DBG_CAPTURE_FRAME count=\(emittedFrameCount, privacy: .public) bytes=\(frame.count, privacy: .public) peak=\(peak, privacy: .public) gain=\(gain, privacy: .public) applied=\(applied, privacy: .public)"
                             )
                         }
                         #endif
@@ -194,8 +198,9 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
                         }
                     }
                 }
-                if let padded = packetizer.flushWithSilencePadding() {
-                    _ = await self?.yieldFrame(padded, generation: generation)
+                if let padded = accumulator.flushWithSilencePadding() {
+                    let frame = padded.withUnsafeBufferPointer { adaptiveGain.process(frame: $0) }
+                    _ = await self?.yieldFrame(frame, generation: generation)
                 }
             } catch is CancellationError {
                 return
@@ -325,31 +330,17 @@ final class RealtimeAudioCaptureService: RealtimeAudioCaptureServicing {
         }
     }
 
-    nonisolated private static func encodePCM16(
+    /// 変換済み Float32 mono を100 ms frameへ分割する。変換先は常に Float32。
+    nonisolated private static func floatFrames(
         from buffer: AVAudioPCMBuffer,
-        adaptiveGain: inout AdaptiveMicrophoneGain
-    ) throws -> Data {
+        accumulator: inout Float32FrameAccumulator
+    ) throws -> [[Float]] {
         let frameLength = Int(buffer.frameLength)
-        guard frameLength > 0 else { return Data() }
-
-        if buffer.format.commonFormat == .pcmFormatInt16,
-            let channel = buffer.int16ChannelData?[0]
-        {
-            return PCM16LittleEndianEncoder.encode(
-                int16Samples: channel,
-                frameCount: frameLength
-            )
-        }
-
+        guard frameLength > 0 else { return [] }
         guard let channel = buffer.floatChannelData?[0] else {
             throw RealtimeAudioCaptureError.audioFormatUnavailable
         }
-        let gain = adaptiveGain.observe(floatSamples: channel, frameCount: frameLength)
-        return PCM16LittleEndianEncoder.encode(
-            floatSamples: channel,
-            frameCount: frameLength,
-            gain: gain
-        )
+        return accumulator.append(UnsafeBufferPointer(start: channel, count: frameLength))
     }
 
     nonisolated private static func peakAmplitude(inPCM16LE data: Data) -> Int {
