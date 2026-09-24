@@ -50,13 +50,13 @@ public sealed class CapturedAudioFramePipelineTests
     public void DownmixesStereoSoNeitherChannelIsDropped()
     {
         var format = new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 2);
-        var leftOnly = new CapturedAudioFramePipeline(format, new AdaptiveMicrophoneGain(1f));
+        var leftOnly = new CapturedAudioFramePipeline(format, new AdaptiveMicrophoneGain(isEnabled: false));
         leftOnly.Push(
             InterleavedSine(Pcm16FramePacketizer.SamplesPerFrame, [0.5, 0.0]),
             Pcm16FramePacketizer.SamplesPerFrame * 4
         );
 
-        var rightOnly = new CapturedAudioFramePipeline(format, new AdaptiveMicrophoneGain(1f));
+        var rightOnly = new CapturedAudioFramePipeline(format, new AdaptiveMicrophoneGain(isEnabled: false));
         rightOnly.Push(
             InterleavedSine(Pcm16FramePacketizer.SamplesPerFrame, [0.0, 0.5]),
             Pcm16FramePacketizer.SamplesPerFrame * 4
@@ -111,7 +111,7 @@ public sealed class CapturedAudioFramePipelineTests
     {
         var pipeline = new CapturedAudioFramePipeline(
             new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1),
-            new AdaptiveMicrophoneGain(1f)
+            new AdaptiveMicrophoneGain(isEnabled: false)
         );
         var halfBytes = Pcm16FramePacketizer.BytesPerFrame / 2;
 
@@ -139,7 +139,7 @@ public sealed class CapturedAudioFramePipelineTests
     {
         var pipeline = new CapturedAudioFramePipeline(
             new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1),
-            new AdaptiveMicrophoneGain(1f)
+            new AdaptiveMicrophoneGain(isEnabled: false)
         );
         var halfBytes = Pcm16FramePacketizer.BytesPerFrame / 2;
 
@@ -184,7 +184,7 @@ public sealed class CapturedAudioFramePipelineTests
     {
         var pipeline = new CapturedAudioFramePipeline(
             new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1),
-            new AdaptiveMicrophoneGain(1f)
+            new AdaptiveMicrophoneGain(isEnabled: false)
         );
         var halfBytes = Pcm16FramePacketizer.BytesPerFrame / 2;
 
@@ -205,7 +205,10 @@ public sealed class CapturedAudioFramePipelineTests
     [Fact]
     public void ExactHundredMillisecondsAtResampledRateEmitsAudioNotKeepAlive()
     {
-        var pipeline = new CapturedAudioFramePipeline(new WaveFormat(48_000, 16, 1), new AdaptiveMicrophoneGain(1f));
+        var pipeline = new CapturedAudioFramePipeline(
+            new WaveFormat(48_000, 16, 1),
+            new AdaptiveMicrophoneGain(isEnabled: false)
+        );
         var samples = 48_000 / 10;
         var audio = SineWave(samples, 1);
 
@@ -222,7 +225,10 @@ public sealed class CapturedAudioFramePipelineTests
     [Fact]
     public void DoesNotDropSubResamplerRemainderOnShortDeviceRead()
     {
-        var pipeline = new CapturedAudioFramePipeline(new WaveFormat(48_000, 16, 1), new AdaptiveMicrophoneGain(1f));
+        var pipeline = new CapturedAudioFramePipeline(
+            new WaveFormat(48_000, 16, 1),
+            new AdaptiveMicrophoneGain(isEnabled: false)
+        );
         var loud = BitConverter.GetBytes((short)32_000);
 
         pipeline.Push(loud, loud.Length);
@@ -265,7 +271,7 @@ public sealed class CapturedAudioFramePipelineTests
     {
         var pipeline = new CapturedAudioFramePipeline(
             new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1),
-            new AdaptiveMicrophoneGain(1f)
+            new AdaptiveMicrophoneGain(isEnabled: false)
         );
         var loud = SineWave(Pcm16FramePacketizer.SamplesPerFrame, 1, amplitude: 0.5);
         var silence = new byte[Pcm16FramePacketizer.BytesPerFrame];
@@ -403,7 +409,7 @@ public sealed class CapturedAudioFramePipelineTests
     {
         var pipeline = new CapturedAudioFramePipeline(
             new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1),
-            new AdaptiveMicrophoneGain(1f)
+            new AdaptiveMicrophoneGain(isEnabled: false)
         );
         var discardedMilliseconds = 500;
         var retainedMilliseconds = 2_000;
@@ -608,6 +614,74 @@ public sealed class CapturedAudioFramePipelineTests
         }
 
         Assert.InRange(pipeline.CurrentGain, AdaptiveMicrophoneGain.MinimumGain, AdaptiveMicrophoneGain.MaximumGain);
+    }
+
+    // Given: 自動ゲインが有効な 2 つの pipeline と、雑音のあとに発話相当が続く同じ入力
+    // When: 片方は 100 ms、もう片方は 70 ms 単位で読み出し、最後に FlushRemainder する
+    // Then: ゲインは 100 ms frame 単位で決まるため、読み出し単位に依存せず同じ PCM16 になる
+    [Fact]
+    public void AppliesGainPerHundredMillisecondFrameRegardlessOfReadSize()
+    {
+        var format = new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1);
+        var input = Pcm16Constant(300, 30)
+            .Concat(SineWave(Pcm16FramePacketizer.SamplesPerFrame * 3, 1, 0.02))
+            .ToArray();
+        var byFrame = new CapturedAudioFramePipeline(format);
+        var byChunk = new CapturedAudioFramePipeline(format);
+        byFrame.Push(input, input.Length);
+        byChunk.Push(input, input.Length);
+
+        var framed = ReadAll(byFrame, Pcm16FramePacketizer.SamplesPerFrame);
+        var chunked = ReadAll(byChunk, 1_680);
+
+        Assert.Equal(6, framed.Count);
+        Assert.Equal(framed.Count, chunked.Count);
+        for (var index = 0; index < framed.Count; index++)
+        {
+            Assert.Equal(framed[index], chunked[index]);
+        }
+
+        Assert.True(byFrame.CurrentGain > AdaptiveMicrophoneGain.DefaultInitialGain);
+        Assert.Equal(byFrame.CurrentGain, byChunk.CurrentGain);
+    }
+
+    // Given: 自動ゲインが有効で、100 ms に満たない端数だけが残る pipeline
+    // When: 停止相当で FlushRemainder する
+    // Then: 無音 padding した frame にもゲインを掛け、padding 部分は無音のまま
+    [Fact]
+    public void FlushRemainderAppliesGainToPaddedFrame()
+    {
+        var pipeline = new CapturedAudioFramePipeline(new WaveFormat(Pcm16FramePacketizer.SampleRate, 16, 1));
+        var partial = Pcm16Constant(40, 3277);
+        pipeline.Push(partial, partial.Length);
+
+        Assert.Empty(pipeline.ReadFrames(Pcm16FramePacketizer.SamplesPerFrame));
+        var flushed = pipeline.FlushRemainder();
+
+        var frame = Assert.Single(flushed);
+        Assert.Equal(Pcm16FramePacketizer.BytesPerFrame, frame.Length);
+        Assert.InRange(BitConverter.ToInt16(frame, 0), 13_100, 13_115);
+        Assert.InRange(BitConverter.ToInt16(frame, (partial.Length / 2 - 1) * 2), 13_100, 13_115);
+        Assert.All(frame.Skip(partial.Length), value => Assert.Equal(0, value));
+        Assert.False(pipeline.HasUnsentAudio);
+    }
+
+    private static List<byte[]> ReadAll(CapturedAudioFramePipeline pipeline, int sampleCount)
+    {
+        var frames = new List<byte[]>();
+        while (true)
+        {
+            var batch = pipeline.ReadFrames(sampleCount);
+            if (batch.Count == 0)
+            {
+                break;
+            }
+
+            frames.AddRange(batch);
+        }
+
+        frames.AddRange(pipeline.FlushRemainder());
+        return frames;
     }
 
     private static byte[] SineWave(int totalSamples, int channels, double amplitude = 0.5)

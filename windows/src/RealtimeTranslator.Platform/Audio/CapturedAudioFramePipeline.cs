@@ -11,6 +11,7 @@ namespace RealtimeTranslator.Platform.Audio;
 /// 端数の実音声に無音を混ぜて 100ms へ強制しない。完全飢餓、または端数が
 /// <see cref="KeepAliveEmptyTicks"/> tick 残ったときだけ keep-alive 無音を出す。
 /// 遅延が溜まったら oldest を捨てて最新を残す。
+/// 適応ゲインは Float32 の 100 ms frame ごとに決める（shared/protocol/audio.md の v2 契約）。
 /// </summary>
 public sealed class CapturedAudioFramePipeline
 {
@@ -23,7 +24,7 @@ public sealed class CapturedAudioFramePipeline
     private readonly BufferedWaveProvider _buffered;
     private readonly ISampleProvider _resampled;
     private readonly AdaptiveMicrophoneGain _gain;
-    private readonly Pcm16FramePacketizer _packetizer = new();
+    private readonly Float32FrameAccumulator _accumulator = new();
     private readonly object _sync = new();
 
     private float[] _readBuffer = [];
@@ -67,7 +68,7 @@ public sealed class CapturedAudioFramePipeline
 
     private long _discardedBytes;
 
-    /// <summary>packetizer 端数または未変換のデバイスバイトが残っている。</summary>
+    /// <summary>100 ms frame に満たない端数または未変換のデバイスバイトが残っている。</summary>
     public bool HasUnsentAudio
     {
         get
@@ -145,12 +146,12 @@ public sealed class CapturedAudioFramePipeline
             while ((frames?.Count ?? 0) < MaxFramesPerTick)
             {
                 var batch = ReadFramesLocked(sampleCount);
-                if (batch.Count == 0)
+                if (batch.Length == 0)
                 {
                     break;
                 }
 
-                frames ??= new List<byte[]>(batch.Count);
+                frames ??= new List<byte[]>(batch.Length);
                 frames.AddRange(batch);
             }
 
@@ -189,29 +190,29 @@ public sealed class CapturedAudioFramePipeline
             while (true)
             {
                 var batch = ReadFramesLocked(Pcm16FramePacketizer.SamplesPerFrame);
-                if (batch.Count == 0)
+                if (batch.Length == 0)
                 {
                     break;
                 }
 
-                frames ??= new List<byte[]>(batch.Count);
+                frames ??= new List<byte[]>(batch.Length);
                 frames.AddRange(batch);
             }
 
             if (_buffered.BufferedBytes > 0)
             {
                 var forced = ReadFramesLocked(Pcm16FramePacketizer.SamplesPerFrame, requireFullInput: false);
-                if (forced.Count > 0)
+                if (forced.Length > 0)
                 {
-                    frames ??= new List<byte[]>(forced.Count);
+                    frames ??= new List<byte[]>(forced.Length);
                     frames.AddRange(forced);
                 }
             }
 
-            if (_packetizer.FlushWithSilencePadding() is { } padded)
+            if (_accumulator.FlushWithSilencePadding() is { } padded)
             {
                 frames ??= new List<byte[]>(1);
-                frames.Add(padded);
+                frames.Add(_gain.ProcessFrame(padded));
             }
 
             _emptyTicks = 0;
@@ -224,13 +225,13 @@ public sealed class CapturedAudioFramePipeline
         lock (_sync)
         {
             _buffered.ClearBuffer();
-            _packetizer.Reset();
+            _accumulator.Reset();
             _emptyTicks = 0;
             _discardedBytes = 0;
         }
     }
 
-    private IReadOnlyList<byte[]> ReadFramesLocked(int sampleCount, bool requireFullInput = true)
+    private byte[][] ReadFramesLocked(int sampleCount, bool requireFullInput = true)
     {
         if (requireFullInput && _buffered.BufferedBytes < BytesRequiredForOutputSamples(sampleCount))
         {
@@ -248,12 +249,22 @@ public sealed class CapturedAudioFramePipeline
             return Array.Empty<byte[]>();
         }
 
-        var samples = _readBuffer.AsSpan(0, read);
-        var gain = _gain.Observe(samples);
-        return _packetizer.Append(Pcm16LittleEndianEncoder.Encode(samples, gain));
+        var frames = _accumulator.Append(_readBuffer.AsSpan(0, read));
+        if (frames.Count == 0)
+        {
+            return Array.Empty<byte[]>();
+        }
+
+        var encoded = new byte[frames.Count][];
+        for (var index = 0; index < frames.Count; index++)
+        {
+            encoded[index] = _gain.ProcessFrame(frames[index]);
+        }
+
+        return encoded;
     }
 
-    private bool HasUnsentAudioLocked() => _packetizer.PendingByteCount > 0 || _buffered.BufferedBytes > 0;
+    private bool HasUnsentAudioLocked() => _accumulator.PendingSampleCount > 0 || _buffered.BufferedBytes > 0;
 
     private int BytesRequiredForOutputSamples(int outputSamples)
     {

@@ -140,6 +140,7 @@ public partial class SettingsWindow : Window
         KeywordsBox.Text = settings.TranscriptionKeywordsText;
         FontSizeSlider.Value = settings.FontSize;
         RecordSubtitlesCheckBox.IsChecked = settings.RecordSubtitles;
+        AutomaticGainCheckBox.IsChecked = settings.AutomaticGainEnabled;
         UpdateFontSizeText();
         UpdateHintCounters();
     }
@@ -351,6 +352,17 @@ public partial class SettingsWindow : Window
         Publish(Settings with { RecordSubtitles = RecordSubtitlesCheckBox.IsChecked == true });
     }
 
+    private void OnAutomaticGainChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        // 自動ゲインは録音開始時に読むため、次回の録音開始から反映する。
+        Publish(Settings with { AutomaticGainEnabled = AutomaticGainCheckBox.IsChecked == true });
+    }
+
     private void OnApplyPreset(object sender, RoutedEventArgs e)
     {
         if (PresetBox.SelectedItem is not ComboOption<RealtimeSessionTuning.Preset> { Value: var preset })
@@ -484,6 +496,8 @@ public partial class SettingsWindow : Window
         NoiseReductionLabel.Text = UiCopy.Text("settings.noiseReduction");
         TranscriptionDelayLabel.Text = UiCopy.Text("settings.transcriptionDelay");
         DelayHelpText.Text = UiCopy.Text("settings.delayHelp");
+        AutomaticGainCheckBox.Content = UiCopy.Text("settings.automaticGain");
+        AutomaticGainHelpText.Text = UiCopy.Text("settings.automaticGainHelp");
         ApplyPresetButton.Content = UiCopy.Text("settings.applyPreset");
         RestoreDefaultsButton.Content = UiCopy.Text("settings.restoreDefaults");
         HintsSectionTitle.Text = UiCopy.Text("settings.section.hints");

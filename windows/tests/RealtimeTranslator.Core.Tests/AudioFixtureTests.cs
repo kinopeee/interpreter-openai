@@ -9,11 +9,15 @@ namespace RealtimeTranslator.Core.Tests;
 
 public sealed class AudioFixtureTests
 {
-    public static TheoryData<string> PacketizerCases => SharedFixtures.CaseNames("audio", "packetizer");
+    public static TheoryData<string> PacketizerCases => SharedFixtures.CaseNames("audio", "packetizer", version: 2);
 
-    public static TheoryData<string> Float32Cases => SharedFixtures.CaseNames("audio", "float32ToPcm16");
+    public static TheoryData<string> Float32Cases => SharedFixtures.CaseNames("audio", "float32ToPcm16", version: 2);
 
-    public static TheoryData<string> GainCases => GainCaseNames();
+    public static TheoryData<string> GainCases => GainSectionNames("cases");
+
+    public static TheoryData<string> GainLevelCases => GainSectionNames("level");
+
+    public static TheoryData<string> GainRampCases => GainSectionNames("ramp");
 
     // Given: shared fixture の音声フォーマット定義
     // When: packetizer の定数と照合する
@@ -22,7 +26,7 @@ public sealed class AudioFixtureTests
     public void FormatMatchesFixture()
     {
         // Given: shared audio fixture の format 定数
-        var format = SharedFixtures.Load("audio")["format"]!.AsObject();
+        var format = SharedFixtures.Load("audio", version: 2)["format"]!.AsObject();
 
         // When/Then: packetizer 定数が一致する
         Assert.Equal(SharedFixtures.Number(format["sampleRate"]), Pcm16FramePacketizer.SampleRate);
@@ -43,7 +47,7 @@ public sealed class AudioFixtureTests
     public void PacketizerMatchesFixture(string name)
     {
         // Given: packetizer fixture ケース
-        var fixture = SharedFixtures.Case("audio", "packetizer", name);
+        var fixture = SharedFixtures.Case("audio", "packetizer", name, version: 2);
         var packetizer = new Pcm16FramePacketizer();
 
         // When: append / reset を順に適用する
@@ -87,7 +91,7 @@ public sealed class AudioFixtureTests
     public void PacketizerPreservesTheInputStream()
     {
         // Given: 連続 append 用の byte 列
-        var fixture = SharedFixtures.Load("audio")["packetizerContinuity"]!.AsObject();
+        var fixture = SharedFixtures.Load("audio", version: 2)["packetizerContinuity"]!.AsObject();
         var packetizer = new Pcm16FramePacketizer();
         var input = new List<byte>();
         var emitted = new List<byte>();
@@ -128,7 +132,7 @@ public sealed class AudioFixtureTests
     public void Float32ToPcm16MatchesFixture(string name)
     {
         // Given: float32→PCM16 fixture
-        var fixture = SharedFixtures.Case("audio", "float32ToPcm16", name);
+        var fixture = SharedFixtures.Case("audio", "float32ToPcm16", name, version: 2);
 
         // When/Then: 1 サンプルの符号化結果が一致する
         Assert.Equal(
@@ -140,62 +144,129 @@ public sealed class AudioFixtureTests
         );
     }
 
-    // Given: shared fixture の適応ゲイン定数
+    // Given: shared fixture v2 の適応ゲイン定数
     // When: C# 実装の定数と照合する
-    // Then: 最小/最大ゲイン、目標ピーク、無音/クリップ閾値が一致する
+    // Then: フレーム長・ゲイン範囲・発話判定・雑音窓・上昇/下降率・リミッタ・ランプが一致する
     [Fact]
     public void GainConstantsMatchFixture()
     {
         // Given: gain 定数 fixture
-        var constants = SharedFixtures.Load("audio")["gain"]!["constants"]!.AsObject();
+        var constants = SharedFixtures.Load("audio", version: 2)["gain"]!["constants"]!.AsObject();
 
         // When/Then: AdaptiveMicrophoneGain 定数が一致する
+        Assert.Equal(SharedFixtures.Number(constants["frameSamples"]), AdaptiveMicrophoneGain.FrameSamples);
         Assert.Equal((float)SharedFixtures.Real(constants["minimumGain"]), AdaptiveMicrophoneGain.MinimumGain);
         Assert.Equal((float)SharedFixtures.Real(constants["maximumGain"]), AdaptiveMicrophoneGain.MaximumGain);
-        Assert.Equal((float)SharedFixtures.Real(constants["targetPeak"]), AdaptiveMicrophoneGain.TargetPeak);
-        Assert.Equal((float)SharedFixtures.Real(constants["silenceFloor"]), AdaptiveMicrophoneGain.SilenceFloor);
-        Assert.Equal((float)SharedFixtures.Real(constants["clipThreshold"]), AdaptiveMicrophoneGain.ClipThreshold);
         Assert.Equal(
             (float)SharedFixtures.Real(constants["defaultInitialGain"]),
             AdaptiveMicrophoneGain.DefaultInitialGain
         );
+        Assert.Equal((float)SharedFixtures.Real(constants["targetRms"]), AdaptiveMicrophoneGain.TargetRms);
+        Assert.Equal((float)SharedFixtures.Real(constants["speechRatio"]), AdaptiveMicrophoneGain.SpeechRatio);
+        Assert.Equal(
+            (float)SharedFixtures.Real(constants["speechAbsoluteFloor"]),
+            AdaptiveMicrophoneGain.SpeechAbsoluteFloor
+        );
+        Assert.Equal(
+            (float)SharedFixtures.Real(constants["digitalSilenceRms"]),
+            AdaptiveMicrophoneGain.DigitalSilenceRms
+        );
+        Assert.Equal(SharedFixtures.Number(constants["noiseWindowFrames"]), AdaptiveMicrophoneGain.NoiseWindowFrames);
+        Assert.Equal((float)SharedFixtures.Real(constants["gainRiseFactor"]), AdaptiveMicrophoneGain.GainRiseFactor);
+        Assert.Equal((float)SharedFixtures.Real(constants["gainFallFactor"]), AdaptiveMicrophoneGain.GainFallFactor);
+        Assert.Equal((float)SharedFixtures.Real(constants["clipCeiling"]), AdaptiveMicrophoneGain.ClipCeiling);
+        Assert.Equal(SharedFixtures.Number(constants["rampSamples"]), AdaptiveMicrophoneGain.RampSamples);
     }
 
-    // Given: fixture のピーク推移シナリオ
-    // When: 順に適応ゲインを更新する
-    // Then: 各ステップのゲイン値が期待値と一致する
+    // Given: fixture のフレーム列（RMS とピーク、繰り返し回数、有効/無効）
+    // When: 順に適応ゲインへ取り込む
+    // Then: 最後の持続ゲインと適用ゲインが期待値と一致する
     [Theory]
     [MemberData(nameof(GainCases))]
     public void GainMatchesFixture(string name)
     {
         // Given: gain ケースと許容誤差
-        var gainFixture = SharedFixtures.Load("audio")["gain"]!.AsObject();
-        var fixture = FindGainCase(gainFixture, name);
+        var gainFixture = SharedFixtures.Load("audio", version: 2)["gain"]!.AsObject();
+        var fixture = FindByName(gainFixture["cases"]!.AsArray(), name);
         var tolerance = SharedFixtures.Real(gainFixture["tolerance"]);
+        var isEnabled = fixture["enabled"] is null || SharedFixtures.Flag(fixture["enabled"]);
+        var gain = new AdaptiveMicrophoneGain((float)SharedFixtures.Real(fixture["initialGain"]), isEnabled);
+        var last = gain.AppliedGain;
 
-        var gain = new AdaptiveMicrophoneGain((float)SharedFixtures.Real(fixture["initialGain"]));
-        var last = gain.Gain;
-
-        // When: ピーク列または繰り返しピークを観測する
-        if (fixture["repeatPeak"] is { } repeatPeak)
+        // When: フレーム列を観測する
+        foreach (var frame in fixture["frames"]!.AsArray())
         {
-            var repeatCount = SharedFixtures.Number(fixture["repeatCount"]);
-            for (var index = 0; index < repeatCount; index += 1)
+            var repeat = SharedFixtures.OptionalNumber(frame?["repeat"]) ?? 1;
+            for (var index = 0; index < repeat; index += 1)
             {
-                last = gain.ObservePeak((float)SharedFixtures.Real(repeatPeak));
-            }
-        }
-        else
-        {
-            foreach (var peak in fixture["peaks"]!.AsArray())
-            {
-                last = gain.ObservePeak((float)SharedFixtures.Real(peak));
+                last = gain.ObserveLevel(
+                    (float)SharedFixtures.Real(frame?["rms"]),
+                    (float)SharedFixtures.Real(frame?["peak"])
+                );
             }
         }
 
-        // Then: 最終ゲインが期待値
-        Assert.Equal(SharedFixtures.Real(fixture["expectedGain"]), last, tolerance);
-        Assert.Equal(last, gain.Gain);
+        // Then: 持続ゲインと適用ゲインが期待値
+        var expected = fixture["expected"]!.AsObject();
+        Assert.Equal(SharedFixtures.Real(expected["gain"]), gain.Gain, tolerance);
+        Assert.Equal(SharedFixtures.Real(expected["appliedGain"]), last, tolerance);
+        Assert.Equal(isEnabled ? gain.AppliedGain : AdaptiveMicrophoneGain.MinimumGain, last);
+    }
+
+    // Given: fixture のサンプル列
+    // When: フレームの RMS とピークを求める
+    // Then: 期待値と一致する
+    [Theory]
+    [MemberData(nameof(GainLevelCases))]
+    public void GainLevelMatchesFixture(string name)
+    {
+        // Given: level ケース
+        var gainFixture = SharedFixtures.Load("audio", version: 2)["gain"]!.AsObject();
+        var fixture = FindByName(gainFixture["level"]!.AsArray(), name);
+        var tolerance = SharedFixtures.Real(gainFixture["tolerance"]);
+        var samples = fixture["samples"]!.AsArray().Select(value => (float)SharedFixtures.Real(value)).ToArray();
+
+        // When: レベルを測る
+        var (rms, peak) = AdaptiveMicrophoneGain.MeasureLevel(samples);
+
+        // Then: RMS とピークが期待値
+        Assert.Equal(SharedFixtures.Real(fixture["expectedRms"]), rms, tolerance);
+        Assert.Equal(SharedFixtures.Real(fixture["expectedPeak"]), peak, tolerance);
+    }
+
+    // Given: 前フレームと今回の適用ゲイン、一定値のサンプルで満たした 100 ms frame
+    // When: ランプ付きで PCM16 へ変換する
+    // Then: 指定インデックスの値が期待値と一致する
+    [Theory]
+    [MemberData(nameof(GainRampCases))]
+    public void GainRampMatchesFixture(string name)
+    {
+        // Given: ramp ケース
+        var gainFixture = SharedFixtures.Load("audio", version: 2)["gain"]!.AsObject();
+        var fixture = FindByName(gainFixture["ramp"]!.AsArray(), name);
+        var frame = new float[AdaptiveMicrophoneGain.FrameSamples];
+        Array.Fill(frame, (float)SharedFixtures.Real(fixture["sample"]));
+
+        // When: ランプ付きで変換する
+        var encoded = Pcm16LittleEndianEncoder.EncodeWithRamp(
+            frame,
+            (float)SharedFixtures.Real(fixture["previousAppliedGain"]),
+            (float)SharedFixtures.Real(fixture["appliedGain"]),
+            AdaptiveMicrophoneGain.RampSamples
+        );
+
+        // Then: 各インデックスの PCM16 が期待値
+        var indices = fixture["indices"]!.AsArray();
+        var expected = fixture["expected"]!.AsArray();
+        Assert.Equal(indices.Count, expected.Count);
+        for (var position = 0; position < indices.Count; position += 1)
+        {
+            var index = SharedFixtures.Number(indices[position]);
+            Assert.Equal(
+                (short)SharedFixtures.Number(expected[position]),
+                BinaryPrimitives.ReadInt16LittleEndian(encoded.AsSpan(index * 2, 2))
+            );
+        }
     }
 
     // Given: AGC と同じく NaN / ±Infinity が混在する float サンプル
@@ -222,48 +293,88 @@ public sealed class AudioFixtureTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new AdaptiveMicrophoneGain(float.PositiveInfinity));
     }
 
-    // Given: 有限な初期ゲイン
-    // When: 非有限ピークのあと有効ピークを観測する
-    // Then: 状態は壊れず通常のクリップ減衰が動く
+    // Given: 雑音フレームを 1 つ観測した適応ゲイン
+    // When: 非有限の RMS / ピークのあとに発話フレームを観測する
+    // Then: 非有限値は直前の適用ゲインを返して状態を変えず、非有限値を見ていない場合と同じ結果になる
     [Fact]
-    public void NonFinitePeaksDoNotCorruptGainState()
+    public void NonFiniteLevelsDoNotCorruptGainState()
     {
-        var gain = new AdaptiveMicrophoneGain(4.0f);
+        // Given: 同じ雑音フレームを観測した 2 つの適応ゲイン
+        var withNonFinite = new AdaptiveMicrophoneGain(4.0f);
+        var reference = new AdaptiveMicrophoneGain(4.0f);
+        withNonFinite.ObserveLevel(0.001f, 0.003f);
+        reference.ObserveLevel(0.001f, 0.003f);
 
-        Assert.Equal(4.0f, gain.ObservePeak(float.NaN));
-        Assert.Equal(4.0f, gain.ObservePeak(float.PositiveInfinity));
-        var recovered = gain.ObservePeak(0.3f);
+        // When: 片方だけ非有限値を挟んでから発話フレームを観測する
+        Assert.Equal(4.0f, withNonFinite.ObserveLevel(float.NaN, 0.1f));
+        Assert.Equal(4.0f, withNonFinite.ObserveLevel(0.02f, float.PositiveInfinity));
+        var recovered = withNonFinite.ObserveLevel(0.02f, 0.1f);
+        var expected = reference.ObserveLevel(0.02f, 0.1f);
 
-        Assert.True(float.IsFinite(recovered));
-        Assert.InRange(recovered, AdaptiveMicrophoneGain.MinimumGain, AdaptiveMicrophoneGain.MaximumGain);
-        Assert.Equal(0.5f / 0.3f, recovered, 0.01f);
+        // Then: 状態は壊れていない
+        Assert.Equal(expected, recovered);
+        Assert.Equal(reference.Gain, withNonFinite.Gain);
     }
 
-    // Given: 空バッファ、非有限だけ、負のサンプルが混ざったバッファ
-    // When: 本番 capture が使う Observe(float[]) で観測する
-    // Then: 空/非有限ではゲインを動かさず、波形の絶対値ピークを ObservePeak 相当に使う
+    // Given: NaN / ±Infinity と負のサンプルが混ざった frame
+    // When: レベルを測る
+    // Then: 有限なサンプルだけから RMS と絶対値ピークを求め、有限なサンプルが無ければ 0
     [Fact]
-    public void ObserveIgnoresEmptyAndNonFiniteSamplesAndTracksAbsolutePeak()
+    public void MeasureLevelIgnoresNonFiniteSamples()
     {
-        var viaObserve = new AdaptiveMicrophoneGain(4.0f);
-        var viaPeak = new AdaptiveMicrophoneGain(4.0f);
-        var viaNegativeSample = new AdaptiveMicrophoneGain(4.0f);
-        var viaAbsolutePeak = new AdaptiveMicrophoneGain(4.0f);
-        var viaNegativePeakApi = new AdaptiveMicrophoneGain(4.0f);
+        var (rms, peak) = AdaptiveMicrophoneGain.MeasureLevel([float.NaN, 0.3f, -0.4f, float.PositiveInfinity]);
+        var (emptyRms, emptyPeak) = AdaptiveMicrophoneGain.MeasureLevel([float.NaN, float.NegativeInfinity]);
 
-        Assert.Equal(4.0f, viaObserve.Observe([]));
-        Assert.Equal(4.0f, viaObserve.Observe([float.NaN, float.PositiveInfinity]));
-        var observed = viaObserve.Observe([float.NaN, -0.3f, 0.1f, float.NegativeInfinity]);
-        var peaked = viaPeak.ObservePeak(0.3f);
-        var fromNegativeSample = viaNegativeSample.Observe([-1.0f]);
-        var fromAbsolutePeak = viaAbsolutePeak.ObservePeak(1.0f);
-        var fromNegativePeakApi = viaNegativePeakApi.ObservePeak(-1.0f);
+        Assert.Equal(0.3535534f, rms, 0.0005f);
+        Assert.Equal(0.4f, peak);
+        Assert.Equal(0f, emptyRms);
+        Assert.Equal(0f, emptyPeak);
+    }
 
-        Assert.Equal(peaked, observed);
-        Assert.Equal(observed, viaObserve.Gain);
-        Assert.Equal(fromAbsolutePeak, fromNegativeSample);
-        Assert.Equal(4.0f, fromNegativePeakApi);
-        Assert.InRange(observed, AdaptiveMicrophoneGain.MinimumGain, AdaptiveMicrophoneGain.MaximumGain);
+    // Given: 初期ゲイン 4 で雑音 frame を処理した適応ゲイン
+    // When: 大きな音（ピーク 0.6）の frame を処理する
+    // Then: 先頭は前の適用ゲインからランプし、ランプ後はリミッタで 0.9 付近に収まり、持続ゲインは 20% 減に留まる
+    [Fact]
+    public void ProcessFrameRampsFromPreviousAppliedGainAndLimitsPeaks()
+    {
+        // Given: 雑音 frame を処理済み
+        var gain = new AdaptiveMicrophoneGain(4.0f);
+        var noise = new float[AdaptiveMicrophoneGain.FrameSamples];
+        Array.Fill(noise, 0.001f);
+        var noisePcm = gain.ProcessFrame(noise);
+        Assert.Equal(131, BinaryPrimitives.ReadInt16LittleEndian(noisePcm.AsSpan(0, 2)));
+
+        // When: 大きな音の frame を処理する
+        var loud = new float[AdaptiveMicrophoneGain.FrameSamples];
+        Array.Fill(loud, 0.6f);
+        var loudPcm = gain.ProcessFrame(loud);
+
+        // Then: ランプ先頭はクリップ、ランプ後はリミッタ後の値
+        Assert.Equal(AdaptiveMicrophoneGain.FrameSamples * 2, loudPcm.Length);
+        Assert.Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(loudPcm.AsSpan(0, 2)));
+        var lastIndex = AdaptiveMicrophoneGain.FrameSamples - 1;
+        Assert.Equal(29490, BinaryPrimitives.ReadInt16LittleEndian(loudPcm.AsSpan(lastIndex * 2, 2)));
+        Assert.Equal(1.5f, gain.AppliedGain, 0.0005f);
+        Assert.Equal(3.2f, gain.Gain, 0.0005f);
+    }
+
+    // Given: 自動ゲインを無効にした適応ゲイン
+    // When: 発話相当の frame を処理する
+    // Then: ゲイン 1.0 のまま変換し、状態も動かない
+    [Fact]
+    public void DisabledGainEncodesAtUnity()
+    {
+        var gain = new AdaptiveMicrophoneGain(isEnabled: false);
+        var frame = new float[AdaptiveMicrophoneGain.FrameSamples];
+        Array.Fill(frame, 0.1f);
+
+        var encoded = gain.ProcessFrame(frame);
+
+        Assert.False(gain.IsEnabled);
+        Assert.Equal(3277, BinaryPrimitives.ReadInt16LittleEndian(encoded.AsSpan(0, 2)));
+        Assert.Equal(3277, BinaryPrimitives.ReadInt16LittleEndian(encoded.AsSpan(encoded.Length - 2, 2)));
+        Assert.Equal(AdaptiveMicrophoneGain.MinimumGain, gain.Gain);
+        Assert.Equal(AdaptiveMicrophoneGain.MinimumGain, gain.AppliedGain);
     }
 
     // Given: 複数 float サンプルとゲイン
@@ -295,10 +406,10 @@ public sealed class AudioFixtureTests
         Assert.Equal("destination", tooSmall.ParamName);
     }
 
-    private static TheoryData<string> GainCaseNames()
+    private static TheoryData<string> GainSectionNames(string section)
     {
         var data = new TheoryData<string>();
-        foreach (var item in SharedFixtures.Load("audio")["gain"]!["cases"]!.AsArray())
+        foreach (var item in SharedFixtures.Load("audio", version: 2)["gain"]![section]!.AsArray())
         {
             data.Add(SharedFixtures.Text(item?["name"]));
         }
@@ -306,12 +417,9 @@ public sealed class AudioFixtureTests
         return data;
     }
 
-    private static System.Text.Json.Nodes.JsonObject FindGainCase(
-        System.Text.Json.Nodes.JsonObject gainFixture,
-        string name
-    )
+    private static System.Text.Json.Nodes.JsonObject FindByName(System.Text.Json.Nodes.JsonArray items, string name)
     {
-        foreach (var item in gainFixture["cases"]!.AsArray())
+        foreach (var item in items)
         {
             if (item is System.Text.Json.Nodes.JsonObject candidate && SharedFixtures.Text(candidate["name"]) == name)
             {

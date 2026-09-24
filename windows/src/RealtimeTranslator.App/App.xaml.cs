@@ -80,7 +80,7 @@ public partial class App : Application, IDisposable
         _overlayViewModel.FontSize = _settings.FontSize;
 
         _apiKeyStore = new CredentialManagerApiKeyStore();
-        _capture = new WasapiAudioCaptureService();
+        _capture = new WasapiAudioCaptureService(automaticGainProvider: () => _settings.AutomaticGainEnabled);
         _dualClient = CreateDualClient();
         _session = new InterpretationSession(
             _apiKeyStore,

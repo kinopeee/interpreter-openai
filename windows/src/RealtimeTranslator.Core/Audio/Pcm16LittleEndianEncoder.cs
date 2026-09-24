@@ -30,6 +30,37 @@ public static class Pcm16LittleEndianEncoder
     }
 
     /// <summary>
+    /// 先頭 <paramref name="rampSamples"/> の間は <paramref name="fromGain"/> から <paramref name="toGain"/> へ線形に移し、
+    /// 残りは <paramref name="toGain"/> で変換する。
+    /// </summary>
+    public static byte[] EncodeWithRamp(ReadOnlySpan<float> floatSamples, float fromGain, float toGain, int rampSamples)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rampSamples);
+
+        var data = new byte[floatSamples.Length * 2];
+        for (var index = 0; index < floatSamples.Length; index++)
+        {
+            BinaryPrimitives.WriteInt16LittleEndian(
+                data.AsSpan(index * 2, 2),
+                EncodeSample(floatSamples[index], RampGain(fromGain, toGain, index, rampSamples))
+            );
+        }
+
+        return data;
+    }
+
+    /// <summary>サンプル <paramref name="index"/> に掛けるランプ中のゲイン。</summary>
+    public static float RampGain(float fromGain, float toGain, int index, int rampSamples)
+    {
+        if (index >= rampSamples)
+        {
+            return toGain;
+        }
+
+        return fromGain + ((toGain - fromGain) * ((float)(index + 1) / rampSamples));
+    }
+
+    /// <summary>
     /// クリップしてから Int16.MaxValue 倍し、0 から遠い側へ四捨五入する。
     /// NaN は無音 (0)。macOS の <c>Int16(Float.nan)</c> trap を避ける契約と揃える。
     /// ±Infinity は従来どおり ±1 へクリップする。
