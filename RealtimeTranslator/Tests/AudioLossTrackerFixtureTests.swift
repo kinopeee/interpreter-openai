@@ -4,7 +4,7 @@ import XCTest
 final class AudioLossTrackerFixtureTests: XCTestCase {
     func testLossCasesMatchSharedContract() throws {
         // Given: 独立した期待値を定義する共有音声欠落fixture
-        let fixture = try SharedFixtures.load("audio")
+        let fixture = try SharedFixtures.load("audio", version: 2)
         let loss = try XCTUnwrap(fixture["loss"] as? [String: Any])
         let reconnect = try XCTUnwrap(loss["reconnect"] as? [String: Any])
         let cases = try XCTUnwrap(loss["cases"] as? [[String: Any]])

@@ -42,6 +42,40 @@ struct PCM16FramePacketizer: Sendable {
     }
 }
 
+/// 変換後の float サンプル列を 2,400 サンプル (100ms) フレームへ分割する。
+/// AGC がフレーム単位の統計を使うため、PCM16 化の前段に置く。
+struct Float32FrameAccumulator: Sendable {
+    static let frameSamples = PCM16FramePacketizer.samplesPerFrame
+
+    private var pending: [Float] = []
+
+    var pendingSampleCount: Int { pending.count }
+
+    mutating func append(_ samples: UnsafeBufferPointer<Float>) -> [[Float]] {
+        guard let baseAddress = samples.baseAddress, !samples.isEmpty else { return [] }
+        pending.append(contentsOf: UnsafeBufferPointer(start: baseAddress, count: samples.count))
+        var frames: [[Float]] = []
+        while pending.count >= Self.frameSamples {
+            frames.append(Array(pending.prefix(Self.frameSamples)))
+            pending.removeFirst(Self.frameSamples)
+        }
+        return frames
+    }
+
+    /// 正常停止時に端数を 0.0 padding して 2,400 サンプルの 1 フレームを返す。
+    mutating func flushWithSilencePadding() -> [Float]? {
+        guard !pending.isEmpty else { return nil }
+        var frame = pending
+        pending.removeAll(keepingCapacity: true)
+        frame.append(contentsOf: repeatElement(0, count: Self.frameSamples - frame.count))
+        return frame
+    }
+
+    mutating func reset() {
+        pending.removeAll(keepingCapacity: true)
+    }
+}
+
 enum PCM16LittleEndianEncoder {
     /// Float32 interleaved / non-interleaved mono buffer を PCM16 LE へ変換する。
     ///
