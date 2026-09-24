@@ -209,6 +209,16 @@
       "en": "Higher values improve recognition of short utterances and delay subtitle display."
     },
     {
+      "key": "settings.automaticGain",
+      "ja": "マイク音量を自動調整する",
+      "en": "Automatically adjust microphone level"
+    },
+    {
+      "key": "settings.automaticGainHelp",
+      "ja": "小さな声を聞き取りやすくします。変更は次の録音開始から反映されます。",
+      "en": "Makes quiet speech easier to recognize. Changes take effect from the next recording."
+    },
+    {
       "key": "settings.applyPreset",
       "ja": "プリセットを適用",
       "en": "Apply preset"

@@ -319,6 +319,11 @@ private struct SettingsSpeechRecognitionTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
+                Toggle(UiCopy.text("settings.automaticGain"), isOn: $settings.automaticGainEnabled)
+                Text(UiCopy.text("settings.automaticGainHelp"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 HStack {
                     Menu(UiCopy.text("settings.applyPreset")) {
                         ForEach(RealtimeSessionTuning.Preset.all) { preset in

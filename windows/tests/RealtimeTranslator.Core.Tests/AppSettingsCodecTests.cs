@@ -29,6 +29,7 @@ public sealed class AppSettingsCodecTests
             RecordSubtitles = true,
             LanguagePair = LanguagePair.EnEs,
             UiLanguage = UiLanguagePreference.En,
+            AutomaticGainEnabled = false,
         };
 
         var restored = AppSettingsCodec.Decode(AppSettingsCodec.Encode(settings));
@@ -36,6 +37,7 @@ public sealed class AppSettingsCodecTests
         Assert.Equal(settings, restored);
         Assert.True(restored.HasAcceptedCurrentConsent);
         Assert.True(restored.RecordSubtitles);
+        Assert.False(restored.AutomaticGainEnabled);
         Assert.Equal(LanguagePair.EnEs, restored.LanguagePair);
         Assert.Equal(UiLanguagePreference.En, restored.UiLanguage);
     }
@@ -124,6 +126,15 @@ public sealed class AppSettingsCodecTests
     {
         var settings = AppSettingsCodec.Decode("{\"fontSize\":32}");
         Assert.False(settings.RecordSubtitles);
+    }
+
+    // Given: automaticGainEnabled を含まない古い settings.json
+    // When: 読み込む
+    // Then: 既定の true になる
+    [Fact]
+    public void DecodeMissingAutomaticGainEnabledDefaultsToTrue()
+    {
+        Assert.True(AppSettingsCodec.Decode("{\"fontSize\":32}").AutomaticGainEnabled);
     }
 
     // Given: 言語ペアを含まない旧 settings.json

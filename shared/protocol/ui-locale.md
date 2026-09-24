@@ -198,6 +198,8 @@ CI（`shared-contracts`）へ `locales/ui.json` の schema 検査ステップを
 | `settings.noiseReduction` / `.nearField` / `.farField` | ノイズ低減とその選択肢 |
 | `settings.transcriptionDelay` / `.minimal` … `.xhigh` | 認識遅延とその選択肢 |
 | `settings.delayHelp` | 値を上げると… |
+| `settings.automaticGain` | マイク音量を自動調整する |
+| `settings.automaticGainHelp` | 小さな声を聞き取りやすくします。変更は次の録音開始から… |
 | `settings.applyPreset` / `settings.restoreDefaults` | プリセットを適用 / デフォルトに戻す |
 | `settings.preset.softwareDevelopment` 等 | ソフトウェア開発 / ビジネス会議 / ハッカソン |
 | `settings.section.recognition` / `.hints` / `.subtitles` / `.controls` / `.apiKey` | セクション見出し（認識設定 / 認識ヒント / 字幕 / 操作 / API キー） |

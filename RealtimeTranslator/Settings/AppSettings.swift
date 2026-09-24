@@ -26,6 +26,7 @@ final class AppSettings {
         static let noiseReductionMode = "noiseReductionMode"
         static let transcriptionDelayMode = "transcriptionDelayMode"
         static let recordSubtitles = "recordSubtitles"
+        static let automaticGainEnabled = "automaticGainEnabled"
         static let languagePair = "languagePair"
         static let uiLanguage = "uiLanguage"
     }
@@ -87,6 +88,13 @@ final class AppSettings {
     /// オプトイン時のみ確定字幕をローカルファイルへ追記する。
     var recordSubtitles: Bool {
         didSet { UserDefaults.standard.set(recordSubtitles, forKey: Keys.recordSubtitles) }
+    }
+
+    /// 適応マイクゲイン。変更は次の録音開始から反映される。
+    var automaticGainEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(automaticGainEnabled, forKey: Keys.automaticGainEnabled)
+        }
     }
 
     var languagePair: LanguagePair {
@@ -173,6 +181,7 @@ final class AppSettings {
         }
 
         recordSubtitles = defaults.bool(forKey: Keys.recordSubtitles)
+        automaticGainEnabled = defaults.object(forKey: Keys.automaticGainEnabled) as? Bool ?? true
         uiLanguage = UiLanguagePreference.parse(defaults.string(forKey: Keys.uiLanguage))
         // 他プロパティ初期化後に代入し、init 中の self 参照を避ける。
         languagePair = pair

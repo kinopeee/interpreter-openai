@@ -22,7 +22,8 @@ public sealed record AppSettingsData(
     RealtimeTranscriptionDelay TranscriptionDelay,
     bool RecordSubtitles,
     LanguagePair LanguagePair = LanguagePair.JaEn,
-    UiLanguagePreference UiLanguage = UiLanguagePreference.System
+    UiLanguagePreference UiLanguage = UiLanguagePreference.System,
+    bool AutomaticGainEnabled = true
 )
 {
     /// <summary>同意文言を変えたら上げる。上げると再同意を求める。</summary>
@@ -76,6 +77,7 @@ public static class AppSettingsCodec
             writer.WriteBoolean("recordSubtitles", settings.RecordSubtitles);
             writer.WriteString("languagePair", settings.LanguagePair.ToWireValue());
             writer.WriteString("uiLanguage", settings.UiLanguage.ToWireValue());
+            writer.WriteBoolean("automaticGainEnabled", settings.AutomaticGainEnabled);
             writer.WriteEndObject();
         }
 
@@ -114,7 +116,8 @@ public static class AppSettingsCodec
             TranscriptionDelay(dictionary) ?? defaults.TranscriptionDelay,
             Boolean(dictionary, "recordSubtitles") ?? false,
             Pair(dictionary) ?? defaults.LanguagePair,
-            UiLanguage.Parse(Text(dictionary, "uiLanguage"))
+            UiLanguage.Parse(Text(dictionary, "uiLanguage")),
+            Boolean(dictionary, "automaticGainEnabled") ?? true
         );
     }
 

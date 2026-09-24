@@ -77,6 +77,15 @@
                    TextWrapping="Wrap"
                    Margin="0,0,0,10" />
 
+        <CheckBox x:Name="AutomaticGainCheckBox"
+                  Margin="0,0,0,4"
+                  Checked="OnAutomaticGainChanged"
+                  Unchecked="OnAutomaticGainChanged" />
+        <TextBlock x:Name="AutomaticGainHelpText"
+                   Foreground="Gray"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,10" />
+
         <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
           <ComboBox x:Name="PresetBox" Width="220" DisplayMemberPath="DisplayName" />
           <Button x:Name="ApplyPresetButton" Margin="8,0,0,0" Padding="10,2" Click="OnApplyPreset" />
