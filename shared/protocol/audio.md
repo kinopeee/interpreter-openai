@@ -40,7 +40,7 @@ feeder の順序は 変換 → float フレーム化 → 各フレームで AGC 
 
 ## Float32 → PCM16 変換
 
-`sample * gain` を `[-1.0, 1.0]` へクリップし、`Int16.MaxValue` (32767) 倍して**四捨五入**（round-half-away-from-zero）する。非有限サンプルは 0 にする。
+`sample * gain` を `[-1.0, 1.0]` へクリップし、`Int16.MaxValue` (32767) 倍して**四捨五入**（round-half-away-from-zero）する。NaN は 0、±Infinity はクリップ規則により ±32767 になる。
 
 ## 適応マイクゲイン（v2: RMS ベース）
 
