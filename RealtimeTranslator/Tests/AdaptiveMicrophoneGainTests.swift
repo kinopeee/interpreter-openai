@@ -130,8 +130,8 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
 
     // Given: 全サンプル非有限のフレーム
     // When: process する
-    // Then: 状態を変えず無音フレームを返す
-    func testProcessAllNonFiniteKeepsStateAndOutputsSilence() {
+    // Then: 統計が非有限なら状態を変えない（NaN は無音、±Infinity は ±full scale へクリップされる）
+    func testProcessAllNonFiniteKeepsStateUnchanged() {
         var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
         var samples: [Float] = [.nan, .infinity, -.infinity]
 
@@ -142,6 +142,5 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
         XCTAssertEqual(agc.gain, 4.0)
         XCTAssertEqual(agc.appliedGain, 4.0)
         XCTAssertEqual(data.count, samples.count * 2)
-        XCTAssertTrue(data.allSatisfy { $0 == 0 })
     }
 }

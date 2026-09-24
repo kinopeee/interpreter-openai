@@ -38,6 +38,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
     );
 
     private readonly Func<MMDevice>? _deviceFactory;
+
+    /// <summary>録音開始時に一度だけ読み、適応マイクゲインの有効/無効を決める。</summary>
+    private readonly Func<bool>? _automaticGainProvider;
     private readonly object _sync = new();
 
     private Channel<CapturedAudioFrame> _frames = CreateFrameChannel();
@@ -49,10 +52,15 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
     private bool _stopRequested = true;
     private int _captureGeneration;
 
-    public WasapiAudioCaptureService(Func<MMDevice>? deviceFactory = null, TimeProvider? timeProvider = null)
+    public WasapiAudioCaptureService(
+        Func<MMDevice>? deviceFactory = null,
+        TimeProvider? timeProvider = null,
+        Func<bool>? automaticGainProvider = null
+    )
     {
         _deviceFactory = deviceFactory;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _automaticGainProvider = automaticGainProvider;
     }
 
     public ChannelReader<CapturedAudioFrame> Frames
@@ -94,7 +102,11 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
             throw new AudioCaptureException(UserCopy.Current.Text("error.micNotFound"), error);
         }
 
-        var pipeline = new CapturedAudioFramePipeline(capture.WaveFormat);
+        var automaticGainEnabled = _automaticGainProvider?.Invoke() ?? true;
+        var pipeline = new CapturedAudioFramePipeline(
+            capture.WaveFormat,
+            new AdaptiveMicrophoneGain(isEnabled: automaticGainEnabled)
+        );
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         // Dispose 後の cts.Token 参照で ObjectDisposedException にならないよう、先に捕捉する。
         var pumpToken = cts.Token;

@@ -23,6 +23,7 @@ public sealed class CapturedAudioFramePipeline
     private readonly BufferedWaveProvider _buffered;
     private readonly ISampleProvider _resampled;
     private readonly AdaptiveMicrophoneGain _gain;
+    private readonly Float32FrameAccumulator _accumulator = new();
     private readonly Pcm16FramePacketizer _packetizer = new();
     private readonly object _sync = new();
 
@@ -208,6 +209,16 @@ public sealed class CapturedAudioFramePipeline
                 }
             }
 
+            // 停止時は float 端数を無音 padding した 1 フレームを同じ経路で処理する。
+            if (_accumulator.FlushWithSilencePadding() is { } remainder)
+            {
+                foreach (var packet in _packetizer.Append(_gain.Process(remainder)))
+                {
+                    frames ??= new List<byte[]>(1);
+                    frames.Add(packet);
+                }
+            }
+
             if (_packetizer.FlushWithSilencePadding() is { } padded)
             {
                 frames ??= new List<byte[]>(1);
@@ -224,6 +235,7 @@ public sealed class CapturedAudioFramePipeline
         lock (_sync)
         {
             _buffered.ClearBuffer();
+            _accumulator.Reset();
             _packetizer.Reset();
             _emptyTicks = 0;
             _discardedBytes = 0;
@@ -249,11 +261,22 @@ public sealed class CapturedAudioFramePipeline
         }
 
         var samples = _readBuffer.AsSpan(0, read);
-        var gain = _gain.Observe(samples);
-        return _packetizer.Append(Pcm16LittleEndianEncoder.Encode(samples, gain));
+        List<byte[]>? emitted = null;
+        // 4,800 bytes = 1 packet。float フレームごとに AGC + ランプ付き PCM16 化する。
+        foreach (var frame in _accumulator.Append(samples))
+        {
+            foreach (var packet in _packetizer.Append(_gain.Process(frame)))
+            {
+                emitted ??= new List<byte[]>(1);
+                emitted.Add(packet);
+            }
+        }
+
+        return emitted ?? (IReadOnlyList<byte[]>)Array.Empty<byte[]>();
     }
 
-    private bool HasUnsentAudioLocked() => _packetizer.PendingByteCount > 0 || _buffered.BufferedBytes > 0;
+    private bool HasUnsentAudioLocked() =>
+        _packetizer.PendingByteCount > 0 || _accumulator.PendingSampleCount > 0 || _buffered.BufferedBytes > 0;
 
     private int BytesRequiredForOutputSamples(int outputSamples)
     {
