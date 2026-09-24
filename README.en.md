@@ -96,6 +96,7 @@ Open Settings from the menu bar. There are three tabs.
 | --- | --- |
 | Noise reduction | `Near-field mic` (`near_field`) or `Far-field mic` (`far_field`, default). Changes apply on the next recording start. |
 | Recognition delay | `delay` for `gpt-live-transcribe`. Higher values improve short-utterance accuracy and slow subtitles. Default is `Low latency` (`low`). Options: fastest / low latency / balanced / high accuracy / highest accuracy. |
+| Adjust microphone level automatically | On by default. Adjusts the level in 100 ms frames only while you speak and does not raise it for background noise alone. A sudden loud sound is limited only within its own 100 ms frame. Changes apply on the next recording start. |
 | Presets | Apply recognition prompt and keywords together (software development / business meeting / hackathon). |
 | Recognition prompt | Context hints such as conversation domain (max 1,000 characters). |
 | Keywords | Terms to prioritize (proper nouns, etc.). One word per line, max 64. `<` and `>` are stripped before send. |
@@ -225,7 +226,7 @@ Tabs and fields match macOS (General / Speech recognition / Subtitles & controls
 | API key | Stored/deleted in Windows Credential Manager (generic credential `RealtimeTranslator:openai-api-key`). Never written to the settings file. |
 | Start/stop | Tray menu, or `Control + Alt + Space`. |
 | Subtitle position | Drag via tray **Edit subtitle position**, then save. |
-| Settings path | `%LOCALAPPDATA%\RealtimeTranslator\settings.json` (font size, subtitle position, consent, recognition prompt/keywords/delay/noise reduction, display language). |
+| Settings path | `%LOCALAPPDATA%\RealtimeTranslator\settings.json` (font size, subtitle position, consent, recognition prompt/keywords/delay/noise reduction/automatic microphone level, display language). |
 
 Prompt, keyword, and recognition-delay changes apply to the session within a few seconds even while recording. Noise-reduction changes apply on the next recording start.
 
