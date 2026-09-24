@@ -528,10 +528,12 @@ public sealed class AudioFixtureTests
     {
         var agc = new AdaptiveMicrophoneGain(4.0f);
 
-        // NaN は無音だが ±Infinity はスカラー規則どおり ±full scale へクリップされる。
-        // Process が状態を変えないことを検証するのが目的なので、バイト値は問わない。
+        // NaN は無音 (0)、+Inf は +32767、-Inf は -32767 にクリップされる。
         var nonFinite = agc.Process([float.NaN, float.PositiveInfinity, float.NegativeInfinity]);
         Assert.Equal(3 * 2, nonFinite.Length);
+        Assert.Equal(0, BinaryPrimitives.ReadInt16LittleEndian(nonFinite.AsSpan(0, 2)));
+        Assert.Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(nonFinite.AsSpan(2, 2)));
+        Assert.Equal(-short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(nonFinite.AsSpan(4, 2)));
         Assert.Equal(4.0f, agc.Gain);
         Assert.Equal(4.0f, agc.AppliedGain);
 

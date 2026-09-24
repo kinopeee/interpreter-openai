@@ -243,5 +243,10 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
         XCTAssertEqual(agc.gain, 4.0)
         XCTAssertEqual(agc.appliedGain, 4.0)
         XCTAssertEqual(data.count, samples.count * 2)
+        // NaN は無音 (0)、+Inf は +32767、-Inf は -32767 にクリップされる。
+        let pcm = data.withUnsafeBytes { rawBuffer in
+            Array(rawBuffer.bindMemory(to: Int16.self))
+        }
+        XCTAssertEqual(pcm, [0, Int16.max, -Int16.max])
     }
 }
