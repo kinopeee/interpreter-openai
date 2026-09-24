@@ -235,8 +235,8 @@ public sealed class AudioFixtureTests
         );
         Assert.Equal((float)SharedFixtures.Real(constants["noiseCeiling"]), AdaptiveMicrophoneGain.NoiseCeiling);
         Assert.Equal(
-            (float)SharedFixtures.Real(constants["noiseFloorEpsilon"]),
-            AdaptiveMicrophoneGain.NoiseFloorEpsilon
+            (float)SharedFixtures.Real(constants["noiseFloorMinimum"]),
+            AdaptiveMicrophoneGain.NoiseFloorMinimum
         );
         Assert.Equal((float)SharedFixtures.Real(constants["noiseFloorRise"]), AdaptiveMicrophoneGain.NoiseFloorRise);
         Assert.Equal((float)SharedFixtures.Real(constants["gainRise"]), AdaptiveMicrophoneGain.GainRise);
@@ -308,7 +308,8 @@ public sealed class AudioFixtureTests
             var encoded = AdaptiveMicrophoneGain.EncodePcm16(
                 samples,
                 (float)SharedFixtures.Real(fixture["previousAppliedGain"]),
-                (float)SharedFixtures.Real(fixture["appliedGain"])
+                (float)SharedFixtures.Real(fixture["appliedGain"]),
+                (float)SharedFixtures.Real(fixture["peak"])
             );
 
             foreach (var checkItem in fixture["checks"]!.AsArray())
@@ -320,6 +321,49 @@ public sealed class AudioFixtureTests
                     BinaryPrimitives.ReadInt16LittleEndian(encoded.AsSpan(index * 2, 2))
                 );
             }
+        }
+    }
+
+    // Given: 無音で noiseFloor が下限に落ちた状態
+    // When: 一定ノイズのフレームを続けて観測する
+    // Then: noiseCap 以下へ gain が下がり、発話として暴騰し続けない
+    [Fact]
+    public void SteadyNoiseAfterSilenceFallsToNoiseCap()
+    {
+        var agc = new AdaptiveMicrophoneGain(initialGain: 4.0f);
+        for (var index = 0; index < 5; index += 1)
+        {
+            agc.Observe(0f, 0f);
+        }
+
+        for (var index = 0; index < 400; index += 1)
+        {
+            agc.Observe(0.004f, 0.012f);
+        }
+
+        Assert.Equal(2.5f, agc.Gain, 0.0005);
+        Assert.Equal(2.5f, agc.AppliedGain, 0.0005);
+    }
+
+    // Given: 前フレームで高い appliedGain だった状態からの大きな音のフレーム
+    // When: Process する
+    // Then: ランプ先頭を含め全サンプルがフレーム peak 上限 (29490) 以内に収まる
+    [Fact]
+    public void DescendingRampIsCappedByFramePeakLimit()
+    {
+        var agc = new AdaptiveMicrophoneGain(initialGain: 4.0f);
+        var quiet = new float[AdaptiveMicrophoneGain.FrameSamples];
+        agc.Process(quiet);
+        Assert.Equal(4.0f, agc.AppliedGain);
+
+        var loud = new float[AdaptiveMicrophoneGain.FrameSamples];
+        Array.Fill(loud, 0.8f);
+        var encoded = agc.Process(loud);
+
+        for (var index = 0; index < AdaptiveMicrophoneGain.FrameSamples; index += 1)
+        {
+            var sample = BinaryPrimitives.ReadInt16LittleEndian(encoded.AsSpan(index * 2, 2));
+            Assert.InRange(Math.Abs((int)sample), 0, 29490);
         }
     }
 

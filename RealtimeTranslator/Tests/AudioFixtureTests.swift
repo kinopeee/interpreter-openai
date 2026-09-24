@@ -254,8 +254,8 @@ final class AudioFixtureTests: XCTestCase {
             AdaptiveMicrophoneGain.noiseCeiling
         )
         XCTAssertEqual(
-            Float(SharedFixtures.real(constants["noiseFloorEpsilon"])),
-            AdaptiveMicrophoneGain.noiseFloorEpsilon
+            Float(SharedFixtures.real(constants["noiseFloorMinimum"])),
+            AdaptiveMicrophoneGain.noiseFloorMinimum
         )
         XCTAssertEqual(
             Float(SharedFixtures.real(constants["noiseFloorRise"])),
@@ -367,7 +367,8 @@ final class AudioFixtureTests: XCTestCase {
                     floatSamples: buffer.baseAddress!,
                     frameCount: buffer.count,
                     previousAppliedGain: Float(SharedFixtures.real(fixture["previousAppliedGain"])),
-                    appliedGain: Float(SharedFixtures.real(fixture["appliedGain"]))
+                    appliedGain: Float(SharedFixtures.real(fixture["appliedGain"])),
+                    peak: Float(SharedFixtures.real(fixture["peak"]))
                 )
             }
             let pcm = data.withUnsafeBytes { rawBuffer in

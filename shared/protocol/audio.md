@@ -54,7 +54,7 @@ feeder の順序は 変換 → float フレーム化 → 各フレームで AGC 
 | 発話判定比 | 3.16 |
 | 発話絶対フロア | 0.003 |
 | ノイズ上限 | 0.01 |
-| ノイズフロア epsilon | 1e-6 |
+| ノイズフロア下限 | 0.0001 |
 | ノイズフロア上昇率 | 1.01 |
 | ゲイン上昇率 | 1.12 |
 | ゲイン下降率 | 0.8 |
@@ -75,8 +75,9 @@ feeder の順序は 変換 → float フレーム化 → 各フレームで AGC 
 1. `isEnabled == false` → `1.0` を返し、状態を変えない（ゲインは 1.0 素通し）。
 2. `rms` または `peak` が非有限 → 現在の `appliedGain` を返し、状態を変えない。
 3. `rms = max(0, rms)`、`peak = max(0, peak)`。
-4. `noiseFloor` 未観測または `rms < noiseFloor` → `noiseFloor = rms`。それ以外 → `noiseFloor = min(noiseFloor * 1.01, rms)`。
-5. `noiseCap = clamp(0.01 / max(noiseFloor, 1e-6))`。
+4. `floored = max(rms, 0.0001)`。`noiseFloor` 未観測または `floored < noiseFloor` → `noiseFloor = floored`。それ以外 → `noiseFloor = min(noiseFloor * 1.01, floored)`。
+   `noiseFloor` は下限 0.0001 を下回らないため、デジタル無音で 0 に固定されることはない。
+5. `noiseCap = clamp(0.01 / noiseFloor)`。
 6. `isSpeech = rms >= 0.003 && rms >= noiseFloor * 3.16`。
 7. 発話時: `desired = min(clamp(0.1 / rms), noiseCap)`。
    - `desired > gain` → `gain = min(desired, gain * 1.12)`（フレームあたり最大 12% の上昇）。
@@ -87,13 +88,16 @@ feeder の順序は 変換 → float フレーム化 → 各フレームで AGC 
 
 ### ランプ付き PCM16 化
 
-`encodePCM16(previousAppliedGain, appliedGain, samples)` はフレーム先頭 `rampSamples`（120）サンプルで
+`encodePCM16(previousAppliedGain, appliedGain, samples, peak)` はフレーム先頭 `rampSamples`（120）サンプルで
 `previous` から `current` へ線形にゲインを遷移させ、ゲイン不連続のクリック音を防ぐ。
 
 - `i < 120`: `g = previous + (current - previous) * ((i + 1) / 120)`。`i >= 120`: `g = current`。
+- `peak > 0` のときフレーム共通の上限 `limit = max(minimumGain, 0.9 / peak)` を計算し、`g = min(g, limit)`。
+  `limit` は `maximumGain` では clamp せず、`peak > 0.9` なら `limit = 1.0`（下限 `minimumGain`）になる。
+  これにより大音量フレームではランプ先頭の高いゲインでもクリップしない。
 - 各サンプルは上記の Float32 → PCM16 変換規則で `g` を掛けてから符号化する。
 
-便宜 API `process(samples)`: `frameStatistics` → `observe` → ランプ付き PCM16 化を一括して行う。
+便宜 API `process(samples)`: `frameStatistics` → `observe` → ランプ付き PCM16 化を一括して行う（`peak` は `frameStatistics` の値をそのまま渡す）。
 disabled の場合は previous / applied とも 1.0 で平坦（ゲイン 1.0 素通し）になる。
 
 期待値は `shared/fixtures/v2/audio.json` の `gain`（定数・cases・ramp）と `frameStatistics` が正本。

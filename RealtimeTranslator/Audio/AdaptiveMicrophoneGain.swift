@@ -19,7 +19,8 @@ struct AdaptiveMicrophoneGain: Sendable {
     static let speechAbsoluteFloor: Float = 0.003
     /// noiseFloor に比例して許容する増幅の天井。静かな環境での暴騰を防ぐ。
     static let noiseCeiling: Float = 0.01
-    static let noiseFloorEpsilon: Float = 1e-6
+    /// noiseFloor の下限。デジタル無音 (rms=0) で noiseFloor が 0 に固定されないようにする。
+    static let noiseFloorMinimum: Float = 0.0001
     /// 非発話中に noiseFloor が上がるペース。
     static let noiseFloorRise: Float = 1.01
     /// フレームあたりのゲイン上昇上限。
@@ -53,14 +54,15 @@ struct AdaptiveMicrophoneGain: Sendable {
         let rms = max(0, rms)
         let peak = max(0, peak)
 
-        if let floor = noiseFloor, rms >= floor {
-            noiseFloor = min(floor * Self.noiseFloorRise, rms)
+        let floored = max(rms, Self.noiseFloorMinimum)
+        if let floor = noiseFloor, floored >= floor {
+            noiseFloor = min(floor * Self.noiseFloorRise, floored)
         } else {
-            noiseFloor = rms
+            noiseFloor = floored
         }
 
-        let floor = noiseFloor ?? rms
-        let noiseCap = Self.clamp(Self.noiseCeiling / max(floor, Self.noiseFloorEpsilon))
+        let floor = noiseFloor ?? floored
+        let noiseCap = Self.clamp(Self.noiseCeiling / floor)
         let isSpeech = rms >= Self.speechAbsoluteFloor && rms >= floor * Self.speechRatio
 
         if isSpeech {
@@ -102,22 +104,27 @@ struct AdaptiveMicrophoneGain: Sendable {
     }
 
     /// previousAppliedGain → appliedGain へ先頭 rampSamples を線形ランプしながら PCM16 LE へ変換する。
+    /// peak > 0 のとき各サンプルのゲインを clipCeiling/peak (下限 minimumGain) 以下に抑え、
+    /// ランプ先頭でもクリップしない。
     static func encodePCM16(
         floatSamples: UnsafePointer<Float>,
         frameCount: Int,
         previousAppliedGain: Float,
-        appliedGain: Float
+        appliedGain: Float,
+        peak: Float
     ) -> Data {
+        let limit = peak > 0 ? max(Self.minimumGain, Self.clipCeiling / peak) : .infinity
         var data = Data(count: frameCount * 2)
         data.withUnsafeMutableBytes { rawBuffer in
             let output = rawBuffer.bindMemory(to: Int16.self)
             for index in 0..<frameCount {
-                let gain =
+                let ramp =
                     index < Self.rampSamples
                     ? previousAppliedGain
                         + (appliedGain - previousAppliedGain)
                         * (Float(index + 1) / Float(Self.rampSamples))
                     : appliedGain
+                let gain = min(ramp, limit)
                 output[index] = Self.encodeSample(floatSamples[index], gain: gain)
             }
         }
@@ -136,7 +143,8 @@ struct AdaptiveMicrophoneGain: Sendable {
             floatSamples: floatSamples,
             frameCount: frameCount,
             previousAppliedGain: previous,
-            appliedGain: applied
+            appliedGain: applied,
+            peak: statistics.peak
         )
     }
 

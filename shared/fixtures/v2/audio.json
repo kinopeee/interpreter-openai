@@ -278,7 +278,7 @@
       "speechRatio": 3.16,
       "speechAbsoluteFloor": 0.003,
       "noiseCeiling": 0.01,
-      "noiseFloorEpsilon": 1e-06,
+      "noiseFloorMinimum": 0.0001,
       "noiseFloorRise": 1.01,
       "gainRise": 1.12,
       "gainFall": 0.8,
@@ -760,6 +760,26 @@
         }
       },
       {
+        "name": "silence then steady noise is eventually capped",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.0,
+            "peak": 0.0,
+            "repeat": 5
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 400
+          }
+        ],
+        "expectedFinal": {
+          "gain": 2.5,
+          "appliedGain": 2.5
+        }
+      },
+      {
         "name": "non-finite statistics are ignored",
         "initialGain": 4.0,
         "frames": [
@@ -898,6 +918,7 @@
           "previousAppliedGain": 1.0,
           "appliedGain": 3.0,
           "sample": 0.1,
+          "peak": 0.1,
           "checks": [
             {
               "index": 0,
@@ -926,6 +947,7 @@
           "previousAppliedGain": 4.0,
           "appliedGain": 1.5,
           "sample": -0.2,
+          "peak": 0.2,
           "checks": [
             {
               "index": 0,
@@ -958,6 +980,7 @@
           "previousAppliedGain": 2.0,
           "appliedGain": 2.0,
           "sample": 0.1,
+          "peak": 0.1,
           "checks": [
             {
               "index": 0,
@@ -974,26 +997,81 @@
           ]
         },
         {
-          "name": "ramp output is clipped before PCM16 conversion",
+          "name": "ramp rises to the limiter gain without clipping",
           "previousAppliedGain": 1.0,
-          "appliedGain": 8.0,
+          "appliedGain": 1.8,
           "sample": 0.5,
+          "peak": 0.5,
           "checks": [
             {
               "index": 0,
-              "expectedPcm16": 17339
+              "expectedPcm16": 16493
             },
             {
               "index": 30,
-              "expectedPcm16": 32767
+              "expectedPcm16": 19769
             },
             {
               "index": 119,
-              "expectedPcm16": 32767
+              "expectedPcm16": 29490
             },
             {
               "index": 2399,
-              "expectedPcm16": 32767
+              "expectedPcm16": 29490
+            }
+          ]
+        },
+        {
+          "name": "descending ramp is capped by the frame peak limit",
+          "previousAppliedGain": 4.0,
+          "appliedGain": 1.125,
+          "sample": 0.8,
+          "peak": 0.8,
+          "checks": [
+            {
+              "index": 0,
+              "expectedPcm16": 29490
+            },
+            {
+              "index": 1,
+              "expectedPcm16": 29490
+            },
+            {
+              "index": 60,
+              "expectedPcm16": 29490
+            },
+            {
+              "index": 119,
+              "expectedPcm16": 29490
+            },
+            {
+              "index": 120,
+              "expectedPcm16": 29490
+            },
+            {
+              "index": 2399,
+              "expectedPcm16": 29490
+            }
+          ]
+        },
+        {
+          "name": "peak above the clip ceiling still applies unity gain",
+          "previousAppliedGain": 3.0,
+          "appliedGain": 1.0,
+          "sample": 0.95,
+          "peak": 0.95,
+          "checks": [
+            {
+              "index": 0,
+              "expectedPcm16": 31129
+            },
+            {
+              "index": 119,
+              "expectedPcm16": 31129
+            },
+            {
+              "index": 2399,
+              "expectedPcm16": 31129
             }
           ]
         }

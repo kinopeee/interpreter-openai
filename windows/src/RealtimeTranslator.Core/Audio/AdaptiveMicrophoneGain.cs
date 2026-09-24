@@ -30,7 +30,8 @@ public sealed class AdaptiveMicrophoneGain
     /// <summary>noiseFloor に比例して許容する増幅の天井。静かな環境での暴騰を防ぐ。</summary>
     public const float NoiseCeiling = 0.01f;
 
-    public const float NoiseFloorEpsilon = 1e-6f;
+    /// <summary>noiseFloor の下限。デジタル無音 (rms=0) で noiseFloor が 0 に固定されないようにする。</summary>
+    public const float NoiseFloorMinimum = 0.0001f;
 
     /// <summary>非発話中に noiseFloor が上がるペース。</summary>
     public const float NoiseFloorRise = 1.01f;
@@ -86,9 +87,11 @@ public sealed class AdaptiveMicrophoneGain
         rms = MathF.Max(0f, rms);
         peak = MathF.Max(0f, peak);
 
-        _noiseFloor = _noiseFloor is not { } floor || rms < floor ? rms : MathF.Min(floor * NoiseFloorRise, rms);
+        var floored = MathF.Max(rms, NoiseFloorMinimum);
+        _noiseFloor =
+            _noiseFloor is not { } floor || floored < floor ? floored : MathF.Min(floor * NoiseFloorRise, floored);
 
-        var noiseCap = Clamp(NoiseCeiling / MathF.Max(_noiseFloor.Value, NoiseFloorEpsilon));
+        var noiseCap = Clamp(NoiseCeiling / _noiseFloor.Value);
         var isSpeech = rms >= SpeechAbsoluteFloor && rms >= _noiseFloor.Value * SpeechRatio;
 
         if (isSpeech)
@@ -141,16 +144,26 @@ public sealed class AdaptiveMicrophoneGain
         return ((float)Math.Sqrt(sum / count), peak);
     }
 
-    /// <summary>previousAppliedGain → appliedGain へ先頭 RampSamples を線形ランプしながら PCM16 LE へ変換する。</summary>
-    public static byte[] EncodePcm16(ReadOnlySpan<float> samples, float previousAppliedGain, float appliedGain)
+    /// <summary>
+    /// previousAppliedGain → appliedGain へ先頭 RampSamples を線形ランプしながら PCM16 LE へ変換する。
+    /// peak > 0 のとき各サンプルのゲインを ClipCeiling/peak (下限 MinimumGain) 以下に抑え、ランプ先頭でもクリップしない。
+    /// </summary>
+    public static byte[] EncodePcm16(
+        ReadOnlySpan<float> samples,
+        float previousAppliedGain,
+        float appliedGain,
+        float peak
+    )
     {
+        var limit = peak > 0f ? MathF.Max(MinimumGain, ClipCeiling / peak) : float.PositiveInfinity;
         var data = new byte[samples.Length * 2];
         for (var index = 0; index < samples.Length; index += 1)
         {
-            var gain =
+            var ramp =
                 index < RampSamples
                     ? previousAppliedGain + ((appliedGain - previousAppliedGain) * ((index + 1) / (float)RampSamples))
                     : appliedGain;
+            var gain = MathF.Min(ramp, limit);
             BinaryPrimitives.WriteInt16LittleEndian(
                 data.AsSpan(index * 2, 2),
                 Pcm16LittleEndianEncoder.EncodeSample(samples[index], gain)
@@ -166,7 +179,7 @@ public sealed class AdaptiveMicrophoneGain
         var (rms, peak) = FrameStatistics(samples);
         var previous = AppliedGain;
         var applied = Observe(rms, peak);
-        return EncodePcm16(samples, previous, applied);
+        return EncodePcm16(samples, previous, applied, peak);
     }
 
     private static float Clamp(float value)

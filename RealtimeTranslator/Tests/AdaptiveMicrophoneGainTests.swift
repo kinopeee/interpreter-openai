@@ -114,7 +114,8 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
                 floatSamples: buffer.baseAddress!,
                 frameCount: buffer.count,
                 previousAppliedGain: 1.0,
-                appliedGain: 3.0
+                appliedGain: 3.0,
+                peak: 0.1
             )
         }
 
@@ -126,6 +127,44 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
         XCTAssertEqual(pcm[AdaptiveMicrophoneGain.rampSamples], Int16((0.1 * 3.0 * 32767).rounded()))
         XCTAssertEqual(pcm[pcm.count - 1], pcm[AdaptiveMicrophoneGain.rampSamples])
         XCTAssertLessThan(pcm[0], pcm[AdaptiveMicrophoneGain.rampSamples])
+    }
+
+    // Given: 無音で noiseFloor が下限に落ちた状態
+    // When: 一定ノイズのフレームを続けて観測する
+    // Then: noiseCap 以下へ gain が下がり、発話として暴騰し続けない
+    func testSteadyNoiseAfterSilenceFallsToNoiseCap() {
+        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
+        for _ in 0..<5 {
+            _ = agc.observe(rms: 0, peak: 0)
+        }
+        for _ in 0..<400 {
+            _ = agc.observe(rms: 0.004, peak: 0.012)
+        }
+
+        XCTAssertEqual(agc.gain, 2.5, accuracy: 0.0005)
+        XCTAssertEqual(agc.appliedGain, 2.5, accuracy: 0.0005)
+    }
+
+    // Given: 前フレームで高い appliedGain だった状態からの大きな音のフレーム
+    // When: process する
+    // Then: ランプ先頭を含め全サンプルがフレーム peak 上限 (29490) 以内に収まる
+    func testDescendingRampIsCappedByFramePeakLimit() {
+        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
+        var quiet = [Float](repeating: 0, count: AdaptiveMicrophoneGain.frameSamples)
+        _ = quiet.withUnsafeBufferPointer { buffer in
+            agc.process(floatSamples: buffer.baseAddress!, frameCount: buffer.count)
+        }
+        XCTAssertEqual(agc.appliedGain, 4.0)
+
+        var loud = [Float](repeating: 0.8, count: AdaptiveMicrophoneGain.frameSamples)
+        let data = loud.withUnsafeBufferPointer { buffer in
+            agc.process(floatSamples: buffer.baseAddress!, frameCount: buffer.count)
+        }
+
+        let pcm = data.withUnsafeBytes { rawBuffer in
+            Array(rawBuffer.bindMemory(to: Int16.self))
+        }
+        XCTAssertTrue(pcm.allSatisfy { abs(Int($0)) <= 29490 })
     }
 
     // Given: 全サンプル非有限のフレーム
