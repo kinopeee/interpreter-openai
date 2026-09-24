@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shared/fixtures/v1 の schema↔fixture 1:1 と、locales/ui.json を検証する。
+# shared/fixtures/v*/ の schema↔fixture 1:1 と、locales/ui.json を検証する。
 # GitHub Actions（.github/workflows/shared-contracts.yml）と
 # Origin + Depot CI（.depot/workflows/shared-contracts.yml）の正本。
 #

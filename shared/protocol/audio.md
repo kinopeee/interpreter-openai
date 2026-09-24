@@ -22,32 +22,81 @@
 - 4,800 バイトを超える端数が残ることはないが、超えた場合は先頭 4,800 バイトへ切り詰める。
 - `Reset()` は端数を破棄する。
 
-期待値は `shared/fixtures/v1/audio.json` の `packetizer` ケースが正本。
+期待値は `shared/fixtures/v2/audio.json` の `packetizer` ケースが正本。
+
+## 100 ms float フレーム化
+
+変換後の float サンプル列は PCM16 化する前に 2,400 サンプル単位へ分割する。
+`Float32FrameAccumulator`（macOS: `Float32FrameAccumulator` / Windows: 同名クラス）の不変条件:
+
+- `Append(samples)` は 2,400 サンプルちょうどのフレーム列を返し、端数を内部に保持する。
+- `FlushWithSilencePadding()` は端数を 0.0 で 2,400 サンプルへ padding して 1 フレーム返す。端数が無ければ `nil` / `null`。
+- `Reset()` は端数を破棄する。
+
+feeder の順序は 変換 → float フレーム化 → 各フレームで AGC → PCM16 → packetizer へ渡す。
+停止時は端数を無音 padding した 1 フレームを同じ経路で処理してから終了する。
+
+期待値は `shared/fixtures/v2/audio.json` の `float32Framing` ケースが正本。
 
 ## Float32 → PCM16 変換
 
-`sample * gain` を `[-1.0, 1.0]` へクリップし、`Int16.MaxValue` (32767) 倍して**四捨五入**（round-half-away-from-zero）する。
+`sample * gain` を `[-1.0, 1.0]` へクリップし、`Int16.MaxValue` (32767) 倍して**四捨五入**（round-half-away-from-zero）する。非有限サンプルは 0 にする。
 
-## 適応マイクゲイン
+## 適応マイクゲイン（v2: RMS ベース）
 
 | 定数 | 値 |
 |---|---|
+| フレームサンプル数 | 2,400 |
 | 最小ゲイン | 1.0 |
 | 最大ゲイン | 8.0 |
-| 目標ピーク | 0.5（約 -6 dBFS） |
-| 無音フロア | 0.005 |
-| クリップ閾値 | 0.95 |
 | 初期ゲイン | 4.0 |
+| 目標 RMS | 0.1 |
+| 発話判定比 | 3.16 |
+| 発話絶対フロア | 0.003 |
+| ノイズ上限 | 0.01 |
+| ノイズフロア epsilon | 1e-6 |
+| ノイズフロア上昇率 | 1.01 |
+| ゲイン上昇率 | 1.12 |
+| ゲイン下降率 | 0.8 |
+| クリップ天井 | 0.9 |
+| ランプサンプル数 | 120 |
 
-ピーク追跡: 新しいピークが追跡値以上なら即反映、下回るなら `tracked*0.9 + peak*0.1`。
+状態: `gain`（持続）、`appliedGain`（直前の適用ゲイン）、`noiseFloor`（未観測は空）、`isEnabled`。
+初期化: `gain = clamp(initialGain)`（非有限なら最小ゲイン。Windows 版は従来どおり `ArgumentOutOfRangeException`）、`appliedGain = isEnabled ? gain : 1.0`。
+`clamp(x) = min(maximumGain, max(minimumGain, x))`。
 
-1. `tracked * gain >= 0.95` かつ `tracked > 0` → fast attack。`gain = clamp(min(gain, 0.5/tracked))` を返して終了。
-2. `tracked < 0.005` → 無音。ゲインを動かさない。
-3. それ以外 → `desired = clamp(0.5/tracked)`。
-   - `desired > gain` なら slow release: `gain = clamp(min(desired, gain*1.05))`
-   - `desired < gain` なら `gain = clamp(max(desired, gain*0.85))`
+### フレーム統計
 
-期待値は `shared/fixtures/v1/audio.json` の `gain` ケースが正本。
+`frameStatistics(samples)` は非有限サンプルを除外し、有限サンプルが 0 個なら `(NaN, NaN)` を返す。
+`rms = sqrt(Σx² / count)`、`peak = max(|x|)`。累積は両実装とも `Double` 相当で行う。
+
+### observe(rms, peak)
+
+1. `isEnabled == false` → `1.0` を返し、状態を変えない（ゲインは 1.0 素通し）。
+2. `rms` または `peak` が非有限 → 現在の `appliedGain` を返し、状態を変えない。
+3. `rms = max(0, rms)`、`peak = max(0, peak)`。
+4. `noiseFloor` 未観測または `rms < noiseFloor` → `noiseFloor = rms`。それ以外 → `noiseFloor = min(noiseFloor * 1.01, rms)`。
+5. `noiseCap = clamp(0.01 / max(noiseFloor, 1e-6))`。
+6. `isSpeech = rms >= 0.003 && rms >= noiseFloor * 3.16`。
+7. 発話時: `desired = min(clamp(0.1 / rms), noiseCap)`。
+   - `desired > gain` → `gain = min(desired, gain * 1.12)`（フレームあたり最大 12% の上昇）。
+   - `desired < gain` → `gain = max(desired, gain * 0.8)`。
+   非発話時: `gain > noiseCap` なら `gain = max(noiseCap, gain * 0.8)`。それ以外は不変。
+8. `applied = peak > 0 ? min(gain, 0.9 / peak) : gain`。`appliedGain = clamp(applied)` を返す。
+   クリップ limiter は当該フレームの適用ゲインだけを下げ、持続する `gain` は変えない。
+
+### ランプ付き PCM16 化
+
+`encodePCM16(previousAppliedGain, appliedGain, samples)` はフレーム先頭 `rampSamples`（120）サンプルで
+`previous` から `current` へ線形にゲインを遷移させ、ゲイン不連続のクリック音を防ぐ。
+
+- `i < 120`: `g = previous + (current - previous) * ((i + 1) / 120)`。`i >= 120`: `g = current`。
+- 各サンプルは上記の Float32 → PCM16 変換規則で `g` を掛けてから符号化する。
+
+便宜 API `process(samples)`: `frameStatistics` → `observe` → ランプ付き PCM16 化を一括して行う。
+disabled の場合は previous / applied とも 1.0 で平坦（ゲイン 1.0 素通し）になる。
+
+期待値は `shared/fixtures/v2/audio.json` の `gain`（定数・cases・ramp）と `frameStatistics` が正本。
 
 ## 実装側の並行性要求
 

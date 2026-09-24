@@ -55,7 +55,7 @@ OpenAI Realtime Translation によるリアルタイム字幕アプリ。macOS 2
 
 ## 共有契約の正本
 
-- `shared/fixtures/v<N>/` は両実装のバージョン付き契約正本。現行の subtitle 契約は v2、その他は v1 とし、Swift テストと Windows 版の同値性を保つ。既存の subtitle v1 も保持し、`scripts/ci-shared-contracts.sh` で全バージョンを検査する。
+- `shared/fixtures/v<N>/` は両実装のバージョン付き契約正本。現行の subtitle と audio 契約は v2、その他は v1 とし、Swift テストと Windows 版の同値性を保つ。既存の subtitle v1 と audio v1 も保持し、`scripts/ci-shared-contracts.sh` で全バージョンを検査する。
 
 ## コード整形
 
