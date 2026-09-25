@@ -289,7 +289,12 @@ internal static class TranscribeCommand
             connection.Dispose();
             if (drain is not null)
             {
-                await Task.WhenAny(drain, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false);
+                var finished = await Task.WhenAny(drain, Task.Delay(TimeSpan.FromSeconds(5)))
+                    .ConfigureAwait(false);
+                if (!ReferenceEquals(finished, drain))
+                {
+                    streamError ??= "drain timeout";
+                }
             }
         }
 

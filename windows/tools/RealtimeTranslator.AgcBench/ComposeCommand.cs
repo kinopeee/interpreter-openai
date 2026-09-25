@@ -24,6 +24,23 @@ internal static class ComposeCommand
             );
         }
 
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var duplicates = new List<string>();
+        foreach (var scenario in scenarios.Items)
+        {
+            if (!seen.Add(scenario.Id) && !duplicates.Contains(scenario.Id))
+            {
+                duplicates.Add(scenario.Id);
+            }
+        }
+
+        if (duplicates.Count > 0)
+        {
+            throw new InvalidDataException(
+                $"{scenariosPath}: シナリオ id が重複しています: {string.Join(",", duplicates)}"
+            );
+        }
+
         Directory.CreateDirectory(outDir);
         var corpus = new Corpus();
         foreach (var scenario in scenarios.Items)
@@ -61,6 +78,11 @@ internal static class ComposeCommand
         }
 
         var total = leading + voice.Length + trailing;
+        if (total == 0)
+        {
+            throw new InvalidDataException($"{scenario.Id}: 出力が 0 サンプルです。");
+        }
+
         var samples = new float[total];
         Array.Copy(voice, 0, samples, leading, voice.Length);
 

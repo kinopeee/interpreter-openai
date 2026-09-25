@@ -63,6 +63,11 @@ internal static class ProcessCommand
         string outDir
     )
     {
+        if (samples.Length == 0)
+        {
+            throw new InvalidDataException($"{clip.Id}: 0 サンプルのクリップは処理できません。");
+        }
+
         var accumulator = new Float32FrameAccumulator();
         var frames = new List<float[]>();
         frames.AddRange(accumulator.Append(samples));

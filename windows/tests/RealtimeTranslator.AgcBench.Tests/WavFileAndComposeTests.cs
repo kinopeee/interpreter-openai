@@ -295,6 +295,65 @@ public class ComposeTests : IDisposable
         Assert.True(clickSample > 0.9f, $"click sample {clickSample}");
     }
 
+    // Given: 同じ id を 2 回持つ scenarios.json
+    // When: compose する
+    // Then: 重複 id を挙げた InvalidDataException で、ファイルは書かれない
+    [Fact]
+    public void DuplicateScenarioIdsAreRejected()
+    {
+        var scenario = new Scenario { Id = "dup", TrailingSilenceMs = 100 };
+        var scenariosPath = Path.Combine(_dir, $"scenarios-dup-{Guid.NewGuid():N}.json");
+        File.WriteAllText(
+            scenariosPath,
+            JsonSerializer.Serialize(new Scenarios { Items = [scenario, scenario] }, Json.Options)
+        );
+        var outDir = Path.Combine(_dir, $"corpus-dup-{Guid.NewGuid():N}");
+
+        var options = CliOptions.Parse(["--scenarios", scenariosPath, "--out", outDir]);
+        var error = Assert.Throws<InvalidDataException>(() => ComposeCommand.Run(options));
+        Assert.Contains("dup", error.Message);
+        Assert.False(Directory.Exists(outDir));
+    }
+
+    // Given: corpus.json のクリップ id が重複
+    // When: Corpus.Load する
+    // Then: 重複 id を挙げた InvalidDataException
+    [Fact]
+    public void DuplicateClipIdsAreRejectedOnLoad()
+    {
+        var corpusDir = Path.Combine(_dir, $"corpus-dup2-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(corpusDir);
+        new Corpus
+        {
+            Clips = [new CorpusClip { Id = "same", File = "a.wav" }, new CorpusClip { Id = "same", File = "b.wav" }],
+        }.Save(corpusDir);
+
+        var error = Assert.Throws<InvalidDataException>(() => Corpus.Load(corpusDir));
+        Assert.Contains("same", error.Message);
+    }
+
+    // Given: base も無音も無いシナリオ (出力 0 サンプル)
+    // When: compose する
+    // Then: InvalidDataException
+    [Fact]
+    public void EmptyClipIsRejected()
+    {
+        var options = CliOptions.Parse([
+            "--scenarios",
+            WriteScenariosJson(new Scenario { Id = "empty" }),
+            "--out",
+            Path.Combine(_dir, $"corpus-empty-{Guid.NewGuid():N}"),
+        ]);
+        Assert.Throws<InvalidDataException>(() => ComposeCommand.Run(options));
+    }
+
+    private string WriteScenariosJson(params Scenario[] scenarios)
+    {
+        var path = Path.Combine(_dir, $"scenarios-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(new Scenarios { Items = [.. scenarios] }, Json.Options));
+        return path;
+    }
+
     private static double Rms(float[] samples, int start, int length)
     {
         double sum = 0;

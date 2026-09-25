@@ -33,6 +33,21 @@ internal sealed record Corpus
         var corpus =
             JsonSerializer.Deserialize<Corpus>(File.ReadAllText(path), Json.Options)
             ?? throw new InvalidDataException($"{path}: corpus.json の解析に失敗しました。");
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var duplicates = new List<string>();
+        foreach (var clip in corpus.Clips)
+        {
+            if (!seen.Add(clip.Id) && !duplicates.Contains(clip.Id))
+            {
+                duplicates.Add(clip.Id);
+            }
+        }
+
+        if (duplicates.Count > 0)
+        {
+            throw new InvalidDataException($"{path}: クリップ id が重複しています: {string.Join(",", duplicates)}");
+        }
+
         return corpus;
     }
 
