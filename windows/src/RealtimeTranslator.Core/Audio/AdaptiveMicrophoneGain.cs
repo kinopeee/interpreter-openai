@@ -38,6 +38,9 @@ public sealed class AdaptiveMicrophoneGain
     /// <summary>noiseFloor の推定に使う直近フレーム数。揃うまでフロアは未確定とし、noiseCap で下げない。</summary>
     public const int NoiseFloorWindowFrames = 30;
 
+    /// <summary>窓内でこの順位（小さい方から）の値を noiseFloor とする。1 フレームの谷ではフロアが下がらない。</summary>
+    public const int NoiseFloorRank = 4;
+
     /// <summary>フレームあたりのゲイン上昇上限。</summary>
     public const float GainRise = 1.12f;
 
@@ -89,9 +92,9 @@ public sealed class AdaptiveMicrophoneGain
         rms = MathF.Max(0f, rms);
         peak = MathF.Max(0f, peak);
 
-        // 直近 30 フレームの floored RMS の最小値を noiseFloor とする。
-        // 語間の無音が窓内にあれば発話中もフロアは低く保たれ、
-        // 定常ノイズは窓が入れ替わる 3 秒以内にフロアへ反映される。
+        // 直近 30 フレームの floored RMS の 4 番目に小さい値を noiseFloor とする。
+        // 400 ms 以上の無音が窓内にあれば発話中もフロアは低く保たれ、
+        // 1 フレームだけの谷ではフロアは下がらない。
         var floored = MathF.Max(rms, NoiseFloorMinimum);
         _rmsHistory.Add(floored);
         if (_rmsHistory.Count > NoiseFloorWindowFrames)
@@ -99,7 +102,7 @@ public sealed class AdaptiveMicrophoneGain
             _rmsHistory.RemoveAt(0);
         }
 
-        var noiseFloor = _rmsHistory.Min();
+        var noiseFloor = _rmsHistory.Order().ElementAt(Math.Min(NoiseFloorRank, _rmsHistory.Count) - 1);
         var confirmed = _rmsHistory.Count == NoiseFloorWindowFrames;
         var noiseCap = Clamp(NoiseCeiling / noiseFloor);
         var isSpeech = rms >= SpeechAbsoluteFloor && rms >= noiseFloor * SpeechRatio;

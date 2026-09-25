@@ -262,6 +262,10 @@ final class AudioFixtureTests: XCTestCase {
             AdaptiveMicrophoneGain.noiseFloorWindowFrames
         )
         XCTAssertEqual(
+            SharedFixtures.number(constants["noiseFloorRank"]),
+            AdaptiveMicrophoneGain.noiseFloorRank
+        )
+        XCTAssertEqual(
             Float(SharedFixtures.real(constants["gainRise"])),
             AdaptiveMicrophoneGain.gainRise
         )

@@ -131,23 +131,24 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
 
     // Given: 録音開始直後から発話が続く系列（未確定フロア）
     // When: 観測する
-    // Then: フロア未確定の間は下げず、小さなポーズのあとは発話として上がる
+    // Then: フロア未確定の間は下げず、4 フレームのポーズのあとは発話として上がる
     func testSpeechFromStartKeepsGainUntilFirstPause() {
         var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
         var trace: [Float] = []
         for (rms, peak) in [(Float(0.01), Float(0.03)), (0.02, 0.06), (0.01, 0.03)]
             + Array(repeating: (Float(0.02), Float(0.06)), count: 4)
+            + Array(repeating: (Float(0.001), Float(0.003)), count: 4)
+            + Array(repeating: (Float(0.02), Float(0.06)), count: 4)
         {
             _ = agc.observe(rms: rms, peak: peak)
             trace.append(agc.gain)
         }
-        XCTAssertTrue(trace.allSatisfy { $0 == 4.0 })
 
-        _ = agc.observe(rms: 0.001, peak: 0.003)
-        _ = agc.observe(rms: 0.02, peak: 0.06)
-        XCTAssertEqual(agc.gain, 4.48, accuracy: 0.0005)
-        _ = agc.observe(rms: 0.02, peak: 0.06)
-        XCTAssertEqual(agc.gain, 5.0, accuracy: 0.0005)
+        XCTAssertEqual(
+            trace.map { Double($0) },
+            Array(repeating: 4.0, count: 11) + [4.48, 5.0, 5.0, 5.0],
+            accuracy: 0.0005
+        )
     }
 
     // Given: フロア確定 (30フレーム) に満たない一定ノイズ
@@ -187,6 +188,46 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
         XCTAssertEqual(agc.gain, 5.0, accuracy: 0.0005)
     }
 
+    // Given: ポーズを挟まない 0.01 / 0.02 交互の変動発話
+    // When: フロア確定 (30 フレーム) を超えて観測する
+    // Then: 途切れない発話はノイズと判定され、noiseCap まで gain が下がる
+    func testAlternatingSpeechWithoutPauseIsTreatedAsNoise() {
+        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
+        var trace: [Float] = []
+        for index in 0..<40 {
+            let (rms, peak) = index % 2 == 0 ? (Float(0.01), Float(0.03)) : (Float(0.02), Float(0.06))
+            _ = agc.observe(rms: rms, peak: peak)
+            trace.append(agc.gain)
+        }
+
+        XCTAssertTrue(trace[0...28].allSatisfy { $0 == 4.0 })
+        XCTAssertEqual(trace[29], 3.2, accuracy: 0.0005)
+        XCTAssertEqual(trace[30], 2.56, accuracy: 0.0005)
+        XCTAssertEqual(trace[35], 1.0, accuracy: 0.0005)
+        XCTAssertTrue(trace[35...].allSatisfy { $0 == 1.0 })
+    }
+
+    // Given: 定常ノイズに 20 フレーム周期で 1 フレームの谷が混じる系列
+    // When: 600 フレーム観測する
+    // Then: 1 フレームの谷はフロアを下げず、gain は 4.0 を超えず noiseCap (2.5) で頭打ちになる
+    func testPeriodicDipInSteadyNoiseDoesNotRaiseGain() {
+        var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
+        var trace: [Float] = []
+        for _ in 0..<30 {
+            for _ in 0..<19 {
+                _ = agc.observe(rms: 0.004, peak: 0.012)
+                trace.append(agc.gain)
+            }
+            _ = agc.observe(rms: 0.001, peak: 0.003)
+            trace.append(agc.gain)
+        }
+
+        XCTAssertTrue(trace.allSatisfy { $0 <= 4.0 })
+        XCTAssertEqual(trace[29], 3.2, accuracy: 0.0005)
+        XCTAssertEqual(trace[31], 2.5, accuracy: 0.0005)
+        XCTAssertEqual(trace[599], 2.5, accuracy: 0.0005)
+    }
+
     // Given: 無音で noiseFloor が下限に落ちた状態
     // When: 一定ノイズのフレームを続けて観測する
     // Then: 窓がノイズで埋まるまで上がり、確定後は noiseCap (2.5) まで下がる
@@ -201,7 +242,9 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
         }
 
         XCTAssertEqual(trace[12].gain, 8.0, accuracy: 0.0005)
-        XCTAssertEqual(trace[33].gain, 8.0, accuracy: 0.0005)
+        XCTAssertEqual(trace[33].gain, 4.096, accuracy: 0.0005)
+        XCTAssertEqual(trace[34].gain, 3.2768, accuracy: 0.0005)
+        XCTAssertEqual(trace[35].gain, 2.62144, accuracy: 0.0005)
         XCTAssertEqual(trace[40].gain, 2.5, accuracy: 0.0005)
         XCTAssertEqual(agc.gain, 2.5, accuracy: 0.0005)
         XCTAssertEqual(agc.appliedGain, 2.5, accuracy: 0.0005)

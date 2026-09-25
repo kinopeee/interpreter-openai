@@ -280,6 +280,7 @@
       "noiseCeiling": 0.01,
       "noiseFloorMinimum": 0.0001,
       "noiseFloorWindowFrames": 30,
+      "noiseFloorRank": 4,
       "gainRise": 1.12,
       "gainFall": 0.8,
       "clipCeiling": 0.9,
@@ -489,7 +490,8 @@
         "frames": [
           {
             "rms": 0.001,
-            "peak": 0.003
+            "peak": 0.003,
+            "repeat": 30
           },
           {
             "rms": 0.02,
@@ -497,76 +499,94 @@
             "repeat": 16
           }
         ],
-        "expectedTrace": [
+        "expectedCheckpoints": [
           {
+            "index": 29,
             "gain": 1.0,
             "appliedGain": 1.0
           },
           {
+            "index": 30,
             "gain": 1.12,
             "appliedGain": 1.12
           },
           {
+            "index": 31,
             "gain": 1.2544,
             "appliedGain": 1.2544
           },
           {
+            "index": 32,
             "gain": 1.404928,
             "appliedGain": 1.404928
           },
           {
+            "index": 33,
             "gain": 1.573519,
             "appliedGain": 1.573519
           },
           {
+            "index": 34,
             "gain": 1.762342,
             "appliedGain": 1.762342
           },
           {
+            "index": 35,
             "gain": 1.973823,
             "appliedGain": 1.973823
           },
           {
+            "index": 36,
             "gain": 2.210681,
             "appliedGain": 2.210681
           },
           {
+            "index": 37,
             "gain": 2.475963,
             "appliedGain": 2.475963
           },
           {
+            "index": 38,
             "gain": 2.773079,
             "appliedGain": 2.773079
           },
           {
+            "index": 39,
             "gain": 3.105848,
             "appliedGain": 3.105848
           },
           {
+            "index": 40,
             "gain": 3.47855,
             "appliedGain": 3.47855
           },
           {
+            "index": 41,
             "gain": 3.895976,
             "appliedGain": 3.895976
           },
           {
+            "index": 42,
             "gain": 4.363493,
             "appliedGain": 4.363493
           },
           {
+            "index": 43,
             "gain": 4.887112,
             "appliedGain": 4.887112
           },
           {
+            "index": 44,
             "gain": 5.0,
             "appliedGain": 5.0
           },
           {
+            "index": 45,
             "gain": 5.0,
             "appliedGain": 5.0
           }
         ],
+        "expectedMaxGain": 5.0,
         "expectedFinal": {
           "gain": 5.0,
           "appliedGain": 5.0
@@ -578,7 +598,8 @@
         "frames": [
           {
             "rms": 0.001,
-            "peak": 0.003
+            "peak": 0.003,
+            "repeat": 30
           },
           {
             "rms": 0.1,
@@ -586,52 +607,64 @@
             "repeat": 10
           }
         ],
-        "expectedTrace": [
+        "expectedCheckpoints": [
           {
+            "index": 29,
             "gain": 8.0,
             "appliedGain": 8.0
           },
           {
+            "index": 30,
             "gain": 6.4,
             "appliedGain": 3.0
           },
           {
+            "index": 31,
             "gain": 5.12,
             "appliedGain": 3.0
           },
           {
+            "index": 32,
             "gain": 4.096,
             "appliedGain": 3.0
           },
           {
+            "index": 33,
             "gain": 3.2768,
             "appliedGain": 3.0
           },
           {
+            "index": 34,
             "gain": 2.62144,
             "appliedGain": 2.62144
           },
           {
+            "index": 35,
             "gain": 2.097152,
             "appliedGain": 2.097152
           },
           {
+            "index": 36,
             "gain": 1.677722,
             "appliedGain": 1.677722
           },
           {
+            "index": 37,
             "gain": 1.342177,
             "appliedGain": 1.342177
           },
           {
+            "index": 38,
             "gain": 1.073742,
             "appliedGain": 1.073742
           },
           {
+            "index": 39,
             "gain": 1.0,
             "appliedGain": 1.0
           }
         ],
+        "expectedMaxGain": 8.0,
         "expectedFinal": {
           "gain": 1.0,
           "appliedGain": 1.0
@@ -718,7 +751,8 @@
           },
           {
             "rms": 0.001,
-            "peak": 0.003
+            "peak": 0.003,
+            "repeat": 4
           },
           {
             "rms": 0.02,
@@ -727,6 +761,18 @@
           }
         ],
         "expectedTrace": [
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
           {
             "gain": 4.0,
             "appliedGain": 4.0
@@ -782,7 +828,7 @@
         }
       },
       {
-        "name": "a quiet pause inside the window keeps the floor low during speech",
+        "name": "a pause of noiseFloorRank frames inside the window keeps the floor low during speech",
         "initialGain": 4.0,
         "frames": [
           {
@@ -793,25 +839,27 @@
           {
             "rms": 0.02,
             "peak": 0.06,
-            "repeat": 29
+            "repeat": 26
           },
           {
             "rms": 0.001,
-            "peak": 0.003
+            "peak": 0.003,
+            "repeat": 4
           },
           {
             "rms": 0.02,
             "peak": 0.06,
-            "repeat": 29
+            "repeat": 26
           },
           {
             "rms": 0.001,
-            "peak": 0.003
+            "peak": 0.003,
+            "repeat": 4
           },
           {
             "rms": 0.02,
             "peak": 0.06,
-            "repeat": 29
+            "repeat": 26
           }
         ],
         "expectedCheckpoints": [
@@ -841,12 +889,12 @@
             "appliedGain": 5.0
           },
           {
-            "index": 59,
+            "index": 58,
             "gain": 5.0,
             "appliedGain": 5.0
           },
           {
-            "index": 118,
+            "index": 115,
             "gain": 5.0,
             "appliedGain": 5.0
           }
@@ -855,6 +903,645 @@
         "expectedFinal": {
           "gain": 5.0,
           "appliedGain": 5.0
+        }
+      },
+      {
+        "name": "a pause shorter than noiseFloorRank frames does not keep the floor low",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 30
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 26
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 3
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 27
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 29,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 35,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 55,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 56,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 59,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 60,
+            "gain": 3.2,
+            "appliedGain": 3.2
+          },
+          {
+            "index": 61,
+            "gain": 2.56,
+            "appliedGain": 2.56
+          },
+          {
+            "index": 66,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 85,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          }
+        ],
+        "expectedMaxGain": 5.0,
+        "expectedFinal": {
+          "gain": 1.0,
+          "appliedGain": 1.0
+        }
+      },
+      {
+        "name": "alternating speech without a pause is treated as noise once the floor is confirmed",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 0,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 1,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 28,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 29,
+            "gain": 3.2,
+            "appliedGain": 3.2
+          },
+          {
+            "index": 30,
+            "gain": 2.56,
+            "appliedGain": 2.56
+          },
+          {
+            "index": 31,
+            "gain": 2.048,
+            "appliedGain": 2.048
+          },
+          {
+            "index": 35,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 36,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 39,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          }
+        ],
+        "expectedMaxGain": 4.0,
+        "expectedFinal": {
+          "gain": 1.0,
+          "appliedGain": 1.0
+        }
+      },
+      {
+        "name": "a periodic single-frame dip in steady noise does not raise the gain",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 18,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 19,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 20,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 29,
+            "gain": 3.2,
+            "appliedGain": 3.2
+          },
+          {
+            "index": 30,
+            "gain": 2.56,
+            "appliedGain": 2.56
+          },
+          {
+            "index": 31,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 39,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 40,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 59,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 60,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 299,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 599,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          }
+        ],
+        "expectedMaxGain": 4.0,
+        "expectedFinal": {
+          "gain": 2.5,
+          "appliedGain": 2.5
         }
       },
       {
@@ -937,17 +1624,17 @@
             "appliedGain": 4.0
           },
           {
-            "gain": 3.333333,
+            "gain": 4.0,
             "appliedGain": 1.125
           },
           {
-            "gain": 3.333333,
-            "appliedGain": 3.333333
+            "gain": 4.0,
+            "appliedGain": 4.0
           }
         ],
         "expectedFinal": {
-          "gain": 3.333333,
-          "appliedGain": 3.333333
+          "gain": 4.0,
+          "appliedGain": 4.0
         }
       },
       {
@@ -973,17 +1660,17 @@
             "appliedGain": 4.0
           },
           {
-            "gain": 4.48,
+            "gain": 4.0,
             "appliedGain": 1.8
           },
           {
-            "gain": 5.0,
-            "appliedGain": 5.0
+            "gain": 4.0,
+            "appliedGain": 4.0
           }
         ],
         "expectedFinal": {
-          "gain": 5.0,
-          "appliedGain": 5.0
+          "gain": 4.0,
+          "appliedGain": 4.0
         }
       },
       {
@@ -1005,12 +1692,12 @@
             "appliedGain": 4.0
           },
           {
-            "gain": 3.2,
+            "gain": 4.0,
             "appliedGain": 1.0
           }
         ],
         "expectedFinal": {
-          "gain": 3.2,
+          "gain": 4.0,
           "appliedGain": 1.0
         }
       },
@@ -1046,14 +1733,24 @@
             "appliedGain": 8.0
           },
           {
-            "index": 59,
+            "index": 56,
             "gain": 6.4,
             "appliedGain": 6.4
           },
           {
-            "index": 60,
+            "index": 57,
             "gain": 5.12,
             "appliedGain": 5.12
+          },
+          {
+            "index": 59,
+            "gain": 3.2768,
+            "appliedGain": 3.2768
+          },
+          {
+            "index": 60,
+            "gain": 2.62144,
+            "appliedGain": 2.62144
           },
           {
             "index": 66,
@@ -1105,18 +1802,18 @@
           },
           {
             "index": 33,
-            "gain": 8.0,
-            "appliedGain": 8.0
+            "gain": 4.096,
+            "appliedGain": 4.096
           },
           {
             "index": 34,
-            "gain": 6.4,
-            "appliedGain": 6.4
+            "gain": 3.2768,
+            "appliedGain": 3.2768
           },
           {
             "index": 35,
-            "gain": 5.12,
-            "appliedGain": 5.12
+            "gain": 2.62144,
+            "appliedGain": 2.62144
           },
           {
             "index": 40,
@@ -1170,29 +1867,29 @@
             "appliedGain": 4.0
           },
           {
-            "gain": 4.48,
-            "appliedGain": 4.48
+            "gain": 4.0,
+            "appliedGain": 4.0
           },
           {
-            "gain": 4.48,
-            "appliedGain": 4.48
+            "gain": 4.0,
+            "appliedGain": 4.0
           },
           {
-            "gain": 4.48,
-            "appliedGain": 4.48
+            "gain": 4.0,
+            "appliedGain": 4.0
           },
           {
-            "gain": 4.48,
-            "appliedGain": 4.48
+            "gain": 4.0,
+            "appliedGain": 4.0
           },
           {
-            "gain": 5.0,
-            "appliedGain": 5.0
+            "gain": 4.0,
+            "appliedGain": 4.0
           }
         ],
         "expectedFinal": {
-          "gain": 5.0,
-          "appliedGain": 5.0
+          "gain": 4.0,
+          "appliedGain": 4.0
         }
       },
       {

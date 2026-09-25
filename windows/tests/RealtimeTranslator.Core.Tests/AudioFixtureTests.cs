@@ -242,6 +242,7 @@ public sealed class AudioFixtureTests
             SharedFixtures.Number(constants["noiseFloorWindowFrames"]),
             AdaptiveMicrophoneGain.NoiseFloorWindowFrames
         );
+        Assert.Equal(SharedFixtures.Number(constants["noiseFloorRank"]), AdaptiveMicrophoneGain.NoiseFloorRank);
         Assert.Equal((float)SharedFixtures.Real(constants["gainRise"]), AdaptiveMicrophoneGain.GainRise);
         Assert.Equal((float)SharedFixtures.Real(constants["gainFall"]), AdaptiveMicrophoneGain.GainFall);
         Assert.Equal((float)SharedFixtures.Real(constants["clipCeiling"]), AdaptiveMicrophoneGain.ClipCeiling);
@@ -350,20 +351,21 @@ public sealed class AudioFixtureTests
     public void SpeechFromStartKeepsGainUntilFirstPause()
     {
         var agc = new AdaptiveMicrophoneGain(initialGain: 4.0f);
-        var frames = new[] { (0.01f, 0.03f), (0.02f, 0.06f), (0.01f, 0.03f) }.Concat(
-            Enumerable.Repeat((0.02f, 0.06f), 4)
-        );
+        var frames = new[] { (0.01f, 0.03f), (0.02f, 0.06f), (0.01f, 0.03f) }
+            .Concat(Enumerable.Repeat((0.02f, 0.06f), 4))
+            .Concat(Enumerable.Repeat((0.001f, 0.003f), 4))
+            .Concat(Enumerable.Repeat((0.02f, 0.06f), 4));
+        var index = 0;
         foreach (var (rms, peak) in frames)
         {
             agc.Observe(rms, peak);
-            Assert.Equal(4.0f, agc.Gain);
+            var expected =
+                index < 11 ? 4.0f
+                : index == 11 ? 4.48f
+                : 5.0f;
+            Assert.Equal(expected, agc.Gain, 0.0005);
+            index += 1;
         }
-
-        agc.Observe(0.001f, 0.003f);
-        agc.Observe(0.02f, 0.06f);
-        Assert.Equal(4.48f, agc.Gain, 0.0005);
-        agc.Observe(0.02f, 0.06f);
-        Assert.Equal(5.0f, agc.Gain, 0.0005);
     }
 
     // Given: フロア確定 (30フレーム) に満たない一定ノイズ
@@ -413,6 +415,53 @@ public sealed class AudioFixtureTests
         Assert.Equal(5.0f, agc.Gain, 0.0005);
     }
 
+    // Given: ポーズを挟まない 0.01 / 0.02 交互の変動発話
+    // When: フロア確定 (30 フレーム) を超えて観測する
+    // Then: 途切れない発話はノイズと判定され、noiseCap まで gain が下がる
+    [Fact]
+    public void AlternatingSpeechWithoutPauseIsTreatedAsNoise()
+    {
+        var agc = new AdaptiveMicrophoneGain(initialGain: 4.0f);
+        var trace = new List<float>();
+        for (var index = 0; index < 40; index += 1)
+        {
+            var (rms, peak) = index % 2 == 0 ? (0.01f, 0.03f) : (0.02f, 0.06f);
+            agc.Observe(rms, peak);
+            trace.Add(agc.Gain);
+        }
+
+        Assert.All(trace.Take(29), gain => Assert.Equal(4.0f, gain));
+        Assert.Equal(3.2f, trace[29], 0.0005);
+        Assert.Equal(2.56f, trace[30], 0.0005);
+        Assert.All(trace.Skip(35), gain => Assert.Equal(1.0f, gain));
+    }
+
+    // Given: 定常ノイズに 20 フレーム周期で 1 フレームの谷が混じる系列
+    // When: 600 フレーム観測する
+    // Then: 1 フレームの谷はフロアを下げず、gain は 4.0 を超えず noiseCap (2.5) で頭打ちになる
+    [Fact]
+    public void PeriodicDipInSteadyNoiseDoesNotRaiseGain()
+    {
+        var agc = new AdaptiveMicrophoneGain(initialGain: 4.0f);
+        var trace = new List<float>();
+        for (var cycle = 0; cycle < 30; cycle += 1)
+        {
+            for (var index = 0; index < 19; index += 1)
+            {
+                agc.Observe(0.004f, 0.012f);
+                trace.Add(agc.Gain);
+            }
+
+            agc.Observe(0.001f, 0.003f);
+            trace.Add(agc.Gain);
+        }
+
+        Assert.All(trace, gain => Assert.True(gain <= 4.0f));
+        Assert.Equal(3.2f, trace[29], 0.0005);
+        Assert.Equal(2.5f, trace[31], 0.0005);
+        Assert.Equal(2.5f, trace[599], 0.0005);
+    }
+
     // Given: 無音で noiseFloor が下限に落ちた状態
     // When: 一定ノイズのフレームを続けて観測する
     // Then: 窓がノイズで埋まるまで上がり、確定後は noiseCap (2.5) まで下がる
@@ -434,7 +483,9 @@ public sealed class AudioFixtureTests
         }
 
         Assert.Equal(8.0f, trace[12], 0.0005);
-        Assert.Equal(8.0f, trace[33], 0.0005);
+        Assert.Equal(4.096f, trace[33], 0.0005);
+        Assert.Equal(3.2768f, trace[34], 0.0005);
+        Assert.Equal(2.62144f, trace[35], 0.0005);
         Assert.Equal(2.5f, trace[40], 0.0005);
         Assert.Equal(2.5f, agc.Gain, 0.0005);
         Assert.Equal(2.5f, agc.AppliedGain, 0.0005);

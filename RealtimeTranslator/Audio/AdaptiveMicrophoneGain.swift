@@ -23,6 +23,8 @@ struct AdaptiveMicrophoneGain: Sendable {
     static let noiseFloorMinimum: Float = 0.0001
     /// noiseFloor の推定に使う直近フレーム数。揃うまでフロアは未確定とし、noiseCap で下げない。
     static let noiseFloorWindowFrames = 30
+    /// 窓内でこの順位（小さい方から）の値を noiseFloor とする。1 フレームの谷ではフロアが下がらない。
+    static let noiseFloorRank = 4
     /// フレームあたりのゲイン上昇上限。
     static let gainRise: Float = 1.12
     /// フレームあたりのゲイン下降上限。
@@ -54,16 +56,16 @@ struct AdaptiveMicrophoneGain: Sendable {
         let rms = max(0, rms)
         let peak = max(0, peak)
 
-        // 直近 30 フレームの floored RMS の最小値を noiseFloor とする。
-        // 語間の無音が窓内にあれば発話中もフロアは低く保たれ、
-        // 定常ノイズは窓が入れ替わる 3 秒以内にフロアへ反映される。
+        // 直近 30 フレームの floored RMS の 4 番目に小さい値を noiseFloor とする。
+        // 400 ms 以上の無音が窓内にあれば発話中もフロアは低く保たれ、
+        // 1 フレームだけの谷ではフロアは下がらない。
         let floored = max(rms, Self.noiseFloorMinimum)
         rmsHistory.append(floored)
         if rmsHistory.count > Self.noiseFloorWindowFrames {
             rmsHistory.removeFirst()
         }
 
-        let floor = rmsHistory.min() ?? floored
+        let floor = rmsHistory.sorted()[min(Self.noiseFloorRank, rmsHistory.count) - 1]
         let confirmed = rmsHistory.count == Self.noiseFloorWindowFrames
         let noiseCap = Self.clamp(Self.noiseCeiling / floor)
         let isSpeech = rms >= Self.speechAbsoluteFloor && rms >= floor * Self.speechRatio
