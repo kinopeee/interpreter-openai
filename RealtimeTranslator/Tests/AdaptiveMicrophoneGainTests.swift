@@ -144,11 +144,11 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
             trace.append(agc.gain)
         }
 
-        XCTAssertEqual(
-            trace.map { Double($0) },
-            Array(repeating: 4.0, count: 11) + [4.48, 5.0, 5.0, 5.0],
-            accuracy: 0.0005
-        )
+        let expected: [Float] = Array(repeating: 4.0, count: 11) + [4.48, 5.0, 5.0, 5.0]
+        XCTAssertEqual(trace.count, expected.count)
+        for (index, (actual, wanted)) in zip(trace, expected).enumerated() {
+            XCTAssertEqual(actual, wanted, accuracy: 0.0005, "index \(index)")
+        }
     }
 
     // Given: フロア確定 (30フレーム) に満たない一定ノイズ

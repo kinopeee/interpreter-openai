@@ -85,7 +85,7 @@ feeder の順序は 変換 → float フレーム化 → 各フレームで AGC 
    - `desired > gain` → `gain = min(desired, gain * 1.12)`（フレームあたり最大 12% の上昇）。
    - `desired < gain` → `gain = max(desired, gain * 0.8)`。
    非発話時: `confirmed && gain > noiseCap` なら `gain = max(noiseCap, gain * 0.8)`。それ以外は不変。
-   録音開始直後から話し続けても最初のポーズまで初期ゲインが保たれ、下げられることはない。
+   録音開始直後から話し続けても、フロア確定（30 フレーム）までは初期ゲインが保たれ、下げられることはない。
    既知の限界: 窓 3 秒の間に 400 ms 分以上 RMS が noiseCeiling/4 (=0.0025) 程度まで下がらない発話（一定音量、または 0.01/0.02 のように変動しても途切れない発話）はノイズと判定され、ゲインが 1.0 まで下がる。フロア確定後に発話へ復帰するにはポーズが必要。
 8. `applied = peak > 0 ? min(gain, 0.9 / peak) : gain`。`appliedGain = clamp(applied)` を返す。
    クリップ limiter は当該フレームの適用ゲインだけを下げ、持続する `gain` は変えない。
