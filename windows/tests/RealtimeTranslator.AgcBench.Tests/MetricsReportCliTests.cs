@@ -20,17 +20,17 @@ public class TextMetricsTests
     // When: WER を計算する
     // Then: 1 / 3
     [Fact]
-    public void WerCountsTokenEdits() =>
-        Assert.Equal(1.0 / 3.0, TextMetrics.Wer("hello big world", "hello world"), 6);
+    public void WerCountsTokenEdits() => Assert.Equal(1.0 / 3.0, TextMetrics.Wer("hello big world", "hello world"), 6);
 
-    // Given: 句読点・大小文字違いを含む文字列
+    // Given: 句読点・大小文字違い・全角/半角を含む文字列
     // When: 正規化する
-    // Then: 句読点と記号と空白が落ち、小文字化される
+    // Then: FormKC で互換分解され、句読点と記号と空白が落ち、小文字化される
     [Fact]
     public void NormalizeDropsPunctuationAndCase()
     {
         Assert.Equal("helloworld", TextMetrics.Normalize("Hello, World!", keepSpaces: false));
-        Assert.Equal("abc", TextMetrics.Normalize("ＡＢＣ。", keepSpaces: false));
+        Assert.Equal("abc123", TextMetrics.Normalize("ＡＢＣ　１２３", keepSpaces: false));
+        Assert.Equal("ガ", TextMetrics.Normalize("ｶﾞ", keepSpaces: false));
     }
 
     // Given: 無音クリップへの誤字幕
@@ -188,8 +188,7 @@ public class CliTests
     // When: Main を呼ぶ
     // Then: exit code 2
     [Fact]
-    public async Task UnknownSubcommandIsUsageError() =>
-        Assert.Equal(2, await Program.Main(["bogus"]));
+    public async Task UnknownSubcommandIsUsageError() => Assert.Equal(2, await Program.Main(["bogus"]));
 
     // Given: --out なしの process
     // When: Main を呼ぶ

@@ -11,10 +11,7 @@ internal static class TextMetrics
     /// <summary>FormKC 正規化 → 小文字化 → 句読点/記号/空白を除去 (言語判定用の基礎正規化)。</summary>
     public static string Normalize(string text, bool keepSpaces)
     {
-        // InvariantGlobalization では FormKC の互換分解が無効なので、
-        // 全角 ASCII と全角スペースだけは自前で畳んでおく。
-        var folded = FoldFullWidth(text);
-        var normalized = folded.Normalize(NormalizationForm.FormKC).ToLowerInvariant();
+        var normalized = text.Normalize(NormalizationForm.FormKC).ToLowerInvariant();
         var builder = new StringBuilder(normalized.Length);
         foreach (var rune in normalized.EnumerateRunes())
         {
@@ -68,28 +65,6 @@ internal static class TextMetrics
         }
 
         return count;
-    }
-
-    private static string FoldFullWidth(string text)
-    {
-        var builder = new StringBuilder(text.Length);
-        foreach (var rune in text.EnumerateRunes())
-        {
-            if (rune.Value == 0x3000)
-            {
-                builder.Append(' ');
-            }
-            else if (rune.Value is >= 0xFF01 and <= 0xFF5E)
-            {
-                builder.Append((char)(rune.Value - 0xFEE0));
-            }
-            else
-            {
-                builder.Append(rune.ToString());
-            }
-        }
-
-        return builder.ToString();
     }
 
     private static bool IsDropped(UnicodeCategory category) =>

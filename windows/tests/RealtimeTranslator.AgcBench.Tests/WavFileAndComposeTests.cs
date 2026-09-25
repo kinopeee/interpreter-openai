@@ -51,11 +51,18 @@ public class WavFileTests : IDisposable
     public void Float32WavReads()
     {
         var path = Path.Combine(_dir, "f32.wav");
-        WriteWav(path, format: 3, bitsPerSample: 32, sampleRate: 24000, channels: 1, payload =>
-        {
-            var samples = new byte[] { 0x00, 0x00, 0x80, 0x3E }; // 0.25f
-            payload.Write(samples);
-        });
+        WriteWav(
+            path,
+            format: 3,
+            bitsPerSample: 32,
+            sampleRate: 24000,
+            channels: 1,
+            payload =>
+            {
+                var samples = new byte[] { 0x00, 0x00, 0x80, 0x3E }; // 0.25f
+                payload.Write(samples);
+            }
+        );
         var read = WavFile.Read(path);
 
         Assert.Single(read);
@@ -69,9 +76,23 @@ public class WavFileTests : IDisposable
     public void RejectsWrongRateAndChannels()
     {
         var path48k = Path.Combine(_dir, "48k.wav");
-        WriteWav(path48k, format: 1, bitsPerSample: 16, sampleRate: 48000, channels: 1, payload => payload.Write(new byte[96]));
+        WriteWav(
+            path48k,
+            format: 1,
+            bitsPerSample: 16,
+            sampleRate: 48000,
+            channels: 1,
+            payload => payload.Write(new byte[96])
+        );
         var stereo = Path.Combine(_dir, "stereo.wav");
-        WriteWav(stereo, format: 1, bitsPerSample: 16, sampleRate: 24000, channels: 2, payload => payload.Write(new byte[192]));
+        WriteWav(
+            stereo,
+            format: 1,
+            bitsPerSample: 16,
+            sampleRate: 24000,
+            channels: 2,
+            payload => payload.Write(new byte[192])
+        );
 
         var rateError = Assert.Throws<InvalidDataException>(() => WavFile.Read(path48k));
         Assert.Contains("ffmpeg", rateError.Message);
@@ -218,7 +239,13 @@ public class ComposeTests : IDisposable
                 Id = "noise",
                 LeadingSilenceMs = 0,
                 TrailingSilenceMs = 3000,
-                Noise = new NoiseSpec { Rms = 0.004, DipEveryMs = 500, DipMs = 100, DipRms = 0.001 },
+                Noise = new NoiseSpec
+                {
+                    Rms = 0.004,
+                    DipEveryMs = 500,
+                    DipMs = 100,
+                    DipRms = 0.001,
+                },
                 Seed = 3,
             }
         );
@@ -246,7 +273,15 @@ public class ComposeTests : IDisposable
                 LeadingSilenceMs = 200,
                 TrailingSilenceMs = 1800,
                 Noise = new NoiseSpec { Rms = 0.001 },
-                Clicks = [new ClickSpec { AtMs = 1200, Peak = 0.95, DurationMs = 2 }],
+                Clicks =
+                [
+                    new ClickSpec
+                    {
+                        AtMs = 1200,
+                        Peak = 0.95,
+                        DurationMs = 2,
+                    },
+                ],
                 Seed = 1,
             }
         );

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -71,7 +72,7 @@ internal static class TranscribeCommand
                         )
                         .ConfigureAwait(false);
                     Console.WriteLine(
-                        $"transcribed {clip.Id}.{name}.run{run}: firstDeltaMs={(result.FirstDeltaMs?.ToString() ?? "-")}"
+                        $"transcribed {clip.Id}.{name}.run{run}: firstDeltaMs={(result.FirstDeltaMs?.ToString(CultureInfo.InvariantCulture) ?? "-")}"
                     );
                 }
             }
@@ -122,12 +123,18 @@ internal static class TranscribeCommand
             Variant = variant,
             Run = run,
         };
+        var connection = new RealtimeSourceTranscriptionConnection(
+            new ClientWebSocketTransport(),
+            safetyIdentifier
+        );
+        Task? drain = null;
+        var transcript = new StringBuilder();
+        var firstSendAt = Stopwatch.GetTimestamp();
+        long? firstDeltaMs = null;
+        string? streamError = null;
+        var sentMs = 0L;
         try
         {
-            using var connection = new RealtimeSourceTranscriptionConnection(
-                new ClientWebSocketTransport(),
-                safetyIdentifier
-            );
             await connection
                 .StartAsync(
                     apiKey,
@@ -136,11 +143,7 @@ internal static class TranscribeCommand
                 )
                 .ConfigureAwait(false);
 
-            var transcript = new StringBuilder();
-            var firstSendAt = Stopwatch.GetTimestamp();
-            long? firstDeltaMs = null;
-            string? streamError = null;
-            var drain = Task.Run(
+            drain = Task.Run(
                 async () =>
                 {
                     await foreach (
@@ -178,30 +181,41 @@ internal static class TranscribeCommand
                 }
             }
 
-            var sentMs = ElapsedMs(firstSendAt);
+            sentMs = ElapsedMs(firstSendAt);
             using var closeTimeout = new CancellationTokenSource(CloseTimeout);
             try
             {
                 await connection.CloseGracefullyAsync(closeTimeout.Token).ConfigureAwait(false);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (OperationCanceledException)
+            {
+                streamError ??= "close timeout";
+            }
+            catch (Exception exception)
             {
                 streamError ??= exception.GetType().Name;
             }
-
-            await drain.ConfigureAwait(false);
-            result.Transcript = transcript.ToString();
-            result.FirstDeltaMs = firstDeltaMs;
-            result.FirstDeltaFromOnsetMs =
-                firstDeltaMs is { } delta ? delta - clip.SpeechOnsetMs : null;
-            result.SentMs = sentMs;
-            result.Error = streamError;
         }
         catch (Exception exception)
         {
-            result.Error = $"{exception.GetType().Name}: {exception.Message}";
+            streamError ??= $"{exception.GetType().Name}: {exception.Message}";
+        }
+        finally
+        {
+            // Dispose は Events チャンネルを TryComplete するので、先に閉じてから drain を待つ。
+            connection.Dispose();
+            if (drain is not null)
+            {
+                await Task.WhenAny(drain, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false);
+            }
         }
 
+        result.Transcript = transcript.ToString();
+        result.FirstDeltaMs = firstDeltaMs;
+        result.FirstDeltaFromOnsetMs =
+            firstDeltaMs is { } delta ? delta - clip.SpeechOnsetMs : null;
+        result.SentMs = sentMs;
+        result.Error = streamError;
         return result;
     }
 

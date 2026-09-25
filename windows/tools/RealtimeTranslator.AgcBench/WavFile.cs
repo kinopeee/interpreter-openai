@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.Globalization;
 using System.IO;
 using RealtimeTranslator.Core.Audio;
 
@@ -61,7 +62,7 @@ internal static class WavFile
         if (channels != 1 || sampleRate != RequiredSampleRate)
         {
             throw new InvalidDataException(
-                $"{path}: 24 kHz mono の WAV が必要です (channels={channels?.ToString() ?? "?"}, rate={sampleRate?.ToString() ?? "?"})。{ConvertHint}"
+                $"{path}: 24 kHz mono の WAV が必要です (channels={Format(channels)}, rate={Format(sampleRate)})。{ConvertHint}"
             );
         }
 
@@ -134,6 +135,12 @@ internal static class WavFile
         stream.Write(header);
         stream.Write(pcm16LittleEndian);
     }
+
+    private static string Format(ushort? value) =>
+        value?.ToString(CultureInfo.InvariantCulture) ?? "?";
+
+    private static string Format(uint? value) =>
+        value?.ToString(CultureInfo.InvariantCulture) ?? "?";
 
     private static void WriteAscii(Span<byte> destination, int offset, string value)
     {

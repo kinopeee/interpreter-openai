@@ -79,16 +79,14 @@ internal static class ReportCommand
         builder.AppendLine("# AGC バリアント比較レポート");
         builder.AppendLine();
         builder.AppendLine(
-            string.Create(
-                CultureInfo.InvariantCulture,
-                $"clips: {corpus.Clips.Count} / variants: {variantSet.Count} / transcribe runs: {runCount}"
-            )
+            CultureInfo.InvariantCulture,
+            $"clips: {corpus.Clips.Count} / variants: {variantSet.Count} / transcribe runs: {runCount}"
         );
 
         foreach (var clip in corpus.Clips)
         {
             builder.AppendLine();
-            builder.AppendLine($"## {clip.Id}");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"## {clip.Id}");
             builder.AppendLine();
             builder.AppendLine(
                 "| variant | maxGain | clippedSamples | speechOutRms | error rate mean (min–max) | firstDelta mean/min/max (ms, from onset) | falseSubtitleChars mean | runs with error |"

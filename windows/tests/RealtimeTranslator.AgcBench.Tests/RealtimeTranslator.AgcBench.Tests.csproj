@@ -5,6 +5,8 @@
     <RootNamespace>RealtimeTranslator.AgcBench.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- AgcBench 本体と同じく ICU を有効にする (FormKC 正規化のテストのため)。 -->
+    <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
