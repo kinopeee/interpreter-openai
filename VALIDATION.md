@@ -144,6 +144,10 @@ pwsh -File scripts/publish-windows.ps1
 - [ ] 大声で話してもクリップ由来の誤認識が出ないこと
 - [ ] 「マイク音量を自動調整する」を OFF にして次の録音を開始すると、ゲイン 1.0 素通しになること
 
+### AGC 比較評価（AgcBench）
+
+`windows/tools/RealtimeTranslator.AgcBench` で off / v1 / v2 を同一コーパスで比較できる。実マイク録音を base クリップに使う手順と各コマンドは同ディレクトリの README.md を参照。`transcribe` は実 API を使うため手動実行のみ。
+
 ### GUI検証（手動・実施済み）
 
 1. トレイ常駐で起動し、通常のメインウィンドウが出ないことを確認します。

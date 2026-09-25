@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RealtimeTranslator.AgcBench</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- ツール専用プロセスなので ICU を有効にし、FormKC 正規化が効くようにする。 -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RealtimeTranslator.Core\RealtimeTranslator.Core.csproj" />
+  </ItemGroup>
+
+</Project>
