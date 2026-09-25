@@ -8,6 +8,7 @@
 - `windows/src/RealtimeTranslator.Core/`: OS非依存。codec、tuning、packetizer、gain、言語判定、字幕整列、接続、`InterpretationSession`、字幕snapshot・geometry・設定codec、`UserCopy`。Windows APIやWPF型を持ち込まない。
 - `windows/src/RealtimeTranslator.Platform/`: Windows固有。WASAPI capture、資格情報マネージャー、install identifier、多重起動防止、グローバルホットキー、ログ、設定ファイル、字幕記録ファイル。
 - `windows/src/RealtimeTranslator.App/`: WPFシェル（composition root、トレイ、設定ウィンドウ、字幕オーバーレイ）。ロジックは持たずCoreへ委譲する。
+- `windows/tools/RealtimeTranslator.AgcBench/`: AGC 比較評価専用 console。App から参照しない。
 - `windows/tests/`: `RealtimeTranslator.Core.Tests` と `RealtimeTranslator.Platform.Tests`（xUnit）。
 
 ## 不変条件（Windows固有）
@@ -48,6 +49,8 @@ Linux 上で Windows Core を検証するコマンド:
 ./scripts/ci-shared-contracts.sh
 ./scripts/ci-windows-core.sh
 ```
+
+- `ci-windows-core.sh` は `tools/RealtimeTranslator.AgcBench` と `tests/RealtimeTranslator.AgcBench.Tests` も restore/build/test/audit する（transcribe の実 API 呼び出しは対象外）。
 
 - 初回は `node scripts/format.mjs csharp setup` で `dotnet tool install` を `.devin/format/tools/` に行う。コミット前に `node scripts/format.mjs csharp write` を実行する。`.depot/workflows/windows-core.yml` と `.github/workflows/windows.yml` は `csharp check` を実行する。
 
