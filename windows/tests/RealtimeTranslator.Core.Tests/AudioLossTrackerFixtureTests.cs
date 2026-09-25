@@ -14,7 +14,7 @@ public sealed class AudioLossTrackerFixtureTests
         get
         {
             var data = new TheoryData<string>();
-            foreach (var node in SharedFixtures.Load("audio")["loss"]!["cases"]!.AsArray())
+            foreach (var node in SharedFixtures.Load("audio", 2)["loss"]!["cases"]!.AsArray())
             {
                 data.Add(SharedFixtures.Text(node!["name"]));
             }
@@ -29,7 +29,7 @@ public sealed class AudioLossTrackerFixtureTests
     [Fact]
     public void PolicyAndConstantsMatchFixture()
     {
-        var loss = SharedFixtures.Load("audio")["loss"]!.AsObject();
+        var loss = SharedFixtures.Load("audio", 2)["loss"]!.AsObject();
         var reconnect = loss["reconnect"]!.AsObject();
         var policy = AudioLossPolicy.Default;
 
@@ -62,7 +62,7 @@ public sealed class AudioLossTrackerFixtureTests
     [MemberData(nameof(CaseNames))]
     public void ReplayMatchesFixture(string name)
     {
-        var item = SharedFixtures.Load("audio")["loss"]!["cases"]!
+        var item = SharedFixtures.Load("audio", 2)["loss"]!["cases"]!
             .AsArray()
             .OfType<JsonObject>()
             .Single(item => SharedFixtures.Text(item["name"]) == name);

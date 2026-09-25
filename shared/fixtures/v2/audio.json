@@ -1,0 +1,2527 @@
+{
+  "version": 2,
+  "description": "Audio pipeline contract v2: 100 ms float frames, RMS-based adaptive gain with per-frame clip limiter and sample ramp. Packetizer, PCM16 conversion and loss sections are carried over unchanged from v1.",
+  "format": {
+    "sampleRate": 24000,
+    "bytesPerSample": 2,
+    "frameDurationMilliseconds": 100,
+    "samplesPerFrame": 2400,
+    "bytesPerFrame": 4800,
+    "channels": 1,
+    "endianness": "little"
+  },
+  "packetizer": [
+    {
+      "name": "exactly one frame",
+      "steps": [
+        {
+          "kind": "append",
+          "byteCount": 4800,
+          "expectedFrameCount": 1
+        }
+      ],
+      "expectedPendingBytes": 0,
+      "flush": {
+        "expectedFrameBytes": null
+      }
+    },
+    {
+      "name": "partial input produces no frame",
+      "steps": [
+        {
+          "kind": "append",
+          "byteCount": 4799,
+          "expectedFrameCount": 0
+        }
+      ],
+      "expectedPendingBytes": 4799,
+      "flush": {
+        "expectedFrameBytes": 4800,
+        "expectedTrailingZeroBytes": 1
+      }
+    },
+    {
+      "name": "empty input is ignored",
+      "steps": [
+        {
+          "kind": "append",
+          "byteCount": 0,
+          "expectedFrameCount": 0
+        }
+      ],
+      "expectedPendingBytes": 0,
+      "flush": {
+        "expectedFrameBytes": null
+      }
+    },
+    {
+      "name": "multiple frames and a remainder",
+      "steps": [
+        {
+          "kind": "append",
+          "byteCount": 12000,
+          "expectedFrameCount": 2
+        }
+      ],
+      "expectedPendingBytes": 2400,
+      "flush": {
+        "expectedFrameBytes": 4800,
+        "expectedTrailingZeroBytes": 2400
+      }
+    },
+    {
+      "name": "remainders accumulate across appends",
+      "steps": [
+        {
+          "kind": "append",
+          "byteCount": 3000,
+          "expectedFrameCount": 0
+        },
+        {
+          "kind": "append",
+          "byteCount": 3000,
+          "expectedFrameCount": 1
+        }
+      ],
+      "expectedPendingBytes": 1200,
+      "flush": {
+        "expectedFrameBytes": 4800,
+        "expectedTrailingZeroBytes": 3600
+      }
+    },
+    {
+      "name": "reset drops the remainder",
+      "steps": [
+        {
+          "kind": "append",
+          "byteCount": 1000,
+          "expectedFrameCount": 0
+        },
+        {
+          "kind": "reset"
+        }
+      ],
+      "expectedPendingBytes": 0,
+      "flush": {
+        "expectedFrameBytes": null
+      }
+    }
+  ],
+  "packetizerContinuity": {
+    "name": "concatenating all emitted frames plus the padded flush reproduces the input followed by silence",
+    "appendByteCounts": [
+      1234,
+      5678,
+      9012
+    ],
+    "totalInputBytes": 15924,
+    "expectedEmittedFrameCount": 3,
+    "expectedFlushFrameBytes": 4800,
+    "expectedTrailingZeroBytes": 3276
+  },
+  "float32ToPcm16": [
+    {
+      "name": "zero",
+      "sample": 0.0,
+      "gain": 1.0,
+      "expected": 0
+    },
+    {
+      "name": "full scale positive",
+      "sample": 1.0,
+      "gain": 1.0,
+      "expected": 32767
+    },
+    {
+      "name": "full scale negative",
+      "sample": -1.0,
+      "gain": 1.0,
+      "expected": -32767
+    },
+    {
+      "name": "clips above one",
+      "sample": 2.5,
+      "gain": 1.0,
+      "expected": 32767
+    },
+    {
+      "name": "clips below minus one",
+      "sample": -2.5,
+      "gain": 1.0,
+      "expected": -32767
+    },
+    {
+      "name": "gain is applied before clipping",
+      "sample": 0.5,
+      "gain": 4.0,
+      "expected": 32767
+    },
+    {
+      "name": "gain scales a quiet sample",
+      "sample": 0.1,
+      "gain": 2.0,
+      "expected": 6553
+    },
+    {
+      "name": "rounds half away from zero",
+      "sample": 0.5,
+      "gain": 1.0,
+      "expected": 16384
+    }
+  ],
+  "float32Framing": {
+    "frameSamples": 2400,
+    "cases": [
+      {
+        "name": "exact frame emits once",
+        "appendSampleCounts": [
+          2400
+        ],
+        "expectedFrameCounts": [
+          1
+        ],
+        "expectedPendingSamples": 0,
+        "flushPadsSilenceSamples": null
+      },
+      {
+        "name": "partial appends accumulate",
+        "appendSampleCounts": [
+          1000,
+          1000,
+          1000
+        ],
+        "expectedFrameCounts": [
+          0,
+          0,
+          1
+        ],
+        "expectedPendingSamples": 600,
+        "flushPadsSilenceSamples": 1800
+      },
+      {
+        "name": "large append emits several frames",
+        "appendSampleCounts": [
+          5000
+        ],
+        "expectedFrameCounts": [
+          2
+        ],
+        "expectedPendingSamples": 200,
+        "flushPadsSilenceSamples": 2200
+      },
+      {
+        "name": "empty pending does not flush",
+        "appendSampleCounts": [
+          4800
+        ],
+        "expectedFrameCounts": [
+          2
+        ],
+        "expectedPendingSamples": 0,
+        "flushPadsSilenceSamples": null
+      }
+    ]
+  },
+  "frameStatistics": {
+    "cases": [
+      {
+        "name": "mixed samples",
+        "samples": [
+          0.3,
+          -0.4,
+          0.0
+        ],
+        "expectedRms": 0.2886751,
+        "expectedPeak": 0.4
+      },
+      {
+        "name": "non-finite samples are skipped",
+        "samples": [
+          0.3,
+          "nan",
+          -0.4,
+          "infinity",
+          0.0
+        ],
+        "expectedRms": 0.2886751,
+        "expectedPeak": 0.4
+      },
+      {
+        "name": "all non-finite samples yield non-finite statistics",
+        "samples": [
+          "nan",
+          "-infinity"
+        ],
+        "expectedRms": "nan",
+        "expectedPeak": "nan"
+      },
+      {
+        "name": "silence",
+        "samples": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "expectedRms": 0.0,
+        "expectedPeak": 0.0
+      }
+    ]
+  },
+  "gain": {
+    "constants": {
+      "frameSamples": 2400,
+      "minimumGain": 1.0,
+      "maximumGain": 8.0,
+      "defaultInitialGain": 4.0,
+      "targetRms": 0.1,
+      "speechRatio": 3.16,
+      "speechAbsoluteFloor": 0.003,
+      "noiseCeiling": 0.01,
+      "noiseFloorMinimum": 0.0001,
+      "noiseFloorWindowFrames": 30,
+      "noiseFloorRank": 4,
+      "gainRise": 1.12,
+      "gainFall": 0.8,
+      "clipCeiling": 0.9,
+      "rampSamples": 120
+    },
+    "tolerance": 0.0005,
+    "cases": [
+      {
+        "name": "initial gain above the maximum is clamped",
+        "initialGain": 100.0,
+        "frames": [
+          {
+            "rms": 0.0,
+            "peak": 0.0
+          }
+        ],
+        "expectedTrace": [
+          {
+            "gain": 8.0,
+            "appliedGain": 8.0
+          }
+        ],
+        "expectedFinal": {
+          "gain": 8.0,
+          "appliedGain": 8.0
+        }
+      },
+      {
+        "name": "initial gain below the minimum is clamped",
+        "initialGain": 0.1,
+        "frames": [
+          {
+            "rms": 0.0,
+            "peak": 0.0
+          }
+        ],
+        "expectedTrace": [
+          {
+            "gain": 1.0,
+            "appliedGain": 1.0
+          }
+        ],
+        "expectedFinal": {
+          "gain": 1.0,
+          "appliedGain": 1.0
+        }
+      },
+      {
+        "name": "silence keeps the gain",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.0,
+            "peak": 0.0,
+            "repeat": 5
+          }
+        ],
+        "expectedTrace": [
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          }
+        ],
+        "expectedFinal": {
+          "gain": 4.0,
+          "appliedGain": 4.0
+        }
+      },
+      {
+        "name": "quiet noise never raises the gain",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 30
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 0,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 15,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 28,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 29,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          }
+        ],
+        "expectedMaxGain": 4.0,
+        "expectedFinal": {
+          "gain": 4.0,
+          "appliedGain": 4.0
+        }
+      },
+      {
+        "name": "noise above the ceiling lowers the gain to the noise cap once the floor is confirmed",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 36
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 0,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 18,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 28,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 29,
+            "gain": 3.2,
+            "appliedGain": 3.2
+          },
+          {
+            "index": 30,
+            "gain": 2.56,
+            "appliedGain": 2.56
+          },
+          {
+            "index": 35,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          }
+        ],
+        "expectedMaxGain": 4.0,
+        "expectedFinal": {
+          "gain": 2.5,
+          "appliedGain": 2.5
+        }
+      },
+      {
+        "name": "an unconfirmed noise floor never lowers the gain",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 29
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 0,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 14,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 28,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          }
+        ],
+        "expectedMaxGain": 4.0,
+        "expectedFinal": {
+          "gain": 4.0,
+          "appliedGain": 4.0
+        }
+      },
+      {
+        "name": "speech raises the gain by at most gainRise per frame",
+        "initialGain": 1.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 30
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 16
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 29,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 30,
+            "gain": 1.12,
+            "appliedGain": 1.12
+          },
+          {
+            "index": 31,
+            "gain": 1.2544,
+            "appliedGain": 1.2544
+          },
+          {
+            "index": 32,
+            "gain": 1.404928,
+            "appliedGain": 1.404928
+          },
+          {
+            "index": 33,
+            "gain": 1.573519,
+            "appliedGain": 1.573519
+          },
+          {
+            "index": 34,
+            "gain": 1.762342,
+            "appliedGain": 1.762342
+          },
+          {
+            "index": 35,
+            "gain": 1.973823,
+            "appliedGain": 1.973823
+          },
+          {
+            "index": 36,
+            "gain": 2.210681,
+            "appliedGain": 2.210681
+          },
+          {
+            "index": 37,
+            "gain": 2.475963,
+            "appliedGain": 2.475963
+          },
+          {
+            "index": 38,
+            "gain": 2.773079,
+            "appliedGain": 2.773079
+          },
+          {
+            "index": 39,
+            "gain": 3.105848,
+            "appliedGain": 3.105848
+          },
+          {
+            "index": 40,
+            "gain": 3.47855,
+            "appliedGain": 3.47855
+          },
+          {
+            "index": 41,
+            "gain": 3.895976,
+            "appliedGain": 3.895976
+          },
+          {
+            "index": 42,
+            "gain": 4.363493,
+            "appliedGain": 4.363493
+          },
+          {
+            "index": 43,
+            "gain": 4.887112,
+            "appliedGain": 4.887112
+          },
+          {
+            "index": 44,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 45,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          }
+        ],
+        "expectedMaxGain": 5.0,
+        "expectedFinal": {
+          "gain": 5.0,
+          "appliedGain": 5.0
+        }
+      },
+      {
+        "name": "speech lowers the gain by at most gainFall per frame",
+        "initialGain": 8.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 30
+          },
+          {
+            "rms": 0.1,
+            "peak": 0.3,
+            "repeat": 10
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 29,
+            "gain": 8.0,
+            "appliedGain": 8.0
+          },
+          {
+            "index": 30,
+            "gain": 6.4,
+            "appliedGain": 3.0
+          },
+          {
+            "index": 31,
+            "gain": 5.12,
+            "appliedGain": 3.0
+          },
+          {
+            "index": 32,
+            "gain": 4.096,
+            "appliedGain": 3.0
+          },
+          {
+            "index": 33,
+            "gain": 3.2768,
+            "appliedGain": 3.0
+          },
+          {
+            "index": 34,
+            "gain": 2.62144,
+            "appliedGain": 2.62144
+          },
+          {
+            "index": 35,
+            "gain": 2.097152,
+            "appliedGain": 2.097152
+          },
+          {
+            "index": 36,
+            "gain": 1.677722,
+            "appliedGain": 1.677722
+          },
+          {
+            "index": 37,
+            "gain": 1.342177,
+            "appliedGain": 1.342177
+          },
+          {
+            "index": 38,
+            "gain": 1.073742,
+            "appliedGain": 1.073742
+          },
+          {
+            "index": 39,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          }
+        ],
+        "expectedMaxGain": 8.0,
+        "expectedFinal": {
+          "gain": 1.0,
+          "appliedGain": 1.0
+        }
+      },
+      {
+        "name": "noise cap limits the speech gain",
+        "initialGain": 1.0,
+        "frames": [
+          {
+            "rms": 0.005,
+            "peak": 0.015,
+            "repeat": 30
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 8
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 0,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 19,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 28,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 29,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 30,
+            "gain": 1.12,
+            "appliedGain": 1.12
+          },
+          {
+            "index": 35,
+            "gain": 1.973823,
+            "appliedGain": 1.973823
+          },
+          {
+            "index": 37,
+            "gain": 2.0,
+            "appliedGain": 2.0
+          }
+        ],
+        "expectedMaxGain": 2.0,
+        "expectedFinal": {
+          "gain": 2.0,
+          "appliedGain": 2.0
+        }
+      },
+      {
+        "name": "speech from the first frame keeps the initial gain until the first pause",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 4
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 4
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 4
+          }
+        ],
+        "expectedTrace": [
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.48,
+            "appliedGain": 4.48
+          },
+          {
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "gain": 5.0,
+            "appliedGain": 5.0
+          }
+        ],
+        "expectedFinal": {
+          "gain": 5.0,
+          "appliedGain": 5.0
+        }
+      },
+      {
+        "name": "a pause of noiseFloorRank frames inside the window keeps the floor low during speech",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 30
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 26
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 4
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 26
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 4
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 26
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 0,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 28,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 29,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 30,
+            "gain": 4.48,
+            "appliedGain": 4.48
+          },
+          {
+            "index": 35,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 58,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 115,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          }
+        ],
+        "expectedMaxGain": 5.0,
+        "expectedFinal": {
+          "gain": 5.0,
+          "appliedGain": 5.0
+        }
+      },
+      {
+        "name": "a pause shorter than noiseFloorRank frames does not keep the floor low",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 30
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 26
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 3
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 27
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 29,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 35,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 55,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 56,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 59,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 60,
+            "gain": 3.2,
+            "appliedGain": 3.2
+          },
+          {
+            "index": 61,
+            "gain": 2.56,
+            "appliedGain": 2.56
+          },
+          {
+            "index": 66,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 85,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          }
+        ],
+        "expectedMaxGain": 5.0,
+        "expectedFinal": {
+          "gain": 1.0,
+          "appliedGain": 1.0
+        }
+      },
+      {
+        "name": "alternating speech without a pause is treated as noise once the floor is confirmed",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": 0.01,
+            "peak": 0.03
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 0,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 1,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 28,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 29,
+            "gain": 3.2,
+            "appliedGain": 3.2
+          },
+          {
+            "index": 30,
+            "gain": 2.56,
+            "appliedGain": 2.56
+          },
+          {
+            "index": 31,
+            "gain": 2.048,
+            "appliedGain": 2.048
+          },
+          {
+            "index": 35,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 36,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 39,
+            "gain": 1.0,
+            "appliedGain": 1.0
+          }
+        ],
+        "expectedMaxGain": 4.0,
+        "expectedFinal": {
+          "gain": 1.0,
+          "appliedGain": 1.0
+        }
+      },
+      {
+        "name": "a periodic single-frame dip in steady noise does not raise the gain",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 19
+          },
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 18,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 19,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 20,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 29,
+            "gain": 3.2,
+            "appliedGain": 3.2
+          },
+          {
+            "index": 30,
+            "gain": 2.56,
+            "appliedGain": 2.56
+          },
+          {
+            "index": 31,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 39,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 40,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 59,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 60,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 299,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 599,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          }
+        ],
+        "expectedMaxGain": 4.0,
+        "expectedFinal": {
+          "gain": 2.5,
+          "appliedGain": 2.5
+        }
+      },
+      {
+        "name": "a click during speech recovers within the following speech frames",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 30
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 3
+          },
+          {
+            "rms": 0.06,
+            "peak": 0.9
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 6
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 32,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 33,
+            "gain": 4.0,
+            "appliedGain": 1.0
+          },
+          {
+            "index": 34,
+            "gain": 4.48,
+            "appliedGain": 4.48
+          },
+          {
+            "index": 35,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          },
+          {
+            "index": 39,
+            "gain": 5.0,
+            "appliedGain": 5.0
+          }
+        ],
+        "expectedMaxGain": 5.0,
+        "expectedFinal": {
+          "gain": 5.0,
+          "appliedGain": 5.0
+        }
+      },
+      {
+        "name": "a click limits only its own frame and keeps the sustained gain",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.03,
+            "peak": 0.8
+          },
+          {
+            "rms": 0.03,
+            "peak": 0.1
+          }
+        ],
+        "expectedTrace": [
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 1.125
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          }
+        ],
+        "expectedFinal": {
+          "gain": 4.0,
+          "appliedGain": 4.0
+        }
+      },
+      {
+        "name": "the limiter does not change the sustained gain",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.5
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          }
+        ],
+        "expectedTrace": [
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 1.8
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          }
+        ],
+        "expectedFinal": {
+          "gain": 4.0,
+          "appliedGain": 4.0
+        }
+      },
+      {
+        "name": "a loud peak clamps the applied gain to the minimum",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.3,
+            "peak": 1.0
+          }
+        ],
+        "expectedTrace": [
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 1.0
+          }
+        ],
+        "expectedFinal": {
+          "gain": 4.0,
+          "appliedGain": 1.0
+        }
+      },
+      {
+        "name": "a sustained noise step is capped within the noise floor window",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003,
+            "repeat": 30
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 60
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 29,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 30,
+            "gain": 4.48,
+            "appliedGain": 4.48
+          },
+          {
+            "index": 45,
+            "gain": 8.0,
+            "appliedGain": 8.0
+          },
+          {
+            "index": 56,
+            "gain": 6.4,
+            "appliedGain": 6.4
+          },
+          {
+            "index": 57,
+            "gain": 5.12,
+            "appliedGain": 5.12
+          },
+          {
+            "index": 59,
+            "gain": 3.2768,
+            "appliedGain": 3.2768
+          },
+          {
+            "index": 60,
+            "gain": 2.62144,
+            "appliedGain": 2.62144
+          },
+          {
+            "index": 66,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 89,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          }
+        ],
+        "expectedMaxGain": 8.0,
+        "expectedFinal": {
+          "gain": 2.5,
+          "appliedGain": 2.5
+        }
+      },
+      {
+        "name": "silence then steady noise is capped within the noise floor window",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.0,
+            "peak": 0.0,
+            "repeat": 5
+          },
+          {
+            "rms": 0.004,
+            "peak": 0.012,
+            "repeat": 60
+          }
+        ],
+        "expectedCheckpoints": [
+          {
+            "index": 4,
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "index": 5,
+            "gain": 4.48,
+            "appliedGain": 4.48
+          },
+          {
+            "index": 12,
+            "gain": 8.0,
+            "appliedGain": 8.0
+          },
+          {
+            "index": 33,
+            "gain": 4.096,
+            "appliedGain": 4.096
+          },
+          {
+            "index": 34,
+            "gain": 3.2768,
+            "appliedGain": 3.2768
+          },
+          {
+            "index": 35,
+            "gain": 2.62144,
+            "appliedGain": 2.62144
+          },
+          {
+            "index": 40,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          },
+          {
+            "index": 64,
+            "gain": 2.5,
+            "appliedGain": 2.5
+          }
+        ],
+        "expectedMaxGain": 8.0,
+        "expectedFinal": {
+          "gain": 2.5,
+          "appliedGain": 2.5
+        }
+      },
+      {
+        "name": "non-finite statistics are ignored",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          },
+          {
+            "rms": "nan",
+            "peak": 0.06
+          },
+          {
+            "rms": 0.02,
+            "peak": "infinity"
+          },
+          {
+            "rms": "-infinity",
+            "peak": "nan"
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06
+          }
+        ],
+        "expectedTrace": [
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          }
+        ],
+        "expectedFinal": {
+          "gain": 4.0,
+          "appliedGain": 4.0
+        }
+      },
+      {
+        "name": "negative statistics are treated as zero",
+        "initialGain": 4.0,
+        "frames": [
+          {
+            "rms": -0.5,
+            "peak": -0.5,
+            "repeat": 2
+          }
+        ],
+        "expectedTrace": [
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 4.0
+          }
+        ],
+        "expectedFinal": {
+          "gain": 4.0,
+          "appliedGain": 4.0
+        }
+      },
+      {
+        "name": "disabled gain applies unity and keeps the state",
+        "initialGain": 4.0,
+        "enabled": false,
+        "frames": [
+          {
+            "rms": 0.001,
+            "peak": 0.003
+          },
+          {
+            "rms": 0.02,
+            "peak": 0.06,
+            "repeat": 3
+          },
+          {
+            "rms": 0.3,
+            "peak": 1.0
+          }
+        ],
+        "expectedTrace": [
+          {
+            "gain": 4.0,
+            "appliedGain": 1.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 1.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 1.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 1.0
+          },
+          {
+            "gain": 4.0,
+            "appliedGain": 1.0
+          }
+        ],
+        "expectedFinal": {
+          "gain": 4.0,
+          "appliedGain": 1.0
+        }
+      }
+    ],
+    "ramp": {
+      "cases": [
+        {
+          "name": "ramp interpolates from the previous applied gain",
+          "previousAppliedGain": 1.0,
+          "appliedGain": 3.0,
+          "sample": 0.1,
+          "peak": 0.1,
+          "checks": [
+            {
+              "index": 0,
+              "expectedPcm16": 3331
+            },
+            {
+              "index": 59,
+              "expectedPcm16": 6553
+            },
+            {
+              "index": 119,
+              "expectedPcm16": 9830
+            },
+            {
+              "index": 120,
+              "expectedPcm16": 9830
+            },
+            {
+              "index": 2399,
+              "expectedPcm16": 9830
+            }
+          ]
+        },
+        {
+          "name": "ramp descends toward a lower applied gain",
+          "previousAppliedGain": 4.0,
+          "appliedGain": 1.5,
+          "sample": -0.2,
+          "peak": 0.2,
+          "checks": [
+            {
+              "index": 0,
+              "expectedPcm16": -26077
+            },
+            {
+              "index": 2,
+              "expectedPcm16": -25804
+            },
+            {
+              "index": 117,
+              "expectedPcm16": -10103
+            },
+            {
+              "index": 119,
+              "expectedPcm16": -9830
+            },
+            {
+              "index": 120,
+              "expectedPcm16": -9830
+            },
+            {
+              "index": 2399,
+              "expectedPcm16": -9830
+            }
+          ]
+        },
+        {
+          "name": "unchanged applied gain has no ramp",
+          "previousAppliedGain": 2.0,
+          "appliedGain": 2.0,
+          "sample": 0.1,
+          "peak": 0.1,
+          "checks": [
+            {
+              "index": 0,
+              "expectedPcm16": 6553
+            },
+            {
+              "index": 60,
+              "expectedPcm16": 6553
+            },
+            {
+              "index": 2399,
+              "expectedPcm16": 6553
+            }
+          ]
+        },
+        {
+          "name": "ramp rises to the limiter gain without clipping",
+          "previousAppliedGain": 1.0,
+          "appliedGain": 1.8,
+          "sample": 0.5,
+          "peak": 0.5,
+          "checks": [
+            {
+              "index": 0,
+              "expectedPcm16": 16493
+            },
+            {
+              "index": 30,
+              "expectedPcm16": 19769
+            },
+            {
+              "index": 119,
+              "expectedPcm16": 29490
+            },
+            {
+              "index": 2399,
+              "expectedPcm16": 29490
+            }
+          ]
+        },
+        {
+          "name": "descending ramp is capped by the frame peak limit",
+          "previousAppliedGain": 4.0,
+          "appliedGain": 1.125,
+          "sample": 0.8,
+          "peak": 0.8,
+          "checks": [
+            {
+              "index": 0,
+              "expectedPcm16": 29490
+            },
+            {
+              "index": 1,
+              "expectedPcm16": 29490
+            },
+            {
+              "index": 60,
+              "expectedPcm16": 29490
+            },
+            {
+              "index": 119,
+              "expectedPcm16": 29490
+            },
+            {
+              "index": 120,
+              "expectedPcm16": 29490
+            },
+            {
+              "index": 2399,
+              "expectedPcm16": 29490
+            }
+          ]
+        },
+        {
+          "name": "peak above the clip ceiling still applies unity gain",
+          "previousAppliedGain": 3.0,
+          "appliedGain": 1.0,
+          "sample": 0.95,
+          "peak": 0.95,
+          "checks": [
+            {
+              "index": 0,
+              "expectedPcm16": 31129
+            },
+            {
+              "index": 119,
+              "expectedPcm16": 31129
+            },
+            {
+              "index": 2399,
+              "expectedPcm16": 31129
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "loss": {
+    "description": "送信前（変換前バッファ・送信キュー）の音声欠落の検知と扱い。連番の欠番は送信キューの drop、discardedMs は capture 側が数えた変換前バッファの破棄時間（世代内で累積、内容なし）。両者は別区間なので二重計上しない。",
+    "sendQueueFrameCapacity": 32,
+    "frameDurationMs": 100,
+    "reconnect": {
+      "lostMsThreshold": 6400,
+      "windowMs": 30000,
+      "rationale": "送信キュー 32 枚 = 3,200ms の単発 drop では再接続しない。stablePeriodMs（reconnect.json）と同じ 30 秒窓で欠落合計が容量 2 回分に達した場合だけ既存の ReconnectBudget を通す。"
+    },
+    "taintedSegmentWindowMs": 8000,
+    "afterLoss": {
+      "discardsUnconfirmedSubtitle": true,
+      "preservesFinalizedSubtitle": true,
+      "taintedSegmentIsNotFinalized": true,
+      "taintedSegmentIsNotRecorded": true,
+      "singleDropDoesNotReconnect": true,
+      "diagnosticsExcludeAudioAndText": true
+    },
+    "cases": [
+      {
+        "name": "contiguous frames",
+        "frames": [
+          {
+            "generation": 1,
+            "sequence": 0,
+            "discardedMs": 0,
+            "queueWaitMs": 20,
+            "atMs": 0
+          },
+          {
+            "generation": 1,
+            "sequence": 1,
+            "discardedMs": 0,
+            "queueWaitMs": 30,
+            "atMs": 100
+          },
+          {
+            "generation": 1,
+            "sequence": 2,
+            "discardedMs": 0,
+            "queueWaitMs": 25,
+            "atMs": 200
+          },
+          {
+            "generation": 1,
+            "sequence": 3,
+            "discardedMs": 0,
+            "queueWaitMs": 40,
+            "atMs": 300
+          },
+          {
+            "generation": 1,
+            "sequence": 4,
+            "discardedMs": 0,
+            "queueWaitMs": 35,
+            "atMs": 400
+          }
+        ],
+        "expected": {
+          "droppedFrames": 0,
+          "lostMs": 0,
+          "lossEvents": 0,
+          "maxQueueWaitMs": 40,
+          "reconnectAt": null
+        }
+      },
+      {
+        "name": "single send-queue drop stays below reconnect",
+        "frames": [
+          {
+            "generation": 1,
+            "sequence": 0,
+            "discardedMs": 0,
+            "queueWaitMs": 10,
+            "atMs": 0
+          },
+          {
+            "generation": 1,
+            "sequence": 1,
+            "discardedMs": 0,
+            "queueWaitMs": 10,
+            "atMs": 100
+          },
+          {
+            "generation": 1,
+            "sequence": 2,
+            "discardedMs": 0,
+            "queueWaitMs": 10,
+            "atMs": 200
+          },
+          {
+            "generation": 1,
+            "sequence": 35,
+            "discardedMs": 0,
+            "queueWaitMs": 10,
+            "atMs": 3600
+          }
+        ],
+        "expected": {
+          "droppedFrames": 32,
+          "lostMs": 3200,
+          "lossEvents": 1,
+          "maxQueueWaitMs": 10,
+          "reconnectAt": null
+        }
+      },
+      {
+        "name": "pre-conversion discard only",
+        "frames": [
+          {
+            "generation": 1,
+            "sequence": 0,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 0
+          },
+          {
+            "generation": 1,
+            "sequence": 1,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 100
+          },
+          {
+            "generation": 1,
+            "sequence": 2,
+            "discardedMs": 500,
+            "queueWaitMs": 0,
+            "atMs": 700
+          }
+        ],
+        "expected": {
+          "droppedFrames": 0,
+          "lostMs": 500,
+          "lossEvents": 1,
+          "maxQueueWaitMs": 0,
+          "reconnectAt": null
+        }
+      },
+      {
+        "name": "both stages in one frame are counted once each",
+        "frames": [
+          {
+            "generation": 1,
+            "sequence": 0,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 0
+          },
+          {
+            "generation": 1,
+            "sequence": 1,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 100
+          },
+          {
+            "generation": 1,
+            "sequence": 2,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 200
+          },
+          {
+            "generation": 1,
+            "sequence": 35,
+            "discardedMs": 700,
+            "queueWaitMs": 0,
+            "atMs": 4300
+          }
+        ],
+        "expected": {
+          "droppedFrames": 32,
+          "lostMs": 3900,
+          "lossEvents": 1,
+          "maxQueueWaitMs": 0,
+          "reconnectAt": null
+        }
+      },
+      {
+        "name": "sustained loss inside window reconnects",
+        "frames": [
+          {
+            "generation": 1,
+            "sequence": 0,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 0
+          },
+          {
+            "generation": 1,
+            "sequence": 33,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 3400
+          },
+          {
+            "generation": 1,
+            "sequence": 34,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 3500
+          },
+          {
+            "generation": 1,
+            "sequence": 67,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 6900
+          }
+        ],
+        "expected": {
+          "droppedFrames": 64,
+          "lostMs": 6400,
+          "lossEvents": 2,
+          "maxQueueWaitMs": 0,
+          "reconnectAt": 6900
+        }
+      },
+      {
+        "name": "loss outside window does not accumulate",
+        "frames": [
+          {
+            "generation": 1,
+            "sequence": 0,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 0
+          },
+          {
+            "generation": 1,
+            "sequence": 33,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 3400
+          },
+          {
+            "generation": 1,
+            "sequence": 34,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 3500
+          },
+          {
+            "generation": 1,
+            "sequence": 67,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 33501
+          }
+        ],
+        "expected": {
+          "droppedFrames": 64,
+          "lostMs": 6400,
+          "lossEvents": 2,
+          "maxQueueWaitMs": 0,
+          "reconnectAt": null
+        }
+      },
+      {
+        "name": "new capture generation resets sequence and discard baseline",
+        "frames": [
+          {
+            "generation": 1,
+            "sequence": 0,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 0
+          },
+          {
+            "generation": 1,
+            "sequence": 1,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 100
+          },
+          {
+            "generation": 1,
+            "sequence": 2,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 200
+          },
+          {
+            "generation": 2,
+            "sequence": 0,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 300
+          },
+          {
+            "generation": 2,
+            "sequence": 1,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 400
+          }
+        ],
+        "expected": {
+          "droppedFrames": 0,
+          "lostMs": 0,
+          "lossEvents": 0,
+          "maxQueueWaitMs": 0,
+          "reconnectAt": null
+        }
+      },
+      {
+        "name": "discard before the first frame of a generation counts once",
+        "frames": [
+          {
+            "generation": 1,
+            "sequence": 0,
+            "discardedMs": 300,
+            "queueWaitMs": 0,
+            "atMs": 0
+          },
+          {
+            "generation": 1,
+            "sequence": 1,
+            "discardedMs": 300,
+            "queueWaitMs": 0,
+            "atMs": 100
+          }
+        ],
+        "expected": {
+          "droppedFrames": 0,
+          "lostMs": 300,
+          "lossEvents": 1,
+          "maxQueueWaitMs": 0,
+          "reconnectAt": null
+        }
+      },
+      {
+        "name": "sequence gap after generation change counts within new generation only",
+        "frames": [
+          {
+            "generation": 1,
+            "sequence": 0,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 0
+          },
+          {
+            "generation": 1,
+            "sequence": 1,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 100
+          },
+          {
+            "generation": 2,
+            "sequence": 0,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 200
+          },
+          {
+            "generation": 2,
+            "sequence": 5,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 700
+          }
+        ],
+        "expected": {
+          "droppedFrames": 4,
+          "lostMs": 400,
+          "lossEvents": 1,
+          "maxQueueWaitMs": 0,
+          "reconnectAt": null
+        }
+      },
+      {
+        "name": "dropped prefix before the first observed frame",
+        "frames": [
+          {
+            "generation": 1,
+            "sequence": 8,
+            "discardedMs": 0,
+            "queueWaitMs": 0,
+            "atMs": 800
+          }
+        ],
+        "expected": {
+          "droppedFrames": 8,
+          "lostMs": 800,
+          "lossEvents": 1,
+          "maxQueueWaitMs": 0,
+          "reconnectAt": null
+        }
+      }
+    ]
+  }
+}

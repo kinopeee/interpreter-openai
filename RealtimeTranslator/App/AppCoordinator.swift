@@ -14,6 +14,9 @@ final class AppCoordinator: NSObject {
     private lazy var subtitleWindow = SubtitleWindowController()
     private lazy var interpretationSession = InterpretationSession(
         apiKeyStore: apiKeyStore,
+        audioCapture: RealtimeAudioCaptureService(
+            automaticGainProvider: { [settings] in settings.automaticGainEnabled }
+        ),
         tuningProvider: { [settings] in
             settings.sessionTuning()
         },

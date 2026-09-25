@@ -317,4 +317,33 @@ final class RealtimeSessionTuningTests: XCTestCase {
             UiLanguagePreference.en.rawValue
         )
     }
+
+    @MainActor
+    func testAppSettingsPersistsAutomaticGainEnabled() {
+        // Given: automaticGainEnabled キーの現在値を退避した設定
+        let defaults = UserDefaults.standard
+        let previousValue = defaults.object(forKey: "automaticGainEnabled")
+        defer {
+            if let previousValue {
+                defaults.set(previousValue, forKey: "automaticGainEnabled")
+            } else {
+                defaults.removeObject(forKey: "automaticGainEnabled")
+            }
+        }
+
+        // When: キー未保存のまま読み込む
+        defaults.removeObject(forKey: "automaticGainEnabled")
+
+        // Then: 既定は true
+        XCTAssertTrue(AppSettings().automaticGainEnabled)
+
+        // When: false を保存して読み直す
+        let settings = AppSettings()
+        settings.automaticGainEnabled = false
+        let reloaded = AppSettings()
+
+        // Then: false が復元される
+        XCTAssertFalse(reloaded.automaticGainEnabled)
+        XCTAssertEqual(defaults.object(forKey: "automaticGainEnabled") as? Bool, false)
+    }
 }
