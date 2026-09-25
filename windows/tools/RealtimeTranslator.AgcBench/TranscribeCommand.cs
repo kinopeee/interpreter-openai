@@ -35,7 +35,7 @@ internal static class TranscribeCommand
             variantNames = GainVariants.AllNames;
         }
 
-        var clipFilter = new HashSet<string>(options.GetList("clips"), StringComparer.Ordinal);
+        var clipFilter = options.GetList("clips");
         var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
         if (string.IsNullOrWhiteSpace(apiKey))
         {
@@ -43,42 +43,121 @@ internal static class TranscribeCommand
         }
 
         var corpus = Corpus.Load(processedDir);
+        var summary =
+            JsonSerializer.Deserialize<ProcessSummary>(
+                File.ReadAllText(Path.Combine(processedDir, "process-summary.json")),
+                Json.Options
+            ) ?? new ProcessSummary();
+        var explicitVariants = options.Get("variants") is not null;
+        var pairs = SelectPairs(corpus, summary, clipFilter, variantNames, explicitVariants);
         Directory.CreateDirectory(outDir);
         var safetyIdentifier = SafetyIdentifier();
-        foreach (var clip in corpus.Clips)
+        foreach (var (clip, name) in pairs)
         {
-            if (clipFilter.Count > 0 && !clipFilter.Contains(clip.Id))
+            var wavPath = Path.Combine(processedDir, $"{clip.Id}.{name}.wav");
+            var pcm = ReadPcm16(wavPath);
+            for (var run = 1; run <= runs; run += 1)
             {
-                continue;
-            }
-
-            foreach (var name in variantNames)
-            {
-                var wavPath = Path.Combine(processedDir, $"{clip.Id}.{name}.wav");
-                if (!File.Exists(wavPath))
-                {
-                    continue;
-                }
-
-                var pcm = ReadPcm16(wavPath);
-                for (var run = 1; run <= runs; run += 1)
-                {
-                    var result = await TranscribeOnceAsync(clip, name, run, pcm, apiKey, safetyIdentifier)
-                        .ConfigureAwait(false);
-                    var resultPath = Path.Combine(outDir, $"{clip.Id}.{name}.run{run}.json");
-                    await File.WriteAllTextAsync(
-                            resultPath,
-                            JsonSerializer.Serialize(result, Json.Options) + "\n"
-                        )
-                        .ConfigureAwait(false);
-                    Console.WriteLine(
-                        $"transcribed {clip.Id}.{name}.run{run}: firstDeltaMs={(result.FirstDeltaMs?.ToString(CultureInfo.InvariantCulture) ?? "-")}"
-                    );
-                }
+                var result = await TranscribeOnceAsync(clip, name, run, pcm, apiKey, safetyIdentifier)
+                    .ConfigureAwait(false);
+                var resultPath = Path.Combine(outDir, $"{clip.Id}.{name}.run{run}.json");
+                await File.WriteAllTextAsync(
+                        resultPath,
+                        JsonSerializer.Serialize(result, Json.Options) + "\n"
+                    )
+                    .ConfigureAwait(false);
+                Console.WriteLine(
+                    $"transcribed {clip.Id}.{name}.run{run}: firstDeltaMs={(result.FirstDeltaMs?.ToString(CultureInfo.InvariantCulture) ?? "-")}"
+                );
             }
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// 送信対象の (clip, variant) を process-summary.json の実績から決める。
+    /// 明示 --variants で欠けたペアは usage error、既定では skip して stdout に出す。
+    /// --clips に corpus 外の id があれば usage error。
+    /// </summary>
+    internal static List<(CorpusClip Clip, string Variant)> SelectPairs(
+        Corpus corpus,
+        ProcessSummary summary,
+        IReadOnlyList<string> clipFilter,
+        IReadOnlyList<string> variantNames,
+        bool explicitVariants
+    )
+    {
+        var clips = new List<CorpusClip>();
+        var corpusIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var clip in corpus.Clips)
+        {
+            corpusIds.Add(clip.Id);
+        }
+
+        if (clipFilter.Count == 0)
+        {
+            clips.AddRange(corpus.Clips);
+        }
+        else
+        {
+            var unknown = new List<string>();
+            foreach (var id in clipFilter)
+            {
+                var clip = corpus.Clips.Find(c => c.Id == id);
+                if (clip is null)
+                {
+                    unknown.Add(id);
+                }
+                else
+                {
+                    clips.Add(clip);
+                }
+            }
+
+            if (unknown.Count > 0)
+            {
+                throw new CliUsageException(
+                    $"unknown --clips id(s): {string.Join(",", unknown)} (corpus: {string.Join(",", corpusIds)})"
+                );
+            }
+        }
+
+        var available = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in summary.Results)
+        {
+            available.Add($"{entry.Clip}|{entry.Variant}");
+        }
+
+        var pairs = new List<(CorpusClip, string)>();
+        var missing = new List<string>();
+        foreach (var clip in clips)
+        {
+            foreach (var name in variantNames)
+            {
+                if (available.Contains($"{clip.Id}|{name}"))
+                {
+                    pairs.Add((clip, name));
+                }
+                else if (explicitVariants)
+                {
+                    missing.Add($"{clip.Id}.{name}");
+                }
+                else
+                {
+                    Console.WriteLine($"skipped {clip.Id}.{name}: not in process-summary.json");
+                }
+            }
+        }
+
+        if (missing.Count > 0)
+        {
+            throw new CliUsageException(
+                $"process-summary.json に無いペアがあります: {string.Join(",", missing)}"
+            );
+        }
+
+        return pairs;
     }
 
     private static string SafetyIdentifier()
@@ -129,10 +208,11 @@ internal static class TranscribeCommand
         );
         Task? drain = null;
         var transcript = new StringBuilder();
-        var firstSendAt = Stopwatch.GetTimestamp();
         long? firstDeltaMs = null;
         string? streamError = null;
+        var firstSendAt = 0L;
         var sentMs = 0L;
+        var connectStart = Stopwatch.GetTimestamp();
         try
         {
             await connection
@@ -142,6 +222,7 @@ internal static class TranscribeCommand
                     clip.LanguagePair
                 )
                 .ConfigureAwait(false);
+            result.ConnectMs = ElapsedMs(connectStart);
 
             drain = Task.Run(
                 async () =>
@@ -168,6 +249,8 @@ internal static class TranscribeCommand
             );
 
             var frameCount = pcm.Length / FrameBytes;
+            // 0 フレームなら送信も計測もしない (firstDeltaMs/sentMs は null/0 のまま)。
+            firstSendAt = frameCount == 0 ? 0L : Stopwatch.GetTimestamp();
             for (var frame = 0; frame < frameCount; frame += 1)
             {
                 await connection
@@ -181,7 +264,7 @@ internal static class TranscribeCommand
                 }
             }
 
-            sentMs = ElapsedMs(firstSendAt);
+            sentMs = frameCount == 0 ? 0 : ElapsedMs(firstSendAt);
             using var closeTimeout = new CancellationTokenSource(CloseTimeout);
             try
             {
@@ -233,4 +316,7 @@ internal sealed record TranscribeResult
     public long? FirstDeltaFromOnsetMs { get; set; }
     public long SentMs { get; set; }
     public string? Error { get; set; }
+
+    /// <summary>StartAsync (connect + handshake) にかかった時間。診断用。</summary>
+    public long? ConnectMs { get; set; }
 }

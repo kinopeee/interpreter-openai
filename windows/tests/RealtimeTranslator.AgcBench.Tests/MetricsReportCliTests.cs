@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using RealtimeTranslator.AgcBench;
@@ -33,6 +34,13 @@ public class TextMetricsTests
         Assert.Equal("ガ", TextMetrics.Normalize("ｶﾞ", keepSpaces: false));
     }
 
+    // Given: ハイフン区切りの仮説
+    // When: WER を計算する
+    // Then: 句読点は空白扱いになり "hello world" と同値 (0 エラー)
+    [Fact]
+    public void WerTreatsPunctuationAsTokenBoundary() =>
+        Assert.Equal(0.0, TextMetrics.Wer("hello world", "hello-world"), 6);
+
     // Given: 無音クリップへの誤字幕
     // When: falseSubtitleChars を計算する
     // Then: 空なら 0、非空なら正規化後の文字数
@@ -58,7 +66,7 @@ public class ReportTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private string WriteProcessedDir()
+    private string WriteProcessedDir(bool expectSilence = false)
     {
         var processed = Path.Combine(_dir, $"processed-{Guid.NewGuid():N}");
         Directory.CreateDirectory(processed);
@@ -74,6 +82,7 @@ public class ReportTests : IDisposable
                     Pair = "en-es",
                     Reference = "hello world",
                     SpeechOnsetMs = 500,
+                    ExpectSilence = expectSilence,
                 },
             ],
         }.Save(processed);
@@ -167,6 +176,54 @@ public class ReportTests : IDisposable
         Assert.Contains("| 0/2 |", report);
     }
 
+    // Given: 無音クリップに ok run とエラー run が 1 件ずつ
+    // When: report を生成する
+    // Then: falseSubtitleChars は ok run だけの値、runs with error は 1/2
+    [Fact]
+    public void ReportExcludesErroredRunsFromStats()
+    {
+        var processed = WriteProcessedDir(expectSilence: true);
+        var results = Path.Combine(_dir, $"results-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(results);
+        File.WriteAllText(
+            Path.Combine(results, "clip.off.run1.json"),
+            JsonSerializer.Serialize(
+                new TranscribeResult
+                {
+                    Clip = "clip",
+                    Variant = "off",
+                    Run = 1,
+                    Transcript = "oops",
+                    SentMs = 1000,
+                },
+                Json.Options
+            )
+        );
+        File.WriteAllText(
+            Path.Combine(results, "clip.off.run2.json"),
+            JsonSerializer.Serialize(
+                new TranscribeResult
+                {
+                    Clip = "clip",
+                    Variant = "off",
+                    Run = 2,
+                    Transcript = "much longer false subtitle",
+                    SentMs = 1000,
+                    Error = "CloseTimeout",
+                },
+                Json.Options
+            )
+        );
+
+        var reportPath = Path.Combine(_dir, "report-err.md");
+        var options = CliOptions.Parse(["--processed", processed, "--results", results, "--out", reportPath]);
+        Assert.Equal(0, ReportCommand.Run(options));
+
+        var report = File.ReadAllText(reportPath);
+        // エラー run の 24 文字は平均に入らず、ok run の 4 文字だけになる。
+        Assert.Contains("| off | 1 | 0 | 0.05 | – | – | 4 | 1/2 |", report);
+    }
+
     // Given: transcribe 結果ディレクトリが存在しない
     // When: report を生成する
     // Then: process-summary だけで描ける
@@ -196,4 +253,101 @@ public class CliTests
     [Fact]
     public async Task MissingRequiredOptionIsUsageError() =>
         Assert.Equal(2, await Program.Main(["process", "--corpus", "x"]));
+}
+
+public class SelectPairsTests
+{
+    private static Corpus CorpusWith(params string[] ids)
+    {
+        var corpus = new Corpus();
+        foreach (var id in ids)
+        {
+            corpus.Clips.Add(new CorpusClip { Id = id, File = id + ".wav" });
+        }
+
+        return corpus;
+    }
+
+    private static ProcessSummary SummaryWith(params (string Clip, string Variant)[] pairs)
+    {
+        var summary = new ProcessSummary();
+        foreach (var (clip, variant) in pairs)
+        {
+            summary.Results.Add(new ClipVariantSummary { Clip = clip, Variant = variant });
+        }
+
+        return summary;
+    }
+
+    // Given: summary に off と v2 だけ存在する
+    // When: 既定バリアントで選択する
+    // Then: 実績のあるペアだけが返り、v1 は skip される
+    [Fact]
+    public void DefaultVariantsSkipMissingPairs()
+    {
+        var pairs = TranscribeCommand.SelectPairs(
+            CorpusWith("clip"),
+            SummaryWith(("clip", "off"), ("clip", "v2")),
+            [],
+            GainVariants.AllNames,
+            explicitVariants: false
+        );
+
+        Assert.Equal([("clip", "off"), ("clip", "v2")], pairs.Select(p => (p.Clip.Id, p.Variant)).ToList());
+    }
+
+    // Given: 明示 --variants に summary 外のバリアントを含める
+    // When: 選択する
+    // Then: 欠けたペアを列挙した usage error になる
+    [Fact]
+    public void ExplicitVariantMissingPairIsUsageError()
+    {
+        var error = Assert.Throws<CliUsageException>(() =>
+            TranscribeCommand.SelectPairs(
+                CorpusWith("clip"),
+                SummaryWith(("clip", "off")),
+                [],
+                ["off", "v1"],
+                explicitVariants: true
+            )
+        );
+        Assert.Contains("clip.v1", error.Message);
+    }
+
+    // Given: --clips に corpus 外の id がある
+    // When: 選択する
+    // Then: usage error になる
+    [Fact]
+    public void UnknownClipIdIsUsageError()
+    {
+        var error = Assert.Throws<CliUsageException>(() =>
+            TranscribeCommand.SelectPairs(
+                CorpusWith("clip"),
+                SummaryWith(("clip", "off")),
+                ["ghost"],
+                ["off"],
+                explicitVariants: true
+            )
+        );
+        Assert.Contains("ghost", error.Message);
+    }
+
+    // Given: --clips で絞り込む
+    // When: 選択する
+    // Then: 指定クリップのペアだけが返る
+    [Fact]
+    public void ClipFilterNarrowsSelection()
+    {
+        var pairs = TranscribeCommand.SelectPairs(
+            CorpusWith("a", "b"),
+            SummaryWith(("a", "off"), ("b", "off")),
+            ["b"],
+            ["off"],
+            explicitVariants: false
+        );
+
+        var pair = Assert.Single(pairs);
+        Assert.Equal("b", pair.Clip.Id);
+        Assert.Equal("off", pair.Variant);
+    }
 }

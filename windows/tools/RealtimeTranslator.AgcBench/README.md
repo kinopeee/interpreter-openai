@@ -56,6 +56,8 @@ exit code: 成功 0 / 引数誤り 2 / 実行失敗 1。
   `speechOutRms` は `speechOnsetMs` 以降のフレームのみ対象。
 - `corpus.json` を processedDir へコピーする。
 
+`process --out` ディレクトリは process が占有し、実行時に既存の `*.wav` / `*.trace.csv` をすべて削除してから書き直す。
+
 バリアント:
 
 - `off`: 素通し (gain 1)。
@@ -69,6 +71,11 @@ exit code: 成功 0 / 引数誤り 2 / 実行失敗 1。
 実 API へ送るため実行料金がかかる。利用者自身のキーを `OPENAI_API_KEY` 環境変数で渡す
 (未設定なら usage error)。run は逐次実行、送信は実時間 pacing (100 ms/frame)。
 
+送信対象は processedDir 内 `process-summary.json` に実績のある (clip, variant) ペア。
+`--variants` を明示したとき summary に無いペアは usage error で全失敗、既定では
+`skipped <clip>.<variant>` と表示して進む。`--clips` に corpus 外の id を渡しても
+usage error。各 run の JSON には handshake 時間 `connectMs` も記録する。
+
 結果は `<id>.<variant>.run<N>.json` に `{ clip, variant, run, transcript, firstDeltaMs,
 firstDeltaFromOnsetMs, sentMs, error }` として保存する。**評価用音声の transcript を
 結果 JSON に書くのは意図された動作**であり、代わりに stdout へは transcript 本文を出さない。
@@ -77,7 +84,8 @@ firstDeltaFromOnsetMs, sentMs, error }` として保存する。**評価用音�
 
 `process-summary.json` と結果 JSON からクリップ別比較表 (markdown) を出す。
 誤り率は ja=CER / en・es=WER、無音クリップは `falseSubtitleChars`、初回字幕までの
-遅延は `firstDeltaMs − speechOnsetMs` の統計。結果が無い組は `–` で埋まる。
+遅延は `firstDeltaMs − speechOnsetMs` の統計。エラー終了した run は統計から除外し
+`runs with error` (N/M) だけに数える。結果が無い組は `–` で埋まる。
 
 ## ベースクリップの作り方
 

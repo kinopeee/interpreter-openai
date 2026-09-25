@@ -127,10 +127,25 @@ internal static class ReportCommand
         string? errorRuns = null;
         if (runs.Count > 0)
         {
-            if (!clip.ExpectSilence)
+            // エラー終了した run は統計から外し、runs with error だけで数える。
+            var okRuns = new List<TranscribeResult>();
+            var errorCount = 0;
+            foreach (var run in runs)
+            {
+                if (run.Error is null)
+                {
+                    okRuns.Add(run);
+                }
+                else
+                {
+                    errorCount += 1;
+                }
+            }
+
+            if (!clip.ExpectSilence && okRuns.Count > 0)
             {
                 var rates = new List<double>();
-                foreach (var run in runs)
+                foreach (var run in okRuns)
                 {
                     rates.Add(TextMetrics.ErrorRate(clip.Language, clip.Reference, run.Transcript));
                 }
@@ -139,7 +154,7 @@ internal static class ReportCommand
             }
 
             var deltas = new List<double>();
-            foreach (var run in runs)
+            foreach (var run in okRuns)
             {
                 if (run.FirstDeltaFromOnsetMs is { } delta)
                 {
@@ -152,24 +167,15 @@ internal static class ReportCommand
                 firstDelta = FormatMeanMinMax(deltas, "0");
             }
 
-            if (clip.ExpectSilence)
+            if (clip.ExpectSilence && okRuns.Count > 0)
             {
                 var chars = new List<double>();
-                foreach (var run in runs)
+                foreach (var run in okRuns)
                 {
                     chars.Add(TextMetrics.FalseSubtitleChars(run.Transcript));
                 }
 
-                falseChars = chars.Count == 0 ? null : Mean(chars).ToString("0.#", CultureInfo.InvariantCulture);
-            }
-
-            var errorCount = 0;
-            foreach (var run in runs)
-            {
-                if (run.Error is not null)
-                {
-                    errorCount += 1;
-                }
+                falseChars = Mean(chars).ToString("0.#", CultureInfo.InvariantCulture);
             }
 
             errorRuns = string.Create(CultureInfo.InvariantCulture, $"{errorCount}/{runs.Count}");

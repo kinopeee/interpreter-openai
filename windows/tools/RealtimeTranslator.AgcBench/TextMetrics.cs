@@ -8,7 +8,12 @@ namespace RealtimeTranslator.AgcBench;
 /// <summary>transcript 比較指標。ja は文字単位 CER、en/es は語単位 WER。</summary>
 internal static class TextMetrics
 {
-    /// <summary>FormKC 正規化 → 小文字化 → 句読点/記号/空白を除去 (言語判定用の基礎正規化)。</summary>
+    /// <summary>
+    /// FormKC 正規化 → 小文字化 → 句読点/記号/空白を除去する。
+    /// keepSpaces=true (WER 用) では落とす rune をすべて空白へ置き換え、
+    /// トークン分割時に連続空白は潰れる ("hello-world" は "hello world" と同値)。
+    /// keepSpaces=false (CER / false-subtitle 用) では落とす rune は消える。
+    /// </summary>
     public static string Normalize(string text, bool keepSpaces)
     {
         var normalized = text.Normalize(NormalizationForm.FormKC).ToLowerInvariant();
@@ -18,7 +23,7 @@ internal static class TextMetrics
             var category = Rune.GetUnicodeCategory(rune);
             if (IsDropped(category))
             {
-                if (keepSpaces && IsSpace(category))
+                if (keepSpaces)
                 {
                     builder.Append(' ');
                 }
@@ -88,9 +93,6 @@ internal static class TextMetrics
                 or UnicodeCategory.ModifierSymbol
                 or UnicodeCategory.OtherSymbol
                 or UnicodeCategory.OtherNotAssigned;
-
-    private static bool IsSpace(UnicodeCategory category) =>
-        category is UnicodeCategory.SpaceSeparator or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator;
 
     private static List<string> ToRuneStrings(string text)
     {

@@ -23,6 +23,18 @@ internal static class ProcessCommand
 
         var corpus = Corpus.Load(corpusDir);
         Directory.CreateDirectory(outDir);
+
+        // outDir は process が占有するので、古いクリップ/バリアントの残滓を消す。
+        foreach (var stale in Directory.EnumerateFiles(outDir, "*.wav"))
+        {
+            File.Delete(stale);
+        }
+
+        foreach (var stale in Directory.EnumerateFiles(outDir, "*.trace.csv"))
+        {
+            File.Delete(stale);
+        }
+
         var summary = new ProcessSummary();
         foreach (var clip in corpus.Clips)
         {
