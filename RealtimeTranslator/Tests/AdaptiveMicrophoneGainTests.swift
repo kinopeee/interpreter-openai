@@ -235,10 +235,12 @@ final class AdaptiveMicrophoneGainTests: XCTestCase {
         var agc = AdaptiveMicrophoneGain(initialGain: 4.0)
         var trace: [(gain: Float, appliedGain: Float)] = []
         for _ in 0..<5 {
-            trace.append((agc.gain, agc.observe(rms: 0, peak: 0)))
+            let applied = agc.observe(rms: 0, peak: 0)
+            trace.append((agc.gain, applied))
         }
         for _ in 0..<200 {
-            trace.append((agc.gain, agc.observe(rms: 0.004, peak: 0.012)))
+            let applied = agc.observe(rms: 0.004, peak: 0.012)
+            trace.append((agc.gain, applied))
         }
 
         XCTAssertEqual(trace[12].gain, 8.0, accuracy: 0.0005)
