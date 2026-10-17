@@ -34,10 +34,21 @@ final class AppSettings {
     /// 現在有効な同意バージョン。文言変更時にインクリメントする。
     static let currentOpenAIConsentVersion = 1
 
+    static let minimumFontSize: Double = 18
+    static let maximumFontSize: Double = 48
+    static let defaultFontSize: Double = 32
+
+    /// C# `AppSettingsCodec.ClampFontSize` と同義。fixture `v1/settings` の契約。
+    static func clampFontSize(_ value: Double) -> Double {
+        value.isFinite
+            ? min(max(value, minimumFontSize), maximumFontSize)
+            : defaultFontSize
+    }
+
     private let defaults: UserDefaults
 
     var fontSize: Double {
-        didSet { defaults.set(fontSize, forKey: Keys.fontSize) }
+        didSet { defaults.set(Self.clampFontSize(fontSize), forKey: Keys.fontSize) }
     }
 
     var hasCustomPanelOrigin: Bool {
@@ -140,7 +151,7 @@ final class AppSettings {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         let storedFont = defaults.double(forKey: Keys.fontSize)
-        fontSize = storedFont > 0 ? storedFont : 32
+        fontSize = Self.clampFontSize(storedFont)
         hasCustomPanelOrigin = defaults.bool(forKey: Keys.hasCustomPanelOrigin)
         panelOriginX = defaults.double(forKey: Keys.panelOriginX)
         panelOriginY = defaults.double(forKey: Keys.panelOriginY)
