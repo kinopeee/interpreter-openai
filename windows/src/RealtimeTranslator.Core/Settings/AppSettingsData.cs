@@ -104,14 +104,17 @@ public static class AppSettingsCodec
         }
 
         var defaults = AppSettingsData.Default;
+        // ヒントの既定は保存済みの languagePair に従う（macOS 側と同義）。
+        var pair = Pair(dictionary) ?? defaults.LanguagePair;
         return new AppSettingsData(
             ClampFontSize(Number(dictionary, "fontSize") ?? defaults.FontSize),
             Boolean(dictionary, "hasCustomOverlayOrigin") ?? defaults.HasCustomOverlayOrigin,
             Number(dictionary, "overlayOriginX") ?? defaults.OverlayOriginX,
             Number(dictionary, "overlayOriginY") ?? defaults.OverlayOriginY,
             (int?)Number(dictionary, "acceptedConsentVersion") ?? defaults.AcceptedConsentVersion,
-            Text(dictionary, "transcriptionPrompt") ?? defaults.TranscriptionPrompt,
-            Text(dictionary, "transcriptionKeywordsText") ?? defaults.TranscriptionKeywordsText,
+            NonEmpty(dictionary, "transcriptionPrompt") ?? RealtimeSessionTuning.DefaultPromptForPair(pair),
+            Text(dictionary, "transcriptionKeywordsText")
+                ?? RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywordsForPair(pair)),
             NoiseReduction(dictionary) ?? defaults.NoiseReduction,
             TranscriptionDelay(dictionary) ?? defaults.TranscriptionDelay,
             Boolean(dictionary, "recordSubtitles") ?? false,
@@ -136,6 +139,9 @@ public static class AppSettingsCodec
 
     private static string? Text(JsonObject dictionary, string name) =>
         dictionary[name] is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+
+    private static string? NonEmpty(JsonObject dictionary, string name) =>
+        Text(dictionary, name) is { Length: > 0 } text ? text : null;
 
     private static RealtimeTranslationNoiseReduction? NoiseReduction(JsonObject dictionary)
     {

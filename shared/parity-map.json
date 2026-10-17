@@ -1204,7 +1204,14 @@
         {
           "symbol": "AppSettingsStore",
           "path": "windows/src/RealtimeTranslator.Platform/Settings/AppSettingsStore.cs"
+        },
+        {
+          "symbol": "AppSettingsHintRefresh",
+          "path": "windows/src/RealtimeTranslator.Core/Settings/AppSettingsHintRefresh.cs"
         }
+      ],
+      "fixtures": [
+        "v1/settings"
       ]
     },
     {

@@ -238,24 +238,10 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        var next = Settings with { LanguagePair = value };
-        var refreshedHints = false;
-        if (IsKnownDefaultPrompt(Settings.TranscriptionPrompt))
-        {
-            next = next with { TranscriptionPrompt = RealtimeSessionTuning.DefaultPromptForPair(value) };
-            refreshedHints = true;
-        }
-
-        if (IsKnownDefaultKeywordsText(Settings.TranscriptionKeywordsText))
-        {
-            next = next with
-            {
-                TranscriptionKeywordsText = RealtimeSessionTuning.KeywordsText(
-                    RealtimeSessionTuning.DefaultKeywordsForPair(value)
-                ),
-            };
-            refreshedHints = true;
-        }
+        var next = AppSettingsHintRefresh.ApplyLanguagePair(Settings, value);
+        var refreshedHints =
+            next.TranscriptionPrompt != Settings.TranscriptionPrompt
+            || next.TranscriptionKeywordsText != Settings.TranscriptionKeywordsText;
 
         if (refreshedHints)
         {
@@ -282,19 +268,6 @@ public partial class SettingsWindow : Window
         // 反映は再起動後。開いているウィンドウは描き直さない。
         Publish(Settings with { UiLanguage = value });
     }
-
-    private static bool IsKnownDefaultPrompt(string prompt) =>
-        prompt == RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEn)
-        || prompt == RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.JaEs)
-        || prompt == RealtimeSessionTuning.DefaultPromptForPair(LanguagePair.EnEs);
-
-    private static bool IsKnownDefaultKeywordsText(string keywordsText) =>
-        keywordsText
-            == RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEn))
-        || keywordsText
-            == RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.JaEs))
-        || keywordsText
-            == RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywordsForPair(LanguagePair.EnEs));
 
     private void OnTranscriptionDelayChanged(object sender, SelectionChangedEventArgs e)
     {
