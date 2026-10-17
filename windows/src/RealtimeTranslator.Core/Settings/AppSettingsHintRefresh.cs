@@ -10,12 +10,7 @@ namespace RealtimeTranslator.Core.Settings;
 /// </summary>
 public static class AppSettingsHintRefresh
 {
-    private static readonly LanguagePair[] AllPairs =
-    [
-        LanguagePair.JaEn,
-        LanguagePair.JaEs,
-        LanguagePair.EnEs,
-    ];
+    private static readonly LanguagePair[] AllPairs = [LanguagePair.JaEn, LanguagePair.JaEs, LanguagePair.EnEs];
 
     public static AppSettingsData ApplyLanguagePair(AppSettingsData settings, LanguagePair newPair)
     {
@@ -29,10 +24,7 @@ public static class AppSettingsHintRefresh
         var next = settings with { LanguagePair = newPair };
         if (IsKnownDefaultPrompt(settings.TranscriptionPrompt))
         {
-            next = next with
-            {
-                TranscriptionPrompt = RealtimeSessionTuning.DefaultPromptForPair(newPair),
-            };
+            next = next with { TranscriptionPrompt = RealtimeSessionTuning.DefaultPromptForPair(newPair) };
         }
 
         if (IsKnownDefaultKeywordsText(settings.TranscriptionKeywordsText))
@@ -57,12 +49,7 @@ public static class AppSettingsHintRefresh
     {
         foreach (var pair in AllPairs)
         {
-            if (
-                keywordsText
-                == RealtimeSessionTuning.KeywordsText(
-                    RealtimeSessionTuning.DefaultKeywordsForPair(pair)
-                )
-            )
+            if (keywordsText == RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywordsForPair(pair)))
             {
                 return true;
             }

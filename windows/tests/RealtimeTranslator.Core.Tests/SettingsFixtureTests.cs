@@ -2,8 +2,8 @@ using System;
 using System.Linq;
 using System.Text.Json.Nodes;
 using RealtimeTranslator.Core.Audio;
-using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Localization;
+using RealtimeTranslator.Core.OpenAI;
 using RealtimeTranslator.Core.Settings;
 using Xunit;
 
@@ -96,12 +96,7 @@ public sealed class SettingsFixtureTests
             : RealtimeSessionTuning.KeywordsText(RealtimeSessionTuning.DefaultKeywordsForPair(pair));
     }
 
-    private static void AssertField(
-        string key,
-        JsonNode? expected,
-        AppSettingsData actual,
-        string caseName
-    )
+    private static void AssertField(string key, JsonNode? expected, AppSettingsData actual, string caseName)
     {
         switch (key)
         {
@@ -133,16 +128,10 @@ public sealed class SettingsFixtureTests
                 );
                 break;
             case "noiseReduction":
-                Assert.Equal(
-                    SharedFixtures.Text(expected),
-                    actual.NoiseReduction.ToWireValue()
-                );
+                Assert.Equal(SharedFixtures.Text(expected), actual.NoiseReduction.ToWireValue());
                 break;
             case "transcriptionDelay":
-                Assert.Equal(
-                    SharedFixtures.Text(expected),
-                    actual.TranscriptionDelay.ToWireValue()
-                );
+                Assert.Equal(SharedFixtures.Text(expected), actual.TranscriptionDelay.ToWireValue());
                 break;
             case "recordSubtitles":
                 Assert.Equal(SharedFixtures.Flag(expected), actual.RecordSubtitles);
