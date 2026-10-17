@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# shared/fixtures/v*/ の schema↔fixture 1:1 と、locales/ui.json を検証する。
+# shared/fixtures/v*/ の schema↔fixture 1:1、locales/ui.json、
+# parity-map（shared/parity-map.json）を検証する。
 # GitHub Actions（.github/workflows/shared-contracts.yml）と
 # Origin + Depot CI（.depot/workflows/shared-contracts.yml）の正本。
 #
 # 使い方:
-#   ./scripts/ci-shared-contracts.sh           # 両方
+#   ./scripts/ci-shared-contracts.sh           # 全部
 #   ./scripts/ci-shared-contracts.sh fixtures
 #   ./scripts/ci-shared-contracts.sh locales
+#   ./scripts/ci-shared-contracts.sh parity
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -51,11 +53,16 @@ validate_locales() {
   cd "$ROOT"
 }
 
+validate_parity() {
+  node "$ROOT/scripts/ci-parity.mjs"
+}
+
 target="${1:-all}"
 case "$target" in
   all)
     validate_fixtures
     validate_locales
+    validate_parity
     ;;
   fixtures)
     validate_fixtures
@@ -63,12 +70,15 @@ case "$target" in
   locales)
     validate_locales
     ;;
+  parity)
+    validate_parity
+    ;;
   -h|--help)
-    sed -n '2,9p' "$0"
+    sed -n '2,11p' "$0"
     exit 0
     ;;
   *)
-    echo "Unknown argument: $target (expected fixtures, locales, or all)" >&2
+    echo "Unknown argument: $target (expected fixtures, locales, parity, or all)" >&2
     exit 1
     ;;
 esac

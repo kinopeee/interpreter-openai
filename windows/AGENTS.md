@@ -4,6 +4,7 @@
 
 ## 構成
 
+- 契約ドメイン型は `shared/parity-map.json` に登録する（追加・改名・削除・移動で hard fail しないよう同期する）。
 - `windows/RealtimeTranslator.slnx`: .NET 10 solution。プロジェクト追加はここへ登録する。
 - `windows/src/RealtimeTranslator.Core/`: OS非依存。codec、tuning、packetizer、gain、言語判定、字幕整列、接続、`InterpretationSession`、字幕snapshot・geometry・設定codec、`UserCopy`。Windows APIやWPF型を持ち込まない。
 - `windows/src/RealtimeTranslator.Platform/`: Windows固有。WASAPI capture、資格情報マネージャー、install identifier、多重起動防止、グローバルホットキー、ログ、設定ファイル、字幕記録ファイル。
