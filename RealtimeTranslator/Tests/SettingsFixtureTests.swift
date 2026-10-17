@@ -30,6 +30,7 @@ final class SettingsFixtureTests: XCTestCase {
     }
 
     // Given: fixture の defaults を一時 suite から読む
+    // When: AppSettings(defaults:) で読み込む
     // Then: 既定値と一致する
     @MainActor
     func testDefaultsMatchFixture() throws {
