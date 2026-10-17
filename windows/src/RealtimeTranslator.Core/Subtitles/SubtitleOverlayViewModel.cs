@@ -33,7 +33,7 @@ public sealed class SubtitleOverlayViewModel : INotifyPropertyChanged
 
     private string _sourceText = string.Empty;
     private string _translatedText = string.Empty;
-    private string? _statusBanner = SubtitleSnapshotBuilder.IdleBanner;
+    private string? _statusBanner = SubtitleAggregator.IdleBanner;
     private double _fontSize = AppSettingsData.DefaultFontSize;
     private bool _isEditingPosition;
     private bool _isFinalized;

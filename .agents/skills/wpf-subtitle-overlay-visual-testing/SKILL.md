@@ -41,7 +41,7 @@ const double anchorBottom = 700; // chosen bottom edge for this harness instance
 vm.FontSize = 30;
 const string src = "これは二行になるくらいの日本語原文サンプルです。";
 const string dst = "This is a sample English translation long enough to wrap.";
-string? banner = null; // or SubtitleSnapshotBuilder.ConnectingBanner, etc.
+string? banner = null; // or SubtitleAggregator.ConnectingBanner, etc.
 // Match the LiveSubtitle arity on the revision under test. On main it is
 // (SourceText, TranslatedText, IsFinalized) since #32; older revisions take two args.
 // When comparing revisions with different arity, drive both by reflection (see below).

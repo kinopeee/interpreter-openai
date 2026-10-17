@@ -265,8 +265,8 @@ public sealed class UserCopyTests
         }
 
         Assert.Equal(copy.Text("error.audioSendFailed"), DualRealtimeTranslationClient.TransportErrorMessage);
-        Assert.Equal(copy.Text("banner.connecting"), SubtitleSnapshotBuilder.ConnectingBanner);
-        Assert.Equal(copy.Text("banner.reconnecting"), SubtitleSnapshotBuilder.ReconnectingBanner);
+        Assert.Equal(copy.Text("banner.connecting"), SubtitleAggregator.ConnectingBanner);
+        Assert.Equal(copy.Text("banner.reconnecting"), SubtitleAggregator.ReconnectingBanner);
         Assert.Equal(copy.Text("error.genericServer"), RealtimeTranslationException.GenericServerMessage);
     }
 

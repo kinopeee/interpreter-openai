@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "parity-map.schema.json",
+  "title": "Parity Map",
+  "type": "object",
+  "required": ["version", "components", "platformOnly", "scan"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "components": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/component" }
+    },
+    "platformOnly": {
+      "type": "object",
+      "required": ["swift", "csharp"],
+      "additionalProperties": false,
+      "properties": {
+        "swift": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/platformEntry" }
+        },
+        "csharp": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/platformEntry" }
+        }
+      }
+    },
+    "scan": {
+      "type": "object",
+      "required": ["swift", "csharp"],
+      "additionalProperties": false,
+      "properties": {
+        "swift": { "$ref": "#/$defs/scanRoot" },
+        "csharp": { "$ref": "#/$defs/scanRoot" }
+      }
+    }
+  },
+  "$defs": {
+    "symbolPath": {
+      "type": "object",
+      "required": ["symbol", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "side": {
+      "oneOf": [
+        { "$ref": "#/$defs/symbolPath" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/symbolPath" },
+          "minItems": 1
+        }
+      ]
+    },
+    "component": {
+      "type": "object",
+      "required": ["name", "swift", "csharp"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "swift": { "$ref": "#/$defs/side" },
+        "csharp": { "$ref": "#/$defs/side" },
+        "fixtures": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^v\\d+/[a-z0-9-]+$"
+          }
+        }
+      }
+    },
+    "platformEntry": {
+      "type": "object",
+      "required": ["symbol", "path", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "scanRoot": {
+      "type": "object",
+      "required": ["dirs"],
+      "additionalProperties": false,
+      "properties": {
+        "dirs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        }
+      }
+    }
+  }
+}

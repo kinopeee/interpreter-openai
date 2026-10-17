@@ -36,6 +36,12 @@ shared/
 - fixture の破壊的変更は新しい `v<N>/` ディレクトリとして追加し、既存バージョンのケースの意味を変えない。
 - fixture を足したら対応する schema も更新する。CI (`shared-contracts`、正本は `scripts/ci-shared-contracts.sh`) が 1:1 対応を検査する。GitHub は `.github/workflows/shared-contracts.yml`、Origin は `.depot/workflows/shared-contracts.yml`。
 
+## parity-map の保守ルール
+
+- `shared/parity-map.json` は両実装の契約ドメイン型の対応表。`components` が両側に実在する型（言語慣習差は `symbol` で実名を記録）、`platformOnly` が片側専用の型（`reason` 必須）。
+- 型の追加・改名・削除・移動は map へ反映する。`scan.dirs` 配下の全 top-level 型は `components` か `platformOnly` のどちらかに登録が必須で、未登録は `scripts/ci-parity.mjs` が hard fail する（CI の `shared-contracts` parity ステップ）。
+- `fixtures` は `v<N>/name` 形式で、対応 fixture を両側テストが消費していることが検査される。消費判定は呼出の grep 近似（Swift `SharedFixtures.<fn>("name", ..., version: N)` / C# `SharedFixtures.<Fn>("name", ..., N)`）なので、消費形態を変えたら検査側も合わせる。
+
 ## ローカル検証
 
 ```bash

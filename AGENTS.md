@@ -56,6 +56,7 @@ OpenAI Realtime Translation によるリアルタイム字幕アプリ。macOS 2
 ## 共有契約の正本
 
 - `shared/fixtures/v<N>/` は両実装のバージョン付き契約正本。現行の subtitle と audio 契約は v2、その他は v1 とし、Swift テストと Windows 版の同値性を保つ。既存の subtitle v1 と audio v1 も保持し、`scripts/ci-shared-contracts.sh` で全バージョンを検査する。
+- `shared/parity-map.json` は両実装の契約ドメイン型の対応表。契約ドメイン型の追加・改名・削除・移動は map へ反映し、片側専用の型は `platformOnly` に理由付きで登録する。`scripts/ci-parity.mjs`（`ci-shared-contracts.sh parity` でも可）が file/symbol の実在、fixture 消費、scan 範囲の網羅性を検査し、未登録型は hard fail する。
 
 ## コード整形
 
@@ -72,6 +73,7 @@ OpenAI Realtime Translation によるリアルタイム字幕アプリ。macOS 2
 | 文書のみ | 記述と実装の整合性、参照先、規約の移設漏れ、`git diff --check`。新規ファイルも確認する |
 | Swift / C# のロジック | 対象プラットフォームのビルド・テストと、変更した振る舞いの回帰検証 |
 | 共有契約・両実装に関わる仕様 | `./scripts/ci-shared-contracts.sh` と両実装の関連テスト |
+| 契約ドメイン型の追加/改名/削除/移動 | 上記に加えて `node scripts/ci-parity.mjs`（未登録型は hard fail） |
 | UI・音声経路 | 対象プラットフォームのビルド・全テストに加え、影響する言語ペアの両方向で実際に1文ずつ話して確認 |
 
 複数の区分に該当する場合は、その検証を組み合わせる。文書のみの変更にはアプリのビルド・実行テストを一律に要求しない。

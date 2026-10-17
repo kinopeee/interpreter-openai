@@ -5,7 +5,7 @@ using Xunit;
 
 namespace RealtimeTranslator.Core.Tests;
 
-public sealed class SubtitleSnapshotBuilderTests
+public sealed class SubtitleAggregatorTests
 {
     // Given: 起動直後
     // When: idle 状態を反映する
@@ -13,10 +13,10 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void IdleShowsWaitingBanner()
     {
-        var snapshot = new SubtitleSnapshotBuilder().Apply(TranslationState.Idle);
+        var snapshot = new SubtitleAggregator().Apply(TranslationState.Idle);
 
         Assert.True(snapshot.Current.IsEmpty);
-        Assert.Equal(SubtitleSnapshotBuilder.IdleBanner, snapshot.StatusBanner);
+        Assert.Equal(SubtitleAggregator.IdleBanner, snapshot.StatusBanner);
     }
 
     // Given: 接続中/再接続中
@@ -25,13 +25,10 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void ConnectingAndReconnectingHaveTheirOwnBanners()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
 
-        Assert.Equal(SubtitleSnapshotBuilder.ConnectingBanner, builder.Apply(TranslationState.Connecting).StatusBanner);
-        Assert.Equal(
-            SubtitleSnapshotBuilder.ReconnectingBanner,
-            builder.Apply(TranslationState.Reconnecting).StatusBanner
-        );
+        Assert.Equal(SubtitleAggregator.ConnectingBanner, builder.Apply(TranslationState.Connecting).StatusBanner);
+        Assert.Equal(SubtitleAggregator.ReconnectingBanner, builder.Apply(TranslationState.Reconnecting).StatusBanner);
     }
 
     // Given: listening 中の字幕更新
@@ -40,7 +37,7 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void ListeningUpdateShowsBothTextsWithoutBanner()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
 
         var snapshot = builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
@@ -58,7 +55,7 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void NewSegmentReplacesThePreviousSlot()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: true, 0),
             TranslationState.Listening
@@ -85,7 +82,7 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void StoppingKeepsTheLastSubtitleVisible()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
             TranslationState.Listening
@@ -103,7 +100,7 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void ResetClearsTheSlot()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
             TranslationState.Listening
@@ -112,7 +109,7 @@ public sealed class SubtitleSnapshotBuilderTests
         var snapshot = builder.Reset(TranslationState.Idle);
 
         Assert.True(snapshot.Current.IsEmpty);
-        Assert.Equal(SubtitleSnapshotBuilder.IdleBanner, snapshot.StatusBanner);
+        Assert.Equal(SubtitleAggregator.IdleBanner, snapshot.StatusBanner);
     }
 
     // Given: エラー状態で字幕クリアタイマーが発火する
@@ -121,7 +118,7 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void ResetInErrorDoesNotShowIdleBanner()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
             TranslationState.Listening
@@ -139,7 +136,7 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void ShouldFinalizePropagatesToLiveSubtitle()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
 
         var snapshot = builder.Apply(
             new RealtimeSubtitleUpdate("source", "translation", IsTranslationCurrent: true, ShouldFinalize: true, 0),
@@ -155,7 +152,7 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void FinalizedSnapshotHidesPendingMarkerThroughViewModel()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
         var snapshot = builder.Apply(
             new RealtimeSubtitleUpdate("source", "translation", IsTranslationCurrent: true, ShouldFinalize: true, 0),
             TranslationState.Listening
@@ -175,7 +172,7 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void ErrorKeepsVisibleSubtitleWithoutIdleBanner()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
             TranslationState.Listening
@@ -194,7 +191,7 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void ResetReturnsToUnfinalizedSubtitle()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
         builder.Apply(
             new RealtimeSubtitleUpdate("source", "translation", IsTranslationCurrent: true, ShouldFinalize: true, 0),
             TranslationState.Listening
@@ -211,17 +208,17 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void BannersComeFromCatalogAndIdleSubstitutesHotkey()
     {
-        Assert.Equal(UserCopy.Current.Text("banner.connecting"), SubtitleSnapshotBuilder.ConnectingBanner);
-        Assert.Equal(UserCopy.Current.Text("banner.reconnecting"), SubtitleSnapshotBuilder.ReconnectingBanner);
+        Assert.Equal(UserCopy.Current.Text("banner.connecting"), SubtitleAggregator.ConnectingBanner);
+        Assert.Equal(UserCopy.Current.Text("banner.reconnecting"), SubtitleAggregator.ReconnectingBanner);
         Assert.Equal(
             UserCopy.Current.Format("banner.idle", "hotkey", "Ctrl + Alt + Space"),
-            SubtitleSnapshotBuilder.IdleBanner
+            SubtitleAggregator.IdleBanner
         );
         Assert.Equal(
             UserCopy.Current.Format("banner.idle", "hotkey", "Control + Option + Space"),
-            SubtitleSnapshotBuilder.IdleBannerFor("Control + Option + Space")
+            SubtitleAggregator.IdleBannerFor("Control + Option + Space")
         );
-        Assert.Contains("Control + Option + Space", SubtitleSnapshotBuilder.IdleBannerFor("Control + Option + Space"));
+        Assert.Contains("Control + Option + Space", SubtitleAggregator.IdleBannerFor("Control + Option + Space"));
     }
 
     // Given: 未確定字幕を Reset（停止後約 5 秒クリア）した builder
@@ -231,7 +228,7 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void ResetLeavesSegmentGenerationSoSameGenerationCanRefill()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
             TranslationState.Listening
@@ -253,7 +250,7 @@ public sealed class SubtitleSnapshotBuilderTests
     [Fact]
     public void SequenceOrderingIgnoresStaleUpdatesAndInvalidationPreservesFinalizedContent()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
         builder.Apply(
             new RealtimeSubtitleUpdate(
                 "確定",

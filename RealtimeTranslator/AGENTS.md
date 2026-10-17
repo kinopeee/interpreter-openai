@@ -6,6 +6,7 @@
 
 ## 構成
 
+- 契約ドメイン型は `shared/parity-map.json` に登録する（追加・改名・削除・移動で hard fail しないよう同期する）。
 - `App/`: AppKitライフサイクルと全体調停。SwiftUI `App`へ戻さない。
 - `Security/`: Keychain APIキーストアと環境変数からの初回取り込み。
 - `Audio/RealtimeAudioCaptureService.swift`: AVAudioEngine、24 kHz PCM16変換、100 ms packet化。
