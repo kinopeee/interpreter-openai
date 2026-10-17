@@ -158,12 +158,12 @@ final class AppSettings {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        // 未保存・契約外型（Bool 等）は既定値、数値は範囲へクランプする。
-        // Bool は NSNumber へブリッジされるため先に弾く（C# Number() の null と同義）。
-        let storedFont = defaults.object(forKey: Keys.fontSize)
-        if storedFont is Bool {
-            fontSize = Self.defaultFontSize
-        } else if let stored = storedFont as? NSNumber {
+        // 未保存・契約外型は既定値、数値は範囲へクランプする。
+        // plist の Bool は CFBoolean なので型 ID で弾く（NSNumber への is Bool は
+        // 数値にも成立し得るため）。C# Number() の null と同義。
+        if let stored = defaults.object(forKey: Keys.fontSize) as? NSNumber,
+            CFGetTypeID(stored) != CFBooleanGetTypeID()
+        {
             fontSize = Self.clampFontSize(stored.doubleValue)
         } else {
             fontSize = Self.defaultFontSize
