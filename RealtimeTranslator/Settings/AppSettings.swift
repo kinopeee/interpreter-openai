@@ -158,9 +158,13 @@ final class AppSettings {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        // 未保存（object=nil）は既定値、保存済みは範囲へクランプする。
-        if let storedFont = defaults.object(forKey: Keys.fontSize) as? NSNumber {
-            fontSize = Self.clampFontSize(storedFont.doubleValue)
+        // 未保存・契約外型（Bool 等）は既定値、数値は範囲へクランプする。
+        // Bool は NSNumber へブリッジされるため先に弾く（C# Number() の null と同義）。
+        let storedFont = defaults.object(forKey: Keys.fontSize)
+        if storedFont is Bool {
+            fontSize = Self.defaultFontSize
+        } else if let stored = storedFont as? NSNumber {
+            fontSize = Self.clampFontSize(stored.doubleValue)
         } else {
             fontSize = Self.defaultFontSize
         }
