@@ -98,31 +98,36 @@ const checkSchema = (errors) => {
   }
 };
 
-// fixture 消費の grep 近似。
+// fixture 消費の grep 近似。呼出単位で name + version を検査する。
 //   Swift: SharedFixtures.load|section|case|caseNames("<name>" ...) / version: N
 //   C#:    SharedFixtures.Load|Section|Case|CaseNames("<name>" ...) / positional , N
-const consumptionPattern = (side, name) =>
+// version 引数なしの呼出は v1 を消費しているとみなす（両側 API の既定値）。
+const callPattern = (side, name) =>
   side === "swift"
     ? new RegExp(
-        `SharedFixtures\\.(?:load|section|case|caseNames)\\(\\s*"${name}"`,
+        `SharedFixtures\\.(?:load|section|case|caseNames)\\(\\s*"${name}"([^)]*)\\)`,
+        "g",
       )
     : new RegExp(
-        `SharedFixtures\\.(?:Load|Section|Case|CaseNames)\\(\\s*"${name}"`,
+        `SharedFixtures\\.(?:Load|Section|Case|CaseNames)\\(\\s*"${name}"([^)]*)\\)`,
+        "g",
       );
-const versionPattern = (side, version) =>
-  side === "swift"
-    ? new RegExp(`version\\s*:\\s*${version}\\b`)
-    : new RegExp(`(?:,\\s*|version\\s*:\\s*)${version}\\s*[,)]`);
+const callVersion = (side, args) => {
+  // Swift の名前付き引数 version: N、または C# の末尾 positional , N
+  const match =
+    /version\s*:\s*(\d+)/.exec(args) ?? /,\s*(\d+)\s*$/.exec(args);
+  return match ? Number(match[1]) : 1;
+};
 
 const checkFixtureConsumed = async (side, name, version, errors) => {
-  const nameRe = consumptionPattern(side, name);
-  const versionRe = versionPattern(side, version);
+  const calls = callPattern(side, name);
   for (const dir of TEST_DIRS[side]) {
     for (const file of await listFiles(dir)) {
       if (!file.endsWith(SOURCE_EXT[side])) continue;
       const content = await fs.readFile(file, "utf8");
-      if (!nameRe.test(content)) continue;
-      if (version <= 1 || versionRe.test(content)) return true;
+      for (const match of content.matchAll(calls)) {
+        if (callVersion(side, match[1]) === version) return true;
+      }
     }
   }
   errors.push(
@@ -181,7 +186,7 @@ const main = async () => {
           `component ${component.name}`,
           errors,
         );
-        registered[side].add(entry.symbol);
+        registered[side].add(`${relPath(entry)}#${entry.symbol}`);
       }
     }
     for (const fixture of component.fixtures ?? []) {
@@ -219,7 +224,7 @@ const main = async () => {
         `platformOnly ${side} ${entry.symbol}`,
         errors,
       );
-      registered[side].add(entry.symbol);
+      registered[side].add(`${relPath(entry)}#${entry.symbol}`);
       if (typeof entry.reason !== "string" || entry.reason.trim() === "") {
         errors.push(`platformOnly ${side} ${entry.symbol}: reason が空です`);
       }
@@ -227,10 +232,11 @@ const main = async () => {
   }
 
   // scan roots の網羅性: 全 top-level 型が components か platformOnly に登録済み。
+  // 登録は file+symbol のペアで判定し、同名型を別ファイルへ追加する迂回を塞ぐ。
   for (const side of ["swift", "csharp"]) {
     for (const decl of await scanDeclarations(scan[side]?.dirs ?? [], side)) {
       for (const symbol of decl.symbols) {
-        if (!registered[side].has(symbol)) {
+        if (!registered[side].has(`${decl.file.replace(/\\/g, "/")}#${symbol}`)) {
           errors.push(
             `未登録の ${side} 型: ${symbol} (${decl.file}) — components か platformOnly に追加してください`,
           );

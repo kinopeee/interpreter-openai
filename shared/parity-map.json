@@ -469,8 +469,8 @@
     {
       "name": "RealtimeSourceTranscriptionCodec",
       "swift": {
-        "symbol": "RealtimeTranslationMessageCodec",
-        "path": "RealtimeTranslator/OpenAI/RealtimeTranslationMessageCodec.swift"
+        "symbol": "RealtimeSourceTranscriptionConnection",
+        "path": "RealtimeTranslator/OpenAI/RealtimeSourceTranscriptionConnection.swift"
       },
       "csharp": [
         {
