@@ -389,7 +389,7 @@
         { "symbol": "SubtitleAggregator", "path": "RealtimeTranslator/Subtitles/SubtitleAggregator.swift" },
         { "symbol": "SubtitleAggregatorConfig", "path": "RealtimeTranslator/Subtitles/SubtitleAggregator.swift" }
       ],
-      "csharp": { "symbol": "SubtitleSnapshotBuilder", "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleSnapshot.cs" },
+      "csharp": { "symbol": "SubtitleAggregator", "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleAggregator.cs" },
       "fixtures": ["v2/subtitle"]
     },
     {

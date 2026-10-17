@@ -32,7 +32,7 @@ public sealed class SubtitleOverlayViewModelTests
     {
         var viewModel = new SubtitleOverlayViewModel();
 
-        viewModel.Apply(new SubtitleSnapshot(LiveSubtitle.Empty, SubtitleSnapshotBuilder.IdleBanner));
+        viewModel.Apply(new SubtitleSnapshot(LiveSubtitle.Empty, SubtitleAggregator.IdleBanner));
 
         Assert.False(viewModel.HasSourceText);
         Assert.False(viewModel.HasTranslatedText);

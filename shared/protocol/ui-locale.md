@@ -261,7 +261,7 @@ Windows の ja 利用者には遅延ラベルが変わる。仕様変更とし�
 | `overlay.startRecording` / `overlay.stopRecording` | 録音開始 / 録音終了 | macOS ボタン。Windows にボタンなし |
 | `overlay.windowTitle` / `settings.windowTitle` | Realtime Translator 字幕 / 設定 | Windows の Window.Title。タスクバー非表示だが支援技術が読む |
 
-Windows `SubtitleSnapshotBuilder` は idle / connecting / reconnecting だけ。macOS はセッション側で listening / closing も出す。キーは共通化してよいが、使わない OS があっても消さない。
+Windows `SubtitleAggregator` は idle / connecting / reconnecting だけ。macOS はセッション側で listening / closing も出す。キーは共通化してよいが、使わない OS があっても消さない。
 
 ### ダイアログ・通知
 
@@ -433,7 +433,7 @@ DEBUG の環境変数取り込み（`OPENAI_API_KEY`）より前に `UserCopy` �
 作業順:
 
 1. `RealtimeTranslationException.DescribeFor` / `RealtimeTranslationError.errorDescription` を `UserCopy` 引きにする。
-2. `SubtitleSnapshotBuilder` の const バナーをやめる。コンストラクタで `UserCopy` を受け取るか、参照時に引く。idle は `{hotkey}` を OS 側で埋めた文字列を渡す。
+2. `SubtitleAggregator` の const バナーをやめる。コンストラクタで `UserCopy` を受け取るか、参照時に引く。idle は `{hotkey}` を OS 側で埋めた文字列を渡す。
 3. `InterpretationSession` の直書きバナー（接続中、録音中、再接続中、終了中、再接続上限）をキー化。
 4. マイク例外、API キーストア例外、WebSocket 例外。
 5. `privacy.json` / `transcript.json` は**変更しない**。両実装の fixture テストへ「カタログ ja == fixture 値」の一致断言を足す。**`format` の `原文:` / `訳文:` も従来どおり。**
@@ -494,7 +494,7 @@ DEBUG の環境変数取り込み（`OPENAI_API_KEY`）より前に `UserCopy` �
 - `Core/OpenAI/RealtimeSessionTuning.cs` の `Preset.DisplayName`（Id は維持、表示名は UI 側で引く方がよい）
 - `Platform/Audio/WasapiAudioCaptureService.cs`
 - `App/App.xaml.cs`、`SettingsWindow.xaml` / `.xaml.cs`、`TrayController.cs`
-- テスト: `AppSettingsCodecTests`、`PrivacyFixtureTests`、`SubtitleSnapshotBuilderTests`、`InterpretationSessionTests`、新規 `UserCopyTests`
+- テスト: `AppSettingsCodecTests`、`PrivacyFixtureTests`、`SubtitleAggregatorTests`、`InterpretationSessionTests`、新規 `UserCopyTests`
 
 Preset の `DisplayName` は Core のレコードに日本語が残る。**Id は wire / 内部用、DisplayName は UI で上書き**する。prompt/keywords は英語のまま（API 向け）。
 

@@ -7,7 +7,7 @@ namespace RealtimeTranslator.Core.Tests;
 /// <summary>
 /// 停止中 (Closing) のバナー契約。Idle / Error / Listening の既存 snapshot テストとは交差しない。
 /// </summary>
-public sealed class SubtitleSnapshotBuilderClosingTests
+public sealed class SubtitleAggregatorClosingTests
 {
     // Given: Listening 中に字幕が出ている
     // When: Closing へ遷移する
@@ -15,7 +15,7 @@ public sealed class SubtitleSnapshotBuilderClosingTests
     [Fact]
     public void ClosingKeepsVisibleSubtitleWithoutBanner()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
         builder.Apply(
             new RealtimeSubtitleUpdate("こんにちは", "Hello", IsTranslationCurrent: true, ShouldFinalize: false, 0),
             TranslationState.Listening
@@ -34,13 +34,13 @@ public sealed class SubtitleSnapshotBuilderClosingTests
     [Fact]
     public void ClosingEmptySlotDoesNotShowIdleOrConnectingBanner()
     {
-        var builder = new SubtitleSnapshotBuilder();
+        var builder = new SubtitleAggregator();
 
         var snapshot = builder.Apply(TranslationState.Closing);
 
         Assert.True(snapshot.Current.IsEmpty);
         Assert.Null(snapshot.StatusBanner);
-        Assert.NotEqual(SubtitleSnapshotBuilder.IdleBanner, snapshot.StatusBanner);
-        Assert.NotEqual(SubtitleSnapshotBuilder.ConnectingBanner, snapshot.StatusBanner);
+        Assert.NotEqual(SubtitleAggregator.IdleBanner, snapshot.StatusBanner);
+        Assert.NotEqual(SubtitleAggregator.ConnectingBanner, snapshot.StatusBanner);
     }
 }
