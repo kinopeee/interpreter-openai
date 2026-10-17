@@ -34,25 +34,27 @@ final class AppSettings {
     /// 現在有効な同意バージョン。文言変更時にインクリメントする。
     static let currentOpenAIConsentVersion = 1
 
+    private let defaults: UserDefaults
+
     var fontSize: Double {
-        didSet { UserDefaults.standard.set(fontSize, forKey: Keys.fontSize) }
+        didSet { defaults.set(fontSize, forKey: Keys.fontSize) }
     }
 
     var hasCustomPanelOrigin: Bool {
-        didSet { UserDefaults.standard.set(hasCustomPanelOrigin, forKey: Keys.hasCustomPanelOrigin) }
+        didSet { defaults.set(hasCustomPanelOrigin, forKey: Keys.hasCustomPanelOrigin) }
     }
 
     var panelOriginX: Double {
-        didSet { UserDefaults.standard.set(panelOriginX, forKey: Keys.panelOriginX) }
+        didSet { defaults.set(panelOriginX, forKey: Keys.panelOriginX) }
     }
 
     var panelOriginY: Double {
-        didSet { UserDefaults.standard.set(panelOriginY, forKey: Keys.panelOriginY) }
+        didSet { defaults.set(panelOriginY, forKey: Keys.panelOriginY) }
     }
 
     var acceptedOpenAIConsentVersion: Int {
         didSet {
-            UserDefaults.standard.set(
+            defaults.set(
                 acceptedOpenAIConsentVersion,
                 forKey: Keys.openAIConsentVersion
             )
@@ -60,13 +62,13 @@ final class AppSettings {
     }
 
     var transcriptionPrompt: String {
-        didSet { UserDefaults.standard.set(transcriptionPrompt, forKey: Keys.transcriptionPrompt) }
+        didSet { defaults.set(transcriptionPrompt, forKey: Keys.transcriptionPrompt) }
     }
 
     /// 1行1語のキーワードテキスト。
     var transcriptionKeywordsText: String {
         didSet {
-            UserDefaults.standard.set(
+            defaults.set(
                 transcriptionKeywordsText,
                 forKey: Keys.transcriptionKeywordsText
             )
@@ -75,38 +77,38 @@ final class AppSettings {
 
     /// `RealtimeTranslationNoiseReduction.rawValue` を保存する。
     var noiseReductionMode: String {
-        didSet { UserDefaults.standard.set(noiseReductionMode, forKey: Keys.noiseReductionMode) }
+        didSet { defaults.set(noiseReductionMode, forKey: Keys.noiseReductionMode) }
     }
 
     /// `RealtimeTranscriptionDelay.rawValue` を保存する。
     var transcriptionDelayMode: String {
         didSet {
-            UserDefaults.standard.set(transcriptionDelayMode, forKey: Keys.transcriptionDelayMode)
+            defaults.set(transcriptionDelayMode, forKey: Keys.transcriptionDelayMode)
         }
     }
 
     /// オプトイン時のみ確定字幕をローカルファイルへ追記する。
     var recordSubtitles: Bool {
-        didSet { UserDefaults.standard.set(recordSubtitles, forKey: Keys.recordSubtitles) }
+        didSet { defaults.set(recordSubtitles, forKey: Keys.recordSubtitles) }
     }
 
     /// 適応マイクゲイン。変更は次の録音開始から反映される。
     var automaticGainEnabled: Bool {
         didSet {
-            UserDefaults.standard.set(automaticGainEnabled, forKey: Keys.automaticGainEnabled)
+            defaults.set(automaticGainEnabled, forKey: Keys.automaticGainEnabled)
         }
     }
 
     var languagePair: LanguagePair {
         didSet {
-            UserDefaults.standard.set(languagePair.rawValue, forKey: Keys.languagePair)
+            defaults.set(languagePair.rawValue, forKey: Keys.languagePair)
             refreshDefaultTranscriptionHintsIfNeeded(from: oldValue, to: languagePair)
         }
     }
 
     /// アプリ枠の表示言語。翻訳ペアとは独立。反映はプロセス再起動後。
     var uiLanguage: UiLanguagePreference {
-        didSet { UserDefaults.standard.set(uiLanguage.rawValue, forKey: Keys.uiLanguage) }
+        didSet { defaults.set(uiLanguage.rawValue, forKey: Keys.uiLanguage) }
     }
 
     var hasAcceptedCurrentOpenAIConsent: Bool {
@@ -135,8 +137,8 @@ final class AppSettings {
         }
     }
 
-    init() {
-        let defaults = UserDefaults.standard
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         let storedFont = defaults.double(forKey: Keys.fontSize)
         fontSize = storedFont > 0 ? storedFont : 32
         hasCustomPanelOrigin = defaults.bool(forKey: Keys.hasCustomPanelOrigin)

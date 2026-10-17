@@ -110,7 +110,7 @@ public static class AppSettingsCodec
             Number(dictionary, "overlayOriginX") ?? defaults.OverlayOriginX,
             Number(dictionary, "overlayOriginY") ?? defaults.OverlayOriginY,
             (int?)Number(dictionary, "acceptedConsentVersion") ?? defaults.AcceptedConsentVersion,
-            Text(dictionary, "transcriptionPrompt") ?? defaults.TranscriptionPrompt,
+            NonEmpty(dictionary, "transcriptionPrompt") ?? defaults.TranscriptionPrompt,
             Text(dictionary, "transcriptionKeywordsText") ?? defaults.TranscriptionKeywordsText,
             NoiseReduction(dictionary) ?? defaults.NoiseReduction,
             TranscriptionDelay(dictionary) ?? defaults.TranscriptionDelay,
@@ -136,6 +136,9 @@ public static class AppSettingsCodec
 
     private static string? Text(JsonObject dictionary, string name) =>
         dictionary[name] is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+
+    private static string? NonEmpty(JsonObject dictionary, string name) =>
+        Text(dictionary, name) is { Length: > 0 } text ? text : null;
 
     private static RealtimeTranslationNoiseReduction? NoiseReduction(JsonObject dictionary)
     {

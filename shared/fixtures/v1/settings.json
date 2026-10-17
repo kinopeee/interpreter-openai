@@ -1,0 +1,147 @@
+{
+  "$schema": "./schema/settings.schema.json",
+  "version": 1,
+  "description": "永続設定の共有契約。フィールド名は論理名（C# の settings.json wire 名と一致）。macOS は UserDefaults キーへ写像する（fontSize→subtitleFontSize、hasCustomOverlayOrigin→hasCustomPanelOrigin、overlayOriginX/Y→panelOriginX/Y、acceptedConsentVersion→openAIConsentVersion、noiseReduction→noiseReductionMode、transcriptionDelay→transcriptionDelayMode）。transcriptionPrompt / transcriptionKeywordsText の \"defaultForPair\" は各実装の既定ヒント取得関数を指す。",
+  "fields": {
+    "fontSize": { "type": "number", "minimum": 18, "maximum": 48 },
+    "hasCustomOverlayOrigin": { "type": "boolean" },
+    "overlayOriginX": { "type": "number" },
+    "overlayOriginY": { "type": "number" },
+    "acceptedConsentVersion": { "type": "integer" },
+    "transcriptionPrompt": { "type": "string" },
+    "transcriptionKeywordsText": { "type": "string" },
+    "noiseReduction": { "type": "string", "enum": ["near_field", "far_field"] },
+    "transcriptionDelay": { "type": "string", "enum": ["minimal", "low", "medium", "high", "xhigh"] },
+    "recordSubtitles": { "type": "boolean" },
+    "languagePair": { "type": "string", "enum": ["ja-en", "ja-es", "en-es"] },
+    "uiLanguage": { "type": "string", "enum": ["system", "ja", "en"] },
+    "automaticGainEnabled": { "type": "boolean" }
+  },
+  "defaults": {
+    "fontSize": 32,
+    "hasCustomOverlayOrigin": false,
+    "overlayOriginX": 0,
+    "overlayOriginY": 0,
+    "acceptedConsentVersion": 0,
+    "transcriptionPrompt": "defaultForPair:ja-en",
+    "transcriptionKeywordsText": "defaultForPair:ja-en",
+    "noiseReduction": "far_field",
+    "transcriptionDelay": "low",
+    "recordSubtitles": false,
+    "languagePair": "ja-en",
+    "uiLanguage": "system",
+    "automaticGainEnabled": true
+  },
+  "decode": [
+    {
+      "name": "empty storage falls back to defaults",
+      "input": {},
+      "expected": {
+        "fontSize": 32,
+        "hasCustomOverlayOrigin": false,
+        "overlayOriginX": 0,
+        "overlayOriginY": 0,
+        "acceptedConsentVersion": 0,
+        "transcriptionPrompt": "defaultForPair:ja-en",
+        "transcriptionKeywordsText": "defaultForPair:ja-en",
+        "noiseReduction": "far_field",
+        "transcriptionDelay": "low",
+        "recordSubtitles": false,
+        "languagePair": "ja-en",
+        "uiLanguage": "system",
+        "automaticGainEnabled": true
+      }
+    },
+    {
+      "name": "stored non-default values are restored",
+      "input": {
+        "fontSize": 40,
+        "hasCustomOverlayOrigin": true,
+        "overlayOriginX": 120.5,
+        "overlayOriginY": -30,
+        "acceptedConsentVersion": 1,
+        "transcriptionPrompt": "custom prompt",
+        "transcriptionKeywordsText": "alpha\nbeta",
+        "noiseReduction": "near_field",
+        "transcriptionDelay": "high",
+        "recordSubtitles": true,
+        "languagePair": "ja-es",
+        "uiLanguage": "ja",
+        "automaticGainEnabled": false
+      },
+      "expected": {
+        "fontSize": 40,
+        "hasCustomOverlayOrigin": true,
+        "overlayOriginX": 120.5,
+        "overlayOriginY": -30,
+        "acceptedConsentVersion": 1,
+        "transcriptionPrompt": "custom prompt",
+        "transcriptionKeywordsText": "alpha\nbeta",
+        "noiseReduction": "near_field",
+        "transcriptionDelay": "high",
+        "recordSubtitles": true,
+        "languagePair": "ja-es",
+        "uiLanguage": "ja",
+        "automaticGainEnabled": false
+      }
+    },
+    {
+      "name": "fontSize clamps to the allowed range",
+      "input": { "fontSize": 200 },
+      "expected": { "fontSize": 48 }
+    },
+    {
+      "name": "fontSize below minimum clamps up",
+      "input": { "fontSize": 5 },
+      "expected": { "fontSize": 18 }
+    },
+    {
+      "name": "unknown enum wire values fall back to defaults",
+      "input": {
+        "noiseReduction": "bogus",
+        "transcriptionDelay": "bogus",
+        "languagePair": "bogus",
+        "uiLanguage": "bogus"
+      },
+      "expected": {
+        "noiseReduction": "far_field",
+        "transcriptionDelay": "low",
+        "languagePair": "ja-en",
+        "uiLanguage": "system"
+      }
+    },
+    {
+      "name": "empty transcription prompt falls back to the pair default",
+      "input": { "transcriptionPrompt": "" },
+      "expected": { "transcriptionPrompt": "defaultForPair:ja-en" }
+    },
+    {
+      "name": "default hints follow a language pair change",
+      "input": {
+        "transcriptionPrompt": "defaultForPair:ja-en",
+        "transcriptionKeywordsText": "defaultForPair:ja-en",
+        "languagePair": "ja-en"
+      },
+      "pairChange": "ja-es",
+      "expected": {
+        "languagePair": "ja-es",
+        "transcriptionPrompt": "defaultForPair:ja-es",
+        "transcriptionKeywordsText": "defaultForPair:ja-es"
+      }
+    },
+    {
+      "name": "custom hints survive a language pair change",
+      "input": {
+        "transcriptionPrompt": "custom prompt",
+        "transcriptionKeywordsText": "alpha",
+        "languagePair": "ja-en"
+      },
+      "pairChange": "en-es",
+      "expected": {
+        "languagePair": "en-es",
+        "transcriptionPrompt": "custom prompt",
+        "transcriptionKeywordsText": "alpha"
+      }
+    }
+  ]
+}

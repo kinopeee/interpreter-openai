@@ -28,10 +28,7 @@ public sealed class SubtitleAggregatorTests
         var builder = new SubtitleAggregator();
 
         Assert.Equal(SubtitleAggregator.ConnectingBanner, builder.Apply(TranslationState.Connecting).StatusBanner);
-        Assert.Equal(
-            SubtitleAggregator.ReconnectingBanner,
-            builder.Apply(TranslationState.Reconnecting).StatusBanner
-        );
+        Assert.Equal(SubtitleAggregator.ReconnectingBanner, builder.Apply(TranslationState.Reconnecting).StatusBanner);
     }
 
     // Given: listening 中の字幕更新

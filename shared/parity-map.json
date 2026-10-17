@@ -4,610 +4,1595 @@
   "components": [
     {
       "name": "InterpretationSession",
-      "swift": { "symbol": "InterpretationSession", "path": "RealtimeTranslator/Realtime/InterpretationSession.swift" },
-      "csharp": { "symbol": "InterpretationSession", "path": "windows/src/RealtimeTranslator.Core/Realtime/InterpretationSession.cs" },
-      "fixtures": ["v1/receive-queue"]
+      "swift": {
+        "symbol": "InterpretationSession",
+        "path": "RealtimeTranslator/Realtime/InterpretationSession.swift"
+      },
+      "csharp": {
+        "symbol": "InterpretationSession",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/InterpretationSession.cs"
+      },
+      "fixtures": [
+        "v1/receive-queue"
+      ]
     },
     {
       "name": "RealtimeSubtitleAssembler",
       "swift": [
-        { "symbol": "RealtimeSubtitleAssembler", "path": "RealtimeTranslator/Realtime/RealtimeSubtitleAssembler.swift" },
-        { "symbol": "RealtimeSubtitleUpdate", "path": "RealtimeTranslator/Realtime/RealtimeSubtitleAssembler.swift" },
-        { "symbol": "LanguageSwitchSplit", "path": "RealtimeTranslator/Realtime/RealtimeSubtitleAssembler.swift" }
+        {
+          "symbol": "RealtimeSubtitleAssembler",
+          "path": "RealtimeTranslator/Realtime/RealtimeSubtitleAssembler.swift"
+        },
+        {
+          "symbol": "RealtimeSubtitleUpdate",
+          "path": "RealtimeTranslator/Realtime/RealtimeSubtitleAssembler.swift"
+        },
+        {
+          "symbol": "LanguageSwitchSplit",
+          "path": "RealtimeTranslator/Realtime/RealtimeSubtitleAssembler.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "RealtimeSubtitleAssembler", "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSubtitleAssembler.cs" },
-        { "symbol": "RealtimeSubtitleUpdate", "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSubtitleAssembler.cs" },
-        { "symbol": "LanguageSwitchSplit", "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSubtitleAssembler.cs" }
+        {
+          "symbol": "RealtimeSubtitleAssembler",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSubtitleAssembler.cs"
+        },
+        {
+          "symbol": "RealtimeSubtitleUpdate",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSubtitleAssembler.cs"
+        },
+        {
+          "symbol": "LanguageSwitchSplit",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSubtitleAssembler.cs"
+        }
       ],
-      "fixtures": ["v2/subtitle"]
+      "fixtures": [
+        "v2/subtitle"
+      ]
     },
     {
       "name": "RealtimeSubtitleProcessor",
       "swift": [
-        { "symbol": "RealtimeSubtitleProcessor", "path": "RealtimeTranslator/Realtime/RealtimeSubtitleProcessor.swift" },
-        { "symbol": "RealtimeSubtitleRoutingAction", "path": "RealtimeTranslator/Realtime/RealtimeSubtitleProcessor.swift" },
-        { "symbol": "RealtimeSubtitleProcessingResult", "path": "RealtimeTranslator/Realtime/RealtimeSubtitleProcessor.swift" }
+        {
+          "symbol": "RealtimeSubtitleProcessor",
+          "path": "RealtimeTranslator/Realtime/RealtimeSubtitleProcessor.swift"
+        },
+        {
+          "symbol": "RealtimeSubtitleRoutingAction",
+          "path": "RealtimeTranslator/Realtime/RealtimeSubtitleProcessor.swift"
+        },
+        {
+          "symbol": "RealtimeSubtitleProcessingResult",
+          "path": "RealtimeTranslator/Realtime/RealtimeSubtitleProcessor.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "RealtimeSubtitleProcessor", "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSubtitleProcessor.cs" },
-        { "symbol": "RealtimeSubtitleRoutingAction", "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSubtitleProcessor.cs" },
-        { "symbol": "RealtimeSubtitleProcessingResult", "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSubtitleProcessor.cs" }
+        {
+          "symbol": "RealtimeSubtitleProcessor",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSubtitleProcessor.cs"
+        },
+        {
+          "symbol": "RealtimeSubtitleRoutingAction",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSubtitleProcessor.cs"
+        },
+        {
+          "symbol": "RealtimeSubtitleProcessingResult",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSubtitleProcessor.cs"
+        }
       ],
-      "fixtures": ["v1/routing", "v2/subtitle"]
+      "fixtures": [
+        "v1/routing",
+        "v2/subtitle"
+      ]
     },
     {
       "name": "ReconnectBudget",
       "swift": [
-        { "symbol": "ReconnectBudget", "path": "RealtimeTranslator/Realtime/ReconnectBudget.swift" },
-        { "symbol": "ReconnectPolicy", "path": "RealtimeTranslator/Realtime/ReconnectBudget.swift" },
-        { "symbol": "ReconnectDecisionKind", "path": "RealtimeTranslator/Realtime/ReconnectBudget.swift" },
-        { "symbol": "ReconnectDecision", "path": "RealtimeTranslator/Realtime/ReconnectBudget.swift" }
+        {
+          "symbol": "ReconnectBudget",
+          "path": "RealtimeTranslator/Realtime/ReconnectBudget.swift"
+        },
+        {
+          "symbol": "ReconnectPolicy",
+          "path": "RealtimeTranslator/Realtime/ReconnectBudget.swift"
+        },
+        {
+          "symbol": "ReconnectDecisionKind",
+          "path": "RealtimeTranslator/Realtime/ReconnectBudget.swift"
+        },
+        {
+          "symbol": "ReconnectDecision",
+          "path": "RealtimeTranslator/Realtime/ReconnectBudget.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "ReconnectBudget", "path": "windows/src/RealtimeTranslator.Core/Realtime/ReconnectBudget.cs" },
-        { "symbol": "ReconnectPolicy", "path": "windows/src/RealtimeTranslator.Core/Realtime/ReconnectBudget.cs" },
-        { "symbol": "ReconnectDecisionKind", "path": "windows/src/RealtimeTranslator.Core/Realtime/ReconnectBudget.cs" },
-        { "symbol": "ReconnectDecision", "path": "windows/src/RealtimeTranslator.Core/Realtime/ReconnectBudget.cs" }
+        {
+          "symbol": "ReconnectBudget",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/ReconnectBudget.cs"
+        },
+        {
+          "symbol": "ReconnectPolicy",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/ReconnectBudget.cs"
+        },
+        {
+          "symbol": "ReconnectDecisionKind",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/ReconnectBudget.cs"
+        },
+        {
+          "symbol": "ReconnectDecision",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/ReconnectBudget.cs"
+        }
       ],
-      "fixtures": ["v1/reconnect"]
+      "fixtures": [
+        "v1/reconnect"
+      ]
     },
     {
       "name": "RoutingSourceTextWindow",
-      "swift": { "symbol": "RoutingSourceTextWindow", "path": "RealtimeTranslator/Realtime/RoutingSourceTextWindow.swift" },
-      "csharp": { "symbol": "RoutingSourceTextWindow", "path": "windows/src/RealtimeTranslator.Core/Realtime/RoutingSourceTextWindow.cs" },
-      "fixtures": ["v1/routing"]
+      "swift": {
+        "symbol": "RoutingSourceTextWindow",
+        "path": "RealtimeTranslator/Realtime/RoutingSourceTextWindow.swift"
+      },
+      "csharp": {
+        "symbol": "RoutingSourceTextWindow",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/RoutingSourceTextWindow.cs"
+      },
+      "fixtures": [
+        "v1/routing"
+      ]
     },
     {
       "name": "SessionHealthBookkeeper",
-      "swift": { "symbol": "SessionHealthBookkeeper", "path": "RealtimeTranslator/Realtime/SessionHealthBookkeeper.swift" },
-      "csharp": { "symbol": "SessionHealthBookkeeper", "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthBookkeeper.cs" },
-      "fixtures": ["v1/health"]
+      "swift": {
+        "symbol": "SessionHealthBookkeeper",
+        "path": "RealtimeTranslator/Realtime/SessionHealthBookkeeper.swift"
+      },
+      "csharp": {
+        "symbol": "SessionHealthBookkeeper",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthBookkeeper.cs"
+      },
+      "fixtures": [
+        "v1/health"
+      ]
     },
     {
       "name": "SessionHealthMonitor",
       "swift": [
-        { "symbol": "SessionHealthMonitor", "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift" },
-        { "symbol": "SessionHealthDetectionKind", "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift" },
-        { "symbol": "SessionHealthPhase", "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift" },
-        { "symbol": "SessionTerminationKind", "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift" },
-        { "symbol": "SessionHealthDetection", "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift" },
-        { "symbol": "SessionTerminationDiagnostic", "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift" },
-        { "symbol": "SessionHealthSnapshot", "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift" },
-        { "symbol": "SessionHealthThresholds", "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift" }
+        {
+          "symbol": "SessionHealthMonitor",
+          "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift"
+        },
+        {
+          "symbol": "SessionHealthDetectionKind",
+          "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift"
+        },
+        {
+          "symbol": "SessionHealthPhase",
+          "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift"
+        },
+        {
+          "symbol": "SessionTerminationKind",
+          "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift"
+        },
+        {
+          "symbol": "SessionHealthDetection",
+          "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift"
+        },
+        {
+          "symbol": "SessionTerminationDiagnostic",
+          "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift"
+        },
+        {
+          "symbol": "SessionHealthSnapshot",
+          "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift"
+        },
+        {
+          "symbol": "SessionHealthThresholds",
+          "path": "RealtimeTranslator/Realtime/SessionHealthMonitor.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "SessionHealthMonitor", "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs" },
-        { "symbol": "SessionHealthDetectionKind", "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs" },
-        { "symbol": "SessionHealthPhase", "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs" },
-        { "symbol": "SessionTerminationKind", "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs" },
-        { "symbol": "SessionHealthDetection", "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs" },
-        { "symbol": "SessionTerminationDiagnostic", "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs" },
-        { "symbol": "SessionHealthSnapshot", "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs" },
-        { "symbol": "SessionHealthThresholds", "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs" },
-        { "symbol": "SessionTerminationKindMapping", "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs" },
-        { "symbol": "RealtimeTranslationLaneHealthExtensions", "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs" }
+        {
+          "symbol": "SessionHealthMonitor",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs"
+        },
+        {
+          "symbol": "SessionHealthDetectionKind",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs"
+        },
+        {
+          "symbol": "SessionHealthPhase",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs"
+        },
+        {
+          "symbol": "SessionTerminationKind",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs"
+        },
+        {
+          "symbol": "SessionHealthDetection",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs"
+        },
+        {
+          "symbol": "SessionTerminationDiagnostic",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs"
+        },
+        {
+          "symbol": "SessionHealthSnapshot",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs"
+        },
+        {
+          "symbol": "SessionHealthThresholds",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs"
+        },
+        {
+          "symbol": "SessionTerminationKindMapping",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs"
+        },
+        {
+          "symbol": "RealtimeTranslationLaneHealthExtensions",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionHealthMonitor.cs"
+        }
       ],
-      "fixtures": ["v1/health"]
+      "fixtures": [
+        "v1/health"
+      ]
     },
     {
       "name": "SessionSubtitlePipeline",
-      "swift": { "symbol": "SessionSubtitlePipeline", "path": "RealtimeTranslator/Realtime/SessionSubtitlePipeline.swift" },
-      "csharp": { "symbol": "SessionSubtitlePipeline", "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionSubtitlePipeline.cs" },
-      "fixtures": ["v2/subtitle"]
+      "swift": {
+        "symbol": "SessionSubtitlePipeline",
+        "path": "RealtimeTranslator/Realtime/SessionSubtitlePipeline.swift"
+      },
+      "csharp": {
+        "symbol": "SessionSubtitlePipeline",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionSubtitlePipeline.cs"
+      },
+      "fixtures": [
+        "v2/subtitle"
+      ]
     },
     {
       "name": "SourceBoundaryTracker",
       "swift": [
-        { "symbol": "SourceBoundaryTracker", "path": "RealtimeTranslator/Realtime/SourceBoundaryTracker.swift" },
-        { "symbol": "OppositeScriptRun", "path": "RealtimeTranslator/Realtime/SourceBoundaryTracker.swift" }
+        {
+          "symbol": "SourceBoundaryTracker",
+          "path": "RealtimeTranslator/Realtime/SourceBoundaryTracker.swift"
+        },
+        {
+          "symbol": "OppositeScriptRun",
+          "path": "RealtimeTranslator/Realtime/SourceBoundaryTracker.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "SourceBoundaryTracker", "path": "windows/src/RealtimeTranslator.Core/Realtime/SourceBoundaryTracker.cs" },
-        { "symbol": "OppositeScriptRun", "path": "windows/src/RealtimeTranslator.Core/Realtime/SourceBoundaryTracker.cs" }
+        {
+          "symbol": "SourceBoundaryTracker",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/SourceBoundaryTracker.cs"
+        },
+        {
+          "symbol": "OppositeScriptRun",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/SourceBoundaryTracker.cs"
+        }
       ],
-      "fixtures": ["v2/subtitle"]
+      "fixtures": [
+        "v2/subtitle"
+      ]
     },
     {
       "name": "TranslationTargetSelector",
       "swift": [
-        { "symbol": "TranslationTargetSelector", "path": "RealtimeTranslator/Realtime/TranslationTargetSelector.swift" },
-        { "symbol": "TranslationTargetSelection", "path": "RealtimeTranslator/Realtime/TranslationTargetSelector.swift" }
+        {
+          "symbol": "TranslationTargetSelector",
+          "path": "RealtimeTranslator/Realtime/TranslationTargetSelector.swift"
+        },
+        {
+          "symbol": "TranslationTargetSelection",
+          "path": "RealtimeTranslator/Realtime/TranslationTargetSelector.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "TranslationTargetSelector", "path": "windows/src/RealtimeTranslator.Core/Realtime/TranslationTargetSelector.cs" },
-        { "symbol": "TranslationTargetSelection", "path": "windows/src/RealtimeTranslator.Core/Realtime/TranslationTargetSelector.cs" }
+        {
+          "symbol": "TranslationTargetSelector",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/TranslationTargetSelector.cs"
+        },
+        {
+          "symbol": "TranslationTargetSelection",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/TranslationTargetSelector.cs"
+        }
       ],
-      "fixtures": ["v1/routing"]
+      "fixtures": [
+        "v1/routing"
+      ]
     },
     {
       "name": "DualRealtimeTranslationClient",
       "swift": [
-        { "symbol": "DualRealtimeTranslationClient", "path": "RealtimeTranslator/OpenAI/DualRealtimeTranslationClient.swift" },
-        { "symbol": "DualRealtimeTranslationClienting", "path": "RealtimeTranslator/OpenAI/DualRealtimeTranslationClient.swift" }
+        {
+          "symbol": "DualRealtimeTranslationClient",
+          "path": "RealtimeTranslator/OpenAI/DualRealtimeTranslationClient.swift"
+        },
+        {
+          "symbol": "DualRealtimeTranslationClienting",
+          "path": "RealtimeTranslator/OpenAI/DualRealtimeTranslationClient.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "DualRealtimeTranslationClient", "path": "windows/src/RealtimeTranslator.Core/Realtime/DualRealtimeTranslationClient.cs" },
-        { "symbol": "IDualRealtimeTranslationClient", "path": "windows/src/RealtimeTranslator.Core/Realtime/DualRealtimeTranslationClient.cs" }
+        {
+          "symbol": "DualRealtimeTranslationClient",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/DualRealtimeTranslationClient.cs"
+        },
+        {
+          "symbol": "IDualRealtimeTranslationClient",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/DualRealtimeTranslationClient.cs"
+        }
       ],
-      "fixtures": ["v1/translation-queue"]
+      "fixtures": [
+        "v1/translation-queue"
+      ]
     },
     {
       "name": "DualRealtimeTranslationClientTuning",
-      "swift": { "symbol": "DualRealtimeTranslationClientTuning", "path": "RealtimeTranslator/OpenAI/DualRealtimeTranslationClientTuning.swift" },
-      "csharp": { "symbol": "DualRealtimeTranslationClientTuning", "path": "windows/src/RealtimeTranslator.Core/Realtime/DualRealtimeTranslationClientTuning.cs" }
+      "swift": {
+        "symbol": "DualRealtimeTranslationClientTuning",
+        "path": "RealtimeTranslator/OpenAI/DualRealtimeTranslationClientTuning.swift"
+      },
+      "csharp": {
+        "symbol": "DualRealtimeTranslationClientTuning",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/DualRealtimeTranslationClientTuning.cs"
+      }
     },
     {
       "name": "EventDelivery",
       "swift": [
-        { "symbol": "EventDeliveryState", "path": "RealtimeTranslator/OpenAI/EventDeliveryState.swift" },
-        { "symbol": "EventDeliveryStage", "path": "RealtimeTranslator/OpenAI/EventDeliveryState.swift" },
-        { "symbol": "EventDeliveryTermination", "path": "RealtimeTranslator/OpenAI/EventDeliveryState.swift" },
-        { "symbol": "EventDeliveryYielder", "path": "RealtimeTranslator/OpenAI/EventDeliveryState.swift" },
-        { "symbol": "EventFeed", "path": "RealtimeTranslator/OpenAI/EventDeliveryState.swift" }
+        {
+          "symbol": "EventDeliveryState",
+          "path": "RealtimeTranslator/OpenAI/EventDeliveryState.swift"
+        },
+        {
+          "symbol": "EventDeliveryStage",
+          "path": "RealtimeTranslator/OpenAI/EventDeliveryState.swift"
+        },
+        {
+          "symbol": "EventDeliveryTermination",
+          "path": "RealtimeTranslator/OpenAI/EventDeliveryState.swift"
+        },
+        {
+          "symbol": "EventDeliveryYielder",
+          "path": "RealtimeTranslator/OpenAI/EventDeliveryState.swift"
+        },
+        {
+          "symbol": "EventFeed",
+          "path": "RealtimeTranslator/OpenAI/EventDeliveryState.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "EventDeliveryState", "path": "windows/src/RealtimeTranslator.Core/Realtime/EventDelivery.cs" },
-        { "symbol": "EventDeliveryStage", "path": "windows/src/RealtimeTranslator.Core/Realtime/EventDelivery.cs" },
-        { "symbol": "EventDeliveryTermination", "path": "windows/src/RealtimeTranslator.Core/Realtime/EventDelivery.cs" },
-        { "symbol": "EventDeliveryWriter", "path": "windows/src/RealtimeTranslator.Core/Realtime/EventDelivery.cs" },
-        { "symbol": "RealtimeEventFeed", "path": "windows/src/RealtimeTranslator.Core/Realtime/EventDelivery.cs" }
+        {
+          "symbol": "EventDeliveryState",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/EventDelivery.cs"
+        },
+        {
+          "symbol": "EventDeliveryStage",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/EventDelivery.cs"
+        },
+        {
+          "symbol": "EventDeliveryTermination",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/EventDelivery.cs"
+        },
+        {
+          "symbol": "EventDeliveryWriter",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/EventDelivery.cs"
+        },
+        {
+          "symbol": "RealtimeEventFeed",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/EventDelivery.cs"
+        }
       ],
-      "fixtures": ["v1/receive-queue"]
+      "fixtures": [
+        "v1/receive-queue"
+      ]
     },
     {
       "name": "MergedEventBuffer",
-      "swift": { "symbol": "MergedEventBuffer", "path": "RealtimeTranslator/OpenAI/MergedEventBuffer.swift" },
-      "csharp": { "symbol": "MergedEventBuffer", "path": "windows/src/RealtimeTranslator.Core/Realtime/MergedEventBuffer.cs" },
-      "fixtures": ["v1/receive-queue"]
+      "swift": {
+        "symbol": "MergedEventBuffer",
+        "path": "RealtimeTranslator/OpenAI/MergedEventBuffer.swift"
+      },
+      "csharp": {
+        "symbol": "MergedEventBuffer",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/MergedEventBuffer.cs"
+      },
+      "fixtures": [
+        "v1/receive-queue"
+      ]
     },
     {
       "name": "RealtimeServerErrorClassifier",
       "swift": [
-        { "symbol": "RealtimeServerErrorDisposition", "path": "RealtimeTranslator/OpenAI/RealtimeServerErrorClassifier.swift" },
-        { "symbol": "RealtimeServerErrorClassification", "path": "RealtimeTranslator/OpenAI/RealtimeServerErrorClassifier.swift" }
+        {
+          "symbol": "RealtimeServerErrorDisposition",
+          "path": "RealtimeTranslator/OpenAI/RealtimeServerErrorClassifier.swift"
+        },
+        {
+          "symbol": "RealtimeServerErrorClassification",
+          "path": "RealtimeTranslator/OpenAI/RealtimeServerErrorClassifier.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "RealtimeServerErrorDisposition", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeServerErrorClassifier.cs" },
-        { "symbol": "RealtimeServerErrorClassification", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeServerErrorClassifier.cs" }
+        {
+          "symbol": "RealtimeServerErrorDisposition",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeServerErrorClassifier.cs"
+        },
+        {
+          "symbol": "RealtimeServerErrorClassification",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeServerErrorClassifier.cs"
+        }
       ],
-      "fixtures": ["v1/server-error"]
+      "fixtures": [
+        "v1/server-error"
+      ]
     },
     {
       "name": "RealtimeSessionExpiry",
-      "swift": { "symbol": "RealtimeSessionExpiry", "path": "RealtimeTranslator/OpenAI/RealtimeSessionExpiry.swift" },
-      "csharp": { "symbol": "RealtimeSessionExpiry", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeSessionExpiry.cs" }
+      "swift": {
+        "symbol": "RealtimeSessionExpiry",
+        "path": "RealtimeTranslator/OpenAI/RealtimeSessionExpiry.swift"
+      },
+      "csharp": {
+        "symbol": "RealtimeSessionExpiry",
+        "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeSessionExpiry.cs"
+      }
     },
     {
       "name": "RealtimeSessionTuning",
-      "swift": { "symbol": "RealtimeSessionTuning", "path": "RealtimeTranslator/OpenAI/RealtimeSessionTuning.swift" },
-      "csharp": { "symbol": "RealtimeSessionTuning", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeSessionTuning.cs" },
-      "fixtures": ["v1/tuning"]
+      "swift": {
+        "symbol": "RealtimeSessionTuning",
+        "path": "RealtimeTranslator/OpenAI/RealtimeSessionTuning.swift"
+      },
+      "csharp": {
+        "symbol": "RealtimeSessionTuning",
+        "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeSessionTuning.cs"
+      },
+      "fixtures": [
+        "v1/tuning"
+      ]
     },
     {
       "name": "RealtimeSourceTranscriptionConnection",
-      "swift": { "symbol": "RealtimeSourceTranscriptionConnection", "path": "RealtimeTranslator/OpenAI/RealtimeSourceTranscriptionConnection.swift" },
-      "csharp": { "symbol": "RealtimeSourceTranscriptionConnection", "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSourceTranscriptionConnection.cs" }
+      "swift": {
+        "symbol": "RealtimeSourceTranscriptionConnection",
+        "path": "RealtimeTranslator/OpenAI/RealtimeSourceTranscriptionConnection.swift"
+      },
+      "csharp": {
+        "symbol": "RealtimeSourceTranscriptionConnection",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeSourceTranscriptionConnection.cs"
+      }
     },
     {
       "name": "RealtimeSourceTranscriptionCodec",
-      "swift": { "symbol": "RealtimeTranslationMessageCodec", "path": "RealtimeTranslator/OpenAI/RealtimeTranslationMessageCodec.swift" },
+      "swift": {
+        "symbol": "RealtimeTranslationMessageCodec",
+        "path": "RealtimeTranslator/OpenAI/RealtimeTranslationMessageCodec.swift"
+      },
       "csharp": [
-        { "symbol": "RealtimeSourceTranscriptionCodec", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeSourceTranscriptionCodec.cs" },
-        { "symbol": "RealtimeSourceTranscriptionClientEvent", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeSourceTranscriptionCodec.cs" },
-        { "symbol": "RealtimeSourceTranscriptionServerEvent", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeSourceTranscriptionCodec.cs" }
+        {
+          "symbol": "RealtimeSourceTranscriptionCodec",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeSourceTranscriptionCodec.cs"
+        },
+        {
+          "symbol": "RealtimeSourceTranscriptionClientEvent",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeSourceTranscriptionCodec.cs"
+        },
+        {
+          "symbol": "RealtimeSourceTranscriptionServerEvent",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeSourceTranscriptionCodec.cs"
+        }
       ],
-      "fixtures": ["v1/codec"]
+      "fixtures": [
+        "v1/codec"
+      ]
     },
     {
       "name": "RealtimeTranslationConnection",
       "swift": [
-        { "symbol": "RealtimeTranslationConnection", "path": "RealtimeTranslator/OpenAI/RealtimeTranslationConnection.swift" },
-        { "symbol": "RealtimeTranslationStreamEvent", "path": "RealtimeTranslator/OpenAI/RealtimeTranslationConnection.swift" }
+        {
+          "symbol": "RealtimeTranslationConnection",
+          "path": "RealtimeTranslator/OpenAI/RealtimeTranslationConnection.swift"
+        },
+        {
+          "symbol": "RealtimeTranslationStreamEvent",
+          "path": "RealtimeTranslator/OpenAI/RealtimeTranslationConnection.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "RealtimeTranslationConnection", "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeTranslationConnection.cs" },
-        { "symbol": "RealtimeTranslationStreamEvent", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEvents.cs" },
-        { "symbol": "RealtimeEventChannel", "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeTranslationConnection.cs" },
-        { "symbol": "RealtimeRequestHeaders", "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeTranslationConnection.cs" }
+        {
+          "symbol": "RealtimeTranslationConnection",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeTranslationConnection.cs"
+        },
+        {
+          "symbol": "RealtimeTranslationStreamEvent",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEvents.cs"
+        },
+        {
+          "symbol": "RealtimeEventChannel",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeTranslationConnection.cs"
+        },
+        {
+          "symbol": "RealtimeRequestHeaders",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeTranslationConnection.cs"
+        }
       ]
     },
     {
       "name": "RealtimeTranslationEnums",
       "swift": [
-        { "symbol": "RealtimeTranslationOutputLanguage", "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift" },
-        { "symbol": "RealtimeTranslationLane", "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift" },
-        { "symbol": "RealtimeTranslationNoiseReduction", "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift" },
-        { "symbol": "RealtimeTranscriptionDelay", "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift" },
-        { "symbol": "RealtimeTranslationSessionConfig", "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift" }
+        {
+          "symbol": "RealtimeTranslationOutputLanguage",
+          "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift"
+        },
+        {
+          "symbol": "RealtimeTranslationLane",
+          "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift"
+        },
+        {
+          "symbol": "RealtimeTranslationNoiseReduction",
+          "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift"
+        },
+        {
+          "symbol": "RealtimeTranscriptionDelay",
+          "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift"
+        },
+        {
+          "symbol": "RealtimeTranslationSessionConfig",
+          "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "RealtimeTranslationOutputLanguage", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEnums.cs" },
-        { "symbol": "RealtimeTranslationLane", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEvents.cs" },
-        { "symbol": "RealtimeTranslationNoiseReduction", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEnums.cs" },
-        { "symbol": "RealtimeTranscriptionDelay", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEnums.cs" },
-        { "symbol": "RealtimeTranslationSessionConfig", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEvents.cs" },
-        { "symbol": "RealtimeTranslationWireValues", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEnums.cs" }
+        {
+          "symbol": "RealtimeTranslationOutputLanguage",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEnums.cs"
+        },
+        {
+          "symbol": "RealtimeTranslationLane",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEvents.cs"
+        },
+        {
+          "symbol": "RealtimeTranslationNoiseReduction",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEnums.cs"
+        },
+        {
+          "symbol": "RealtimeTranscriptionDelay",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEnums.cs"
+        },
+        {
+          "symbol": "RealtimeTranslationSessionConfig",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEvents.cs"
+        },
+        {
+          "symbol": "RealtimeTranslationWireValues",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEnums.cs"
+        }
       ]
     },
     {
       "name": "RealtimeTranslationEvents",
       "swift": [
-        { "symbol": "RealtimeTranslationClientEvent", "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift" },
-        { "symbol": "RealtimeTranslationServerEvent", "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift" }
+        {
+          "symbol": "RealtimeTranslationClientEvent",
+          "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift"
+        },
+        {
+          "symbol": "RealtimeTranslationServerEvent",
+          "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "RealtimeTranslationClientEvent", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEvents.cs" },
-        { "symbol": "RealtimeTranslationServerEvent", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEvents.cs" }
+        {
+          "symbol": "RealtimeTranslationClientEvent",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEvents.cs"
+        },
+        {
+          "symbol": "RealtimeTranslationServerEvent",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationEvents.cs"
+        }
       ],
-      "fixtures": ["v1/codec"]
+      "fixtures": [
+        "v1/codec"
+      ]
     },
     {
       "name": "RealtimeTranslationError",
-      "swift": { "symbol": "RealtimeTranslationError", "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift" },
+      "swift": {
+        "symbol": "RealtimeTranslationError",
+        "path": "RealtimeTranslator/OpenAI/RealtimeTranslationEvent.swift"
+      },
       "csharp": [
-        { "symbol": "RealtimeTranslationException", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationException.cs" },
-        { "symbol": "RealtimeTranslationErrorKind", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationException.cs" }
+        {
+          "symbol": "RealtimeTranslationException",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationException.cs"
+        },
+        {
+          "symbol": "RealtimeTranslationErrorKind",
+          "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationException.cs"
+        }
       ],
-      "fixtures": ["v1/privacy", "v1/server-error"]
+      "fixtures": [
+        "v1/privacy",
+        "v1/server-error"
+      ]
     },
     {
       "name": "RealtimeTranslationMessageCodec",
-      "swift": { "symbol": "RealtimeTranslationMessageCodec", "path": "RealtimeTranslator/OpenAI/RealtimeTranslationMessageCodec.swift" },
-      "csharp": { "symbol": "RealtimeTranslationMessageCodec", "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationMessageCodec.cs" },
-      "fixtures": ["v1/codec"]
+      "swift": {
+        "symbol": "RealtimeTranslationMessageCodec",
+        "path": "RealtimeTranslator/OpenAI/RealtimeTranslationMessageCodec.swift"
+      },
+      "csharp": {
+        "symbol": "RealtimeTranslationMessageCodec",
+        "path": "windows/src/RealtimeTranslator.Core/OpenAI/RealtimeTranslationMessageCodec.cs"
+      },
+      "fixtures": [
+        "v1/codec"
+      ]
     },
     {
       "name": "RealtimeWebSocketTransport",
       "swift": [
-        { "symbol": "RealtimeWebSocketTransport", "path": "RealtimeTranslator/OpenAI/RealtimeWebSocketTransport.swift" },
-        { "symbol": "URLSessionWebSocketTransport", "path": "RealtimeTranslator/OpenAI/RealtimeWebSocketTransport.swift" }
+        {
+          "symbol": "RealtimeWebSocketTransport",
+          "path": "RealtimeTranslator/OpenAI/RealtimeWebSocketTransport.swift"
+        },
+        {
+          "symbol": "URLSessionWebSocketTransport",
+          "path": "RealtimeTranslator/OpenAI/RealtimeWebSocketTransport.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "IRealtimeWebSocketTransport", "path": "windows/src/RealtimeTranslator.Core/Realtime/IRealtimeWebSocketTransport.cs" },
-        { "symbol": "ClientWebSocketTransport", "path": "windows/src/RealtimeTranslator.Core/Realtime/ClientWebSocketTransport.cs" }
+        {
+          "symbol": "IRealtimeWebSocketTransport",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/IRealtimeWebSocketTransport.cs"
+        },
+        {
+          "symbol": "ClientWebSocketTransport",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/ClientWebSocketTransport.cs"
+        }
       ]
     },
     {
       "name": "TranslationFrameQueues",
-      "swift": { "symbol": "TranslationFrameQueues", "path": "RealtimeTranslator/OpenAI/TranslationFrameQueues.swift" },
+      "swift": {
+        "symbol": "TranslationFrameQueues",
+        "path": "RealtimeTranslator/OpenAI/TranslationFrameQueues.swift"
+      },
       "csharp": [
-        { "symbol": "TranslationFrameQueues", "path": "windows/src/RealtimeTranslator.Core/Realtime/TranslationFrameQueues.cs" },
-        { "symbol": "PendingTranslationFrame", "path": "windows/src/RealtimeTranslator.Core/Realtime/TranslationFrameQueues.cs" }
+        {
+          "symbol": "TranslationFrameQueues",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/TranslationFrameQueues.cs"
+        },
+        {
+          "symbol": "PendingTranslationFrame",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/TranslationFrameQueues.cs"
+        }
       ],
-      "fixtures": ["v1/translation-queue"]
+      "fixtures": [
+        "v1/translation-queue"
+      ]
     },
     {
       "name": "TranslationPumpSupervisor",
-      "swift": { "symbol": "TranslationPumpSupervisor", "path": "RealtimeTranslator/OpenAI/TranslationPumpSupervisor.swift" },
-      "csharp": { "symbol": "TranslationPumpSupervisor", "path": "windows/src/RealtimeTranslator.Core/Realtime/TranslationPumpSupervisor.cs" },
-      "fixtures": ["v1/translation-queue"]
+      "swift": {
+        "symbol": "TranslationPumpSupervisor",
+        "path": "RealtimeTranslator/OpenAI/TranslationPumpSupervisor.swift"
+      },
+      "csharp": {
+        "symbol": "TranslationPumpSupervisor",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/TranslationPumpSupervisor.cs"
+      },
+      "fixtures": [
+        "v1/translation-queue"
+      ]
     },
     {
       "name": "AdaptiveMicrophoneGain",
-      "swift": { "symbol": "AdaptiveMicrophoneGain", "path": "RealtimeTranslator/Audio/AdaptiveMicrophoneGain.swift" },
-      "csharp": { "symbol": "AdaptiveMicrophoneGain", "path": "windows/src/RealtimeTranslator.Core/Audio/AdaptiveMicrophoneGain.cs" },
-      "fixtures": ["v2/audio"]
+      "swift": {
+        "symbol": "AdaptiveMicrophoneGain",
+        "path": "RealtimeTranslator/Audio/AdaptiveMicrophoneGain.swift"
+      },
+      "csharp": {
+        "symbol": "AdaptiveMicrophoneGain",
+        "path": "windows/src/RealtimeTranslator.Core/Audio/AdaptiveMicrophoneGain.cs"
+      },
+      "fixtures": [
+        "v2/audio"
+      ]
     },
     {
       "name": "AudioLossTracker",
       "swift": [
-        { "symbol": "AudioLossTracker", "path": "RealtimeTranslator/Audio/AudioLossTracker.swift" },
-        { "symbol": "AudioLossObservation", "path": "RealtimeTranslator/Audio/AudioLossTracker.swift" },
-        { "symbol": "AudioLossMetrics", "path": "RealtimeTranslator/Audio/AudioLossTracker.swift" },
-        { "symbol": "AudioLossPolicy", "path": "RealtimeTranslator/Audio/AudioLossTracker.swift" }
+        {
+          "symbol": "AudioLossTracker",
+          "path": "RealtimeTranslator/Audio/AudioLossTracker.swift"
+        },
+        {
+          "symbol": "AudioLossObservation",
+          "path": "RealtimeTranslator/Audio/AudioLossTracker.swift"
+        },
+        {
+          "symbol": "AudioLossMetrics",
+          "path": "RealtimeTranslator/Audio/AudioLossTracker.swift"
+        },
+        {
+          "symbol": "AudioLossPolicy",
+          "path": "RealtimeTranslator/Audio/AudioLossTracker.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "AudioLossTracker", "path": "windows/src/RealtimeTranslator.Core/Audio/AudioLossTracker.cs" },
-        { "symbol": "AudioLossObservation", "path": "windows/src/RealtimeTranslator.Core/Audio/AudioLossTracker.cs" },
-        { "symbol": "AudioLossMetrics", "path": "windows/src/RealtimeTranslator.Core/Audio/AudioLossTracker.cs" },
-        { "symbol": "AudioLossPolicy", "path": "windows/src/RealtimeTranslator.Core/Audio/AudioLossTracker.cs" }
+        {
+          "symbol": "AudioLossTracker",
+          "path": "windows/src/RealtimeTranslator.Core/Audio/AudioLossTracker.cs"
+        },
+        {
+          "symbol": "AudioLossObservation",
+          "path": "windows/src/RealtimeTranslator.Core/Audio/AudioLossTracker.cs"
+        },
+        {
+          "symbol": "AudioLossMetrics",
+          "path": "windows/src/RealtimeTranslator.Core/Audio/AudioLossTracker.cs"
+        },
+        {
+          "symbol": "AudioLossPolicy",
+          "path": "windows/src/RealtimeTranslator.Core/Audio/AudioLossTracker.cs"
+        }
       ],
-      "fixtures": ["v2/audio"]
+      "fixtures": [
+        "v2/audio"
+      ]
     },
     {
       "name": "CapturedAudioFrame",
-      "swift": { "symbol": "CapturedAudioFrame", "path": "RealtimeTranslator/Audio/CapturedAudioFrame.swift" },
-      "csharp": { "symbol": "CapturedAudioFrame", "path": "windows/src/RealtimeTranslator.Core/Audio/CapturedAudioFrame.cs" },
-      "fixtures": ["v2/audio"]
+      "swift": {
+        "symbol": "CapturedAudioFrame",
+        "path": "RealtimeTranslator/Audio/CapturedAudioFrame.swift"
+      },
+      "csharp": {
+        "symbol": "CapturedAudioFrame",
+        "path": "windows/src/RealtimeTranslator.Core/Audio/CapturedAudioFrame.cs"
+      },
+      "fixtures": [
+        "v2/audio"
+      ]
     },
     {
       "name": "PCM16AudioActivity",
-      "swift": { "symbol": "PCM16AudioActivity", "path": "RealtimeTranslator/Audio/PCM16AudioActivity.swift" },
-      "csharp": { "symbol": "Pcm16AudioActivity", "path": "windows/src/RealtimeTranslator.Core/Audio/Pcm16AudioActivity.cs" },
-      "fixtures": ["v2/audio"]
+      "swift": {
+        "symbol": "PCM16AudioActivity",
+        "path": "RealtimeTranslator/Audio/PCM16AudioActivity.swift"
+      },
+      "csharp": {
+        "symbol": "Pcm16AudioActivity",
+        "path": "windows/src/RealtimeTranslator.Core/Audio/Pcm16AudioActivity.cs"
+      },
+      "fixtures": [
+        "v2/audio"
+      ]
     },
     {
       "name": "PCM16FramePacketizer",
       "swift": [
-        { "symbol": "PCM16FramePacketizer", "path": "RealtimeTranslator/Audio/PCM16FramePacketizer.swift" },
-        { "symbol": "Float32FrameAccumulator", "path": "RealtimeTranslator/Audio/PCM16FramePacketizer.swift" }
+        {
+          "symbol": "PCM16FramePacketizer",
+          "path": "RealtimeTranslator/Audio/PCM16FramePacketizer.swift"
+        },
+        {
+          "symbol": "Float32FrameAccumulator",
+          "path": "RealtimeTranslator/Audio/PCM16FramePacketizer.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "Pcm16FramePacketizer", "path": "windows/src/RealtimeTranslator.Core/Audio/Pcm16FramePacketizer.cs" },
-        { "symbol": "Float32FrameAccumulator", "path": "windows/src/RealtimeTranslator.Core/Audio/Float32FrameAccumulator.cs" }
+        {
+          "symbol": "Pcm16FramePacketizer",
+          "path": "windows/src/RealtimeTranslator.Core/Audio/Pcm16FramePacketizer.cs"
+        },
+        {
+          "symbol": "Float32FrameAccumulator",
+          "path": "windows/src/RealtimeTranslator.Core/Audio/Float32FrameAccumulator.cs"
+        }
       ],
-      "fixtures": ["v2/audio"]
+      "fixtures": [
+        "v2/audio"
+      ]
     },
     {
       "name": "PCM16LittleEndianEncoder",
-      "swift": { "symbol": "PCM16LittleEndianEncoder", "path": "RealtimeTranslator/Audio/PCM16FramePacketizer.swift" },
-      "csharp": { "symbol": "Pcm16LittleEndianEncoder", "path": "windows/src/RealtimeTranslator.Core/Audio/Pcm16LittleEndianEncoder.cs" },
-      "fixtures": ["v2/audio"]
+      "swift": {
+        "symbol": "PCM16LittleEndianEncoder",
+        "path": "RealtimeTranslator/Audio/PCM16FramePacketizer.swift"
+      },
+      "csharp": {
+        "symbol": "Pcm16LittleEndianEncoder",
+        "path": "windows/src/RealtimeTranslator.Core/Audio/Pcm16LittleEndianEncoder.cs"
+      },
+      "fixtures": [
+        "v2/audio"
+      ]
     },
     {
       "name": "AudioCaptureService",
       "swift": [
-        { "symbol": "RealtimeAudioCaptureServicing", "path": "RealtimeTranslator/Audio/RealtimeAudioCaptureService.swift" },
-        { "symbol": "RealtimeAudioCaptureService", "path": "RealtimeTranslator/Audio/RealtimeAudioCaptureService.swift" }
+        {
+          "symbol": "RealtimeAudioCaptureServicing",
+          "path": "RealtimeTranslator/Audio/RealtimeAudioCaptureService.swift"
+        },
+        {
+          "symbol": "RealtimeAudioCaptureService",
+          "path": "RealtimeTranslator/Audio/RealtimeAudioCaptureService.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "IRealtimeAudioCapture", "path": "windows/src/RealtimeTranslator.Core/Realtime/InterpretationSession.cs" },
-        { "symbol": "WasapiAudioCaptureService", "path": "windows/src/RealtimeTranslator.Platform/Audio/WasapiAudioCaptureService.cs" }
+        {
+          "symbol": "IRealtimeAudioCapture",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/InterpretationSession.cs"
+        },
+        {
+          "symbol": "WasapiAudioCaptureService",
+          "path": "windows/src/RealtimeTranslator.Platform/Audio/WasapiAudioCaptureService.cs"
+        }
       ]
     },
     {
       "name": "AudioCaptureError",
-      "swift": { "symbol": "RealtimeAudioCaptureError", "path": "RealtimeTranslator/Audio/RealtimeAudioCaptureService.swift" },
-      "csharp": { "symbol": "AudioCaptureException", "path": "windows/src/RealtimeTranslator.Platform/Audio/WasapiAudioCaptureService.cs" }
+      "swift": {
+        "symbol": "RealtimeAudioCaptureError",
+        "path": "RealtimeTranslator/Audio/RealtimeAudioCaptureService.swift"
+      },
+      "csharp": {
+        "symbol": "AudioCaptureException",
+        "path": "windows/src/RealtimeTranslator.Platform/Audio/WasapiAudioCaptureService.cs"
+      }
     },
     {
       "name": "AudioFrameQueue",
-      "swift": { "symbol": "RealtimeAudioFrameQueue", "path": "RealtimeTranslator/Audio/RealtimeAudioFrameQueue.swift" },
-      "csharp": { "symbol": "AudioFrameChannel", "path": "windows/src/RealtimeTranslator.Core/Audio/AudioFrameChannel.cs" }
+      "swift": {
+        "symbol": "RealtimeAudioFrameQueue",
+        "path": "RealtimeTranslator/Audio/RealtimeAudioFrameQueue.swift"
+      },
+      "csharp": {
+        "symbol": "AudioFrameChannel",
+        "path": "windows/src/RealtimeTranslator.Core/Audio/AudioFrameChannel.cs"
+      }
     },
     {
       "name": "SpokenLanguage",
-      "swift": { "symbol": "SpokenLanguage", "path": "RealtimeTranslator/Audio/SpokenLanguage.swift" },
-      "csharp": { "symbol": "SpokenLanguage", "path": "windows/src/RealtimeTranslator.Core/Audio/SpokenLanguage.cs" },
-      "fixtures": ["v1/language"]
+      "swift": {
+        "symbol": "SpokenLanguage",
+        "path": "RealtimeTranslator/Audio/SpokenLanguage.swift"
+      },
+      "csharp": {
+        "symbol": "SpokenLanguage",
+        "path": "windows/src/RealtimeTranslator.Core/Audio/SpokenLanguage.cs"
+      },
+      "fixtures": [
+        "v1/language"
+      ]
     },
     {
       "name": "LanguagePair",
-      "swift": { "symbol": "LanguagePair", "path": "RealtimeTranslator/Audio/SpokenLanguage.swift" },
+      "swift": {
+        "symbol": "LanguagePair",
+        "path": "RealtimeTranslator/Audio/SpokenLanguage.swift"
+      },
       "csharp": [
-        { "symbol": "LanguagePair", "path": "windows/src/RealtimeTranslator.Core/Audio/SpokenLanguage.cs" },
-        { "symbol": "LanguagePairExtensions", "path": "windows/src/RealtimeTranslator.Core/Audio/SpokenLanguage.cs" }
+        {
+          "symbol": "LanguagePair",
+          "path": "windows/src/RealtimeTranslator.Core/Audio/SpokenLanguage.cs"
+        },
+        {
+          "symbol": "LanguagePairExtensions",
+          "path": "windows/src/RealtimeTranslator.Core/Audio/SpokenLanguage.cs"
+        }
       ],
-      "fixtures": ["v1/language"]
+      "fixtures": [
+        "v1/language"
+      ]
     },
     {
       "name": "SpokenLanguageDetector",
       "swift": [
-        { "symbol": "SpokenLanguageDetector", "path": "RealtimeTranslator/Audio/SpokenLanguageDetector.swift" },
-        { "symbol": "SpokenLanguageEvidence", "path": "RealtimeTranslator/Audio/SpokenLanguageDetector.swift" }
+        {
+          "symbol": "SpokenLanguageDetector",
+          "path": "RealtimeTranslator/Audio/SpokenLanguageDetector.swift"
+        },
+        {
+          "symbol": "SpokenLanguageEvidence",
+          "path": "RealtimeTranslator/Audio/SpokenLanguageDetector.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "SpokenLanguageDetector", "path": "windows/src/RealtimeTranslator.Core/Audio/SpokenLanguageDetector.cs" },
-        { "symbol": "SpokenLanguageEvidence", "path": "windows/src/RealtimeTranslator.Core/Audio/SpokenLanguage.cs" }
+        {
+          "symbol": "SpokenLanguageDetector",
+          "path": "windows/src/RealtimeTranslator.Core/Audio/SpokenLanguageDetector.cs"
+        },
+        {
+          "symbol": "SpokenLanguageEvidence",
+          "path": "windows/src/RealtimeTranslator.Core/Audio/SpokenLanguage.cs"
+        }
       ],
-      "fixtures": ["v1/language"]
+      "fixtures": [
+        "v1/language"
+      ]
     },
     {
       "name": "SubtitleAggregator",
       "swift": [
-        { "symbol": "SubtitleAggregator", "path": "RealtimeTranslator/Subtitles/SubtitleAggregator.swift" },
-        { "symbol": "SubtitleAggregatorConfig", "path": "RealtimeTranslator/Subtitles/SubtitleAggregator.swift" }
+        {
+          "symbol": "SubtitleAggregator",
+          "path": "RealtimeTranslator/Subtitles/SubtitleAggregator.swift"
+        },
+        {
+          "symbol": "SubtitleAggregatorConfig",
+          "path": "RealtimeTranslator/Subtitles/SubtitleAggregator.swift"
+        }
       ],
-      "csharp": { "symbol": "SubtitleAggregator", "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleAggregator.cs" },
-      "fixtures": ["v2/subtitle"]
+      "csharp": {
+        "symbol": "SubtitleAggregator",
+        "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleAggregator.cs"
+      },
+      "fixtures": [
+        "v2/subtitle"
+      ]
     },
     {
       "name": "SubtitleState",
       "swift": [
-        { "symbol": "LiveSubtitle", "path": "RealtimeTranslator/Subtitles/SubtitleState.swift" },
-        { "symbol": "SubtitleSnapshot", "path": "RealtimeTranslator/Subtitles/SubtitleState.swift" },
-        { "symbol": "SubtitleBlockState", "path": "RealtimeTranslator/Subtitles/SubtitleState.swift" }
+        {
+          "symbol": "LiveSubtitle",
+          "path": "RealtimeTranslator/Subtitles/SubtitleState.swift"
+        },
+        {
+          "symbol": "SubtitleSnapshot",
+          "path": "RealtimeTranslator/Subtitles/SubtitleState.swift"
+        },
+        {
+          "symbol": "SubtitleBlockState",
+          "path": "RealtimeTranslator/Subtitles/SubtitleState.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "LiveSubtitle", "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleSnapshot.cs" },
-        { "symbol": "SubtitleSnapshot", "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleSnapshot.cs" }
+        {
+          "symbol": "LiveSubtitle",
+          "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleSnapshot.cs"
+        },
+        {
+          "symbol": "SubtitleSnapshot",
+          "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleSnapshot.cs"
+        }
       ]
     },
     {
       "name": "SubtitlePresentation",
-      "swift": { "symbol": "SubtitlePresentation", "path": "RealtimeTranslator/Subtitles/SubtitleState.swift" },
-      "csharp": { "symbol": "SubtitleOverlayViewModel", "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleOverlayViewModel.cs" }
+      "swift": {
+        "symbol": "SubtitlePresentation",
+        "path": "RealtimeTranslator/Subtitles/SubtitleState.swift"
+      },
+      "csharp": {
+        "symbol": "SubtitleOverlayViewModel",
+        "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleOverlayViewModel.cs"
+      }
     },
     {
       "name": "SubtitleOverlayGeometry",
       "swift": [
-        { "symbol": "SubtitleWindowGeometry", "path": "RealtimeTranslator/Subtitles/SubtitleWindowGeometry.swift" },
-        { "symbol": "SubtitleWindowLayout", "path": "RealtimeTranslator/Subtitles/SubtitleWindowGeometry.swift" }
+        {
+          "symbol": "SubtitleWindowGeometry",
+          "path": "RealtimeTranslator/Subtitles/SubtitleWindowGeometry.swift"
+        },
+        {
+          "symbol": "SubtitleWindowLayout",
+          "path": "RealtimeTranslator/Subtitles/SubtitleWindowGeometry.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "SubtitleOverlayGeometry", "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleOverlayGeometry.cs" },
-        { "symbol": "OverlayRect", "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleOverlayGeometry.cs" }
+        {
+          "symbol": "SubtitleOverlayGeometry",
+          "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleOverlayGeometry.cs"
+        },
+        {
+          "symbol": "OverlayRect",
+          "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleOverlayGeometry.cs"
+        }
       ]
     },
     {
       "name": "SubtitleTailClipper",
-      "swift": { "symbol": "SubtitleTailClipper", "path": "RealtimeTranslator/Subtitles/SubtitleTailClipper.swift" },
-      "csharp": { "symbol": "SubtitleTailClipper", "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleTailClipper.cs" },
-      "fixtures": ["v2/subtitle"]
+      "swift": {
+        "symbol": "SubtitleTailClipper",
+        "path": "RealtimeTranslator/Subtitles/SubtitleTailClipper.swift"
+      },
+      "csharp": {
+        "symbol": "SubtitleTailClipper",
+        "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleTailClipper.cs"
+      },
+      "fixtures": [
+        "v2/subtitle"
+      ]
     },
     {
       "name": "SubtitleTranscript",
       "swift": [
-        { "symbol": "SubtitleTranscriptFormatter", "path": "RealtimeTranslator/Subtitles/SubtitleTranscriptFormatter.swift" },
-        { "symbol": "SubtitleTranscriptLimits", "path": "RealtimeTranslator/Subtitles/SubtitleTranscriptFormatter.swift" },
-        { "symbol": "SubtitleTranscriptStore", "path": "RealtimeTranslator/Subtitles/SubtitleTranscriptStore.swift" },
-        { "symbol": "SubtitleTranscriptAppendResult", "path": "RealtimeTranslator/Subtitles/SubtitleTranscriptStore.swift" }
+        {
+          "symbol": "SubtitleTranscriptFormatter",
+          "path": "RealtimeTranslator/Subtitles/SubtitleTranscriptFormatter.swift"
+        },
+        {
+          "symbol": "SubtitleTranscriptLimits",
+          "path": "RealtimeTranslator/Subtitles/SubtitleTranscriptFormatter.swift"
+        },
+        {
+          "symbol": "SubtitleTranscriptStore",
+          "path": "RealtimeTranslator/Subtitles/SubtitleTranscriptStore.swift"
+        },
+        {
+          "symbol": "SubtitleTranscriptAppendResult",
+          "path": "RealtimeTranslator/Subtitles/SubtitleTranscriptStore.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "SubtitleTranscriptFormatter", "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleTranscriptFormatter.cs" },
-        { "symbol": "SubtitleTranscriptLimits", "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleTranscriptFormatter.cs" },
-        { "symbol": "SubtitleTranscriptStore", "path": "windows/src/RealtimeTranslator.Platform/Subtitles/SubtitleTranscriptStore.cs" },
-        { "symbol": "SubtitleTranscriptAppendResult", "path": "windows/src/RealtimeTranslator.Platform/Subtitles/SubtitleTranscriptStore.cs" }
+        {
+          "symbol": "SubtitleTranscriptFormatter",
+          "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleTranscriptFormatter.cs"
+        },
+        {
+          "symbol": "SubtitleTranscriptLimits",
+          "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleTranscriptFormatter.cs"
+        },
+        {
+          "symbol": "SubtitleTranscriptStore",
+          "path": "windows/src/RealtimeTranslator.Platform/Subtitles/SubtitleTranscriptStore.cs"
+        },
+        {
+          "symbol": "SubtitleTranscriptAppendResult",
+          "path": "windows/src/RealtimeTranslator.Platform/Subtitles/SubtitleTranscriptStore.cs"
+        }
       ],
-      "fixtures": ["v1/transcript"]
+      "fixtures": [
+        "v1/transcript"
+      ]
     },
     {
       "name": "ApiKeyNormalization",
-      "swift": { "symbol": "APIKeyNormalization", "path": "RealtimeTranslator/Security/APIKeyNormalization.swift" },
+      "swift": {
+        "symbol": "APIKeyNormalization",
+        "path": "RealtimeTranslator/Security/APIKeyNormalization.swift"
+      },
       "csharp": [
-        { "symbol": "ApiKeyNormalizer", "path": "windows/src/RealtimeTranslator.Core/Security/ApiKeyNormalizer.cs" },
-        { "symbol": "ApiKeyNormalizationStatus", "path": "windows/src/RealtimeTranslator.Core/Security/ApiKeyNormalizer.cs" },
-        { "symbol": "ApiKeyNormalizationResult", "path": "windows/src/RealtimeTranslator.Core/Security/ApiKeyNormalizer.cs" },
-        { "symbol": "ApiKeyFormatException", "path": "windows/src/RealtimeTranslator.Core/Security/ApiKeyNormalizer.cs" }
+        {
+          "symbol": "ApiKeyNormalizer",
+          "path": "windows/src/RealtimeTranslator.Core/Security/ApiKeyNormalizer.cs"
+        },
+        {
+          "symbol": "ApiKeyNormalizationStatus",
+          "path": "windows/src/RealtimeTranslator.Core/Security/ApiKeyNormalizer.cs"
+        },
+        {
+          "symbol": "ApiKeyNormalizationResult",
+          "path": "windows/src/RealtimeTranslator.Core/Security/ApiKeyNormalizer.cs"
+        },
+        {
+          "symbol": "ApiKeyFormatException",
+          "path": "windows/src/RealtimeTranslator.Core/Security/ApiKeyNormalizer.cs"
+        }
       ],
-      "fixtures": ["v1/api-key"]
+      "fixtures": [
+        "v1/api-key"
+      ]
     },
     {
       "name": "APIKeyStore",
       "swift": [
-        { "symbol": "APIKeyStore", "path": "RealtimeTranslator/Security/APIKeyStore.swift" },
-        { "symbol": "StoredAPIKeyState", "path": "RealtimeTranslator/Security/APIKeyStore.swift" },
-        { "symbol": "APIKeyStoreError", "path": "RealtimeTranslator/Security/APIKeyStore.swift" }
+        {
+          "symbol": "APIKeyStore",
+          "path": "RealtimeTranslator/Security/APIKeyStore.swift"
+        },
+        {
+          "symbol": "StoredAPIKeyState",
+          "path": "RealtimeTranslator/Security/APIKeyStore.swift"
+        },
+        {
+          "symbol": "APIKeyStoreError",
+          "path": "RealtimeTranslator/Security/APIKeyStore.swift"
+        }
       ],
       "csharp": [
-        { "symbol": "IApiKeyStore", "path": "windows/src/RealtimeTranslator.Core/Realtime/InterpretationSession.cs" },
-        { "symbol": "StoredApiKeyState", "path": "windows/src/RealtimeTranslator.Core/Security/ApiKeyNormalizer.cs" }
+        {
+          "symbol": "IApiKeyStore",
+          "path": "windows/src/RealtimeTranslator.Core/Realtime/InterpretationSession.cs"
+        },
+        {
+          "symbol": "StoredApiKeyState",
+          "path": "windows/src/RealtimeTranslator.Core/Security/ApiKeyNormalizer.cs"
+        }
       ]
     },
     {
       "name": "APIKeyStoreBackend",
-      "swift": { "symbol": "KeychainAPIKeyStore", "path": "RealtimeTranslator/Security/KeychainAPIKeyStore.swift" },
-      "csharp": { "symbol": "CredentialManagerApiKeyStore", "path": "windows/src/RealtimeTranslator.Platform/Security/CredentialManagerApiKeyStore.cs" }
+      "swift": {
+        "symbol": "KeychainAPIKeyStore",
+        "path": "RealtimeTranslator/Security/KeychainAPIKeyStore.swift"
+      },
+      "csharp": {
+        "symbol": "CredentialManagerApiKeyStore",
+        "path": "windows/src/RealtimeTranslator.Platform/Security/CredentialManagerApiKeyStore.cs"
+      }
     },
     {
       "name": "OpenAISafetyIdentifier",
-      "swift": { "symbol": "OpenAISafetyIdentifier", "path": "RealtimeTranslator/Security/OpenAISafetyIdentifier.swift" },
-      "csharp": { "symbol": "OpenAISafetyIdentifier", "path": "windows/src/RealtimeTranslator.Core/Security/OpenAISafetyIdentifier.cs" }
+      "swift": {
+        "symbol": "OpenAISafetyIdentifier",
+        "path": "RealtimeTranslator/Security/OpenAISafetyIdentifier.swift"
+      },
+      "csharp": {
+        "symbol": "OpenAISafetyIdentifier",
+        "path": "windows/src/RealtimeTranslator.Core/Security/OpenAISafetyIdentifier.cs"
+      }
     },
     {
       "name": "SecretText",
-      "swift": { "symbol": "SecretText", "path": "RealtimeTranslator/Security/SecretText.swift" },
-      "csharp": { "symbol": "SecretText", "path": "windows/src/RealtimeTranslator.Core/Security/SecretText.cs" }
+      "swift": {
+        "symbol": "SecretText",
+        "path": "RealtimeTranslator/Security/SecretText.swift"
+      },
+      "csharp": {
+        "symbol": "SecretText",
+        "path": "windows/src/RealtimeTranslator.Core/Security/SecretText.cs"
+      }
     },
     {
       "name": "UserCopy",
-      "swift": { "symbol": "UserCopy", "path": "RealtimeTranslator/Localization/UserCopy.swift" },
-      "csharp": { "symbol": "UserCopy", "path": "windows/src/RealtimeTranslator.Core/Localization/UserCopy.cs" },
-      "fixtures": ["v1/privacy"]
+      "swift": {
+        "symbol": "UserCopy",
+        "path": "RealtimeTranslator/Localization/UserCopy.swift"
+      },
+      "csharp": {
+        "symbol": "UserCopy",
+        "path": "windows/src/RealtimeTranslator.Core/Localization/UserCopy.cs"
+      },
+      "fixtures": [
+        "v1/privacy"
+      ]
     },
     {
       "name": "UiLanguagePreference",
-      "swift": { "symbol": "UiLanguagePreference", "path": "RealtimeTranslator/Localization/UserCopy.swift" },
+      "swift": {
+        "symbol": "UiLanguagePreference",
+        "path": "RealtimeTranslator/Localization/UserCopy.swift"
+      },
       "csharp": [
-        { "symbol": "UiLanguagePreference", "path": "windows/src/RealtimeTranslator.Core/Localization/UserCopy.cs" },
-        { "symbol": "UiLanguage", "path": "windows/src/RealtimeTranslator.Core/Localization/UserCopy.cs" }
+        {
+          "symbol": "UiLanguagePreference",
+          "path": "windows/src/RealtimeTranslator.Core/Localization/UserCopy.cs"
+        },
+        {
+          "symbol": "UiLanguage",
+          "path": "windows/src/RealtimeTranslator.Core/Localization/UserCopy.cs"
+        }
       ]
     },
     {
       "name": "UiLocale",
-      "swift": { "symbol": "UiLocale", "path": "RealtimeTranslator/Localization/UserCopy.swift" },
-      "csharp": { "symbol": "UiLocale", "path": "windows/src/RealtimeTranslator.Core/Localization/UserCopy.cs" }
+      "swift": {
+        "symbol": "UiLocale",
+        "path": "RealtimeTranslator/Localization/UserCopy.swift"
+      },
+      "csharp": {
+        "symbol": "UiLocale",
+        "path": "windows/src/RealtimeTranslator.Core/Localization/UserCopy.cs"
+      }
     },
     {
       "name": "AppSettings",
-      "swift": { "symbol": "AppSettings", "path": "RealtimeTranslator/Settings/AppSettings.swift" },
+      "swift": {
+        "symbol": "AppSettings",
+        "path": "RealtimeTranslator/Settings/AppSettings.swift"
+      },
       "csharp": [
-        { "symbol": "AppSettingsData", "path": "windows/src/RealtimeTranslator.Core/Settings/AppSettingsData.cs" },
-        { "symbol": "AppSettingsCodec", "path": "windows/src/RealtimeTranslator.Core/Settings/AppSettingsData.cs" },
-        { "symbol": "AppSettingsStore", "path": "windows/src/RealtimeTranslator.Platform/Settings/AppSettingsStore.cs" }
+        {
+          "symbol": "AppSettingsData",
+          "path": "windows/src/RealtimeTranslator.Core/Settings/AppSettingsData.cs"
+        },
+        {
+          "symbol": "AppSettingsCodec",
+          "path": "windows/src/RealtimeTranslator.Core/Settings/AppSettingsData.cs"
+        },
+        {
+          "symbol": "AppSettingsStore",
+          "path": "windows/src/RealtimeTranslator.Platform/Settings/AppSettingsStore.cs"
+        },
+        {
+          "symbol": "AppSettingsHintRefresh",
+          "path": "windows/src/RealtimeTranslator.Core/Settings/AppSettingsHintRefresh.cs"
+        }
+      ],
+      "fixtures": [
+        "v1/settings"
       ]
     },
     {
       "name": "TranslationState",
-      "swift": { "symbol": "TranslationState", "path": "RealtimeTranslator/Settings/AppSettings.swift" },
-      "csharp": { "symbol": "TranslationState", "path": "windows/src/RealtimeTranslator.Core/Realtime/InterpretationSession.cs" }
+      "swift": {
+        "symbol": "TranslationState",
+        "path": "RealtimeTranslator/Settings/AppSettings.swift"
+      },
+      "csharp": {
+        "symbol": "TranslationState",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/InterpretationSession.cs"
+      }
     },
     {
       "name": "AppReleaseVersion",
-      "swift": { "symbol": "AppReleaseVersion", "path": "RealtimeTranslator/App/AppReleaseVersion.swift" },
-      "csharp": { "symbol": "AppReleaseVersion", "path": "windows/src/RealtimeTranslator.Core/Settings/AppReleaseVersion.cs" }
+      "swift": {
+        "symbol": "AppReleaseVersion",
+        "path": "RealtimeTranslator/App/AppReleaseVersion.swift"
+      },
+      "csharp": {
+        "symbol": "AppReleaseVersion",
+        "path": "windows/src/RealtimeTranslator.Core/Settings/AppReleaseVersion.cs"
+      }
     },
     {
       "name": "SingleInstanceLease",
       "swift": [
-        { "symbol": "SingleInstanceLease", "path": "RealtimeTranslator/App/SingleInstanceLease.swift" },
-        { "symbol": "SingleInstanceLeaseError", "path": "RealtimeTranslator/App/SingleInstanceLease.swift" }
+        {
+          "symbol": "SingleInstanceLease",
+          "path": "RealtimeTranslator/App/SingleInstanceLease.swift"
+        },
+        {
+          "symbol": "SingleInstanceLeaseError",
+          "path": "RealtimeTranslator/App/SingleInstanceLease.swift"
+        }
       ],
-      "csharp": { "symbol": "SingleInstanceLease", "path": "windows/src/RealtimeTranslator.Platform/App/SingleInstanceLease.cs" }
+      "csharp": {
+        "symbol": "SingleInstanceLease",
+        "path": "windows/src/RealtimeTranslator.Platform/App/SingleInstanceLease.cs"
+      }
     },
     {
       "name": "GlobalHotkey",
-      "swift": { "symbol": "HotKeyManager", "path": "RealtimeTranslator/MenuBar/HotKeyManager.swift" },
+      "swift": {
+        "symbol": "HotKeyManager",
+        "path": "RealtimeTranslator/MenuBar/HotKeyManager.swift"
+      },
       "csharp": [
-        { "symbol": "GlobalHotkeyManager", "path": "windows/src/RealtimeTranslator.Platform/App/GlobalHotkey.cs" },
-        { "symbol": "HotkeyModifiers", "path": "windows/src/RealtimeTranslator.Platform/App/GlobalHotkey.cs" },
-        { "symbol": "IGlobalHotkeyRegistrar", "path": "windows/src/RealtimeTranslator.Platform/App/GlobalHotkey.cs" },
-        { "symbol": "Win32HotkeyRegistrar", "path": "windows/src/RealtimeTranslator.Platform/App/GlobalHotkey.cs" }
+        {
+          "symbol": "GlobalHotkeyManager",
+          "path": "windows/src/RealtimeTranslator.Platform/App/GlobalHotkey.cs"
+        },
+        {
+          "symbol": "HotkeyModifiers",
+          "path": "windows/src/RealtimeTranslator.Platform/App/GlobalHotkey.cs"
+        },
+        {
+          "symbol": "IGlobalHotkeyRegistrar",
+          "path": "windows/src/RealtimeTranslator.Platform/App/GlobalHotkey.cs"
+        },
+        {
+          "symbol": "Win32HotkeyRegistrar",
+          "path": "windows/src/RealtimeTranslator.Platform/App/GlobalHotkey.cs"
+        }
       ]
     },
     {
       "name": "AppLogger",
-      "swift": { "symbol": "AppLogger", "path": "RealtimeTranslator/Logging/AppLogger.swift" },
+      "swift": {
+        "symbol": "AppLogger",
+        "path": "RealtimeTranslator/Logging/AppLogger.swift"
+      },
       "csharp": [
-        { "symbol": "AppLogger", "path": "windows/src/RealtimeTranslator.Platform/Logging/AppLogger.cs" },
-        { "symbol": "LogSecretRedactor", "path": "windows/src/RealtimeTranslator.Core/Security/LogSecretRedactor.cs" }
+        {
+          "symbol": "AppLogger",
+          "path": "windows/src/RealtimeTranslator.Platform/Logging/AppLogger.cs"
+        },
+        {
+          "symbol": "LogSecretRedactor",
+          "path": "windows/src/RealtimeTranslator.Core/Security/LogSecretRedactor.cs"
+        }
       ],
-      "fixtures": ["v1/privacy"]
+      "fixtures": [
+        "v1/privacy"
+      ]
     }
   ],
   "platformOnly": {
     "swift": [
-      { "symbol": "InterpretationSessionDelegate", "path": "RealtimeTranslator/Realtime/InterpretationSession.swift", "reason": "Swift delegate protocol。C# 側はイベント購読に内包" },
-      { "symbol": "SubtitleDisplayScheduler", "path": "RealtimeTranslator/Realtime/SubtitleDisplayScheduler.swift", "reason": "表示タイミング調整は AppKit UI 層の関心ごと" },
-      { "symbol": "SubtitleDisplaySchedulerDelegate", "path": "RealtimeTranslator/Realtime/SubtitleDisplayScheduler.swift", "reason": "SubtitleDisplayScheduler の delegate protocol" },
-      { "symbol": "RealtimeTransportSupport", "path": "RealtimeTranslator/OpenAI/RealtimeTransportSupport.swift", "reason": "URLSession 系の可用性判定" },
-      { "symbol": "URLSessionWebSocketTransportError", "path": "RealtimeTranslator/OpenAI/RealtimeWebSocketTransport.swift", "reason": "URLSessionWebSocketTransport 専用エラー" },
-      { "symbol": "AsyncTimeout", "path": "RealtimeTranslator/OpenAI/RealtimeWebSocketTransport.swift", "reason": "Swift async タイムアウトユーティリティ" },
-      { "symbol": "RealtimeAudioFrameYieldOutcome", "path": "RealtimeTranslator/Audio/RealtimeAudioCaptureService.swift", "reason": "AVAudioEngine tap の yield 結果型" },
-      { "symbol": "CapturedAudioBuffer", "path": "RealtimeTranslator/Audio/SpeechAudioPipeline.swift", "reason": "AVAudioEngine buffer 管理" },
-      { "symbol": "CapturedAudioBufferPool", "path": "RealtimeTranslator/Audio/SpeechAudioPipeline.swift", "reason": "AVAudioEngine buffer pool" },
-      { "symbol": "AnalyzerInputProvider", "path": "RealtimeTranslator/Audio/SpeechAudioPipeline.swift", "reason": "Speech Analyzer 入力" },
-      { "symbol": "AnalyzerAudioConverter", "path": "RealtimeTranslator/Audio/SpeechAudioPipeline.swift", "reason": "AVAudioConverter ラッパ" },
-      { "symbol": "AnalyzerAudioTap", "path": "RealtimeTranslator/Audio/SpeechAudioPipeline.swift", "reason": "AVAudioEngine tap 配線" },
-      { "symbol": "DisplayMirroringDetector", "path": "RealtimeTranslator/Subtitles/DisplayMirroringDetector.swift", "reason": "NSScreen ミラーリング検知" },
-      { "symbol": "SubtitlePanel", "path": "RealtimeTranslator/Subtitles/SubtitlePanel.swift", "reason": "NSPanel/AppKit" },
-      { "symbol": "SubtitlePanelOriginPolicy", "path": "RealtimeTranslator/Subtitles/SubtitlePanelOriginPolicy.swift", "reason": "位置永続化ポリシー。C# 側は App 層に内包" },
-      { "symbol": "SubtitleView", "path": "RealtimeTranslator/Subtitles/SubtitleView.swift", "reason": "SwiftUI view" },
-      { "symbol": "SubtitleTextLayout", "path": "RealtimeTranslator/Subtitles/SubtitleView.swift", "reason": "SwiftUI テキストレイアウト" },
-      { "symbol": "SubtitleVisualStyle", "path": "RealtimeTranslator/Subtitles/SubtitleView.swift", "reason": "SwiftUI スタイル定義" },
-      { "symbol": "RecordingControlView", "path": "RealtimeTranslator/Subtitles/SubtitleView.swift", "reason": "SwiftUI view" },
-      { "symbol": "SubtitleWindowController", "path": "RealtimeTranslator/Subtitles/SubtitleWindowController.swift", "reason": "NSWindowController/AppKit" },
-      { "symbol": "SettingsWindowMetrics", "path": "RealtimeTranslator/Settings/SettingsView.swift", "reason": "SwiftUI 設定画面の寸法定義" },
-      { "symbol": "SettingsView", "path": "RealtimeTranslator/Settings/SettingsView.swift", "reason": "SwiftUI 設定画面" },
-      { "symbol": "SettingsMultilineField", "path": "RealtimeTranslator/Settings/SettingsView.swift", "reason": "SwiftUI 設定画面の部品" },
-      { "symbol": "SettingsGeneralTab", "path": "RealtimeTranslator/Settings/SettingsView.swift", "reason": "SwiftUI 設定画面の部品" },
-      { "symbol": "SettingsSpeechRecognitionTab", "path": "RealtimeTranslator/Settings/SettingsView.swift", "reason": "SwiftUI 設定画面の部品" },
-      { "symbol": "SettingsSubtitleAndControlsTab", "path": "RealtimeTranslator/Settings/SettingsView.swift", "reason": "SwiftUI 設定画面の部品" },
-      { "symbol": "APIKeyBootstrap", "path": "RealtimeTranslator/Security/APIKeyBootstrap.swift", "reason": "環境変数からの初回取り込み（DEBUG ビルド用）" },
-      { "symbol": "InMemoryAPIKeyStore", "path": "RealtimeTranslator/Security/InMemoryAPIKeyStore.swift", "reason": "デバッグ/テスト用インメモリストア" },
-      { "symbol": "UiCopy", "path": "RealtimeTranslator/Localization/UiCopy.swift", "reason": "UserCopy facade + macOS ホットキー表記" },
-      { "symbol": "UserCopyError", "path": "RealtimeTranslator/Localization/UserCopy.swift", "reason": "バンドル読み込みエラー型" },
-      { "symbol": "UserCopyStore", "path": "RealtimeTranslator/Localization/UserCopy.swift", "reason": "バンドルからの ui.json 読み込み層。C# は UserCopy 静的 API に内包" },
-      { "symbol": "AccessoryDialogActivation", "path": "RealtimeTranslator/App/AccessoryDialogActivation.swift", "reason": "NSApplication accessory 遷移の状態機械" },
-      { "symbol": "AccessoryDialogSession", "path": "RealtimeTranslator/App/AccessoryDialogActivation.swift", "reason": "NSApplication accessory 遷移" },
-      { "symbol": "SettingsActivationHold", "path": "RealtimeTranslator/App/AccessoryDialogActivation.swift", "reason": "設定画面 activation 保持" },
-      { "symbol": "AccessoryDialogPresenter", "path": "RealtimeTranslator/App/AccessoryDialogActivation.swift", "reason": "AppKit ダイアログ提示" },
-      { "symbol": "AppCoordinator", "path": "RealtimeTranslator/App/AppCoordinator.swift", "reason": "AppKit ライフサイクル調停" },
-      { "symbol": "AppMainMenu", "path": "RealtimeTranslator/App/AppMainMenu.swift", "reason": "NSMenu 構築" },
-      { "symbol": "RealtimeTranslatorMain", "path": "RealtimeTranslator/App/RealtimeTranslatorApp.swift", "reason": "main エントリポイント" },
-      { "symbol": "AppStatusFile", "path": "RealtimeTranslator/App/RealtimeTranslatorApp.swift", "reason": "DEBUG 向け status file 書き出し" },
-      { "symbol": "AppRuntimeEnvironment", "path": "RealtimeTranslator/App/RealtimeTranslatorApp.swift", "reason": "起動環境判定" },
-      { "symbol": "AppTerminationGate", "path": "RealtimeTranslator/App/RealtimeTranslatorApp.swift", "reason": "終了抑制ゲート" },
-      { "symbol": "AppRuntime", "path": "RealtimeTranslator/App/RealtimeTranslatorApp.swift", "reason": "AppKit 起動シーケンス" },
-      { "symbol": "AppDelegate", "path": "RealtimeTranslator/App/RealtimeTranslatorApp.swift", "reason": "NSApplicationDelegate" },
-      { "symbol": "MenuBarController", "path": "RealtimeTranslator/MenuBar/MenuBarController.swift", "reason": "NSStatusItem/AppKit" }
+      {
+        "symbol": "InterpretationSessionDelegate",
+        "path": "RealtimeTranslator/Realtime/InterpretationSession.swift",
+        "reason": "Swift delegate protocol。C# 側はイベント購読に内包"
+      },
+      {
+        "symbol": "SubtitleDisplayScheduler",
+        "path": "RealtimeTranslator/Realtime/SubtitleDisplayScheduler.swift",
+        "reason": "表示タイミング調整は AppKit UI 層の関心ごと"
+      },
+      {
+        "symbol": "SubtitleDisplaySchedulerDelegate",
+        "path": "RealtimeTranslator/Realtime/SubtitleDisplayScheduler.swift",
+        "reason": "SubtitleDisplayScheduler の delegate protocol"
+      },
+      {
+        "symbol": "RealtimeTransportSupport",
+        "path": "RealtimeTranslator/OpenAI/RealtimeTransportSupport.swift",
+        "reason": "URLSession 系の可用性判定"
+      },
+      {
+        "symbol": "URLSessionWebSocketTransportError",
+        "path": "RealtimeTranslator/OpenAI/RealtimeWebSocketTransport.swift",
+        "reason": "URLSessionWebSocketTransport 専用エラー"
+      },
+      {
+        "symbol": "AsyncTimeout",
+        "path": "RealtimeTranslator/OpenAI/RealtimeWebSocketTransport.swift",
+        "reason": "Swift async タイムアウトユーティリティ"
+      },
+      {
+        "symbol": "RealtimeAudioFrameYieldOutcome",
+        "path": "RealtimeTranslator/Audio/RealtimeAudioCaptureService.swift",
+        "reason": "AVAudioEngine tap の yield 結果型"
+      },
+      {
+        "symbol": "CapturedAudioBuffer",
+        "path": "RealtimeTranslator/Audio/SpeechAudioPipeline.swift",
+        "reason": "AVAudioEngine buffer 管理"
+      },
+      {
+        "symbol": "CapturedAudioBufferPool",
+        "path": "RealtimeTranslator/Audio/SpeechAudioPipeline.swift",
+        "reason": "AVAudioEngine buffer pool"
+      },
+      {
+        "symbol": "AnalyzerInputProvider",
+        "path": "RealtimeTranslator/Audio/SpeechAudioPipeline.swift",
+        "reason": "Speech Analyzer 入力"
+      },
+      {
+        "symbol": "AnalyzerAudioConverter",
+        "path": "RealtimeTranslator/Audio/SpeechAudioPipeline.swift",
+        "reason": "AVAudioConverter ラッパ"
+      },
+      {
+        "symbol": "AnalyzerAudioTap",
+        "path": "RealtimeTranslator/Audio/SpeechAudioPipeline.swift",
+        "reason": "AVAudioEngine tap 配線"
+      },
+      {
+        "symbol": "DisplayMirroringDetector",
+        "path": "RealtimeTranslator/Subtitles/DisplayMirroringDetector.swift",
+        "reason": "NSScreen ミラーリング検知"
+      },
+      {
+        "symbol": "SubtitlePanel",
+        "path": "RealtimeTranslator/Subtitles/SubtitlePanel.swift",
+        "reason": "NSPanel/AppKit"
+      },
+      {
+        "symbol": "SubtitlePanelOriginPolicy",
+        "path": "RealtimeTranslator/Subtitles/SubtitlePanelOriginPolicy.swift",
+        "reason": "位置永続化ポリシー。C# 側は App 層に内包"
+      },
+      {
+        "symbol": "SubtitleView",
+        "path": "RealtimeTranslator/Subtitles/SubtitleView.swift",
+        "reason": "SwiftUI view"
+      },
+      {
+        "symbol": "SubtitleTextLayout",
+        "path": "RealtimeTranslator/Subtitles/SubtitleView.swift",
+        "reason": "SwiftUI テキストレイアウト"
+      },
+      {
+        "symbol": "SubtitleVisualStyle",
+        "path": "RealtimeTranslator/Subtitles/SubtitleView.swift",
+        "reason": "SwiftUI スタイル定義"
+      },
+      {
+        "symbol": "RecordingControlView",
+        "path": "RealtimeTranslator/Subtitles/SubtitleView.swift",
+        "reason": "SwiftUI view"
+      },
+      {
+        "symbol": "SubtitleWindowController",
+        "path": "RealtimeTranslator/Subtitles/SubtitleWindowController.swift",
+        "reason": "NSWindowController/AppKit"
+      },
+      {
+        "symbol": "SettingsWindowMetrics",
+        "path": "RealtimeTranslator/Settings/SettingsView.swift",
+        "reason": "SwiftUI 設定画面の寸法定義"
+      },
+      {
+        "symbol": "SettingsView",
+        "path": "RealtimeTranslator/Settings/SettingsView.swift",
+        "reason": "SwiftUI 設定画面"
+      },
+      {
+        "symbol": "SettingsMultilineField",
+        "path": "RealtimeTranslator/Settings/SettingsView.swift",
+        "reason": "SwiftUI 設定画面の部品"
+      },
+      {
+        "symbol": "SettingsGeneralTab",
+        "path": "RealtimeTranslator/Settings/SettingsView.swift",
+        "reason": "SwiftUI 設定画面の部品"
+      },
+      {
+        "symbol": "SettingsSpeechRecognitionTab",
+        "path": "RealtimeTranslator/Settings/SettingsView.swift",
+        "reason": "SwiftUI 設定画面の部品"
+      },
+      {
+        "symbol": "SettingsSubtitleAndControlsTab",
+        "path": "RealtimeTranslator/Settings/SettingsView.swift",
+        "reason": "SwiftUI 設定画面の部品"
+      },
+      {
+        "symbol": "APIKeyBootstrap",
+        "path": "RealtimeTranslator/Security/APIKeyBootstrap.swift",
+        "reason": "環境変数からの初回取り込み（DEBUG ビルド用）"
+      },
+      {
+        "symbol": "InMemoryAPIKeyStore",
+        "path": "RealtimeTranslator/Security/InMemoryAPIKeyStore.swift",
+        "reason": "デバッグ/テスト用インメモリストア"
+      },
+      {
+        "symbol": "UiCopy",
+        "path": "RealtimeTranslator/Localization/UiCopy.swift",
+        "reason": "UserCopy facade + macOS ホットキー表記"
+      },
+      {
+        "symbol": "UserCopyError",
+        "path": "RealtimeTranslator/Localization/UserCopy.swift",
+        "reason": "バンドル読み込みエラー型"
+      },
+      {
+        "symbol": "UserCopyStore",
+        "path": "RealtimeTranslator/Localization/UserCopy.swift",
+        "reason": "バンドルからの ui.json 読み込み層。C# は UserCopy 静的 API に内包"
+      },
+      {
+        "symbol": "AccessoryDialogActivation",
+        "path": "RealtimeTranslator/App/AccessoryDialogActivation.swift",
+        "reason": "NSApplication accessory 遷移の状態機械"
+      },
+      {
+        "symbol": "AccessoryDialogSession",
+        "path": "RealtimeTranslator/App/AccessoryDialogActivation.swift",
+        "reason": "NSApplication accessory 遷移"
+      },
+      {
+        "symbol": "SettingsActivationHold",
+        "path": "RealtimeTranslator/App/AccessoryDialogActivation.swift",
+        "reason": "設定画面 activation 保持"
+      },
+      {
+        "symbol": "AccessoryDialogPresenter",
+        "path": "RealtimeTranslator/App/AccessoryDialogActivation.swift",
+        "reason": "AppKit ダイアログ提示"
+      },
+      {
+        "symbol": "AppCoordinator",
+        "path": "RealtimeTranslator/App/AppCoordinator.swift",
+        "reason": "AppKit ライフサイクル調停"
+      },
+      {
+        "symbol": "AppMainMenu",
+        "path": "RealtimeTranslator/App/AppMainMenu.swift",
+        "reason": "NSMenu 構築"
+      },
+      {
+        "symbol": "RealtimeTranslatorMain",
+        "path": "RealtimeTranslator/App/RealtimeTranslatorApp.swift",
+        "reason": "main エントリポイント"
+      },
+      {
+        "symbol": "AppStatusFile",
+        "path": "RealtimeTranslator/App/RealtimeTranslatorApp.swift",
+        "reason": "DEBUG 向け status file 書き出し"
+      },
+      {
+        "symbol": "AppRuntimeEnvironment",
+        "path": "RealtimeTranslator/App/RealtimeTranslatorApp.swift",
+        "reason": "起動環境判定"
+      },
+      {
+        "symbol": "AppTerminationGate",
+        "path": "RealtimeTranslator/App/RealtimeTranslatorApp.swift",
+        "reason": "終了抑制ゲート"
+      },
+      {
+        "symbol": "AppRuntime",
+        "path": "RealtimeTranslator/App/RealtimeTranslatorApp.swift",
+        "reason": "AppKit 起動シーケンス"
+      },
+      {
+        "symbol": "AppDelegate",
+        "path": "RealtimeTranslator/App/RealtimeTranslatorApp.swift",
+        "reason": "NSApplicationDelegate"
+      },
+      {
+        "symbol": "MenuBarController",
+        "path": "RealtimeTranslator/MenuBar/MenuBarController.swift",
+        "reason": "NSStatusItem/AppKit"
+      }
     ],
     "csharp": [
-      { "symbol": "EventMergePump", "path": "windows/src/RealtimeTranslator.Core/Realtime/EventMergePump.cs", "reason": "接続機構の C# 側分割。Swift は InterpretationSession/Connection 内に内包" },
-      { "symbol": "RealtimeConnectionLifecycle", "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeConnectionLifecycle.cs", "reason": "接続世代・channel・teardown の C# 側分割" },
-      { "symbol": "TServerEvent", "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeConnectionLifecycle.cs", "reason": "generics の型パラメータ用マーカー" },
-      { "symbol": "AudioRoutingCoordinator", "path": "windows/src/RealtimeTranslator.Core/Realtime/AudioRoutingCoordinator.cs", "reason": "routing 直列化の C# 側分割" },
-      { "symbol": "ConnectionHandshake", "path": "windows/src/RealtimeTranslator.Core/Realtime/ConnectionHandshake.cs", "reason": "並列 handshake の C# 側分割" },
-      { "symbol": "TranslationSendPipeline", "path": "windows/src/RealtimeTranslator.Core/Realtime/TranslationSendPipeline.cs", "reason": "送信ポンプ帳簿の C# 側分割" },
-      { "symbol": "SubtitleTranscriptSessionGate", "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleTranscriptSessionGate.cs", "reason": "opt-in 記録の開始マーカー/上限通知状態機械。Swift は SubtitleTranscriptStore/InterpretationSession に内包" },
-      { "symbol": "RealtimeApiKey", "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeApiKey.cs", "reason": "API キー値ラッパ。Swift は SecretText/String を直接使う" },
-      { "symbol": "InstallIdentifierStore", "path": "windows/src/RealtimeTranslator.Platform/Security/InstallIdentifierStore.cs", "reason": "install identifier 永続化" },
-      { "symbol": "LogCategory", "path": "windows/src/RealtimeTranslator.Platform/Logging/AppLogger.cs", "reason": "ログカテゴリ。Swift は os.Logger subsystem に内包" },
-      { "symbol": "ILogSink", "path": "windows/src/RealtimeTranslator.Platform/Logging/AppLogger.cs", "reason": "ログ sink 抽象" },
-      { "symbol": "TraceLogSink", "path": "windows/src/RealtimeTranslator.Platform/Logging/AppLogger.cs", "reason": "Trace 出力 sink" },
-      { "symbol": "CapturedAudioFramePipeline", "path": "windows/src/RealtimeTranslator.Platform/Audio/CapturedAudioFramePipeline.cs", "reason": "NAudio/WASAPI パイプライン" },
-      { "symbol": "MonoDownmixSampleProvider", "path": "windows/src/RealtimeTranslator.Platform/Audio/MonoDownmixSampleProvider.cs", "reason": "NAudio mono ダウンミックス" }
+      {
+        "symbol": "EventMergePump",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/EventMergePump.cs",
+        "reason": "接続機構の C# 側分割。Swift は InterpretationSession/Connection 内に内包"
+      },
+      {
+        "symbol": "RealtimeConnectionLifecycle",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeConnectionLifecycle.cs",
+        "reason": "接続世代・channel・teardown の C# 側分割"
+      },
+      {
+        "symbol": "TServerEvent",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeConnectionLifecycle.cs",
+        "reason": "generics の型パラメータ用マーカー"
+      },
+      {
+        "symbol": "AudioRoutingCoordinator",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/AudioRoutingCoordinator.cs",
+        "reason": "routing 直列化の C# 側分割"
+      },
+      {
+        "symbol": "ConnectionHandshake",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/ConnectionHandshake.cs",
+        "reason": "並列 handshake の C# 側分割"
+      },
+      {
+        "symbol": "TranslationSendPipeline",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/TranslationSendPipeline.cs",
+        "reason": "送信ポンプ帳簿の C# 側分割"
+      },
+      {
+        "symbol": "SubtitleTranscriptSessionGate",
+        "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleTranscriptSessionGate.cs",
+        "reason": "opt-in 記録の開始マーカー/上限通知状態機械。Swift は SubtitleTranscriptStore/InterpretationSession に内包"
+      },
+      {
+        "symbol": "RealtimeApiKey",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/RealtimeApiKey.cs",
+        "reason": "API キー値ラッパ。Swift は SecretText/String を直接使う"
+      },
+      {
+        "symbol": "InstallIdentifierStore",
+        "path": "windows/src/RealtimeTranslator.Platform/Security/InstallIdentifierStore.cs",
+        "reason": "install identifier 永続化"
+      },
+      {
+        "symbol": "LogCategory",
+        "path": "windows/src/RealtimeTranslator.Platform/Logging/AppLogger.cs",
+        "reason": "ログカテゴリ。Swift は os.Logger subsystem に内包"
+      },
+      {
+        "symbol": "ILogSink",
+        "path": "windows/src/RealtimeTranslator.Platform/Logging/AppLogger.cs",
+        "reason": "ログ sink 抽象"
+      },
+      {
+        "symbol": "TraceLogSink",
+        "path": "windows/src/RealtimeTranslator.Platform/Logging/AppLogger.cs",
+        "reason": "Trace 出力 sink"
+      },
+      {
+        "symbol": "CapturedAudioFramePipeline",
+        "path": "windows/src/RealtimeTranslator.Platform/Audio/CapturedAudioFramePipeline.cs",
+        "reason": "NAudio/WASAPI パイプライン"
+      },
+      {
+        "symbol": "MonoDownmixSampleProvider",
+        "path": "windows/src/RealtimeTranslator.Platform/Audio/MonoDownmixSampleProvider.cs",
+        "reason": "NAudio mono ダウンミックス"
+      }
     ]
   },
   "scan": {

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinopeee/interpreter-openai/shared/fixtures/v1/schema/settings.schema.json",
+  "title": "Persisted settings fixtures",
+  "type": "object",
+  "required": ["version", "fields", "defaults", "decode"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "description": { "type": "string" },
+    "fields": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["type"],
+        "additionalProperties": false,
+        "properties": {
+          "type": { "enum": ["number", "integer", "boolean", "string"] },
+          "minimum": { "type": "number" },
+          "maximum": { "type": "number" },
+          "enum": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": ["number", "integer", "boolean", "string"] }
+    },
+    "decode": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "input", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "input": {
+            "type": "object",
+            "additionalProperties": { "type": ["number", "integer", "boolean", "string"] }
+          },
+          "pairChange": { "type": "string" },
+          "expected": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": { "type": ["number", "integer", "boolean", "string"] }
+          }
+        }
+      }
+    }
+  }
+}
