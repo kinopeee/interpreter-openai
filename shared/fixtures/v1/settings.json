@@ -116,6 +116,14 @@
       "expected": { "transcriptionPrompt": "defaultForPair:ja-en" }
     },
     {
+      "name": "empty transcription prompt falls back to the stored pair's default",
+      "input": { "languagePair": "ja-es", "transcriptionPrompt": "" },
+      "expected": {
+        "languagePair": "ja-es",
+        "transcriptionPrompt": "defaultForPair:ja-es"
+      }
+    },
+    {
       "name": "default hints follow a language pair change",
       "input": {
         "transcriptionPrompt": "defaultForPair:ja-en",

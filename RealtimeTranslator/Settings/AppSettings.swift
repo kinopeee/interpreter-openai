@@ -48,7 +48,15 @@ final class AppSettings {
     private let defaults: UserDefaults
 
     var fontSize: Double {
-        didSet { defaults.set(Self.clampFontSize(fontSize), forKey: Keys.fontSize) }
+        didSet {
+            // C# の encode 時 ClampFontSize と同義。ライブ値もクランプし、
+            // 再起動前後で表示サイズが変わらないようにする。
+            let clamped = Self.clampFontSize(fontSize)
+            if clamped != fontSize {
+                fontSize = clamped
+            }
+            defaults.set(clamped, forKey: Keys.fontSize)
+        }
     }
 
     var hasCustomPanelOrigin: Bool {
@@ -150,8 +158,12 @@ final class AppSettings {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        let storedFont = defaults.double(forKey: Keys.fontSize)
-        fontSize = Self.clampFontSize(storedFont)
+        // 未保存（object=nil）は既定値、保存済みは範囲へクランプする。
+        if let storedFont = defaults.object(forKey: Keys.fontSize) as? NSNumber {
+            fontSize = Self.clampFontSize(storedFont.doubleValue)
+        } else {
+            fontSize = Self.defaultFontSize
+        }
         hasCustomPanelOrigin = defaults.bool(forKey: Keys.hasCustomPanelOrigin)
         panelOriginX = defaults.double(forKey: Keys.panelOriginX)
         panelOriginY = defaults.double(forKey: Keys.panelOriginY)
