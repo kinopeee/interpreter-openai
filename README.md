@@ -47,7 +47,7 @@ open /Applications/RealtimeTranslator.app
 
 ```bash
 brew install xcodegen   # 未導入の場合
-cd /Users/yoo/dev/interpreter-openai
+cd /path/to/interpreter-openai   # クローン先のパスに置き換えてください
 xcodegen generate
 open RealtimeTranslator.xcodeproj
 ```
