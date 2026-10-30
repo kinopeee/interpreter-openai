@@ -757,6 +757,11 @@
       "key": "error.apiKeyEncodingFailed",
       "ja": "APIキーを処理できません",
       "en": "Could not process the API key"
+    },
+    {
+      "key": "error.unexpected",
+      "ja": "予期しないエラーが発生しました。もう一度お試しください",
+      "en": "An unexpected error occurred. Please try again."
     }
   ]
 }

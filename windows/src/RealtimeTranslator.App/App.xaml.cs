@@ -59,6 +59,7 @@ public partial class App : Application, IDisposable
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        RegisterUnhandledExceptionLogging();
 
         _settings = _settingsStore.Load();
         UiCopy.Install(_settings.UiLanguage);
@@ -483,7 +484,8 @@ public partial class App : Application, IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private static async Task RunGuarded(Func<Task> operation)
+    /// <summary>呼び出し元は UI スレッド。ConfigureAwait(true) で catch も UI スレッドに戻る。</summary>
+    private async Task RunGuarded(Func<Task> operation)
     {
         try
         {
@@ -497,7 +499,38 @@ public partial class App : Application, IDisposable
         {
             AppLogger.Error(LogCategory.Audio, "audio capture failed");
         }
+        catch (OperationCanceledException)
+        {
+            // 停止操作で起きるため通知しない。
+            AppLogger.Info(LogCategory.General, "session operation cancelled");
+        }
+        catch (Exception error)
+        {
+            // Message や内側の例外には API キーや音声由来の内容が混ざり得るため、型名だけを出す。
+            AppLogger.Error(LogCategory.General, $"unexpected session operation failure: {error.GetType().Name}");
+            _tray?.ShowMessage(UiCopy.Text("error.unexpected"));
+        }
     }
+
+    private void RegisterUnhandledExceptionLogging()
+    {
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+        AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
+    }
+
+    // 以下の未処理例外ログは、Message・スタックトレース・内側の例外の中身を出さず型名だけにする。
+    private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e) =>
+        AppLogger.Error(LogCategory.General, $"unhandled dispatcher exception: {e.Exception.GetType().Name}");
+
+    private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        AppLogger.Error(LogCategory.General, $"unobserved task exception: {e.Exception.GetType().Name}");
+        e.SetObserved();
+    }
+
+    private static void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e) =>
+        AppLogger.Error(LogCategory.General, $"unhandled exception: {e.ExceptionObject?.GetType().Name ?? "unknown"}");
 
     private void BeginShutdown()
     {
