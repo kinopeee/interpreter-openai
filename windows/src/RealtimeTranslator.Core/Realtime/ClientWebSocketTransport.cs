@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Net;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,6 +43,8 @@ public sealed class ClientWebSocketTransport : IRealtimeWebSocketTransport, IDis
         await CloseAsync().ConfigureAwait(false);
 
         var socket = new ClientWebSocket();
+        // upgrade 失敗時の HTTP ステータスを分類に使う。本文・ヘッダーは参照しない。
+        socket.Options.CollectHttpResponseDetails = true;
         foreach (var header in headers)
         {
             socket.Options.SetRequestHeader(header.Key, header.Value);
@@ -65,8 +68,9 @@ public sealed class ClientWebSocketTransport : IRealtimeWebSocketTransport, IDis
         }
         catch (WebSocketException)
         {
+            var statusCode = HandshakeHttpStatusCode(socket.HttpStatusCode);
             await CloseAsync().ConfigureAwait(false);
-            throw new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableTransportFailure);
+            throw HandshakeFailure(statusCode);
         }
     }
 
@@ -177,6 +181,17 @@ public sealed class ClientWebSocketTransport : IRealtimeWebSocketTransport, IDis
             throw new RealtimeTranslationException(RealtimeTranslationErrorKind.RecoverableTransportFailure);
         }
     }
+
+    /// <summary>upgrade 前に失敗した（0）または upgrade が成功した（101）場合はステータス不明として扱う。</summary>
+    internal static int? HandshakeHttpStatusCode(HttpStatusCode statusCode) =>
+        statusCode is 0 or HttpStatusCode.SwitchingProtocols ? null : (int)statusCode;
+
+    /// <summary>
+    /// handshake の HTTP ステータスから例外を決める。401 / 403 は再接続しない認証失敗、
+    /// 429 は回復可能なサーバーエラー、それ以外とステータス不明は従来どおり回復可能な transport 失敗。
+    /// </summary>
+    internal static RealtimeTranslationException HandshakeFailure(int? statusCode) =>
+        RealtimeServerErrorClassification.ClassifyHandshakeHttpStatus(statusCode).ToException();
 
     private ClientWebSocket RequireSocket()
     {
