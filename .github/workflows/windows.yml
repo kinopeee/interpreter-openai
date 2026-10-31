@@ -15,38 +15,31 @@ jobs:
   build-and-test:
     name: build and test (windows)
     runs-on: windows-latest
+    env:
+      SOLUTION_PATH: windows/RealtimeTranslator.slnx
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Locate solution
-        id: locate
+      - name: Verify solution
         shell: pwsh
         run: |
-          $solution = Get-ChildItem -Path 'windows' -Include '*.sln', '*.slnx' -Recurse -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-          if ($null -eq $solution) {
-            Write-Host 'No windows solution yet; skipping build.'
-            "found=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          } else {
-            "found=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-            "path=$($solution.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          if (-not (Test-Path -LiteralPath $env:SOLUTION_PATH -PathType Leaf)) {
+            Write-Host "::error::solution not found: $env:SOLUTION_PATH"
+            exit 1
           }
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: steps.locate.outputs.found == 'true'
         with:
           global-json-file: windows/global.json
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: steps.locate.outputs.found == 'true'
         with:
           path: .devin/format/tools
           key: format-csharp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/format.mjs', '.devin/format/tool-versions.json') }}
 
       - name: Check C# formatting
-        if: steps.locate.outputs.found == 'true'
         shell: pwsh
         run: |
           node scripts/format.mjs csharp setup
@@ -55,30 +48,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Restore
-        if: steps.locate.outputs.found == 'true'
-        env:
-          SOLUTION_PATH: ${{ steps.locate.outputs.path }}
         shell: pwsh
         run: dotnet restore "$env:SOLUTION_PATH"
 
       - name: Build
-        if: steps.locate.outputs.found == 'true'
-        env:
-          SOLUTION_PATH: ${{ steps.locate.outputs.path }}
         shell: pwsh
         run: dotnet build "$env:SOLUTION_PATH" --configuration Release --no-restore
 
       - name: Test
-        if: steps.locate.outputs.found == 'true'
-        env:
-          SOLUTION_PATH: ${{ steps.locate.outputs.path }}
         shell: pwsh
         run: dotnet test "$env:SOLUTION_PATH" --configuration Release --no-build
 
       - name: Audit packages
-        if: steps.locate.outputs.found == 'true'
-        env:
-          SOLUTION_PATH: ${{ steps.locate.outputs.path }}
         shell: pwsh
         run: |
           dotnet list "$env:SOLUTION_PATH" package --vulnerable --include-transitive
@@ -103,19 +84,14 @@ jobs:
           }
 
       - name: Restore for publish
-        if: steps.locate.outputs.found == 'true'
-        env:
-          SOLUTION_PATH: ${{ steps.locate.outputs.path }}
         shell: pwsh
         run: dotnet restore "$env:SOLUTION_PATH" --runtime win-x64
 
       - name: Publish self-contained app
-        if: steps.locate.outputs.found == 'true'
         shell: pwsh
         run: ./scripts/publish-windows.ps1 -Runtime win-x64 -NoRestore
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: steps.locate.outputs.found == 'true'
         with:
           name: RealtimeTranslator-win-x64
           path: artifacts/RealtimeTranslator-win-x64
