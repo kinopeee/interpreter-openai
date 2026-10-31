@@ -86,6 +86,16 @@ public static class AppSettingsCodec
 
     public static AppSettingsData Decode(string json)
     {
+        _ = TryDecode(json, out var settings);
+        return settings;
+    }
+
+    /// <summary>
+    /// JSON として読めない、またはルートがオブジェクトでないときは false と既定値を返す。
+    /// 個々のフィールドの不正は壊れている扱いにせず、そのフィールドだけ既定へ倒して true を返す。
+    /// </summary>
+    public static bool TryDecode(string json, out AppSettingsData settings)
+    {
         ArgumentNullException.ThrowIfNull(json);
 
         JsonNode? root;
@@ -95,14 +105,22 @@ public static class AppSettingsCodec
         }
         catch (JsonException)
         {
-            return AppSettingsData.Default;
+            settings = AppSettingsData.Default;
+            return false;
         }
 
         if (root is not JsonObject dictionary)
         {
-            return AppSettingsData.Default;
+            settings = AppSettingsData.Default;
+            return false;
         }
 
+        settings = DecodeObject(dictionary);
+        return true;
+    }
+
+    private static AppSettingsData DecodeObject(JsonObject dictionary)
+    {
         var defaults = AppSettingsData.Default;
         // ヒントの既定は保存済みの languagePair に従う（macOS 側と同義）。
         var pair = Pair(dictionary) ?? defaults.LanguagePair;
