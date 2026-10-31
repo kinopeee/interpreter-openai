@@ -13,6 +13,7 @@ using Xunit;
 namespace RealtimeTranslator.Platform.Tests;
 
 /// <summary>資格情報保管・多重起動防止・ホットキー・ログ伏字の契約。</summary>
+[Collection(AppLoggerSinkCollectionDefinition.Name)]
 public sealed class SecurityAndAppServicesTests
 {
     // Given: テスト専用ターゲット名の資格情報ストア
