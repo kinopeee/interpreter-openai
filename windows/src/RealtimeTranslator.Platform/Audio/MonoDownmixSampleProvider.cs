@@ -25,18 +25,23 @@ public sealed class MonoDownmixSampleProvider : ISampleProvider
     {
         ArgumentNullException.ThrowIfNull(buffer);
 
+        return Read(buffer.AsSpan(offset, count));
+    }
+
+    public int Read(Span<float> buffer)
+    {
         if (_sourceChannels == 1)
         {
-            return _source.Read(buffer, offset, count);
+            return _source.Read(buffer);
         }
 
-        var required = count * _sourceChannels;
+        var required = buffer.Length * _sourceChannels;
         if (_buffer.Length < required)
         {
             _buffer = new float[required];
         }
 
-        var read = _source.Read(_buffer, 0, required);
+        var read = _source.Read(_buffer.AsSpan(0, required));
         var written = 0;
         for (var index = 0; index + _sourceChannels <= read; index += _sourceChannels)
         {
@@ -46,7 +51,7 @@ public sealed class MonoDownmixSampleProvider : ISampleProvider
                 sum += _buffer[index + channel];
             }
 
-            buffer[offset + written] = sum / _sourceChannels;
+            buffer[written] = sum / _sourceChannels;
             written += 1;
         }
 
