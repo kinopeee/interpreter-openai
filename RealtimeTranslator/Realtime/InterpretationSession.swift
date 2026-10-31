@@ -280,6 +280,8 @@ final class InterpretationSession {
     }
 
     /// 再接続対象の一時的な URLError のみ許可する（証明書/ATS/不正 URL は即 error）。
+    /// handshake が HTTP ステータス付きで拒否された場合は transport が分類済みの error に置き換えるため、
+    /// ここへ届く `badServerResponse` はステータス不明のものだけ。
     private static func isTransientURLError(_ error: URLError) -> Bool {
         switch error.code {
         case .timedOut,

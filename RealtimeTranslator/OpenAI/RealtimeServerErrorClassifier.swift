@@ -1,6 +1,6 @@
 import Foundation
 
-/// サーバー error イベントの扱い。`shared/fixtures/v1/server-error.json` が正本。
+/// サーバー error イベントと handshake の HTTP ステータスの扱い。`shared/fixtures/v1/server-error.json` が正本。
 enum RealtimeServerErrorDisposition: Sendable, Equatable {
     /// 接続を維持し、termination も下流イベントも出さない。
     case keepAlive
@@ -32,6 +32,19 @@ struct RealtimeServerErrorClassification: Sendable, Equatable {
         code: String?
     ) -> RealtimeServerErrorClassification {
         classifyCore(errorType: errorType, code: code, message: "", fallback: .keepAlive)
+    }
+
+    /// WebSocket upgrade が成功せず HTTP 応答が返ったときのステータスコードを分類する。
+    /// 接続後の error イベントとは独立。ステータス不明（`nil`）は transport 失敗として再接続する。
+    static func classifyHandshakeHTTPStatus(_ statusCode: Int?) -> RealtimeServerErrorClassification {
+        switch statusCode {
+        case 401, 403:
+            return RealtimeServerErrorClassification(disposition: .halt, termination: .authenticationFailed)
+        case 429:
+            return RealtimeServerErrorClassification(disposition: .recover, termination: .recoverableServerError)
+        default:
+            return RealtimeServerErrorClassification(disposition: .recover, termination: .transportFailure)
+        }
     }
 
     private static func classifyCore(

@@ -4,7 +4,7 @@ using RealtimeTranslator.Core.Security;
 
 namespace RealtimeTranslator.Core.OpenAI;
 
-/// <summary>サーバー error イベントの扱い。<c>shared/fixtures/v1/server-error.json</c> が正本。</summary>
+/// <summary>サーバー error イベントと handshake の HTTP ステータスの扱い。<c>shared/fixtures/v1/server-error.json</c> が正本。</summary>
 public enum RealtimeServerErrorDisposition
 {
     /// <summary>接続を維持し、termination も下流イベントも出さない。</summary>
@@ -45,6 +45,18 @@ public readonly record struct RealtimeServerErrorClassification(
 
     public static RealtimeServerErrorClassification ClassifyTranscriptionFailure(string? errorType, string? code) =>
         ClassifyCore(errorType, code, string.Empty, RealtimeServerErrorDisposition.KeepAlive);
+
+    /// <summary>
+    /// WebSocket upgrade が成功せず HTTP 応答が返ったときのステータスコードを分類する。
+    /// 接続後の error イベントとは独立。ステータス不明（<see langword="null"/>）は transport 失敗として再接続する。
+    /// </summary>
+    public static RealtimeServerErrorClassification ClassifyHandshakeHttpStatus(int? statusCode) =>
+        statusCode switch
+        {
+            401 or 403 => new(RealtimeServerErrorDisposition.Halt, EventDeliveryTermination.AuthenticationFailed, null),
+            429 => new(RealtimeServerErrorDisposition.Recover, EventDeliveryTermination.RecoverableServerError, null),
+            _ => new(RealtimeServerErrorDisposition.Recover, EventDeliveryTermination.TransportFailure, null),
+        };
 
     private static RealtimeServerErrorClassification ClassifyCore(
         string? errorType,

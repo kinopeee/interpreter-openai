@@ -38,6 +38,19 @@
       { "name": "authentication code halts", "errorType": "invalid_request_error", "code": "invalid_api_key", "expected": { "disposition": "halt", "termination": "authenticationFailed" } }
     ]
   },
+  "handshakeHttpStatus": {
+    "description": "WebSocket の upgrade が成功せず、サーバーが HTTP 応答を返したときのステータスコードの分類。接続後の error イベントの分類とは独立。401 / 403 は認証失敗として停止、429 は回復可能なサーバーエラーとして遅延後に再接続、それ以外とステータス不明は従来どおり transport 失敗として再接続する。応答の本文・ヘッダーは保持せず、ログにはステータスコードの数値と分類だけを出す。",
+    "haltAuthenticationStatusCodes": [401, 403],
+    "recoverableServerErrorStatusCodes": [429],
+    "cases": [
+      { "name": "401 halts as authentication failure", "statusCode": 401, "expected": { "disposition": "halt", "termination": "authenticationFailed" } },
+      { "name": "403 halts as authentication failure", "statusCode": 403, "expected": { "disposition": "halt", "termination": "authenticationFailed" } },
+      { "name": "429 recovers as recoverable server error", "statusCode": 429, "expected": { "disposition": "recover", "termination": "recoverableServerError" } },
+      { "name": "500 recovers as transport failure", "statusCode": 500, "expected": { "disposition": "recover", "termination": "transportFailure" } },
+      { "name": "404 recovers as transport failure", "statusCode": 404, "expected": { "disposition": "recover", "termination": "transportFailure" } },
+      { "name": "missing status recovers as transport failure", "statusCode": null, "expected": { "disposition": "recover", "termination": "transportFailure" } }
+    ]
+  },
   "cases": [
     {
       "name": "internal transport code recovers",

@@ -95,7 +95,11 @@ actor URLSessionWebSocketTransport: RealtimeWebSocketTransport {
         let timeoutNanoseconds = sendTimeoutNanoseconds
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
-                try await socket.send(.string(text))
+                do {
+                    try await socket.send(.string(text))
+                } catch {
+                    throw Self.handshakeFailure(response: socket.response, underlying: error)
+                }
             }
             group.addTask {
                 try await Task.sleep(nanoseconds: timeoutNanoseconds)
@@ -120,7 +124,11 @@ actor URLSessionWebSocketTransport: RealtimeWebSocketTransport {
         }
         nonisolated(unsafe) let socket = task
         let message = try await withTaskCancellationHandler {
-            try await socket.receive()
+            do {
+                return try await socket.receive()
+            } catch {
+                throw Self.handshakeFailure(response: socket.response, underlying: error)
+            }
         } onCancel: {
             socket.cancel(with: .goingAway, reason: nil)
         }
@@ -135,6 +143,28 @@ actor URLSessionWebSocketTransport: RealtimeWebSocketTransport {
         @unknown default:
             throw URLSessionWebSocketTransportError.unsupportedMessage
         }
+    }
+
+    /// upgrade 前に失敗した（応答なし）または upgrade が成功した（101）場合はステータス不明として扱う。
+    static func handshakeHTTPStatusCode(_ response: URLResponse?) -> Int? {
+        guard let http = response as? HTTPURLResponse, http.statusCode != 101 else { return nil }
+        return http.statusCode
+    }
+
+    /// upgrade が HTTP 応答で拒否されたときだけ、ステータスで分類した error に置き換える。
+    /// ステータス不明は元の error（`URLError.badServerResponse` 等）をそのまま返す。
+    /// 応答の本文・ヘッダーは参照せず、ログにはステータスコードと分類だけを出す。
+    static func handshakeFailure(response: URLResponse?, underlying: Error) -> Error {
+        handshakeFailure(statusCode: handshakeHTTPStatusCode(response), underlying: underlying)
+    }
+
+    static func handshakeFailure(statusCode: Int?, underlying: Error) -> Error {
+        guard let statusCode else { return underlying }
+        let classification = RealtimeServerErrorClassification.classifyHandshakeHTTPStatus(statusCode)
+        AppLogger.realtime.notice(
+            "WebSocket handshake rejected: status=\(statusCode, privacy: .public) termination=\(String(describing: classification.termination), privacy: .public)"
+        )
+        return classification.makeError()
     }
 
     func close() async {

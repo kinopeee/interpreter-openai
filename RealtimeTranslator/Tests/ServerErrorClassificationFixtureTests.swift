@@ -50,6 +50,91 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
         }
     }
 
+    // Given: handshake の HTTP ステータス分類の shared fixture 各 case
+    // When: ステータスコード（不明は nil）を handshake 用分類器へ渡す
+    // Then: disposition と termination が fixture と一致する
+    func testHandshakeHTTPStatusClassificationMatchesFixture() throws {
+        let fixture = try SharedFixtures.load("server-error")
+        let contract = try XCTUnwrap(fixture["handshakeHttpStatus"] as? [String: Any])
+        for item in try XCTUnwrap(contract["cases"] as? [[String: Any]]) {
+            let name = SharedFixtures.text(item["name"])
+            let expected = try XCTUnwrap(item["expected"] as? [String: Any], name)
+            let actual = RealtimeServerErrorClassification.classifyHandshakeHTTPStatus(
+                SharedFixtures.optionalNumber(item["statusCode"])
+            )
+            XCTAssertEqual(parseDisposition(expected["disposition"]), actual.disposition, name)
+            XCTAssertEqual(
+                parseTermination(expected["termination"], sanitizedMessage: nil),
+                actual.termination,
+                name
+            )
+        }
+    }
+
+    // Given: handshake の HTTP ステータス分類の shared fixture 各 case と、URLSession が返す badServerResponse
+    // When: 本番 transport の失敗変換へ HTTP 応答（ステータス不明は応答なし）を渡す
+    // Then: 401 / 403 は再接続しない authenticationFailed、429 は recoverableServerError、
+    //       その他のステータスは回復可能な transport 失敗、ステータス不明は元の URLError のまま
+    func testTransportHandshakeFailureMatchesFixture() throws {
+        let fixture = try SharedFixtures.load("server-error")
+        let contract = try XCTUnwrap(fixture["handshakeHttpStatus"] as? [String: Any])
+        let url = try XCTUnwrap(URL(string: "wss://api.openai.com/v1/realtime/translations"))
+        let underlying = URLError(.badServerResponse)
+        for item in try XCTUnwrap(contract["cases"] as? [[String: Any]]) {
+            let name = SharedFixtures.text(item["name"])
+            let expected = try XCTUnwrap(item["expected"] as? [String: Any], name)
+            let response = SharedFixtures.optionalNumber(item["statusCode"]).flatMap {
+                HTTPURLResponse(url: url, statusCode: $0, httpVersion: "HTTP/1.1", headerFields: nil)
+            }
+
+            let error = URLSessionWebSocketTransport.handshakeFailure(response: response, underlying: underlying)
+
+            switch (SharedFixtures.text(expected["termination"]), response) {
+            case ("authenticationFailed", _):
+                XCTAssertEqual(error as? RealtimeTranslationError, .authenticationFailed, name)
+            case ("recoverableServerError", _):
+                XCTAssertEqual(error as? RealtimeTranslationError, .recoverableServerError, name)
+            case ("transportFailure", .some):
+                guard case .recoverableTransportFailure = error as? RealtimeTranslationError else {
+                    XCTFail("expected recoverableTransportFailure: \(name)")
+                    continue
+                }
+            case ("transportFailure", .none):
+                XCTAssertEqual(error as? URLError, underlying, name)
+            default:
+                XCTFail("unexpected termination: \(name)")
+            }
+            if let translationError = error as? RealtimeTranslationError {
+                XCTAssertEqual(
+                    translationError.isRecoverable,
+                    SharedFixtures.text(expected["disposition"]) == "recover",
+                    name
+                )
+            }
+        }
+    }
+
+    // Given: upgrade に成功した 101 応答、または HTTP 以外の応答
+    // When: 本番 transport の失敗変換へ渡す
+    // Then: handshake の HTTP ステータスとは扱わず、元の error のまま返す
+    func testTransportHandshakeFailureIgnoresUpgradeAndNonHTTPResponses() throws {
+        let url = try XCTUnwrap(URL(string: "wss://api.openai.com/v1/realtime/translations"))
+        let underlying = URLError(.networkConnectionLost)
+        let upgraded = HTTPURLResponse(url: url, statusCode: 101, httpVersion: "HTTP/1.1", headerFields: nil)
+        let nonHTTP = URLResponse(url: url, mimeType: nil, expectedContentLength: 0, textEncodingName: nil)
+
+        XCTAssertNil(URLSessionWebSocketTransport.handshakeHTTPStatusCode(upgraded))
+        XCTAssertNil(URLSessionWebSocketTransport.handshakeHTTPStatusCode(nonHTTP))
+        XCTAssertEqual(
+            URLSessionWebSocketTransport.handshakeFailure(response: upgraded, underlying: underlying) as? URLError,
+            underlying
+        )
+        XCTAssertEqual(
+            URLSessionWebSocketTransport.handshakeFailure(response: nonHTTP, underlying: underlying) as? URLError,
+            underlying
+        )
+    }
+
     // Given: fixture の許可リストと優先順位
     // When: macOS の定数と比較する
     // Then: transport code、終了理由の優先順位、回復可能サーバーエラーの文言が一致する

@@ -87,6 +87,26 @@ public sealed class ServerErrorClassificationFixtureTests
         }
     }
 
+    // Given: handshake の HTTP ステータス分類の shared fixture 各 case
+    // When: ステータスコード（不明は null）を handshake 用分類器へ渡す
+    // Then: disposition と termination が fixture と一致し、正規化文言は保持しない
+    [Fact]
+    public void HandshakeHttpStatusClassificationMatchesFixture()
+    {
+        var contract = SharedFixtures.Load("server-error")["handshakeHttpStatus"]!.AsObject();
+        foreach (var item in contract["cases"]!.AsArray())
+        {
+            var name = SharedFixtures.Text(item!["name"]);
+            var expected = item["expected"]!;
+            var actual = RealtimeServerErrorClassification.ClassifyHandshakeHttpStatus(
+                SharedFixtures.OptionalNumber(item["statusCode"])
+            );
+            Assert.True(ParseDisposition(expected["disposition"]) == actual.Disposition, name);
+            Assert.True(ParseTermination(expected["termination"]) == actual.Termination, name);
+            Assert.Null(actual.SanitizedMessage);
+        }
+    }
+
     // Given: fixture の許可リストと優先順位
     // When: Windows の定数と比較する
     // Then: transport code と終了理由の優先順位が一致する
