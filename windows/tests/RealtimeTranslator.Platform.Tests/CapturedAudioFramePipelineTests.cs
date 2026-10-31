@@ -610,6 +610,29 @@ public sealed class CapturedAudioFramePipelineTests
         Assert.InRange(pipeline.CurrentGain, AdaptiveMicrophoneGain.MinimumGain, AdaptiveMicrophoneGain.MaximumGain);
     }
 
+    // Given: 同じ 24kHz ステレオ入力を持つ 2 つの downmix provider
+    // When: 一方は Read(Span<float>)、もう一方は Read(float[], offset, count) で 4 sample 読む
+    // Then: どちらも 4 を返し、各フレームの左右平均と同じ値を同じ順で書き込む
+    [Fact]
+    public void MonoDownmixSpanReadMatchesArrayReadForStereoInput()
+    {
+        float[] stereoInput = [0.5f, -0.5f, 1.0f, 0.0f, -0.25f, -0.75f, 0.2f, 0.4f];
+        var spanProvider = new MonoDownmixSampleProvider(new FixedSampleProvider(stereoInput, channels: 2));
+        var arrayProvider = new MonoDownmixSampleProvider(new FixedSampleProvider(stereoInput, channels: 2));
+
+        var spanBuffer = new float[4];
+        var spanRead = spanProvider.Read(spanBuffer.AsSpan());
+
+        var arrayBuffer = new float[6];
+        var arrayRead = arrayProvider.Read(arrayBuffer, 2, 4);
+
+        Assert.Equal(4, spanRead);
+        Assert.Equal(4, arrayRead);
+        float[] expected = [0.0f, 0.5f, -0.5f, 0.3f];
+        Assert.Equal(expected, spanBuffer);
+        Assert.Equal(expected, arrayBuffer[2..]);
+    }
+
     private static byte[] SineWave(int totalSamples, int channels, double amplitude = 0.5)
     {
         var amplitudes = new double[channels];
@@ -647,5 +670,27 @@ public sealed class CapturedAudioFramePipelineTests
         }
 
         return bytes;
+    }
+
+    private sealed class FixedSampleProvider : ISampleProvider
+    {
+        private readonly float[] _samples;
+        private int _position;
+
+        public FixedSampleProvider(float[] samples, int channels)
+        {
+            _samples = samples;
+            WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(24_000, channels);
+        }
+
+        public WaveFormat WaveFormat { get; }
+
+        public int Read(Span<float> buffer)
+        {
+            var count = Math.Min(buffer.Length, _samples.Length - _position);
+            _samples.AsSpan(_position, count).CopyTo(buffer);
+            _position += count;
+            return count;
+        }
     }
 }

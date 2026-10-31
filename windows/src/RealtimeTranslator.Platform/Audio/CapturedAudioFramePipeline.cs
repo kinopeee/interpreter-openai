@@ -37,9 +37,8 @@ public sealed class CapturedAudioFramePipeline
 
         _sourceFormat = sourceFormat;
         _gain = gain ?? new AdaptiveMicrophoneGain();
-        _buffered = new BufferedWaveProvider(sourceFormat)
+        _buffered = new BufferedWaveProvider(sourceFormat, TimeSpan.FromSeconds(2))
         {
-            BufferDuration = TimeSpan.FromSeconds(2),
             DiscardOnBufferOverflow = true,
             // 不足分を 0 埋めすると、後から届く実音声と無音が二重に時間軸へ載る。
             ReadFully = false,
@@ -254,7 +253,7 @@ public sealed class CapturedAudioFramePipeline
             _readBuffer = new float[sampleCount];
         }
 
-        var read = _resampled.Read(_readBuffer, 0, sampleCount);
+        var read = _resampled.Read(_readBuffer.AsSpan(0, sampleCount));
         if (read <= 0)
         {
             return Array.Empty<byte[]>();
@@ -299,7 +298,7 @@ public sealed class CapturedAudioFramePipeline
             _overflowDiscard = new byte[byteCount];
         }
 
-        _ = _buffered.Read(_overflowDiscard, 0, byteCount);
+        _ = _buffered.Read(_overflowDiscard.AsSpan(0, byteCount));
         AddDiscardedBytesLocked(byteCount);
     }
 

@@ -24,6 +24,7 @@ public sealed class AudioCaptureException : Exception
         : base(message, innerException) { }
 }
 
+#pragma warning disable CS0618 // NAudio 3 で WasapiCapture が Obsolete。capture 挙動を変えないため WasapiRecorder への移行は別 PR で行う。
 /// <summary>WASAPI 共有モードのマイク入力を 100 ms / 24 kHz / PCM16 mono frame として供給する。</summary>
 public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposable
 {
@@ -309,3 +310,4 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         cts?.Dispose();
     }
 }
+#pragma warning restore CS0618
