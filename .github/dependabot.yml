@@ -4,3 +4,13 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  - package-ecosystem: nuget
+    directory: /windows
+    schedule:
+      interval: weekly
+    groups:
+      test-packages:
+        patterns:
+          - xunit
+          - xunit.runner.visualstudio
+          - Microsoft.NET.Test.Sdk

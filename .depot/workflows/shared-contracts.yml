@@ -34,3 +34,6 @@ jobs:
 
       - name: Validate parity map
         run: ./scripts/ci-shared-contracts.sh parity
+
+      - name: Validate action pins
+        run: ./scripts/ci-shared-contracts.sh action-pins

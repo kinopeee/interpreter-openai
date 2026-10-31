@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shared/fixtures/v*/ の schema↔fixture 1:1、locales/ui.json、
-# parity-map（shared/parity-map.json）を検証する。
+# parity-map（shared/parity-map.json）、.depot/workflows/ の action pin を検証する。
 # GitHub Actions（.github/workflows/shared-contracts.yml）と
 # Origin + Depot CI（.depot/workflows/shared-contracts.yml）の正本。
 #
@@ -9,6 +9,7 @@
 #   ./scripts/ci-shared-contracts.sh fixtures
 #   ./scripts/ci-shared-contracts.sh locales
 #   ./scripts/ci-shared-contracts.sh parity
+#   ./scripts/ci-shared-contracts.sh action-pins
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -57,12 +58,17 @@ validate_parity() {
   node "$ROOT/scripts/ci-parity.mjs"
 }
 
+validate_action_pins() {
+  node "$ROOT/scripts/ci-action-pins.mjs"
+}
+
 target="${1:-all}"
 case "$target" in
   all)
     validate_fixtures
     validate_locales
     validate_parity
+    validate_action_pins
     ;;
   fixtures)
     validate_fixtures
@@ -73,12 +79,15 @@ case "$target" in
   parity)
     validate_parity
     ;;
+  action-pins)
+    validate_action_pins
+    ;;
   -h|--help)
-    sed -n '2,11p' "$0"
+    sed -n '2,12p' "$0"
     exit 0
     ;;
   *)
-    echo "Unknown argument: $target (expected fixtures, locales, parity, or all)" >&2
+    echo "Unknown argument: $target (expected fixtures, locales, parity, action-pins, or all)" >&2
     exit 1
     ;;
 esac
