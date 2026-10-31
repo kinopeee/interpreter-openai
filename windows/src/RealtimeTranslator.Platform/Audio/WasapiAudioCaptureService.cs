@@ -24,7 +24,6 @@ public sealed class AudioCaptureException : Exception
         : base(message, innerException) { }
 }
 
-#pragma warning disable CS0618 // NAudio 3 で WasapiCapture が Obsolete。capture 挙動を変えないため WasapiRecorder への移行は別 PR で行う。
 /// <summary>WASAPI 共有モードのマイク入力を 100 ms / 24 kHz / PCM16 mono frame として供給する。</summary>
 public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposable
 {
@@ -46,7 +45,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
 
     private Channel<CapturedAudioFrame> _frames = CreateFrameChannel();
     private readonly TimeProvider _timeProvider;
+#pragma warning disable CS0618 // owner 判断で WasapiCapture を維持。WasapiRecorder への移行は別 PR で行う。
     private WasapiCapture? _capture;
+#pragma warning restore CS0618
     private MMDevice? _ownedDevice;
     private CancellationTokenSource? _pumpCts;
     private Task? _pumpTask;
@@ -82,7 +83,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
 
         MMDevice? ownedDevice = null;
         MMDevice device;
+#pragma warning disable CS0618 // owner 判断で WasapiCapture を維持。WasapiRecorder への移行は別 PR で行う。
         WasapiCapture capture;
+#pragma warning restore CS0618
         try
         {
             if (_deviceFactory is not null)
@@ -95,7 +98,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
                 device = ownedDevice;
             }
 
+#pragma warning disable CS0618 // owner 判断で WasapiCapture を維持。WasapiRecorder への移行は別 PR で行う。
             capture = new WasapiCapture(device);
+#pragma warning restore CS0618
         }
         catch (Exception error) when (error is COMException or InvalidOperationException or ArgumentException)
         {
@@ -252,7 +257,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
     /// デバイス取り外しや障害で録音が止まった場合、pump を終わらせて frame stream を閉じる。
     /// 無音を流し続けるとセッション側が異常に気付けないため、再接続経路へ倒す。
     /// </summary>
+#pragma warning disable CS0618 // owner 判断で WasapiCapture を維持。WasapiRecorder への移行は別 PR で行う。
     private void OnRecordingStopped(WasapiCapture capture)
+#pragma warning restore CS0618
     {
         CancellationTokenSource? cts;
         lock (_sync)
@@ -273,7 +280,9 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
 
     private void StopCore()
     {
+#pragma warning disable CS0618 // owner 判断で WasapiCapture を維持。WasapiRecorder への移行は別 PR で行う。
         WasapiCapture? capture;
+#pragma warning restore CS0618
         MMDevice? ownedDevice;
         CancellationTokenSource? cts;
         lock (_sync)
@@ -310,4 +319,3 @@ public sealed class WasapiAudioCaptureService : IRealtimeAudioCapture, IDisposab
         cts?.Dispose();
     }
 }
-#pragma warning restore CS0618
