@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using RealtimeTranslator.Core.Settings;
@@ -12,11 +13,16 @@ public sealed class AppSettingsStore
     public const string FileName = "settings.json";
     public const string DirectoryName = "RealtimeTranslator";
 
+    private const string CorruptBackupInfix = ".corrupt-";
+    private const string CorruptBackupTimestampFormat = "yyyyMMdd'T'HHmmss'Z'";
+
     private readonly string _path;
+    private readonly TimeProvider _timeProvider;
     private readonly object _sync = new();
 
-    public AppSettingsStore(string? path = null)
+    public AppSettingsStore(string? path = null, TimeProvider? timeProvider = null)
     {
+        _timeProvider = timeProvider ?? TimeProvider.System;
         _path =
             path
             ?? Path.Combine(
@@ -32,21 +38,61 @@ public sealed class AppSettingsStore
     {
         lock (_sync)
         {
+            string json;
             try
             {
-                return File.Exists(_path)
-                    ? AppSettingsCodec.Decode(File.ReadAllText(_path, Encoding.UTF8))
-                    : AppSettingsData.Default;
+                if (!File.Exists(_path))
+                {
+                    return AppSettingsData.Default;
+                }
+
+                json = File.ReadAllText(_path, Encoding.UTF8);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
                 AppLogger.Warning(LogCategory.General, "settings load failed, using defaults");
                 return AppSettingsData.Default;
             }
+
+            if (AppSettingsCodec.TryDecode(json, out var settings))
+            {
+                return settings;
+            }
+
+            MoveCorruptFileAside();
+            return AppSettingsData.Default;
         }
     }
 
-    public void Save(AppSettingsData settings)
+    /// <summary>
+    /// 壊れた settings.json を次の保存で既定値に上書きされる前に同じディレクトリへ退避する。
+    /// 既存の退避ファイルは上書きせず、空いている連番を付ける。
+    /// </summary>
+    private void MoveCorruptFileAside()
+    {
+        var timestamp = _timeProvider
+            .GetUtcNow()
+            .UtcDateTime.ToString(CorruptBackupTimestampFormat, CultureInfo.InvariantCulture);
+        var basePath = _path + CorruptBackupInfix + timestamp;
+        try
+        {
+            var backupPath = basePath;
+            for (var suffix = 1; File.Exists(backupPath); suffix++)
+            {
+                backupPath = basePath + "-" + suffix.ToString(CultureInfo.InvariantCulture);
+            }
+
+            File.Move(_path, backupPath, overwrite: false);
+            AppLogger.Warning(LogCategory.General, "settings file corrupt; moved aside, using defaults");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            AppLogger.Warning(LogCategory.General, "settings corrupt backup failed, using defaults");
+        }
+    }
+
+    /// <summary>保存できたら true、書き込みに失敗したら false を返す。</summary>
+    public bool Save(AppSettingsData settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
@@ -71,10 +117,13 @@ public sealed class AppSettingsStore
                 {
                     File.Move(temporaryPath, _path);
                 }
+
+                return true;
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
                 AppLogger.Warning(LogCategory.General, "settings save failed");
+                return false;
             }
         }
     }

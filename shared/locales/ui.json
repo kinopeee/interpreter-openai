@@ -762,6 +762,11 @@
       "key": "error.unexpected",
       "ja": "予期しないエラーが発生しました。もう一度お試しください",
       "en": "An unexpected error occurred. Please try again."
+    },
+    {
+      "key": "error.settingsSaveFailed",
+      "ja": "設定を保存できませんでした。変更は次回起動時に反映されない可能性があります",
+      "en": "Could not save settings. Your changes may not be kept after restarting."
     }
   ]
 }

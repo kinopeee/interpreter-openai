@@ -247,4 +247,51 @@ public sealed class AppSettingsCodecTests
             tuning.TranscriptionKeywords.ToList()
         );
     }
+
+    // Given: JSON として読めない文字列、空文字、ルートが配列の JSON
+    // When: TryDecode する
+    // Then: 壊れている扱いで false と既定値が返る
+    [Theory]
+    [InlineData("{ broken")]
+    [InlineData("")]
+    [InlineData("[1,2,3]")]
+    public void TryDecodeReportsCorruptJsonWithDefaults(string json)
+    {
+        var decoded = AppSettingsCodec.TryDecode(json, out var settings);
+
+        Assert.False(decoded);
+        Assert.Equal(AppSettingsData.Default, settings);
+    }
+
+    // Given: 正常な設定 JSON
+    // When: TryDecode する
+    // Then: true と Decode と同じ値が返る
+    [Fact]
+    public void TryDecodeAcceptsValidJson()
+    {
+        var json = AppSettingsCodec.Encode(AppSettingsData.Default with { FontSize = 40 });
+
+        var decoded = AppSettingsCodec.TryDecode(json, out var settings);
+
+        Assert.True(decoded);
+        Assert.Equal(AppSettingsCodec.Decode(json), settings);
+        Assert.Equal(40, settings.FontSize);
+    }
+
+    // Given: フィールドの型だけが不正なオブジェクト JSON
+    // When: TryDecode する
+    // Then: 壊れている扱いにせず true を返し、不正なフィールドだけ既定へ倒す
+    [Fact]
+    public void TryDecodeAcceptsObjectWithInvalidFieldTypes()
+    {
+        const string json = """{"fontSize":"40","recordSubtitles":"true","languagePair":"en-es"}""";
+
+        var decoded = AppSettingsCodec.TryDecode(json, out var settings);
+
+        Assert.True(decoded);
+        Assert.Equal(AppSettingsCodec.Decode(json), settings);
+        Assert.Equal(AppSettingsData.DefaultFontSize, settings.FontSize);
+        Assert.False(settings.RecordSubtitles);
+        Assert.Equal(LanguagePair.EnEs, settings.LanguagePair);
+    }
 }

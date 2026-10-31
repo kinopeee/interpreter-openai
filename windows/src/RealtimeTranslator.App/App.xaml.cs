@@ -51,6 +51,7 @@ public partial class App : Application, IDisposable
     private TranslationState _state = TranslationState.Idle;
     private bool _isEditingPosition;
     private bool _shuttingDown;
+    private bool _settingsSaveFailureNotified;
     private readonly SubtitleTranscriptSessionGate _transcriptSession = new();
 
     /// <summary>録音停止から字幕を消すまでの猶予 (macOS 版と同じ)。</summary>
@@ -120,6 +121,7 @@ public partial class App : Application, IDisposable
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _shuttingDown = true;
         FlushSettingsSave();
         DisposeResources();
         base.OnExit(e);
@@ -388,7 +390,14 @@ public partial class App : Application, IDisposable
         }
 
         _pendingSettingsSave = null;
-        _settingsStore.Save(settings);
+        if (_settingsStore.Save(settings) || _settingsSaveFailureNotified || _shuttingDown || _tray is null)
+        {
+            return;
+        }
+
+        // 保存失敗はプロセス実行中に1回だけ知らせる。終了処理中は通知しない。
+        _settingsSaveFailureNotified = true;
+        _tray.ShowMessage(UiCopy.Text("error.settingsSaveFailed"));
     }
 
     private void OnSessionStateChanged(object? sender, TranslationState state) =>
@@ -555,6 +564,7 @@ public partial class App : Application, IDisposable
 
     private void DisposeResources()
     {
+        _shuttingDown = true;
         FlushSettingsSave();
         _subtitleClear.Stop();
         _subtitleClear.Tick -= OnSubtitleClearElapsed;
