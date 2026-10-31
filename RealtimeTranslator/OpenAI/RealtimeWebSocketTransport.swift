@@ -26,13 +26,15 @@ enum URLSessionWebSocketTransportError: Error, LocalizedError, Sendable {
 
 /// WebSocket送信などの無期限待ちを防ぐためのtimeoutヘルパー。
 ///
+/// `onFailure` は `operation` が結果を返さずに終わったすべての場合に1回だけ呼ぶ。
+/// 対象は timeout、親タスクのキャンセル、`operation` 自身のエラー。成功時は呼ばない。
 /// `withThrowingTaskGroup` は throw 後も残りの子タスク完了を待つ。
 /// `URLSessionWebSocketTask.send` のように Swift キャンセルを無視する I/O では、
-/// timeout 側で socket を abort しないと待ちが解けない。
+/// `onFailure` で socket を abort しないと待ちが解けない。
 enum AsyncTimeout {
     static func run<T: Sendable>(
         nanoseconds: UInt64,
-        onTimeout: (@Sendable () -> Void)? = nil,
+        onFailure: (@Sendable () -> Void)? = nil,
         operation: @Sendable @escaping () async throws -> T
     ) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
@@ -41,7 +43,6 @@ enum AsyncTimeout {
             }
             group.addTask {
                 try await Task.sleep(nanoseconds: nanoseconds)
-                onTimeout?()
                 throw RealtimeTranslationError.recoverableTransportFailure("send timeout")
             }
             do {
@@ -50,7 +51,7 @@ enum AsyncTimeout {
                 return result
             } catch {
                 group.cancelAll()
-                onTimeout?()
+                onFailure?()
                 throw error
             }
         }
@@ -76,9 +77,8 @@ actor URLSessionWebSocketTransport: RealtimeWebSocketTransport {
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 30
-        configuration.httpAdditionalHeaders = headers
         let session = URLSession(configuration: configuration)
-        let task = session.webSocketTask(with: url)
+        let task = session.webSocketTask(with: Self.makeHandshakeRequest(url: url, headers: headers))
         self.session = session
         self.task = task
         task.resume()
@@ -92,29 +92,20 @@ actor URLSessionWebSocketTransport: RealtimeWebSocketTransport {
             throw RealtimeTranslationError.invalidMessage
         }
         nonisolated(unsafe) let socket = task
-        let timeoutNanoseconds = sendTimeoutNanoseconds
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
+        do {
+            try await AsyncTimeout.run(
+                nanoseconds: sendTimeoutNanoseconds,
+                onFailure: { socket.cancel(with: .goingAway, reason: nil) }
+            ) {
                 do {
                     try await socket.send(.string(text))
                 } catch {
                     throw Self.handshakeFailure(response: socket.response, underlying: error)
                 }
             }
-            group.addTask {
-                try await Task.sleep(nanoseconds: timeoutNanoseconds)
-                throw RealtimeTranslationError.recoverableTransportFailure("send timeout")
-            }
-            do {
-                try await group.next()!
-                group.cancelAll()
-            } catch {
-                group.cancelAll()
-                // TaskGroup は残りの send 完了を待つ。Swift キャンセルでは解けないので
-                // socket を abort してから throw する。
-                await close()
-                throw error
-            }
+        } catch {
+            await close()
+            throw error
         }
     }
 
@@ -143,6 +134,16 @@ actor URLSessionWebSocketTransport: RealtimeWebSocketTransport {
         @unknown default:
             throw URLSessionWebSocketTransportError.unsupportedMessage
         }
+    }
+
+    /// Authorization は URL Loading System が管理するヘッダーのため `httpAdditionalHeaders` では送られないことがある。
+    /// 呼び出し元が渡したヘッダーはすべて handshake の request に載せる。
+    static func makeHandshakeRequest(url: URL, headers: [String: String]) -> URLRequest {
+        var request = URLRequest(url: url)
+        for (name, value) in headers {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        return request
     }
 
     /// upgrade 前に失敗した（応答なし）または upgrade が成功した（101）場合はステータス不明として扱う。

@@ -242,7 +242,27 @@ actor HangUntilCloseWebSocketTransport: RealtimeWebSocketTransport {
     }
 }
 
-/// AsyncTimeout.onTimeout から continuation を再開する。
+/// AsyncTimeout.onFailure の呼び出し回数を数える。
+private final class FailureHandlerCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls
+    }
+
+    func record() {
+        lock.lock()
+        calls += 1
+        lock.unlock()
+    }
+}
+
+private struct AsyncTimeoutOperationError: Error, Equatable {}
+
+/// AsyncTimeout.onFailure から continuation を再開する。
 private final class TimeoutResumeBox: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Void, Error>?
@@ -845,7 +865,7 @@ final class RealtimeTranslationConnectionTests: XCTestCase {
         do {
             try await AsyncTimeout.run(
                 nanoseconds: 50_000_000,
-                onTimeout: { box.resume() }
+                onFailure: { box.resume() }
             ) {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                     box.store(continuation)
@@ -854,13 +874,128 @@ final class RealtimeTranslationConnectionTests: XCTestCase {
             }
             XCTFail("Expected timeout")
         } catch let error as RealtimeTranslationError {
-            // Then: onTimeout が待ちを解き、TaskGroup が固まらない
+            // Then: onFailure が待ちを解き、TaskGroup が固まらない
             let elapsed = ContinuousClock.now - started
             XCTAssertLessThan(elapsed, Duration.seconds(2))
             XCTAssertEqual(error, .recoverableTransportFailure("send timeout"))
         } catch {
             XCTFail("Unexpected error \(error)")
         }
+    }
+
+    func testAsyncTimeoutDoesNotCallOnFailureWhenOperationSucceeds() async throws {
+        // Given: 期限内に完了する処理と、呼び出しを数える onFailure
+        let counter = FailureHandlerCounter()
+
+        // When
+        let value = try await AsyncTimeout.run(
+            nanoseconds: 1_000_000_000,
+            onFailure: { counter.record() }
+        ) {
+            42
+        }
+
+        // Then: 結果を返し、onFailure は呼ばれない
+        XCTAssertEqual(value, 42)
+        XCTAssertEqual(counter.count, 0)
+    }
+
+    func testAsyncTimeoutCallsOnFailureOnceOnTimeout() async {
+        // Given: onFailure が解くまで Swift キャンセルを見ずに待つ処理
+        let counter = FailureHandlerCounter()
+        let box = TimeoutResumeBox()
+
+        // When
+        do {
+            try await AsyncTimeout.run(
+                nanoseconds: 50_000_000,
+                onFailure: {
+                    counter.record()
+                    box.resume()
+                }
+            ) {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    box.store(continuation)
+                }
+            }
+            XCTFail("Expected timeout")
+        } catch let error as RealtimeTranslationError {
+            // Then: recoverable な send timeout になり、onFailure は1回だけ呼ばれる
+            XCTAssertEqual(error, .recoverableTransportFailure("send timeout"))
+            XCTAssertEqual(counter.count, 1)
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
+    }
+
+    func testAsyncTimeoutCallsOnFailureWhenParentTaskIsCancelled() async {
+        // Given: timeout より十分前に、Swift キャンセルを見ない待ちの親タスクをキャンセルする
+        let counter = FailureHandlerCounter()
+        let box = TimeoutResumeBox()
+        let task = Task {
+            try await AsyncTimeout.run(
+                nanoseconds: 60_000_000_000,
+                onFailure: {
+                    counter.record()
+                    box.resume()
+                }
+            ) {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    box.store(continuation)
+                }
+            }
+        }
+
+        // When
+        task.cancel()
+        let result = await task.result
+
+        // Then: CancellationError で終わり、onFailure が待ちを解いている
+        switch result {
+        case .success:
+            XCTFail("Expected cancellation")
+        case .failure(let error):
+            XCTAssertTrue(error is CancellationError, "Unexpected error \(error)")
+        }
+        XCTAssertEqual(counter.count, 1)
+    }
+
+    func testAsyncTimeoutCallsOnFailureWhenOperationThrows() async {
+        // Given: timeout 前に自身のエラーを投げる処理
+        let counter = FailureHandlerCounter()
+
+        // When
+        do {
+            try await AsyncTimeout.run(
+                nanoseconds: 60_000_000_000,
+                onFailure: { counter.record() }
+            ) {
+                throw AsyncTimeoutOperationError()
+            }
+            XCTFail("Expected operation error")
+        } catch let error as AsyncTimeoutOperationError {
+            // Then: 元のエラーをそのまま投げ、onFailure は1回呼ばれる
+            XCTAssertEqual(error, AsyncTimeoutOperationError())
+            XCTAssertEqual(counter.count, 1)
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
+    }
+
+    func testMakeHandshakeRequestCarriesAllHeaders() throws {
+        // Given: Authorization と別のヘッダーを含む呼び出し元のヘッダー
+        let url = try XCTUnwrap(URL(string: "wss://example.invalid/v1/realtime/translations?model=test"))
+        let headers = [
+            "Authorization": "Bearer sk-test-dummy",
+            "OpenAI-Safety-Identifier": "safety-dummy",
+        ]
+
+        // When
+        let request = URLSessionWebSocketTransport.makeHandshakeRequest(url: url, headers: headers)
+
+        // Then: URL が一致し、全ヘッダーが request に載る
+        XCTAssertEqual(request.url, url)
+        XCTAssertEqual(request.allHTTPHeaderFields, headers)
     }
 
     private func waitForSent(
