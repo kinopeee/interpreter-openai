@@ -248,4 +248,4 @@ git tag v0.1.0; git push origin v0.1.0
 
 - OpenAI APIへ送信されるのはマイク音声です。原文と訳文はAPIから受信します。
 - APIキーは資格情報マネージャーへ保存し、ログ・設定ファイルへ出力しません。
-- 実機での確認項目は `VALIDATION.md` の「Windows版」を参照してください。
+- 実機での確認項目は [VALIDATION.md の「Windows版」](VALIDATION.md#windows版) を参照してください。
