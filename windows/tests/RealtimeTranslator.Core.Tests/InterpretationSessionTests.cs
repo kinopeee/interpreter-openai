@@ -3178,9 +3178,10 @@ public sealed class InterpretationSessionTests
         Assert.Equal(TranslationState.Idle, session.State);
     }
 
-    // Given: 接続直後だけイベントが届き、その後受信が止まる
-    // When: 単調時計を受信停止閾値まで進める
-    // Then: receiveStalled が一度だけ HealthDetected へ通知される
+    // Given: 接続直後だけイベントが届き、ticker がその受信を記録した後は受信が止まる
+    // When: 活動 frame の記録を待ちながら 2 s 以下の刻みで単調時計を受信停止閾値まで進め、
+    //       検知後もさらに 31 s 進めて、最終時刻を evaluate した次の tick の snapshot まで待つ
+    // Then: receiveStalled が一度だけ HealthDetected へ通知され、captureStalled は出ない
     [Fact]
     public async Task ReceiveStalledFiresOnce()
     {
@@ -3199,31 +3200,37 @@ public sealed class InterpretationSessionTests
         activeFrame[1] = 0x7F;
         client.PublishSourceDelta("こんにちは");
         // ticker が受信を記録してから frame を送る（marker は直前受信以後の活動）。
-        await Task.Delay(100);
-        audio.Emit(activeFrame);
-        await Task.Delay(100);
+        await WaitUntilAsync(() => session.LatestHealthSnapshot?.SinceReceive is not null);
 
         // 活動を保ったまま時計を進める（capture/send の停滞を避ける）。
-        clock.Advance(TimeSpan.FromMilliseconds(15_000));
-        audio.Emit(activeFrame);
-        await Task.Delay(100);
-        clock.Advance(TimeSpan.FromMilliseconds(13_000));
-        audio.Emit(activeFrame);
-        await Task.Delay(100);
-        clock.Advance(TimeSpan.FromMilliseconds(2_100));
+        await AdvanceWithActiveCaptureAsync(clock, audio, client, activeFrame, TimeSpan.FromMilliseconds(30_100));
 
         await WaitUntilAsync(() => detections.Any(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
 
-        clock.Advance(TimeSpan.FromMilliseconds(31_000));
-        await Task.Delay(200);
+        await AdvanceWithActiveCaptureAsync(clock, audio, client, activeFrame, TimeSpan.FromMilliseconds(31_000));
+
+        // 最終時刻で evaluate した tick の検知通知が終わるまで待つ（次の tick の snapshot で確認する）。
+        SessionHealthSnapshot? evaluated = null;
+        await WaitUntilAsync(() =>
+        {
+            var snapshot = session.LatestHealthSnapshot;
+            if (snapshot is null || snapshot.ConnectionElapsed < TimeSpan.FromMilliseconds(61_100))
+            {
+                return false;
+            }
+
+            evaluated ??= snapshot;
+            return !ReferenceEquals(snapshot, evaluated);
+        });
 
         Assert.Equal(1, detections.Count(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
+        Assert.DoesNotContain(detections, d => d.Kind == SessionHealthDetectionKind.CaptureStalled);
         await session.StopAsync();
     }
 
-    // Given: 選択 lane へ翻訳 delta が来ず、原文の進捗だけが続く
-    // When: 原文進捗の停止が translationStall を超える
-    // Then: translationStalled が選択 lane 付きで通知される
+    // Given: 選択 lane へ翻訳 delta が来ず、原文の進捗だけが続く（2 s 時点の原文進捗の記録を待つ）
+    // When: 活動 frame の記録を待ちながら 2 s 以下の刻みで進め、原文進捗の停止が translationStall を超える
+    // Then: translationStalled が選択 lane 付きで通知され、captureStalled は出ない
     [Fact]
     public async Task SourceOnlyProgressEmitsTranslationStalled()
     {
@@ -3244,19 +3251,17 @@ public sealed class InterpretationSessionTests
         var activeFrame = new byte[4800];
         activeFrame[0] = 0xFF;
         activeFrame[1] = 0x7F;
-        clock.Advance(TimeSpan.FromMilliseconds(2_000));
+        await AdvanceWithActiveCaptureAsync(clock, audio, client, activeFrame, TimeSpan.FromMilliseconds(2_000));
         client.PublishSourceDelta("まだ話しています");
-        audio.Emit(activeFrame);
-        await Task.Delay(100);
+        // 原文進捗が 2 s 時点で記録されてから時計を進める。
+        await WaitUntilAsync(() => session.LatestHealthSnapshot?.SourceProgressCount == 2);
 
-        clock.Advance(TimeSpan.FromMilliseconds(13_000));
-        audio.Emit(activeFrame);
-        await Task.Delay(100);
-        clock.Advance(TimeSpan.FromMilliseconds(2_500));
+        await AdvanceWithActiveCaptureAsync(clock, audio, client, activeFrame, TimeSpan.FromMilliseconds(15_500));
 
         await WaitUntilAsync(() => detections.Any(d => d.Kind == SessionHealthDetectionKind.TranslationStalled));
         var detection = detections.First(d => d.Kind == SessionHealthDetectionKind.TranslationStalled);
         Assert.Equal(RealtimeTranslationLane.Translation(RealtimeTranslationOutputLanguage.English), detection.Lane);
+        Assert.DoesNotContain(detections, d => d.Kind == SessionHealthDetectionKind.CaptureStalled);
         await session.StopAsync();
     }
 
@@ -3314,8 +3319,9 @@ public sealed class InterpretationSessionTests
     }
 
     // Given: session.expires_at 受信後に壁時計が +1 時間ずれる
-    // When: 単調時計を expiryNear / expired の期限まで進める
-    // Then: 検知時刻と remaining は壁時計の影響を受けない
+    // When: 活動 frame の記録を待ちながら 2 s 以下の刻みで単調時計を expiryNear / expired の期限まで進める
+    //       （100 ms 進めてから 2 s 刻みにし、expiryNear を最初に評価する時刻を 10_100 ms に保つ）
+    // Then: 検知時刻と remaining は壁時計の影響を受けず、captureStalled は出ない
     [Fact]
     public async Task WallClockShiftDoesNotAffectExpiry()
     {
@@ -3339,12 +3345,12 @@ public sealed class InterpretationSessionTests
         var activeFrame = new byte[4800];
         activeFrame[0] = 0xFF;
         activeFrame[1] = 0x7F;
-        audio.Emit(activeFrame);
-        await Task.Delay(100);
 
         // NTP 補正相当の壁時計ジャンプを挟む。
         clock.AdvanceWallClockOnly(TimeSpan.FromHours(1));
-        clock.Advance(TimeSpan.FromMilliseconds(10_100));
+        // 2 s 刻みだと 10_000 ms で expiryNear を評価するため、先に 100 ms ずらす。
+        await AdvanceWithActiveCaptureAsync(clock, audio, client, activeFrame, TimeSpan.FromMilliseconds(100));
+        await AdvanceWithActiveCaptureAsync(clock, audio, client, activeFrame, TimeSpan.FromMilliseconds(10_000));
 
         await WaitUntilAsync(() => detections.Any(d => d.Kind == SessionHealthDetectionKind.ExpiryNear));
         var near = detections.First(d => d.Kind == SessionHealthDetectionKind.ExpiryNear);
@@ -3353,8 +3359,9 @@ public sealed class InterpretationSessionTests
         // remaining は接続時に確定した期限への残りで、壁時計のずれを含まない。
         Assert.Equal(TimeSpan.FromMilliseconds(119_900), near.Remaining);
 
-        clock.Advance(TimeSpan.FromMilliseconds(120_000));
+        await AdvanceWithActiveCaptureAsync(clock, audio, client, activeFrame, TimeSpan.FromMilliseconds(120_000));
         await WaitUntilAsync(() => detections.Any(d => d.Kind == SessionHealthDetectionKind.Expired));
+        Assert.DoesNotContain(detections, d => d.Kind == SessionHealthDetectionKind.CaptureStalled);
         await session.StopAsync();
     }
 
@@ -3409,8 +3416,8 @@ public sealed class InterpretationSessionTests
     }
 
     // Given: handshake で source lane の受信数が記録済みの接続
-    // When: Listening 直後に活動 frame が届き、その後受信が止まる
-    // Then: handshake 受信を新規受信と誤認せず receiveStalled が発火する（sourceStalled ではない）
+    // When: Listening 直後から活動 frame の記録を待ちながら 2 s 以下の刻みで時計を進め、その間受信が止まる
+    // Then: handshake 受信を新規受信と誤認せず receiveStalled が発火する（sourceStalled・captureStalled ではない）
     [Fact]
     public async Task HandshakeReceivesDoNotMaskReceiveStall()
     {
@@ -3427,16 +3434,11 @@ public sealed class InterpretationSessionTests
         var activeFrame = new byte[4800];
         activeFrame[0] = 0xFF;
         activeFrame[1] = 0x7F;
-        audio.Emit(activeFrame);
-        await Task.Delay(100);
-
-        clock.Advance(TimeSpan.FromMilliseconds(15_000));
-        audio.Emit(activeFrame);
-        await Task.Delay(100);
-        clock.Advance(TimeSpan.FromMilliseconds(15_100));
+        await AdvanceWithActiveCaptureAsync(clock, audio, client, activeFrame, TimeSpan.FromMilliseconds(30_100));
 
         await WaitUntilAsync(() => detections.Any(d => d.Kind == SessionHealthDetectionKind.ReceiveStalled));
         Assert.DoesNotContain(detections, d => d.Kind == SessionHealthDetectionKind.SourceStalled);
+        Assert.DoesNotContain(detections, d => d.Kind == SessionHealthDetectionKind.CaptureStalled);
         await session.StopAsync();
     }
 
@@ -3894,6 +3896,31 @@ public sealed class InterpretationSessionTests
             reconnectPolicy: reconnectPolicy,
             reconnectJitter: _ => TimeSpan.Zero
         );
+
+    /// <summary>
+    /// ticker は実時間で回るため、captureStall（3 s）を一度に跨ぐと frame 記録前の tick が
+    /// captureStalled を出す。各刻みの前に活動 frame の記録を待ち、2 s 以下の刻みで total だけ進める。
+    /// </summary>
+    private static async Task AdvanceWithActiveCaptureAsync(
+        MonotonicClock clock,
+        FakeAudioCapture audio,
+        FakeDualClient client,
+        byte[] activeFrame,
+        TimeSpan total
+    )
+    {
+        var maxStep = TimeSpan.FromMilliseconds(2_000);
+        var remaining = total;
+        while (remaining > TimeSpan.Zero)
+        {
+            var expected = client.AppendAudioFrameCount + 1;
+            audio.Emit(activeFrame);
+            await WaitUntilAsync(() => client.AppendAudioFrameCount >= expected);
+            var step = remaining < maxStep ? remaining : maxStep;
+            clock.Advance(step);
+            remaining -= step;
+        }
+    }
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
