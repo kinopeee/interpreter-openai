@@ -3261,7 +3261,7 @@ public sealed class InterpretationSessionTests
     }
 
     // Given: 選択 lane がなく、未選択 lane の翻訳 delta だけが届く
-    // When: 時計を進めて evaluate する
+    // When: 活動 frame を captureStall 未満の刻みで供給しながら時計を translationStall 超まで進めて evaluate する
     // Then: 検知は発火せず snapshot の selectedLane は null のまま
     [Fact]
     public async Task UnselectedLaneProgressEmitsNothing()
@@ -3279,17 +3279,34 @@ public sealed class InterpretationSessionTests
         var activeFrame = new byte[4800];
         activeFrame[0] = 0xFF;
         activeFrame[1] = 0x7F;
-        audio.Emit(activeFrame);
-        await Task.Delay(100);
 
         // 未選択の en lane に delta だけ届く（routing 判定前の echo 相当）。
-        clock.Advance(TimeSpan.FromMilliseconds(15_000));
-        audio.Emit(activeFrame);
         client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "unselected");
-        await Task.Delay(100);
+        await WaitUntilAsync(() => session.LatestHealthSnapshot?.TranslationProgressCount == 1);
 
-        clock.Advance(TimeSpan.FromMilliseconds(1_000));
-        await Task.Delay(200);
+        // ticker は実時間で回るため、captureStall（3 s）を一度に跨ぐと frame 記録前の tick が
+        // captureStalled を出す。frame の記録を待ってから 2 s 刻みで進める。
+        for (var step = 0; step < 8; step++)
+        {
+            var expected = client.AppendAudioFrameCount + 1;
+            audio.Emit(activeFrame);
+            await WaitUntilAsync(() => client.AppendAudioFrameCount >= expected);
+            clock.Advance(TimeSpan.FromMilliseconds(2_000));
+        }
+
+        // 最終時刻で evaluate した tick の検知通知が終わるまで待つ（次の tick の snapshot で確認する）。
+        SessionHealthSnapshot? evaluated = null;
+        await WaitUntilAsync(() =>
+        {
+            var snapshot = session.LatestHealthSnapshot;
+            if (snapshot is null || snapshot.ConnectionElapsed < TimeSpan.FromMilliseconds(16_000))
+            {
+                return false;
+            }
+
+            evaluated ??= snapshot;
+            return !ReferenceEquals(snapshot, evaluated);
+        });
 
         Assert.Empty(detections);
         Assert.Null(session.LatestHealthSnapshot?.SelectedLane);
