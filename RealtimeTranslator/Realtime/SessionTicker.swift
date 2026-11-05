@@ -11,9 +11,10 @@ final class SessionTicker {
         stop()
         tickerTask = Task { @MainActor [weak self, weak context] in
             while !Task.isCancelled {
-                guard let self, let context else { return }
                 try? await Task.sleep(nanoseconds: intervalNanoseconds)
                 guard !Task.isCancelled else { return }
+                // sleep 中は強参照を持たず、context/ticker が解放されていればここで抜ける。
+                guard let self, let context else { return }
                 if let feed = context.activeFeed,
                     context.subtitlePipeline.checkEventLoss(
                         feed,
