@@ -13,7 +13,7 @@ final class SessionLoopRunner {
     }
 
     func run(generation: Int) async {
-        while generation == context.lifecycleGeneration {
+        while context.isCurrentGeneration(generation) {
             var reconnectDetail: String?
             var recoverableError: Error?
             do {
@@ -37,7 +37,7 @@ final class SessionLoopRunner {
                 // URLError に bridge されない POSIX 切断
                 recoverableError = error
             } catch let error as RealtimeTranslationError {
-                guard generation == context.lifecycleGeneration else { return }
+                guard context.isCurrentGeneration(generation) else { return }
                 await haltWithError(
                     kind: SessionTerminationKind(error),
                     message: error.localizedDescription
@@ -53,18 +53,18 @@ final class SessionLoopRunner {
                     // フレーム経路の背圧は再接続で立て直す
                     recoverableError = error
                 default:
-                    guard generation == context.lifecycleGeneration else { return }
+                    guard context.isCurrentGeneration(generation) else { return }
                     await haltWithError(kind: .other, message: error.localizedDescription)
                     return
                 }
             } catch {
                 // 未知のアプリエラーは再接続せず即 error（予測可能性を優先）。
-                guard generation == context.lifecycleGeneration else { return }
+                guard context.isCurrentGeneration(generation) else { return }
                 await haltWithError(kind: .other, message: error.localizedDescription)
                 return
             }
 
-            guard generation == context.lifecycleGeneration else { return }
+            guard context.isCurrentGeneration(generation) else { return }
             let decision = context.reconnectBudget.recordFailure()
             guard decision.kind == .wait else {
                 let budgetExhausted = decision.kind == .budgetExhausted

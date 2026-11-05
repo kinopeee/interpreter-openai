@@ -16,10 +16,7 @@ final class SessionTicker {
                 // sleep 中は強参照を持たず、context/ticker が解放されていればここで抜ける。
                 guard let self, let context else { return }
                 if let feed = context.activeFeed,
-                    context.subtitlePipeline.checkEventLoss(
-                        feed,
-                        generation: context.lifecycleGeneration
-                    )
+                    context.subtitlePipeline.handleEventLossIfNeeded(feed)
                 {
                     continue
                 }

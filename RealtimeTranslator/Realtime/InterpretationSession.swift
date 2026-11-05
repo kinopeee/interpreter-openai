@@ -207,7 +207,7 @@ final class InterpretationSession {
         let drainedEvents = await context.dualClient.closeGracefully()
         if let feed = context.activeFeed {
             if feed.deliveryState.didLoseEvents {
-                context.subtitlePipeline.handleEventLoss(feed)
+                context.subtitlePipeline.handleEventLossIfNeeded(feed)
             } else {
                 context.subtitlePipeline.ingestStopDrainEvents(drainedEvents, feed: feed)
             }

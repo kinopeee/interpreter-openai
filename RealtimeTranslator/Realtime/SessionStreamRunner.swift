@@ -39,7 +39,7 @@ final class SessionStreamRunner {
             throw error
         }
         context.healthBookkeeper.updateAttemptEpoch(await context.dualClient.reservedEpoch)
-        guard generation == context.lifecycleGeneration else {
+        guard context.isCurrentGeneration(generation) else {
             await context.dualClient.forceClose()
             return
         }
@@ -54,7 +54,7 @@ final class SessionStreamRunner {
         await context.dualClient.resetAudioRouting()
 
         try await context.audioCapture.start()
-        guard generation == context.lifecycleGeneration else {
+        guard context.isCurrentGeneration(generation) else {
             await context.audioCapture.stop()
             await context.dualClient.forceClose()
             return
@@ -85,10 +85,7 @@ final class SessionStreamRunner {
             if Task.isCancelled {
                 throw CancellationError()
             }
-            if feed.deliveryState.didLoseEvents {
-                context.subtitlePipeline.handleEventLoss(feed)
-                throw feed.deliveryState.makeError()
-            }
+            try context.subtitlePipeline.throwIfEventsLost(feed)
             if feed.deliveryState.termination != .none {
                 context.afterFailedSourceTerminationForTests?()
             }
@@ -97,15 +94,12 @@ final class SessionStreamRunner {
             // completed 済みのため waitForCompletion は再起床しない。欠落を再確認する。
             // 正常完了も SessionEventConsumer.run に任せる。success で戻ると session loop が終わる。
             while !Task.isCancelled {
-                if feed.deliveryState.didLoseEvents {
-                    context.subtitlePipeline.handleEventLoss(feed)
-                    throw feed.deliveryState.makeError()
-                }
+                try context.subtitlePipeline.throwIfEventsLost(feed)
                 try await Task.sleep(for: Self.completionRecheckInterval)
             }
             throw CancellationError()
         }
-        let firstResult = await raceFirstResult(feedTask, eventTask, completionTask)
+        let firstResult = await raceFirstResult([feedTask, eventTask, completionTask])
         feedTask.cancel()
         eventTask.cancel()
         completionTask.cancel()
@@ -114,45 +108,29 @@ final class SessionStreamRunner {
         _ = await feedTask.result
         _ = await eventTask.result
         if feed.deliveryState.didLoseEvents {
-            context.subtitlePipeline.handleEventLoss(feed)
+            context.subtitlePipeline.handleEventLossIfNeeded(feed)
         }
         context.subtitlePipeline.discardFailedSourceIfNeeded(feed)
         try firstResult.get()
     }
 
-    private func raceFirstResult(
-        _ first: Task<Void, Error>,
-        _ second: Task<Void, Error>,
-        _ third: Task<Void, Error>
-    ) async -> Result<Void, Error> {
+    private func raceFirstResult(_ tasks: [Task<Void, Error>]) async -> Result<Void, Error> {
         // 先に完了した側の結果で戻る。負け側の非構造化Taskも必ずcancelしないと、
         // withTaskGroupが `.result` 待ちの子タスクで戻りを阻み、再接続不能になる。
         await withTaskGroup(of: Result<Void, Error>.self) { group in
-            group.addTask {
-                await withTaskCancellationHandler {
-                    await first.result
-                } onCancel: {
-                    first.cancel()
-                }
-            }
-            group.addTask {
-                await withTaskCancellationHandler {
-                    await second.result
-                } onCancel: {
-                    second.cancel()
-                }
-            }
-            group.addTask {
-                await withTaskCancellationHandler {
-                    await third.result
-                } onCancel: {
-                    third.cancel()
+            for task in tasks {
+                group.addTask {
+                    await withTaskCancellationHandler {
+                        await task.result
+                    } onCancel: {
+                        task.cancel()
+                    }
                 }
             }
             let value = await group.next() ?? .failure(CancellationError())
-            first.cancel()
-            second.cancel()
-            third.cancel()
+            for task in tasks {
+                task.cancel()
+            }
             group.cancelAll()
             while await group.next() != nil {}
             return value

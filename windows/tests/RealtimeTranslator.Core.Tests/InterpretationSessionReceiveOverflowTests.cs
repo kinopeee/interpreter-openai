@@ -809,6 +809,111 @@ public sealed class InterpretationSessionReceiveOverflowTests
         await session.StopAsync();
     }
 
+    // Given: 確定済みペアと新しい未確定ペアが Listening 中にある
+    // When: 現在 epoch の受信欠落を記録する
+    // Then: 未確定ペアだけを無効化し、確定済みペアと記録数を保持して再接続する
+    [Fact]
+    public async Task OverflowLossPreservesFinalizedSubtitle()
+    {
+        var client = new FakeOverflowDualClient();
+        var clock = new MonotonicClock();
+        using var session = CreateSession(client, TimeSpan.FromMilliseconds(15), clock);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        var invalidated = NewGate();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+
+            if (update.IsInvalidation)
+            {
+                invalidated.TrySetResult();
+            }
+        };
+
+        await session.StartAsync();
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+        client.PublishSourceDelta("確定済み字幕");
+        client.PublishTranslationDelta("Finalized subtitle");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update =>
+                    update.SourceText == "確定済み字幕" && update.TranslatedText == "Finalized subtitle"
+                );
+            }
+        });
+        clock.Advance(RealtimeSubtitleAssembler.IdleFinalizeInterval + TimeSpan.FromMilliseconds(50));
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update =>
+                    update.ShouldFinalize
+                    && update.SourceText == "確定済み字幕"
+                    && update.TranslatedText == "Finalized subtitle"
+                );
+            }
+        });
+        int finalizedCount;
+        lock (updates)
+        {
+            finalizedCount = updates.Count(update =>
+                update.ShouldFinalize
+                && update.SourceText == "確定済み字幕"
+                && update.TranslatedText == "Finalized subtitle"
+            );
+        }
+
+        Assert.True(finalizedCount > 0);
+        client.PublishSourceDelta("未確定字幕");
+        client.PublishTranslationDelta("Unconfirmed subtitle");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Any(update =>
+                    update.SourceText == "未確定字幕" && update.TranslatedText == "Unconfirmed subtitle"
+                );
+            }
+        });
+
+        // When: 現在 epoch のイベント欠落を記録する
+        client.RecordLoss(EventDeliveryStage.Merge);
+        client.PublishTranslationDelta("stale", client.Feed.Epoch);
+
+        await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await client.SecondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForStateAsync(session, TranslationState.Listening);
+
+        // Then: 未確定ペアは確定されず、確定済みペアの通知数を維持する
+        lock (updates)
+        {
+            Assert.Equal(2, client.StartCount);
+            Assert.Equal(
+                finalizedCount,
+                updates.Count(update =>
+                    update.ShouldFinalize
+                    && update.SourceText == "確定済み字幕"
+                    && update.TranslatedText == "Finalized subtitle"
+                )
+            );
+            Assert.Contains(updates, update => update.IsInvalidation);
+            Assert.DoesNotContain(
+                updates,
+                update =>
+                    update.ShouldFinalize
+                    && (update.SourceText == "未確定字幕" || update.TranslatedText == "Unconfirmed subtitle")
+            );
+        }
+
+        await session.StopAsync();
+    }
+
     // Given: 停止前に未確定の字幕ペアを表示している
     // When: stop drain 中に transcription failed を受信する
     // Then: 停止を完了し、未確定ペアを確定しない

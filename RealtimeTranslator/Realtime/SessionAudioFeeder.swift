@@ -15,7 +15,7 @@ final class SessionAudioFeeder {
 
     func run(generation: Int) async throws {
         for await frame in context.audioCapture.frames {
-            guard generation == context.lifecycleGeneration else { return }
+            guard context.isCurrentGeneration(generation) else { return }
             guard context.state == .listening else { return }
             context.healthBookkeeper.recordCapture(
                 hasAudioActivity: PCM16AudioActivity.normalizedPeakAmplitude(of: frame.pcm16)
@@ -45,7 +45,7 @@ final class SessionAudioFeeder {
             try await context.dualClient.appendAudioFrame(frame.pcm16)
             context.healthBookkeeper.recordSendSuccess()
         }
-        guard generation == context.lifecycleGeneration, context.state == .listening else {
+        guard context.isCurrentGeneration(generation), context.state == .listening else {
             return
         }
         if let terminationError = context.audioCapture.terminationError {

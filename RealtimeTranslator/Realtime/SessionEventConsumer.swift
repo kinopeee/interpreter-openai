@@ -16,13 +16,8 @@ final class SessionEventConsumer {
             // stop 後の未読 delta は Dual recentYields → close drain が assembler へ同期適用する。
             // ここで ingest/enqueueRender すると、performStop が消した renderTask が再生成され、
             // forceFinalize 後に replaceCurrent で確定ペアを live へ戻す。
-            guard generation == context.lifecycleGeneration else { return }
-            if context.subtitlePipeline.checkEventLoss(feed, generation: generation) {
-                if generation == context.lifecycleGeneration {
-                    throw feed.deliveryState.makeError()
-                }
-                return
-            }
+            guard context.isCurrentGeneration(generation) else { return }
+            try context.subtitlePipeline.throwIfEventsLost(feed)
             guard streamEvent.epoch == feed.runToken else {
                 await context.dualClient.acknowledgeConsumedStreamEvent(runToken: feed.runToken)
                 continue
@@ -79,7 +74,7 @@ final class SessionEventConsumer {
             // 原文 routing は専用 transcription の source lane だけを使う。
             // 適用または明示破棄のあとで acknowledge する。ack を先にすると、
             // この await 中に performStop が走ったとき未適用イベントが stop drain から外れる。
-            guard generation == context.lifecycleGeneration else { return }
+            guard context.isCurrentGeneration(generation) else { return }
             if let result = context.subtitlePipeline.processSubtitleEvent(streamEvent, now: Date()) {
                 #if DEBUG
                 AppLogger.session.notice(
@@ -105,13 +100,8 @@ final class SessionEventConsumer {
             }
             await context.dualClient.acknowledgeConsumedStreamEvent(runToken: feed.runToken)
         }
-        guard generation == context.lifecycleGeneration else { return }
-        if context.subtitlePipeline.checkEventLoss(feed, generation: generation) {
-            if generation == context.lifecycleGeneration {
-                throw feed.deliveryState.makeError()
-            }
-            return
-        }
+        guard context.isCurrentGeneration(generation) else { return }
+        try context.subtitlePipeline.throwIfEventsLost(feed)
         if feed.deliveryState.termination != .none {
             context.subtitlePipeline.discardFailedSourceIfNeeded(feed)
             throw feed.deliveryState.makeError()

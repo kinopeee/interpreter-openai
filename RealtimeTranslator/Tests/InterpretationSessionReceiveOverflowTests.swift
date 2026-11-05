@@ -560,6 +560,84 @@ final class InterpretationSessionReceiveOverflowTests: XCTestCase {
         await session.stop()
     }
 
+    // Given: 確定済みペアと新しい未確定ペアが Listening 中にある session
+    // When: 現在 epoch の受信欠落を記録する
+    // Then: 未確定ペアだけを無効化し、確定済みペアと通知数を保持して再接続する
+    func testOverflowLossPreservesFinalizedSubtitle() async throws {
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 8_100_000_000
+        )
+        session.delegate = delegate
+
+        await session.start()
+        await waitForCondition { session.state == .listening }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "確定済み字幕", eventID: "source-final", elapsedMs: 10)
+        )
+        await waitForCondition { dual.spokenLanguages.contains(.japanese) }
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Finalized subtitle", eventID: "target-final", elapsedMs: 20)
+        )
+        await waitForCondition {
+            delegate.latestSnapshot?.current.sourceText == "確定済み字幕"
+                && delegate.latestSnapshot?.current.translatedText == "Finalized subtitle"
+        }
+        await waitForCondition(timeout: 10) {
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "確定済み字幕" && $0.translatedText == "Finalized subtitle"
+            }
+        }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let finalizedCount = delegate.snapshots.filter {
+            $0.current.state == .finalized && !$0.isInvalidation
+        }.count
+
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "未確定字幕", eventID: "source-pending", elapsedMs: 30)
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Unconfirmed subtitle", eventID: "target-pending", elapsedMs: 40)
+        )
+        await waitForCondition {
+            delegate.latestSnapshot?.current.sourceText == "未確定字幕"
+                && delegate.latestSnapshot?.current.translatedText == "Unconfirmed subtitle"
+        }
+
+        // When: 現在 epoch のイベント欠落を記録する
+        dual.recordLoss(stage: .merge, capacity: 512)
+        await waitForCondition {
+            session.state == .listening && dual.startCallCount >= 2
+                && delegate.snapshots.contains(where: \.isInvalidation)
+        }
+
+        // Then: 未確定ペアは確定されず、確定済みペアの通知数を維持する
+        XCTAssertEqual(dual.startCallCount, 2)
+        XCTAssertEqual(
+            delegate.snapshots.filter {
+                $0.current.state == .finalized && !$0.isInvalidation
+            }.count,
+            finalizedCount
+        )
+        XCTAssertTrue(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "確定済み字幕" && $0.translatedText == "Finalized subtitle"
+            })
+        XCTAssertFalse(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "未確定字幕" || $0.translatedText == "Unconfirmed subtitle"
+            })
+        await session.stop()
+    }
+
     // Given: 停止前に未確定の字幕ペアを表示している session
     // When: stop drain 中に transcription failed を受信する
     // Then: 停止は完了し、未確定ペアを確定しない
