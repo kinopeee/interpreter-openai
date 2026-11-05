@@ -38,11 +38,10 @@ final class SessionLoopRunner {
                 recoverableError = error
             } catch let error as RealtimeTranslationError {
                 guard context.isCurrentGeneration(generation) else { return }
-                await context.healthBookkeeper.recordTermination(error)
-                await tearDownStreaming()
-                // epoch/buffer を捨てる前に完全ペアを確定し、オプトイン字幕記録へ渡す。
-                context.subtitlePipeline.flushPendingFinalizeIfNeeded()
-                context.enterError(error)
+                await haltWithError(
+                    kind: SessionTerminationKind(error),
+                    message: error.localizedDescription
+                )
                 return
             } catch let error as RealtimeAudioCaptureError {
                 switch error {
@@ -55,37 +54,24 @@ final class SessionLoopRunner {
                     recoverableError = error
                 default:
                     guard context.isCurrentGeneration(generation) else { return }
-                    await context.healthBookkeeper.recordTermination(kind: .other)
-                    await tearDownStreaming()
-                    context.subtitlePipeline.flushPendingFinalizeIfNeeded()
-                    context.enterError(error)
+                    await haltWithError(kind: .other, message: error.localizedDescription)
                     return
                 }
             } catch {
                 // 未知のアプリエラーは再接続せず即 error（予測可能性を優先）。
                 guard context.isCurrentGeneration(generation) else { return }
-                await context.healthBookkeeper.recordTermination(kind: .other)
-                await tearDownStreaming()
-                context.subtitlePipeline.flushPendingFinalizeIfNeeded()
-                context.enterError(error)
+                await haltWithError(kind: .other, message: error.localizedDescription)
                 return
             }
 
             guard context.isCurrentGeneration(generation) else { return }
             let decision = context.reconnectBudget.recordFailure()
             guard decision.kind == .wait else {
-                await context.healthBookkeeper.recordTermination(
-                    kind: decision.kind == .budgetExhausted
-                        ? .reconnectBudgetExhausted
-                        : .reconnectAttemptLimit
-                )
-                await tearDownStreaming()
-                context.subtitlePipeline.flushPendingFinalizeIfNeeded()
-                context.enterErrorMessage(
-                    UiCopy.text(
-                        decision.kind == .budgetExhausted
-                            ? "error.reconnectBudgetExhausted"
-                            : "error.reconnectLimit"
+                let budgetExhausted = decision.kind == .budgetExhausted
+                await haltWithError(
+                    kind: budgetExhausted ? .reconnectBudgetExhausted : .reconnectAttemptLimit,
+                    message: UiCopy.text(
+                        budgetExhausted ? "error.reconnectBudgetExhausted" : "error.reconnectLimit"
                     )
                 )
                 return
@@ -110,6 +96,16 @@ final class SessionLoopRunner {
             // 停止（cancel）で待ちを即座に打ち切る。ループ先頭の世代確認で再接続を始めない。
             try? await Task.sleep(for: decision.delay)
         }
+    }
+
+    /// 再接続しない失敗の終了シーケンス。世代 guard と return は呼び出し側に残す。
+    /// 全経路で 終了診断の記録 → teardown → 完全ペアの確定 → error 遷移 の順を共有する。
+    private func haltWithError(kind: SessionTerminationKind, message: String) async {
+        await context.healthBookkeeper.recordTermination(kind: kind)
+        await tearDownStreaming()
+        // epoch/buffer を捨てる前に完全ペアを確定し、オプトイン字幕記録へ渡す。
+        context.subtitlePipeline.flushPendingFinalizeIfNeeded()
+        context.enterErrorMessage(message)
     }
 
     private func tearDownStreaming(keepSubtitles: Bool = false) async {

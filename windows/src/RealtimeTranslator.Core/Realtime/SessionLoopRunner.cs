@@ -44,11 +44,8 @@ internal sealed class SessionLoopRunner
                     return;
                 }
 
-                _context.RecordHealthTermination(SessionTerminationKindMapping.FromException(error));
-                await TearDownStreamingAsync().ConfigureAwait(false);
-                // epoch を捨てる前に完全ペアを確定し、オプトイン字幕記録へ渡す。
-                _context.SubtitlePipeline.FlushPendingFinalizeIfNeeded();
-                _context.EnterError(error.Message);
+                await FailAsync(SessionTerminationKindMapping.FromException(error), error.Message)
+                    .ConfigureAwait(false);
                 return;
             }
 #pragma warning disable CA1031 // 想定外の失敗でも session task を落とさず再接続へ倒す。
@@ -73,19 +70,12 @@ internal sealed class SessionLoopRunner
 
             if (decision.Kind != ReconnectDecisionKind.Wait)
             {
-                _context.RecordHealthTermination(
-                    decision.Kind == ReconnectDecisionKind.BudgetExhausted
+                var budgetExhausted = decision.Kind == ReconnectDecisionKind.BudgetExhausted;
+                await FailAsync(
+                    budgetExhausted
                         ? SessionTerminationKind.ReconnectBudgetExhausted
-                        : SessionTerminationKind.ReconnectAttemptLimit
-                );
-                await TearDownStreamingAsync().ConfigureAwait(false);
-                _context.SubtitlePipeline.FlushPendingFinalizeIfNeeded();
-                _context.EnterError(
-                    UserCopy.Current.Text(
-                        decision.Kind == ReconnectDecisionKind.BudgetExhausted
-                            ? "error.reconnectBudgetExhausted"
-                            : "error.reconnectLimit"
-                    )
+                        : SessionTerminationKind.ReconnectAttemptLimit,
+                    UserCopy.Current.Text(budgetExhausted ? "error.reconnectBudgetExhausted" : "error.reconnectLimit")
                 );
                 return;
             }
@@ -108,6 +98,19 @@ internal sealed class SessionLoopRunner
                 return;
             }
         }
+    }
+
+    /// <summary>
+    /// 再接続しない失敗の終了シーケンス。世代確認と return は呼び出し側に残す。
+    /// 全経路で 終了診断の記録 → teardown → 完全ペアの確定 → Error 遷移 の順を共有する。
+    /// </summary>
+    private async Task FailAsync(SessionTerminationKind kind, string message)
+    {
+        _context.RecordHealthTermination(kind);
+        await TearDownStreamingAsync().ConfigureAwait(false);
+        // epoch を捨てる前に完全ペアを確定し、オプトイン字幕記録へ渡す。
+        _context.SubtitlePipeline.FlushPendingFinalizeIfNeeded();
+        _context.EnterError(message);
     }
 
     private async Task TearDownStreamingAsync()

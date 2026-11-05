@@ -7,6 +7,7 @@ final class SessionStreamRunner {
     private let context: SessionRuntimeContext
     private let audioFeeder: SessionAudioFeeder
     private let eventConsumer: SessionEventConsumer
+    private static let completionRecheckInterval: Duration = .milliseconds(100)
 
     init(context: SessionRuntimeContext) {
         self.context = context
@@ -91,10 +92,10 @@ final class SessionStreamRunner {
             // 欠落なしの終了理由は stream 上の error event が消費側へ届くので、そちらに任せる。
             // ただし tryRecordTermination の直後に error 投入が満杯で recordLoss すると
             // completed 済みのため waitForCompletion は再起床しない。欠落を再確認する。
-            // 正常完了も consumeEvents に任せる。success で戻ると session loop が終わる。
+            // 正常完了も SessionEventConsumer.run に任せる。success で戻ると session loop が終わる。
             while !Task.isCancelled {
                 try context.subtitlePipeline.throwIfEventsLost(feed)
-                try await Task.sleep(nanoseconds: 100_000_000)
+                try await Task.sleep(for: Self.completionRecheckInterval)
             }
             throw CancellationError()
         }
@@ -102,7 +103,7 @@ final class SessionStreamRunner {
         feedTask.cancel()
         eventTask.cancel()
         completionTask.cancel()
-        // feedAudio の for-await は cancel だけでは解けないことがある。
+        // SessionAudioFeeder.run の for-await は cancel だけでは解けないことがある。
         await context.audioCapture.stop()
         _ = await feedTask.result
         _ = await eventTask.result

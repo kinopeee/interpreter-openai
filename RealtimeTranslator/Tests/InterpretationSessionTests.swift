@@ -276,9 +276,10 @@ final class InterpretationSessionTests: XCTestCase {
     func testUnknownErrorEntersErrorWithoutReconnect() async {
         // Given: capture start が未知エラーを投げる
         struct UnknownCaptureError: Error {}
+        let error = UnknownCaptureError()
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
         let audio = FakeRealtimeAudioCaptureService()
-        audio.startError = UnknownCaptureError()
+        audio.startError = error
         let dual = FakeDualRealtimeTranslationClient()
         let session = InterpretationSession(
             apiKeyStore: apiKeyStore,
@@ -286,6 +287,8 @@ final class InterpretationSessionTests: XCTestCase {
             dualClient: dual,
             activeTickerIntervalNanoseconds: 20_000_000
         )
+        let delegate = InterpretationSessionDelegateSpy()
+        session.delegate = delegate
 
         // When: startする
         await session.start()
@@ -295,6 +298,8 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(session.state, .error)
         XCTAssertEqual(dual.startCallCount, 1)
         XCTAssertEqual(audio.startCallCount, 1)
+        XCTAssertEqual(session.latestHealthTermination?.kind, .other)
+        XCTAssertEqual(delegate.messages.last, error.localizedDescription)
     }
 
     func testURLErrorTriggersReconnectThenListening() async {
@@ -402,6 +407,7 @@ final class InterpretationSessionTests: XCTestCase {
     func testUnknownCaptureTerminationEntersErrorWithoutReconnect() async {
         // Given: listening 中のセッション
         struct UnknownFeederError: Error {}
+        let error = UnknownFeederError()
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
         let audio = FakeRealtimeAudioCaptureService()
         let dual = FakeDualRealtimeTranslationClient()
@@ -411,17 +417,21 @@ final class InterpretationSessionTests: XCTestCase {
             dualClient: dual,
             activeTickerIntervalNanoseconds: 20_000_000
         )
+        let delegate = InterpretationSessionDelegateSpy()
+        session.delegate = delegate
         await session.start()
         await waitUntil { session.state == .listening }
         let startCountAtListening = dual.startCallCount
 
         // When: feeder が未知エラーで終端する
-        audio.terminate(with: UnknownFeederError())
+        audio.terminate(with: error)
         await waitUntil { session.state == .error }
 
         // Then: 再接続せず即 error
         XCTAssertEqual(session.state, .error)
         XCTAssertEqual(dual.startCallCount, startCountAtListening)
+        XCTAssertEqual(session.latestHealthTermination?.kind, .other)
+        XCTAssertEqual(delegate.messages.last, error.localizedDescription)
     }
 
     func testNonTransientURLErrorEntersErrorWithoutReconnect() async {
@@ -2052,7 +2062,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     ) {
         state.withLock { state in
             state.deliveryState.recordLoss(stage: stage, capacity: capacity)
-            // consumeEvents の for-await を起こし、ループ先頭の loss 判定へ進める。
+            // SessionEventConsumer.run の for-await を起こし、ループ先頭の loss 判定へ進める。
             if let continuation = state.eventContinuation {
                 _ = continuation.yield(
                     RealtimeTranslationStreamEvent(

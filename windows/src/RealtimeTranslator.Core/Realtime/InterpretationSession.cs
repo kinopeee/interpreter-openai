@@ -52,37 +52,8 @@ public sealed class InterpretationSession : IDisposable
     /// <summary>進行中の Stop。二重 Stop を macOS の stopTask と同様に合流させる。</summary>
     private Task? _stopTask;
 
-    /// <summary>テスト用。generation 確認後・assembler 更新前に差し込む。</summary>
-    internal Action? BeforeAssemblerIngestForTests
-    {
-        get => _context.BeforeAssemblerIngestForTests;
-        set => _context.BeforeAssemblerIngestForTests = value;
-    }
-
-    internal Action? BeforeRoutingResetForTests
-    {
-        get => _context.BeforeRoutingResetForTests;
-        set => _context.BeforeRoutingResetForTests = value;
-    }
-
-    internal Func<Task>? BeforeAudioLossRoutingResetForTests
-    {
-        get => _context.BeforeAudioLossRoutingResetForTests;
-        set => _context.BeforeAudioLossRoutingResetForTests = value;
-    }
-
-    internal Action? AfterFailedSourceFallbackForTests
-    {
-        get => _context.AfterFailedSourceFallbackForTests;
-        set => _context.AfterFailedSourceFallbackForTests = value;
-    }
-
-    /// <summary>テスト用。Listening 直前の monitor 世代開始 lock 直前に差し込む。</summary>
-    internal Action? BeforeHealthGenerationBeginForTests
-    {
-        get => _context.BeforeHealthGenerationBeginForTests;
-        set => _context.BeforeHealthGenerationBeginForTests = value;
-    }
+    /// <summary>テスト用。フックは Context に直接設定する。</summary>
+    internal SessionRuntimeContext ContextForTests => _context;
 
     public InterpretationSession(
         IApiKeyStore apiKeyStore,
@@ -239,7 +210,7 @@ public sealed class InterpretationSession : IDisposable
 
     private async Task StopCoreAsync()
     {
-        // StopAsync が _sync を握ったまま同期実行しないよう、一度外へ出す。
+        // StopAsync が _context.Sync を握ったまま同期実行しないよう、一度外へ出す。
         await Task.Yield();
 
         try

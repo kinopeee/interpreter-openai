@@ -29,7 +29,7 @@ internal sealed class SessionStreamRunner
 
     public async Task RunAsync(int generation, CancellationToken cancellationToken)
     {
-        // _dualClient.ReservedEpoch は Dual 側の lock を取るため _sync 保持中には読まない。
+        // _context.DualClient.ReservedEpoch は Dual 側の lock を取るため _context.Sync 保持中には読まない。
         var entryAttemptEpoch = _context.DualClient.ReservedEpoch;
         lock (_context.Sync)
         {

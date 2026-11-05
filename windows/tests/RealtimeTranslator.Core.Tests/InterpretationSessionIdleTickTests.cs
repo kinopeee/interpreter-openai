@@ -187,7 +187,7 @@ public sealed class InterpretationSessionIdleTickTests
         using var hookEntered = new ManualResetEventSlim(false);
         using var releaseHook = new ManualResetEventSlim(false);
         var resetsAtHook = -1;
-        session.BeforeRoutingResetForTests = () =>
+        session.ContextForTests.BeforeRoutingResetForTests = () =>
         {
             resetsAtHook = client.ResetAudioRoutingCount;
             client.PublishSourceDelta("続きです。");
@@ -245,7 +245,7 @@ public sealed class InterpretationSessionIdleTickTests
                 );
             }
         });
-        session.BeforeRoutingResetForTests = null;
+        session.ContextForTests.BeforeRoutingResetForTests = null;
         await session.StopAsync();
     }
 

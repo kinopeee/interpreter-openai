@@ -1024,7 +1024,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
         var processedDeltaCount = 0;
-        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
+        session.ContextForTests.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
         client.PublishTranslationLaneInputTranscript(
             RealtimeTranslationOutputLanguage.English,
             "polluting source that should never become authority"
@@ -1339,7 +1339,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
         var processedDeltaCount = 0;
-        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
+        session.ContextForTests.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
 
         client.PublishSourceDelta("Tokyo");
         client.PublishSourceDelta(" Paris");
@@ -2048,7 +2048,7 @@ public sealed class InterpretationSessionTests
     }
 
     // Given: Listening 中にイベント channel が完了する
-    // When: ConsumeEventsAsync が終端を検出する
+    // When: SessionEventConsumer.RunAsync が終端を検出する
     // Then: recoverable として再接続し、新しい epoch で再開する
     [Fact]
     public async Task EventChannelCompletionTriggersReconnect()
@@ -2066,7 +2066,7 @@ public sealed class InterpretationSessionTests
     }
 
     // Given: Listening 中に音声 frame channel が完了する
-    // When: FeedAudioAsync が終端を検出する
+    // When: SessionAudioFeeder.RunAsync が終端を検出する
     // Then: recoverable として再接続する（次 Start で frame channel を張り直す）
     [Fact]
     public async Task AudioFrameChannelCompletionTriggersReconnect()
@@ -2251,6 +2251,7 @@ public sealed class InterpretationSessionTests
 
         Assert.Equal(2, client.StartCount);
         Assert.Equal(UserCopy.Current.Text("error.reconnectBudgetExhausted"), message);
+        Assert.Equal(SessionTerminationKind.ReconnectBudgetExhausted, session.LatestTerminationDiagnostic?.Kind);
     }
 
     // Given: 壁時計だけが大きく進む（NTP 補正やスリープ復帰）
@@ -2598,7 +2599,7 @@ public sealed class InterpretationSessionTests
 
         using var enteredHook = new ManualResetEventSlim(false);
         using var releaseHook = new ManualResetEventSlim(false);
-        session.BeforeAssemblerIngestForTests = () =>
+        session.ContextForTests.BeforeAssemblerIngestForTests = () =>
         {
             enteredHook.Set();
             if (!releaseHook.Wait(TimeSpan.FromSeconds(5)))
@@ -2663,7 +2664,7 @@ public sealed class InterpretationSessionTests
 
         using var enteredHook = new ManualResetEventSlim(false);
         using var releaseHook = new ManualResetEventSlim(false);
-        session.BeforeAssemblerIngestForTests = () =>
+        session.ContextForTests.BeforeAssemblerIngestForTests = () =>
         {
             enteredHook.Set();
             if (!releaseHook.Wait(TimeSpan.FromSeconds(5)))
@@ -3573,12 +3574,12 @@ public sealed class InterpretationSessionTests
     {
         var client = new FakeDualClient();
         using var session = NewSession(client, timeProvider: new MonotonicClock());
-        session.BeforeHealthGenerationBeginForTests = () => _ = session.StopAsync();
+        session.ContextForTests.BeforeHealthGenerationBeginForTests = () => _ = session.StopAsync();
 
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Idle);
 
-        session.BeforeHealthGenerationBeginForTests = null;
+        session.ContextForTests.BeforeHealthGenerationBeginForTests = null;
         client.StartException = new RealtimeTranslationException(RealtimeTranslationErrorKind.FatalServerError);
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Error);
@@ -3755,7 +3756,7 @@ public sealed class InterpretationSessionTests
                 sourceObserved.TrySetResult();
             }
         };
-        session.BeforeAudioLossRoutingResetForTests = async () =>
+        session.ContextForTests.BeforeAudioLossRoutingResetForTests = async () =>
         {
             client.PublishSourceDelta("こんにちは");
             await sourceObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));

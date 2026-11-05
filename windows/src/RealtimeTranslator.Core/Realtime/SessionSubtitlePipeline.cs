@@ -8,8 +8,8 @@ namespace RealtimeTranslator.Core.Realtime;
 /// <summary>
 /// 字幕パイプラインの帳簿。<see cref="RealtimeSubtitleProcessor"/> と
 /// <see cref="AudioLossTracker"/>、subtitle sequence、loss epoch を束ねる。
-/// <c>InterpretationSession</c> の <c>_sync</c> ロック契約を引き継ぎ、独自ロックは持たない。
-/// processor 呼び出しは呼び出し側が <c>_sync</c> を保持する前提。
+/// <see cref="SessionRuntimeContext.Sync"/> のロック契約を引き継ぎ、独自ロックは持たない。
+/// processor 呼び出しは呼び出し側が <see cref="SessionRuntimeContext.Sync"/> を保持する前提。
 /// </summary>
 internal sealed class SessionSubtitlePipeline
 {
@@ -20,7 +20,7 @@ internal sealed class SessionSubtitlePipeline
     private readonly Func<RealtimeEventFeed?> _activeFeedProvider;
     private readonly Func<RealtimeEventFeed> _fallbackFeedProvider;
     private readonly Action<RealtimeSubtitleUpdate> _emitUpdate;
-    private readonly Func<Action?> _afterFailedSourceFallbackProvider;
+    private readonly SessionRuntimeContext _testHooks;
     private int? _handledLossEpoch;
     private long _subtitleSequence;
 
@@ -30,7 +30,7 @@ internal sealed class SessionSubtitlePipeline
         Func<RealtimeEventFeed?> activeFeedProvider,
         Func<RealtimeEventFeed> fallbackFeedProvider,
         Action<RealtimeSubtitleUpdate> emitUpdate,
-        Func<Action?> afterFailedSourceFallbackProvider
+        SessionRuntimeContext testHooks
     )
     {
         ArgumentNullException.ThrowIfNull(sync);
@@ -38,13 +38,13 @@ internal sealed class SessionSubtitlePipeline
         ArgumentNullException.ThrowIfNull(activeFeedProvider);
         ArgumentNullException.ThrowIfNull(fallbackFeedProvider);
         ArgumentNullException.ThrowIfNull(emitUpdate);
-        ArgumentNullException.ThrowIfNull(afterFailedSourceFallbackProvider);
+        ArgumentNullException.ThrowIfNull(testHooks);
         _sync = sync;
         _timeProvider = timeProvider;
         _activeFeedProvider = activeFeedProvider;
         _fallbackFeedProvider = fallbackFeedProvider;
         _emitUpdate = emitUpdate;
-        _afterFailedSourceFallbackProvider = afterFailedSourceFallbackProvider;
+        _testHooks = testHooks;
     }
 
     public AudioLossMetrics AudioLossMetrics => _audioLossTracker.Metrics;
@@ -146,7 +146,7 @@ internal sealed class SessionSubtitlePipeline
         {
             feed.DeliveryState.NoteSourceFailureConsumed();
         }
-        _afterFailedSourceFallbackProvider()?.Invoke();
+        _testHooks.AfterFailedSourceFallbackForTests?.Invoke();
     }
 
     /// <summary>

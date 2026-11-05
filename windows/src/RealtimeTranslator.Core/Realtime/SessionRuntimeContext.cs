@@ -8,7 +8,7 @@ namespace RealtimeTranslator.Core.Realtime;
 
 /// <summary>
 /// <see cref="InterpretationSession"/> の実行時状態とコラボレータの共有コンテキスト。
-/// <c>_sync</c> ロック契約を引き継ぎ、独自ロックは持たない。
+/// Session 側ロック <c>_sync</c>（<see cref="Sync"/>）を所有し、コラボレータはこのロックを共有する。
 /// SessionLoopRunner / SessionStreamRunner / SessionAudioFeeder /
 /// SessionEventConsumer / SessionTicker がここ経由で状態と依存を参照する。
 /// プロパティはすべて内部で <c>_sync</c> を取るため、呼び出し側が <see cref="Sync"/> を
@@ -72,9 +72,9 @@ internal sealed class SessionRuntimeContext
             GetActiveFeed,
             () => DualClient.Feed,
             EmitSubtitleUpdate,
-            () => AfterFailedSourceFallbackForTests
+            this
         );
-        AudioRouting = new AudioRoutingCoordinator(_sync, DualClient, SubtitlePipeline, HealthBookkeeper);
+        AudioRouting = new AudioRoutingCoordinator(_sync, DualClient, SubtitlePipeline, HealthBookkeeper, this);
     }
 
     /// <summary>セッション横断のロック。pipeline / routing と同一オブジェクトを共有する。</summary>
