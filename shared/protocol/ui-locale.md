@@ -290,7 +290,7 @@ Windows `SubtitleAggregator` は idle / connecting / reconnecting だけ。macOS
 | `error.missingApiKey` | APIキーが設定されていません |
 | `error.notConnected` | 翻訳セッションに接続していません |
 | `error.invalidMessage` | 翻訳サーバーからの応答を解釈できません |
-| `error.authenticationFailed` | OpenAI APIキーが無効です |
+| `error.authenticationFailed` | OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。 |
 | `error.genericServer` | 翻訳サーバーでエラーが発生しました |
 | `error.transportDisconnected` | 翻訳サーバーとの接続が切れました |
 | `error.sourceDisconnected` | 原文字幕サーバーとの接続が切れました |
@@ -441,7 +441,7 @@ DEBUG の環境変数取り込み（`OPENAI_API_KEY`）より前に `UserCopy` �
 注意:
 
 - `errorDescription` を変えても `SanitizeServerMessage` の検出語は英語のまま。
-- `InterpretationSessionTests` の `Assert.Equal("OpenAI APIキーが無効です")` は、フェーズ 1 で ja を載せていれば通る。kind 断言への移行はこのフェーズでやってよいが必須ではない。
+- `InterpretationSessionTests` の `Assert.Equal("OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。")` は、フェーズ 1 で ja を載せていれば通る。kind 断言への移行はこのフェーズでやってよいが必須ではない。
 - macOS の `statusBanner?.contains("マイク")` は、en では落ちる。`kind` または ja カタログの部分文字列（Current が ja のときだけ）に変える。
 - 再接続バナーは回数を入れる。秘密情報を `detail` に載せない現行ロジックは維持。
 

@@ -124,7 +124,7 @@ public sealed class SourceTranscriptionCodecFixtureTests
         var error = Assert.IsType<RealtimeSourceTranscriptionServerEvent.ServerError>(actual);
 
         Assert.Equal("invalid_api_key", error.Code);
-        Assert.Equal("OpenAI APIキーが無効です", error.Message);
+        Assert.Equal("OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。", error.Message);
         Assert.DoesNotContain("sk-codec-xyz", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
     }

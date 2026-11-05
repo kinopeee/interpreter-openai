@@ -37,6 +37,25 @@ public sealed class UserCopyTests
         );
     }
 
+    // Given: 正本の ui.json に定義された認証エラー文言
+    // When: ja / en のカタログから取得する
+    // Then: 無効・期限切れのどちらにも対応する設定案内になる
+    [Fact]
+    public void AuthenticationFailureGuidanceIsActionableInBothLocales()
+    {
+        var japanese = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.Ja);
+        var english = UserCopy.Parse(SharedFixtures.UiCatalogJson, UiLocale.En);
+
+        Assert.Equal(
+            "OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。",
+            japanese.Text("error.authenticationFailed")
+        );
+        Assert.Equal(
+            "The OpenAI API key is invalid or expired. Save a valid key in Settings.",
+            english.Text("error.authenticationFailed")
+        );
+    }
+
     // Given: 埋め込みリソースとリポジトリ上の ui.json
     // When: 同じキーを引く
     // Then: 値が一致する

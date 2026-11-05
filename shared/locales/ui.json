@@ -605,8 +605,8 @@
     },
     {
       "key": "error.authenticationFailed",
-      "ja": "OpenAI APIキーが無効です",
-      "en": "The OpenAI API key is invalid"
+      "ja": "OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。",
+      "en": "The OpenAI API key is invalid or expired. Save a valid key in Settings."
     },
     {
       "key": "error.genericServer",

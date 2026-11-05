@@ -241,6 +241,7 @@ enum RealtimeTranslationError: Error, LocalizedError, Equatable, Sendable, Custo
 
     private static let knownAuthenticationFailureCodes: Set<String> = [
         "invalid_api_key",
+        "expired_secret_key",
         "invalid_auth",
         "authentication_error",
         "unauthorized",

@@ -132,6 +132,7 @@ public sealed partial class RealtimeTranslationException : Exception
     private static readonly string[] KnownAuthenticationFailureCodes =
     [
         "invalid_api_key",
+        "expired_secret_key",
         "invalid_auth",
         "authentication_error",
         "unauthorized",

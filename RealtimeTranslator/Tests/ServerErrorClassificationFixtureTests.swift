@@ -3,6 +3,12 @@ import XCTest
 @testable import RealtimeTranslator
 
 final class ServerErrorClassificationFixtureTests: XCTestCase {
+    private static let expiredApiKeyMessage = "Your API key has expired. Create a new API key to continue."
+    private static let expiredApiKeyErrorPayload = Data(
+        #"{"type":"error","error":{"type":"invalid_request_error","code":"expired_secret_key","message":"Your API key has expired. Create a new API key to continue."}}"#
+            .utf8
+    )
+
     // Given: shared/fixtures/v1/server-error.json の各 case
     // When: type / code / message を別々に渡して分類する
     // Then: disposition と termination が fixture と一致し、致命以外は文言を保持しない
@@ -336,6 +342,135 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
         await connection.forceClose()
     }
 
+    // Given: session.created より前に expired_secret_key が届く翻訳接続
+    // When: handshake を開始する
+    // Then: 再接続可能なエラーではなく、固定された認証案内で失敗する
+    func testTranslationHandshakeExpiredSecretKeyIsAuthenticationFailure() async throws {
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeTranslationConnection(
+            target: .english,
+            transport: transport,
+            safetyIdentifier: "safety",
+            sessionUpdateTimeoutNanoseconds: 1_000_000_000
+        )
+
+        var caughtError: Error?
+        do {
+            await transport.enqueueInbound(Self.expiredApiKeyErrorPayload)
+            try await connection.start(
+                apiKey: "sk-test",
+                config: .englishTargetWithSourceTranscription()
+            )
+        } catch {
+            caughtError = error
+        }
+        await connection.forceClose()
+
+        let connectCount = await transport.connectCount
+        XCTAssertEqual(connectCount, 1)
+        guard let error = caughtError as? RealtimeTranslationError else {
+            return XCTFail("expected authenticationFailed")
+        }
+        assertExpiredApiKeyAuthentication(error)
+    }
+
+    // Given: session.created より前に expired_secret_key が届く原文接続
+    // When: handshake を開始する
+    // Then: 再接続可能なエラーではなく、固定された認証案内で失敗する
+    func testSourceHandshakeExpiredSecretKeyIsAuthenticationFailure() async {
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeSourceTranscriptionConnection(
+            transport: transport,
+            safetyIdentifier: "safety",
+            handshakeTimeoutNanoseconds: 1_000_000_000,
+            closeTimeoutNanoseconds: 500_000_000
+        )
+
+        var caughtError: Error?
+        do {
+            await transport.enqueueInbound(Self.expiredApiKeyErrorPayload)
+            try await connection.start(apiKey: "sk-test", pair: .jaEn)
+        } catch {
+            caughtError = error
+        }
+        await connection.forceClose()
+
+        let connectCount = await transport.connectCount
+        XCTAssertEqual(connectCount, 1)
+        guard let error = caughtError as? RealtimeTranslationError else {
+            return XCTFail("expected authenticationFailed")
+        }
+        assertExpiredApiKeyAuthentication(error)
+    }
+
+    // Given: session.updated 後に expired_secret_key が届く翻訳接続
+    // When: 受信 loop が error を分類する
+    // Then: 渡した EventDeliveryState が認証失敗を記録する
+    func testTranslationRuntimeExpiredSecretKeyRecordsAuthenticationFailure() async throws {
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeTranslationConnection(
+            target: .english,
+            transport: transport,
+            safetyIdentifier: "safety",
+            sessionUpdateTimeoutNanoseconds: 1_000_000_000
+        )
+        let state = EventDeliveryState(epoch: 1)
+
+        var startError: Error?
+        do {
+            try await transport.enqueueJSON(["type": "session.created"])
+            try await transport.enqueueJSON(["type": "session.updated"])
+            try await connection.start(
+                apiKey: "sk-test",
+                config: .englishTargetWithSourceTranscription(),
+                deliveryState: state
+            )
+            await transport.enqueueInbound(Self.expiredApiKeyErrorPayload)
+            try await waitForAuthenticationFailure(state)
+        } catch {
+            startError = error
+        }
+        await connection.forceClose()
+
+        XCTAssertNil(startError)
+        XCTAssertEqual(state.termination, .authenticationFailed)
+        let connectCount = await transport.connectCount
+        XCTAssertEqual(connectCount, 1)
+        assertExpiredApiKeyAuthentication(state.makeError())
+    }
+
+    // Given: session.updated 後に expired_secret_key が届く原文接続
+    // When: 受信 loop が error を分類する
+    // Then: 渡した EventDeliveryState が認証失敗を記録する
+    func testSourceRuntimeExpiredSecretKeyRecordsAuthenticationFailure() async throws {
+        let transport = FakeRealtimeWebSocketTransport()
+        let connection = RealtimeSourceTranscriptionConnection(
+            transport: transport,
+            safetyIdentifier: "safety",
+            handshakeTimeoutNanoseconds: 1_000_000_000,
+            closeTimeoutNanoseconds: 500_000_000
+        )
+        let state = EventDeliveryState(epoch: 2)
+
+        var startError: Error?
+        do {
+            try await transport.enqueueJSON(["type": "session.created"])
+            try await transport.enqueueJSON(["type": "session.updated"])
+            try await connection.start(apiKey: "sk-test", pair: .jaEn, deliveryState: state)
+            await transport.enqueueInbound(Self.expiredApiKeyErrorPayload)
+            try await waitForAuthenticationFailure(state)
+        } catch {
+            startError = error
+        }
+        await connection.forceClose()
+
+        XCTAssertNil(startError)
+        XCTAssertEqual(state.termination, .authenticationFailed)
+        let connectCount = await transport.connectCount
+        XCTAssertEqual(connectCount, 1)
+        assertExpiredApiKeyAuthentication(state.makeError())
+    }
+
     // Given: listening 中の session に keep-alive error が届く
     // When: その直後に回復候補の error が届く
     // Then: keep-alive では state が変わらず、回復候補で再接続する
@@ -372,6 +507,38 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
         }
         XCTAssertGreaterThan(dual.startCallCount, startCount)
         await session.stop()
+    }
+
+    private func waitForAuthenticationFailure(_ state: EventDeliveryState) async throws {
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            if state.termination == .authenticationFailed {
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("timed out waiting for authentication failure")
+    }
+
+    private func assertExpiredApiKeyAuthentication(
+        _ error: RealtimeTranslationError,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(error, .authenticationFailed, file: file, line: line)
+        XCTAssertFalse(error.isRecoverable, file: file, line: line)
+        XCTAssertEqual(
+            error.localizedDescription,
+            UiCopy.text("error.authenticationFailed"),
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(
+            error.localizedDescription.contains(Self.expiredApiKeyMessage),
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(error.localizedDescription.contains("sk-"), file: file, line: line)
     }
 
     private func parseDisposition(_ value: Any?) -> RealtimeServerErrorDisposition {

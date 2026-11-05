@@ -1362,7 +1362,7 @@ final class InterpretationSessionTests: XCTestCase {
         await waitUntil { session.state == .error }
 
         // Then: 認証エラーになり、sk-や原文メッセージはdelegateへ出ない
-        XCTAssertEqual(delegate.messages.first, "OpenAI APIキーが無効です")
+        XCTAssertEqual(delegate.messages.first, "OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。")
         XCTAssertFalse(delegate.messages.contains(where: { $0.contains("sk-") }))
         XCTAssertFalse(
             delegate.latestSnapshot?.statusBanner?.contains("sk-") == true
@@ -1431,7 +1431,7 @@ final class InterpretationSessionTests: XCTestCase {
         await waitUntil { session.state == .error }
 
         // Then: 無効APIキー扱いではなく、サーバー文言（またはサニタイズ結果）経路になる
-        XCTAssertNotEqual(delegate.messages.first, "OpenAI APIキーが無効です")
+        XCTAssertNotEqual(delegate.messages.first, "OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。")
         XCTAssertEqual(
             delegate.messages.first,
             "certificate authority rejected the peer (code 4010)"
