@@ -124,22 +124,20 @@ public sealed class InterpretationSession : IDisposable
 
     public async Task StartAsync()
     {
-        Task? previous;
-        CancellationTokenSource? previousCts;
-        lock (_context.Sync)
-        {
-            if (_context.State is not (TranslationState.Idle or TranslationState.Error))
+        Task? previous = null;
+        CancellationTokenSource? previousCts = null;
+        // await をまたぐ再入を防ぐため、受理と同時に Connecting へ進める。
+        // 旧世代の task/cts は受理と同じロック内で取り出す（Stop が先に null 化しないように）。
+        if (
+            !_context.TryBeginConnecting(() =>
             {
-                return;
-            }
-
-            // await をまたぐ再入を防ぐため、受理直後に Connecting へ進める。
-            _context.State = TranslationState.Connecting;
-            previous = _sessionTask;
-            previousCts = _sessionCts;
+                previous = _sessionTask;
+                previousCts = _sessionCts;
+            })
+        )
+        {
+            return;
         }
-
-        StateChanged?.Invoke(this, TranslationState.Connecting);
 
         // 旧世代の teardown が新しい接続や録音を落とさないよう、先に排水する。
         if (previousCts is not null)
@@ -178,6 +176,7 @@ public sealed class InterpretationSession : IDisposable
             _sessionCts = cts;
         }
 
+        // 排水の await 中に Stop が Closing / Idle へ進めた場合だけ Connecting へ戻して通知する（通常は重複で no-op）。
         _context.SetState(TranslationState.Connecting);
         var sessionTask = Task.Run(() => _loopRunner.RunAsync(generation, token), CancellationToken.None);
         lock (_context.Sync)
