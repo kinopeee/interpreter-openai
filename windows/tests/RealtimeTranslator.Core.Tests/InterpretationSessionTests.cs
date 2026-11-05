@@ -2251,6 +2251,7 @@ public sealed class InterpretationSessionTests
 
         Assert.Equal(2, client.StartCount);
         Assert.Equal(UserCopy.Current.Text("error.reconnectBudgetExhausted"), message);
+        Assert.Equal(SessionTerminationKind.ReconnectBudgetExhausted, session.LatestTerminationDiagnostic?.Kind);
     }
 
     // Given: 壁時計だけが大きく進む（NTP 補正やスリープ復帰）
