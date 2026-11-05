@@ -5,6 +5,10 @@ import Foundation
 final class SessionAudioFeeder {
     private let context: SessionRuntimeContext
 
+    private static func milliseconds(of duration: Duration) -> Int {
+        Int(ReconnectBudget.nanoseconds(duration) / 1_000_000)
+    }
+
     init(context: SessionRuntimeContext) {
         self.context = context
     }
@@ -17,18 +21,8 @@ final class SessionAudioFeeder {
                 hasAudioActivity: PCM16AudioActivity.normalizedPeakAmplitude(of: frame.pcm16)
                     > context.healthBookkeeper.thresholds.audioActivityPeakFloor
             )
-            let queueWaitMilliseconds = max(
-                0,
-                Int(
-                    ReconnectBudget.nanoseconds(
-                        frame.capturedAt.duration(to: .now)
-                    ) / 1_000_000
-                )
-            )
-            let atMilliseconds = max(
-                0,
-                Int(ReconnectBudget.nanoseconds(ReconnectBudget.continuousNow()) / 1_000_000)
-            )
+            let queueWaitMilliseconds = max(0, Self.milliseconds(of: frame.capturedAt.duration(to: .now)))
+            let atMilliseconds = max(0, Self.milliseconds(of: ReconnectBudget.continuousNow()))
             let observation = context.subtitlePipeline.observeAudio(
                 generation: frame.generation,
                 sequence: frame.sequence,

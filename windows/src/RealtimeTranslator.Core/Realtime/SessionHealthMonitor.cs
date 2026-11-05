@@ -279,7 +279,7 @@ public sealed class SessionHealthMonitor
     }
 
     /// <summary>
-    /// 直列 FeedAudioAsync が send を await し始めた時刻。
+    /// 直列 <see cref="SessionAudioFeeder.RunAsync"/> が send を await し始めた時刻。
     /// in-flight 中は capture 停滞を「送信中」と解釈して captureStalled を出さない。
     /// </summary>
     public void RecordSendStart(TimeSpan now) => _sendInFlightSince = now;
