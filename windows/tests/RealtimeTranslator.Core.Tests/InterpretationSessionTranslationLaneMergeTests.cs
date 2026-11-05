@@ -75,7 +75,7 @@ public sealed class InterpretationSessionTranslationLaneMergeTests
         await Task.Delay(40);
 
         Assert.Equal("rate_limit exceeded for translation lane", message);
-        Assert.NotEqual("OpenAI APIキーが無効です", message);
+        Assert.NotEqual("OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。", message);
         Assert.Equal(1, english.ConnectCount);
         Assert.Equal(1, source.ConnectCount);
     }

@@ -50,7 +50,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => message is not null);
 
         Assert.Equal(0, client.StartCount);
-        Assert.Equal("OpenAI APIキーが無効です", message);
+        Assert.Equal("OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。", message);
         Assert.NotEqual("APIキーが設定されていません", message);
         Assert.NotEqual(RealtimeTranslationException.GenericServerMessage, message);
         Assert.DoesNotContain("sk-", message, StringComparison.Ordinal);
@@ -74,7 +74,7 @@ public sealed class InterpretationSessionTests
 
         Assert.Equal(0, client.StartCount);
         Assert.Equal("APIキーが設定されていません", message);
-        Assert.NotEqual("OpenAI APIキーが無効です", message);
+        Assert.NotEqual("OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。", message);
     }
 
     // Given: Dual client の Start が完了するまで待機できる fake
@@ -3036,7 +3036,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Error);
         await WaitUntilAsync(() => message is not null);
 
-        Assert.Equal("OpenAI APIキーが無効です", message);
+        Assert.Equal("OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。", message);
         Assert.DoesNotContain("sk-", message, StringComparison.Ordinal);
         Assert.Equal(1, client.StartCount);
     }
@@ -3135,7 +3135,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Error);
         await WaitUntilAsync(() => message is not null);
 
-        Assert.NotEqual("OpenAI APIキーが無効です", message);
+        Assert.NotEqual("OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。", message);
         Assert.Equal("certificate authority rejected the peer (code 4010)", message);
         Assert.Equal(1, client.StartCount);
     }

@@ -384,7 +384,7 @@ final class RealtimeTranslationConnectionTests: XCTestCase {
             XCTFail("Expected authenticationFailed")
         } catch let error as RealtimeTranslationError {
             XCTAssertEqual(error, .authenticationFailed)
-            XCTAssertEqual(error.localizedDescription, "OpenAI APIキーが無効です")
+            XCTAssertEqual(error.localizedDescription, "OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。")
             XCTAssertFalse(error.localizedDescription.contains("sk-"))
         } catch {
             XCTFail("Unexpected error \(error)")
@@ -417,7 +417,7 @@ final class RealtimeTranslationConnectionTests: XCTestCase {
             XCTFail("Expected authenticationFailed")
         } catch let error as RealtimeTranslationError {
             XCTAssertEqual(error, .authenticationFailed)
-            XCTAssertEqual(error.localizedDescription, "OpenAI APIキーが無効です")
+            XCTAssertEqual(error.localizedDescription, "OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。")
             XCTAssertFalse(error.localizedDescription.localizedCaseInsensitiveContains("bearer"))
             XCTAssertFalse(error.localizedDescription.contains("sk-"))
         } catch {

@@ -89,7 +89,7 @@ public sealed class InterpretationSessionReconnectClassificationTests
         await Task.Delay(40);
 
         Assert.Equal(TranslationState.Error, session.State);
-        Assert.Equal("OpenAI APIキーが無効です", message);
+        Assert.Equal("OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。", message);
         Assert.Equal(2, client.StartCount);
     }
 

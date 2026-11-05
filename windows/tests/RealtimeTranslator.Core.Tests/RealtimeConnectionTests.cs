@@ -898,7 +898,7 @@ public sealed class RealtimeConnectionTests
         );
 
         Assert.False(error.IsRecoverable);
-        Assert.Equal("OpenAI APIキーが無効です", error.Message);
+        Assert.Equal("OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。", error.Message);
         Assert.DoesNotContain("sk-live-xyz", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
         Assert.True(transport.CloseCount >= 1);
@@ -925,7 +925,7 @@ public sealed class RealtimeConnectionTests
         );
 
         Assert.False(error.IsRecoverable);
-        Assert.Equal("OpenAI APIキーが無効です", error.Message);
+        Assert.Equal("OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。", error.Message);
         Assert.DoesNotContain("sk-leak-example", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
         Assert.True(transport.CloseCount >= 1);
@@ -1066,7 +1066,7 @@ public sealed class RealtimeConnectionTests
 
         var error = Assert.IsType<RealtimeTranslationServerEvent.ServerError>(streamEvent.Event);
         Assert.Equal("invalid_api_key", error.Code);
-        Assert.Equal("OpenAI APIキーが無効です", error.Message);
+        Assert.Equal("OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。", error.Message);
         Assert.DoesNotContain("sk-runtime-xyz", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
         await connection.ForceCloseAsync();

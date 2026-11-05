@@ -18,6 +18,10 @@ namespace RealtimeTranslator.Core.Tests;
 /// </summary>
 public sealed class ServerErrorClassificationFixtureTests
 {
+    private const string ExpiredApiKeyMessage = "Your API key has expired. Create a new API key to continue.";
+    private const string ExpiredApiKeyPayload =
+        """{"type":"error","error":{"type":"invalid_request_error","code":"expired_secret_key","message":"Your API key has expired. Create a new API key to continue."}}""";
+
     public static TheoryData<string> CaseNames
     {
         get
@@ -322,6 +326,116 @@ public sealed class ServerErrorClassificationFixtureTests
         Assert.DoesNotContain("sk-", error.Message, StringComparison.Ordinal);
     }
 
+    // Given: session.created より前に expired_secret_key が届く翻訳接続
+    // When: handshake を開始する
+    // Then: 認証失敗として停止し、固定案内だけを保持する
+    [Fact]
+    public async Task TranslationHandshakeExpiredSecretKeyIsAuthenticationFailure()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        transport.EnqueueJson(ExpiredApiKeyPayload);
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety"
+        );
+
+        try
+        {
+            var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+                connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription())
+            );
+
+            AssertAuthenticationFailure(error);
+            Assert.Equal(1, transport.ConnectCount);
+        }
+        finally
+        {
+            await connection.ForceCloseAsync();
+        }
+    }
+
+    // Given: session.created より前に expired_secret_key が届く原文接続
+    // When: handshake を開始する
+    // Then: 認証失敗として停止し、固定案内だけを保持する
+    [Fact]
+    public async Task SourceHandshakeExpiredSecretKeyIsAuthenticationFailure()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        transport.EnqueueJson(ExpiredApiKeyPayload);
+        var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
+
+        try
+        {
+            var error = await Assert.ThrowsAsync<RealtimeTranslationException>(() =>
+                connection.StartAsync("sk-test", RealtimeSessionTuning.Default)
+            );
+
+            AssertAuthenticationFailure(error);
+            Assert.Equal(1, transport.ConnectCount);
+        }
+        finally
+        {
+            await connection.ForceCloseAsync();
+        }
+    }
+
+    // Given: session.updated 後に expired_secret_key が届く翻訳接続
+    // When: 受信 loop が error を分類する
+    // Then: 渡した EventDeliveryState が認証失敗を記録し、再接続しない
+    [Fact]
+    public async Task TranslationRuntimeExpiredSecretKeyRecordsAuthenticationFailure()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeTranslationConnection(
+            RealtimeTranslationOutputLanguage.English,
+            transport,
+            "test-safety"
+        );
+        var state = new EventDeliveryState(epoch: 1);
+
+        try
+        {
+            await connection.StartAsync("sk-test", SessionConfigs.EnglishTargetWithoutSourceTranscription(), state);
+            transport.EnqueueJson(ExpiredApiKeyPayload);
+            await WaitForAuthenticationFailureAsync(state);
+
+            Assert.Equal(EventDeliveryTermination.AuthenticationFailed, state.Termination);
+            AssertAuthenticationFailure(state.ToException());
+            Assert.Equal(1, transport.ConnectCount);
+        }
+        finally
+        {
+            await connection.ForceCloseAsync();
+        }
+    }
+
+    // Given: session.updated 後に expired_secret_key が届く原文接続
+    // When: 受信 loop が error を分類する
+    // Then: 渡した EventDeliveryState が認証失敗を記録し、再接続しない
+    [Fact]
+    public async Task SourceRuntimeExpiredSecretKeyRecordsAuthenticationFailure()
+    {
+        var transport = new FakeRealtimeServerTransport();
+        var connection = new RealtimeSourceTranscriptionConnection(transport, "test-safety");
+        var state = new EventDeliveryState(epoch: 2);
+
+        try
+        {
+            await connection.StartAsync("sk-test", RealtimeSessionTuning.Default, deliveryState: state);
+            transport.EnqueueJson(ExpiredApiKeyPayload);
+            await WaitForAuthenticationFailureAsync(state);
+
+            Assert.Equal(EventDeliveryTermination.AuthenticationFailed, state.Termination);
+            AssertAuthenticationFailure(state.ToException());
+            Assert.Equal(1, transport.ConnectCount);
+        }
+        finally
+        {
+            await connection.ForceCloseAsync();
+        }
+    }
+
     // Given: ready な原文接続
     // When: 接続維持 error のあとに delta が届く
     // Then: error イベントは下流へ流れず、delta だけが読める
@@ -368,4 +482,23 @@ public sealed class ServerErrorClassificationFixtureTests
             "transportFailure" => EventDeliveryTermination.TransportFailure,
             _ => throw new Xunit.Sdk.XunitException("unknown termination"),
         };
+
+    private static async Task WaitForAuthenticationFailureAsync(EventDeliveryState state)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        while (state.Termination != EventDeliveryTermination.AuthenticationFailed)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(10), timeout.Token);
+        }
+    }
+
+    private static void AssertAuthenticationFailure(RealtimeTranslationException error)
+    {
+        Assert.Equal(RealtimeTranslationErrorKind.AuthenticationFailed, error.Kind);
+        Assert.False(error.IsRecoverable);
+        Assert.Equal(UserCopy.Current.Text("error.authenticationFailed"), error.Message);
+        Assert.DoesNotContain(ExpiredApiKeyMessage, error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("sk-", error.ToString(), StringComparison.Ordinal);
+        Assert.Null(error.ServerMessage);
+    }
 }

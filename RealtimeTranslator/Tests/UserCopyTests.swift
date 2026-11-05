@@ -21,6 +21,24 @@ final class UserCopyTests: XCTestCase {
         XCTAssertEqual(english.text("settings.appVersion", ["version": "0.1.0"]), "Version 0.1.0")
     }
 
+    // Given: 正本の ui.json に定義された認証エラー文言
+    // When: ja / en のカタログから取得する
+    // Then: 無効・期限切れのどちらにも対応する設定案内になる
+    func testAuthenticationFailureGuidanceIsActionableInBothLocales() throws {
+        let json = try SharedFixtures.uiCatalogJSON()
+        let japanese = try UserCopy.parse(json: json, locale: .ja)
+        let english = try UserCopy.parse(json: json, locale: .en)
+
+        XCTAssertEqual(
+            japanese.text("error.authenticationFailed"),
+            "OpenAI APIキーが無効または期限切れです。設定で有効なキーを保存してください。"
+        )
+        XCTAssertEqual(
+            english.text("error.authenticationFailed"),
+            "The OpenAI API key is invalid or expired. Save a valid key in Settings."
+        )
+    }
+
     // Given: アプリバンドルへコピーされた ui.json
     // When: Bundle.main から探す
     // Then: リポジトリフォールバックなしでもカタログが載っている

@@ -35,7 +35,8 @@
       { "name": "server_error type recovers", "errorType": "server_error", "code": null, "expected": { "disposition": "recover", "termination": "recoverableServerError" } },
       { "name": "rate_limit_exceeded code recovers", "errorType": null, "code": "rate_limit_exceeded", "expected": { "disposition": "recover", "termination": "recoverableServerError" } },
       { "name": "quota exhaustion halts", "errorType": "server_error", "code": "insufficient_quota", "expected": { "disposition": "halt", "termination": "fatalServerError" } },
-      { "name": "authentication code halts", "errorType": "invalid_request_error", "code": "invalid_api_key", "expected": { "disposition": "halt", "termination": "authenticationFailed" } }
+      { "name": "authentication code halts", "errorType": "invalid_request_error", "code": "invalid_api_key", "expected": { "disposition": "halt", "termination": "authenticationFailed" } },
+      { "name": "expired API key halts", "errorType": "invalid_request_error", "code": "expired_secret_key", "expected": { "disposition": "halt", "termination": "authenticationFailed" } }
     ]
   },
   "handshakeHttpStatus": {
@@ -64,6 +65,27 @@
       "errorType": "invalid_request_error",
       "code": "invalid_api_key",
       "message": "Incorrect API key provided: sk-leak",
+      "expected": { "disposition": "halt", "termination": "authenticationFailed" }
+    },
+    {
+      "name": "expired API key halts with authentication guidance",
+      "errorType": "invalid_request_error",
+      "code": "expired_secret_key",
+      "message": "Your API key has expired. Create a new API key to continue.",
+      "expected": { "disposition": "halt", "termination": "authenticationFailed" }
+    },
+    {
+      "name": "expired API key code does not depend on message",
+      "errorType": "invalid_request_error",
+      "code": "expired_secret_key",
+      "message": "",
+      "expected": { "disposition": "halt", "termination": "authenticationFailed" }
+    },
+    {
+      "name": "expired API key does not retain provider message",
+      "errorType": "invalid_request_error",
+      "code": "expired_secret_key",
+      "message": "Expired credential sk-should-not-appear",
       "expected": { "disposition": "halt", "termination": "authenticationFailed" }
     },
     {
