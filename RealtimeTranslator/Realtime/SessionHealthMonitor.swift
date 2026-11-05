@@ -181,7 +181,7 @@ struct SessionHealthMonitor: Sendable {
         }
     }
 
-    /// 直列 feedAudio が send を await し始めた時刻。
+    /// 直列 SessionAudioFeeder.run が send を await し始めた時刻。
     /// in-flight 中は capture 停滞を「送信中」と解釈して captureStalled を出さない。
     mutating func recordSendStart(now: Duration) {
         sendInFlightSince = now

@@ -210,7 +210,7 @@ public sealed class InterpretationSession : IDisposable
 
     private async Task StopCoreAsync()
     {
-        // StopAsync が _sync を握ったまま同期実行しないよう、一度外へ出す。
+        // StopAsync が _context.Sync を握ったまま同期実行しないよう、一度外へ出す。
         await Task.Yield();
 
         try

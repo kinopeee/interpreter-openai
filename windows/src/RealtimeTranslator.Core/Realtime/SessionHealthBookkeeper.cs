@@ -6,7 +6,7 @@ namespace RealtimeTranslator.Core.Realtime;
 
 /// <summary>
 /// 受信停止監視の帳簿。<see cref="SessionHealthMonitor"/> と接続試行・世代の診断窓を束ねる。
-/// <c>InterpretationSession</c> の <c>_sync</c> ロック下だけで触るコンポーネント。
+/// <see cref="SessionRuntimeContext.Sync"/> 下だけで触るコンポーネント。
 /// 独自ロックは持たない（ロック順序問題を避ける）。
 /// </summary>
 internal sealed class SessionHealthBookkeeper
@@ -57,7 +57,7 @@ internal sealed class SessionHealthBookkeeper
     public void BeginRecordingGeneration() => _connectionCountInGeneration = 0;
 
     /// <summary>
-    /// 接続試行の開始を記録する。epoch は呼び出し側が <c>_sync</c> 保持前に読んだ
+    /// 接続試行の開始を記録する。epoch は呼び出し側が <see cref="SessionRuntimeContext.Sync"/> 保持前に読んだ
     /// Dual 側の予約値（RequireApiKey 失敗（missing key）も試行の終了診断へ乗せるため先に記録する）。
     /// </summary>
     public void BeginAttempt(int lifecycleGeneration, int reservedEpoch)
@@ -107,7 +107,7 @@ internal sealed class SessionHealthBookkeeper
     /// 各 lane の decode 受信数の差分で RecordReceive し、Evaluate を回す。
     /// 検知に対して再接続や lane 変更は行わない（診断のみ）。
     /// </summary>
-    /// 戻り値は <c>_sync</c> 解放後に HealthDetected へ流す検知列。
+    /// <returns><see cref="SessionRuntimeContext.Sync"/> 解放後に HealthDetected へ流す検知列。</returns>
     public IReadOnlyList<SessionHealthDetection> Tick(RealtimeEventFeed? feed)
     {
         if (feed is null)
@@ -139,7 +139,7 @@ internal sealed class SessionHealthBookkeeper
     /// <param name="kind">終了分類。</param>
     /// <param name="reservedEpoch">
     /// handshake 中の stop では Dual 側の予約 epoch が <c>_attemptEpoch</c> より
-    /// 先に進むため、呼び出し側が <c>_sync</c> 保持前に読んだ予約 epoch。
+    /// 先に進むため、呼び出し側が <see cref="SessionRuntimeContext.Sync"/> 保持前に読んだ予約 epoch。
     /// </param>
     public void RecordTermination(SessionTerminationKind kind, int reservedEpoch)
     {

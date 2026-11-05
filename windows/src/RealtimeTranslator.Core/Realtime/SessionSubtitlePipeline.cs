@@ -8,8 +8,8 @@ namespace RealtimeTranslator.Core.Realtime;
 /// <summary>
 /// 字幕パイプラインの帳簿。<see cref="RealtimeSubtitleProcessor"/> と
 /// <see cref="AudioLossTracker"/>、subtitle sequence、loss epoch を束ねる。
-/// <c>InterpretationSession</c> の <c>_sync</c> ロック契約を引き継ぎ、独自ロックは持たない。
-/// processor 呼び出しは呼び出し側が <c>_sync</c> を保持する前提。
+/// <see cref="SessionRuntimeContext.Sync"/> のロック契約を引き継ぎ、独自ロックは持たない。
+/// processor 呼び出しは呼び出し側が <see cref="SessionRuntimeContext.Sync"/> を保持する前提。
 /// </summary>
 internal sealed class SessionSubtitlePipeline
 {

@@ -2052,7 +2052,7 @@ final class FakeDualRealtimeTranslationClient: DualRealtimeTranslationClienting,
     ) {
         state.withLock { state in
             state.deliveryState.recordLoss(stage: stage, capacity: capacity)
-            // consumeEvents の for-await を起こし、ループ先頭の loss 判定へ進める。
+            // SessionEventConsumer.run の for-await を起こし、ループ先頭の loss 判定へ進める。
             if let continuation = state.eventContinuation {
                 _ = continuation.yield(
                     RealtimeTranslationStreamEvent(

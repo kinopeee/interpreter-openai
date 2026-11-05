@@ -2048,7 +2048,7 @@ public sealed class InterpretationSessionTests
     }
 
     // Given: Listening 中にイベント channel が完了する
-    // When: ConsumeEventsAsync が終端を検出する
+    // When: SessionEventConsumer.RunAsync が終端を検出する
     // Then: recoverable として再接続し、新しい epoch で再開する
     [Fact]
     public async Task EventChannelCompletionTriggersReconnect()
@@ -2066,7 +2066,7 @@ public sealed class InterpretationSessionTests
     }
 
     // Given: Listening 中に音声 frame channel が完了する
-    // When: FeedAudioAsync が終端を検出する
+    // When: SessionAudioFeeder.RunAsync が終端を検出する
     // Then: recoverable として再接続する（次 Start で frame channel を張り直す）
     [Fact]
     public async Task AudioFrameChannelCompletionTriggersReconnect()
