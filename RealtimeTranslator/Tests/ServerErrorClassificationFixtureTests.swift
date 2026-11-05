@@ -3,7 +3,11 @@ import XCTest
 @testable import RealtimeTranslator
 
 final class ServerErrorClassificationFixtureTests: XCTestCase {
-    private let expiredApiKeyMessage = "Your API key has expired. Create a new API key to continue."
+    private static let expiredApiKeyMessage = "Your API key has expired. Create a new API key to continue."
+    private static let expiredApiKeyErrorPayload = Data(
+        #"{"type":"error","error":{"type":"invalid_request_error","code":"expired_secret_key","message":"Your API key has expired. Create a new API key to continue."}}"#
+            .utf8
+    )
 
     // Given: shared/fixtures/v1/server-error.json の各 case
     // When: type / code / message を別々に渡して分類する
@@ -352,7 +356,7 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
 
         var caughtError: Error?
         do {
-            try await transport.enqueueJSON(expiredApiKeyErrorPayload())
+            await transport.enqueueInbound(Self.expiredApiKeyErrorPayload)
             try await connection.start(
                 apiKey: "sk-test",
                 config: .englishTargetWithSourceTranscription()
@@ -384,7 +388,7 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
 
         var caughtError: Error?
         do {
-            try await transport.enqueueJSON(expiredApiKeyErrorPayload())
+            await transport.enqueueInbound(Self.expiredApiKeyErrorPayload)
             try await connection.start(apiKey: "sk-test", pair: .jaEn)
         } catch {
             caughtError = error
@@ -421,7 +425,7 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
                 config: .englishTargetWithSourceTranscription(),
                 deliveryState: state
             )
-            try await transport.enqueueJSON(expiredApiKeyErrorPayload())
+            await transport.enqueueInbound(Self.expiredApiKeyErrorPayload)
             try await waitForAuthenticationFailure(state)
         } catch {
             startError = error
@@ -453,7 +457,7 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
             try await transport.enqueueJSON(["type": "session.created"])
             try await transport.enqueueJSON(["type": "session.updated"])
             try await connection.start(apiKey: "sk-test", pair: .jaEn, deliveryState: state)
-            try await transport.enqueueJSON(expiredApiKeyErrorPayload())
+            await transport.enqueueInbound(Self.expiredApiKeyErrorPayload)
             try await waitForAuthenticationFailure(state)
         } catch {
             startError = error
@@ -505,17 +509,6 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
         await session.stop()
     }
 
-    private func expiredApiKeyErrorPayload() -> [String: Any] {
-        [
-            "type": "error",
-            "error": [
-                "type": "invalid_request_error",
-                "code": "expired_secret_key",
-                "message": expiredApiKeyMessage,
-            ],
-        ]
-    }
-
     private func waitForAuthenticationFailure(_ state: EventDeliveryState) async throws {
         let deadline = Date().addingTimeInterval(3)
         while Date() < deadline {
@@ -541,7 +534,7 @@ final class ServerErrorClassificationFixtureTests: XCTestCase {
             line: line
         )
         XCTAssertFalse(
-            error.localizedDescription.contains(expiredApiKeyMessage),
+            error.localizedDescription.contains(Self.expiredApiKeyMessage),
             file: file,
             line: line
         )
