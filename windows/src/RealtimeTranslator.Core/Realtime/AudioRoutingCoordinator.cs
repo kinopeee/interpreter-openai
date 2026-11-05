@@ -63,10 +63,10 @@ internal sealed class AudioRoutingCoordinator : IDisposable
 
     public async Task ResetAfterAudioLossAsync()
     {
+        var hook = _testHooks.BeforeAudioLossRoutingResetForTests;
         await _routingGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            var hook = _testHooks.BeforeAudioLossRoutingResetForTests;
             if (hook is not null)
             {
                 await hook().ConfigureAwait(false);
