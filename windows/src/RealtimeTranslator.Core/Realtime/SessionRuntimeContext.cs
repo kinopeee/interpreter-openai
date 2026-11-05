@@ -72,9 +72,9 @@ internal sealed class SessionRuntimeContext
             GetActiveFeed,
             () => DualClient.Feed,
             EmitSubtitleUpdate,
-            () => AfterFailedSourceFallbackForTests
+            this
         );
-        AudioRouting = new AudioRoutingCoordinator(_sync, DualClient, SubtitlePipeline, HealthBookkeeper);
+        AudioRouting = new AudioRoutingCoordinator(_sync, DualClient, SubtitlePipeline, HealthBookkeeper, this);
     }
 
     /// <summary>セッション横断のロック。pipeline / routing と同一オブジェクトを共有する。</summary>
