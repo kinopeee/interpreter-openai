@@ -173,7 +173,7 @@ final class SessionSubtitlePipeline {
     /// 停止・再接続・致命エラーで epoch/buffer を捨てる直前に呼び、字幕記録の欠落を防ぐ。
     func flushPendingFinalizeIfNeeded() {
         if let feed = activeFeedProvider(),
-            checkEventLoss(feed, generation: lifecycleGenerationProvider())
+            handleEventLossIfNeeded(feed)
         {
             return
         }
@@ -218,7 +218,7 @@ final class SessionSubtitlePipeline {
 
     func enqueueRender(_ update: RealtimeSubtitleUpdate) {
         if let feed = activeFeedProvider(),
-            checkEventLoss(feed, generation: lifecycleGenerationProvider())
+            handleEventLossIfNeeded(feed)
         {
             return
         }
@@ -236,7 +236,7 @@ final class SessionSubtitlePipeline {
         isReplay: Bool = false
     ) -> RealtimeSubtitleProcessingResult? {
         if let feed = activeFeedProvider(),
-            checkEventLoss(feed, generation: lifecycleGenerationProvider())
+            handleEventLossIfNeeded(feed)
         {
             return nil
         }
@@ -289,7 +289,9 @@ final class SessionSubtitlePipeline {
         publishUpdate(snapshot)
     }
 
-    func checkEventLoss(_ feed: EventFeed, generation _: Int) -> Bool {
+    /// 受信欠落した feed の未確定字幕を runToken ごとに1回だけ無効化する。欠落していれば true。
+    @discardableResult
+    func handleEventLossIfNeeded(_ feed: EventFeed) -> Bool {
         guard feed.deliveryState.didLoseEvents else { return false }
         if handledLossRunToken != feed.runToken {
             handledLossRunToken = feed.runToken
@@ -300,8 +302,9 @@ final class SessionSubtitlePipeline {
         return true
     }
 
-    func handleEventLoss(_ feed: EventFeed) {
-        _ = checkEventLoss(feed, generation: lifecycleGenerationProvider())
+    /// 受信欠落していれば未確定字幕を無効化し、欠落エラーを投げる。
+    func throwIfEventsLost(_ feed: EventFeed) throws {
+        if handleEventLossIfNeeded(feed) { throw feed.deliveryState.makeError() }
     }
 }
 

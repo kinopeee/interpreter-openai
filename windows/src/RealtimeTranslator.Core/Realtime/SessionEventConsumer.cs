@@ -31,12 +31,7 @@ internal sealed class SessionEventConsumer
 
             if (feed.DeliveryState.DidLoseEvents)
             {
-                _context.SubtitlePipeline.HandleEventLoss(feed);
-                if (_context.IsCurrentGeneration(generation))
-                {
-                    throw feed.DeliveryState.ToException();
-                }
-
+                HandleEventLossAndThrowIfCurrent(generation, feed);
                 return;
             }
 
@@ -54,12 +49,7 @@ internal sealed class SessionEventConsumer
 
                 if (feed.DeliveryState.DidLoseEvents)
                 {
-                    _context.SubtitlePipeline.HandleEventLoss(feed);
-                    if (_context.IsCurrentGeneration(generation))
-                    {
-                        throw feed.DeliveryState.ToException();
-                    }
-
+                    HandleEventLossAndThrowIfCurrent(generation, feed);
                     return;
                 }
 
@@ -124,7 +114,7 @@ internal sealed class SessionEventConsumer
                 {
                     // Dispose/Stop が generation を進めたあとに、取り出し済みイベントで
                     // assembler を更新しない（flush 後の完全ペア欠落を防ぐ）。
-                    if (_context.LifecycleGeneration != generation)
+                    if (!_context.IsCurrentGeneration(generation))
                     {
                         return;
                     }
@@ -141,12 +131,7 @@ internal sealed class SessionEventConsumer
 
                 if (lostAfterRouting)
                 {
-                    _context.SubtitlePipeline.HandleEventLoss(feed);
-                    if (_context.IsCurrentGeneration(generation))
-                    {
-                        throw feed.DeliveryState.ToException();
-                    }
-
+                    HandleEventLossAndThrowIfCurrent(generation, feed);
                     return;
                 }
 
@@ -197,5 +182,15 @@ internal sealed class SessionEventConsumer
             RealtimeTranslationErrorKind.RecoverableTransportFailure,
             UserCopy.Current.Text("error.eventStreamStopped")
         );
+    }
+
+    /// <summary>受信欠落した feed の未確定字幕を無効化し、現世代なら欠落例外を投げる。旧世代なら何もせず戻る。</summary>
+    private void HandleEventLossAndThrowIfCurrent(int generation, RealtimeEventFeed feed)
+    {
+        _context.SubtitlePipeline.HandleEventLoss(feed);
+        if (_context.IsCurrentGeneration(generation))
+        {
+            throw feed.DeliveryState.ToException();
+        }
     }
 }

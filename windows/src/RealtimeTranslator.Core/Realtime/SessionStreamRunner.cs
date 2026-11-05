@@ -96,8 +96,7 @@ internal sealed class SessionStreamRunner
         await _context.AudioCapture.StartAsync(cancellationToken).ConfigureAwait(false);
         if (!_context.IsCurrentGeneration(generation))
         {
-            await _context.AudioCapture.StopAsync().ConfigureAwait(false);
-            await _context.DualClient.ForceCloseAsync().ConfigureAwait(false);
+            await AbandonStaleAttemptAsync().ConfigureAwait(false);
             return;
         }
 
@@ -106,7 +105,7 @@ internal sealed class SessionStreamRunner
         var staleGeneration = false;
         lock (_context.Sync)
         {
-            if (generation != _context.LifecycleGeneration)
+            if (!_context.IsCurrentGeneration(generation))
             {
                 // SetState とこの lock の間に StopAsync が世代を進めた場合、
                 // 止められた世代の monitor を再活性化しない。
@@ -120,8 +119,7 @@ internal sealed class SessionStreamRunner
         }
         if (staleGeneration)
         {
-            await _context.AudioCapture.StopAsync().ConfigureAwait(false);
-            await _context.DualClient.ForceCloseAsync().ConfigureAwait(false);
+            await AbandonStaleAttemptAsync().ConfigureAwait(false);
             return;
         }
 
@@ -149,6 +147,12 @@ internal sealed class SessionStreamRunner
         {
             // 勝者の例外だけを再接続判定に使う。
         }
+    }
+
+    private async Task AbandonStaleAttemptAsync()
+    {
+        await _context.AudioCapture.StopAsync().ConfigureAwait(false);
+        await _context.DualClient.ForceCloseAsync().ConfigureAwait(false);
     }
 
     private string RequireApiKey() => RealtimeApiKey.Require(_context.ApiKeyStore.Load());
