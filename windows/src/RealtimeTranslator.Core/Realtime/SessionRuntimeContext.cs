@@ -140,13 +140,6 @@ internal sealed class SessionRuntimeContext
                 return _state;
             }
         }
-        set
-        {
-            lock (_sync)
-            {
-                _state = value;
-            }
-        }
     }
 
     /// <summary>状態遷移。重複遷移は通知しない。イベントはロック解放後に発火する。</summary>
@@ -163,6 +156,27 @@ internal sealed class SessionRuntimeContext
         }
 
         OnStateChanged?.Invoke(state);
+    }
+
+    /// <summary>
+    /// Idle / Error のときだけ Connecting へ進め、ロック解放後に 1 回通知する。
+    /// <paramref name="onAccepted"/> は受理と同じロック内で実行し、受理時点の状態を取り出す。
+    /// </summary>
+    internal bool TryBeginConnecting(Action onAccepted)
+    {
+        lock (_sync)
+        {
+            if (_state is not (TranslationState.Idle or TranslationState.Error))
+            {
+                return false;
+            }
+
+            _state = TranslationState.Connecting;
+            onAccepted();
+        }
+
+        OnStateChanged?.Invoke(TranslationState.Connecting);
+        return true;
     }
 
     /// <summary>現在の録音世代で使う言語ペア。Start 時に固定し、再接続でも settings の変更を取り込まない。</summary>
