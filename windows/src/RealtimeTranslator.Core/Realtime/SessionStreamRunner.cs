@@ -49,7 +49,12 @@ internal sealed class SessionStreamRunner
         try
         {
             await _context
-                .DualClient.StartAsync(apiKey, _context.TuningProvider().ForPair(languagePair), languagePair, cancellationToken)
+                .DualClient.StartAsync(
+                    apiKey,
+                    _context.TuningProvider().ForPair(languagePair),
+                    languagePair,
+                    cancellationToken
+                )
                 .ConfigureAwait(false);
         }
         catch
