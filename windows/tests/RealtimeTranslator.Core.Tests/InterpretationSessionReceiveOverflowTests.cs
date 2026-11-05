@@ -89,7 +89,7 @@ public sealed class InterpretationSessionReceiveOverflowTests
         await WaitForStateAsync(session, TranslationState.Listening);
 
         // When: routing 後・ingest 前に現 epoch の受信ロスを記録する
-        session.BeforeAssemblerIngestForTests = () => client.RecordLoss(EventDeliveryStage.Merge);
+        session.ContextForTests.BeforeAssemblerIngestForTests = () => client.RecordLoss(EventDeliveryStage.Merge);
         client.PublishSourceDelta("こんにちは");
 
         // Then: 無効化して再接続し、ConsumeEvents が黙って return しない
@@ -650,7 +650,7 @@ public sealed class InterpretationSessionReceiveOverflowTests
 
         // When: termination が完了してから failed イベントを配送する
         var fallbackGate = NewGate();
-        session.AfterFailedSourceFallbackForTests = () => fallbackGate.TrySetResult();
+        session.ContextForTests.AfterFailedSourceFallbackForTests = () => fallbackGate.TrySetResult();
         await client.PublishSourceFailureAfterTerminationAsync(
             "ordering-item",
             null,

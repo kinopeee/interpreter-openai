@@ -1024,7 +1024,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
         var processedDeltaCount = 0;
-        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
+        session.ContextForTests.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
         client.PublishTranslationLaneInputTranscript(
             RealtimeTranslationOutputLanguage.English,
             "polluting source that should never become authority"
@@ -1339,7 +1339,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
         var processedDeltaCount = 0;
-        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
+        session.ContextForTests.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
 
         client.PublishSourceDelta("Tokyo");
         client.PublishSourceDelta(" Paris");
@@ -2598,7 +2598,7 @@ public sealed class InterpretationSessionTests
 
         using var enteredHook = new ManualResetEventSlim(false);
         using var releaseHook = new ManualResetEventSlim(false);
-        session.BeforeAssemblerIngestForTests = () =>
+        session.ContextForTests.BeforeAssemblerIngestForTests = () =>
         {
             enteredHook.Set();
             if (!releaseHook.Wait(TimeSpan.FromSeconds(5)))
@@ -2663,7 +2663,7 @@ public sealed class InterpretationSessionTests
 
         using var enteredHook = new ManualResetEventSlim(false);
         using var releaseHook = new ManualResetEventSlim(false);
-        session.BeforeAssemblerIngestForTests = () =>
+        session.ContextForTests.BeforeAssemblerIngestForTests = () =>
         {
             enteredHook.Set();
             if (!releaseHook.Wait(TimeSpan.FromSeconds(5)))
@@ -3573,12 +3573,12 @@ public sealed class InterpretationSessionTests
     {
         var client = new FakeDualClient();
         using var session = NewSession(client, timeProvider: new MonotonicClock());
-        session.BeforeHealthGenerationBeginForTests = () => _ = session.StopAsync();
+        session.ContextForTests.BeforeHealthGenerationBeginForTests = () => _ = session.StopAsync();
 
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Idle);
 
-        session.BeforeHealthGenerationBeginForTests = null;
+        session.ContextForTests.BeforeHealthGenerationBeginForTests = null;
         client.StartException = new RealtimeTranslationException(RealtimeTranslationErrorKind.FatalServerError);
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Error);
@@ -3755,7 +3755,7 @@ public sealed class InterpretationSessionTests
                 sourceObserved.TrySetResult();
             }
         };
-        session.BeforeAudioLossRoutingResetForTests = async () =>
+        session.ContextForTests.BeforeAudioLossRoutingResetForTests = async () =>
         {
             client.PublishSourceDelta("こんにちは");
             await sourceObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));

@@ -66,9 +66,7 @@ internal sealed class SessionAudioFeeder
             if (invalidation is { } lossUpdate)
             {
                 _context.SubtitlePipeline.EmitSubtitleUpdate(lossUpdate);
-                await _context
-                    .AudioRouting.ResetAfterAudioLossAsync(_context.BeforeAudioLossRoutingResetForTests)
-                    .ConfigureAwait(false);
+                await _context.AudioRouting.ResetAfterAudioLossAsync().ConfigureAwait(false);
             }
 
             if (observation.ShouldReconnect)

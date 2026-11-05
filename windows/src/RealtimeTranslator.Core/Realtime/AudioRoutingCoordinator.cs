@@ -18,22 +18,26 @@ internal sealed class AudioRoutingCoordinator : IDisposable
     private readonly IDualRealtimeTranslationClient _dualClient;
     private readonly SessionSubtitlePipeline _subtitlePipeline;
     private readonly SessionHealthBookkeeper _healthBookkeeper;
+    private readonly SessionRuntimeContext _testHooks;
 
     public AudioRoutingCoordinator(
         object sync,
         IDualRealtimeTranslationClient dualClient,
         SessionSubtitlePipeline subtitlePipeline,
-        SessionHealthBookkeeper healthBookkeeper
+        SessionHealthBookkeeper healthBookkeeper,
+        SessionRuntimeContext testHooks
     )
     {
         ArgumentNullException.ThrowIfNull(sync);
         ArgumentNullException.ThrowIfNull(dualClient);
         ArgumentNullException.ThrowIfNull(subtitlePipeline);
         ArgumentNullException.ThrowIfNull(healthBookkeeper);
+        ArgumentNullException.ThrowIfNull(testHooks);
         _sync = sync;
         _dualClient = dualClient;
         _subtitlePipeline = subtitlePipeline;
         _healthBookkeeper = healthBookkeeper;
+        _testHooks = testHooks;
     }
 
     public void Dispose()
@@ -57,12 +61,12 @@ internal sealed class AudioRoutingCoordinator : IDisposable
         }
     }
 
-    /// <param name="hook">テスト差し込み（<c>BeforeAudioLossRoutingResetForTests</c>）。</param>
-    public async Task ResetAfterAudioLossAsync(Func<Task>? hook)
+    public async Task ResetAfterAudioLossAsync()
     {
         await _routingGate.WaitAsync().ConfigureAwait(false);
         try
         {
+            var hook = _testHooks.BeforeAudioLossRoutingResetForTests;
             if (hook is not null)
             {
                 await hook().ConfigureAwait(false);
