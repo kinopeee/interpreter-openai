@@ -302,6 +302,180 @@ public sealed class InterpretationSessionTests
         await session.StopAsync();
     }
 
+    // Given: Idle のセッション
+    // When: StartAsync で開始する
+    // Then: Connecting と Listening を一度ずつ通知し、Connecting 通知はロック外で行う
+    [Fact]
+    public async Task StartFromIdleNotifiesConnectingOnceOutsideLockBeforeListening()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var states = new List<(object? Sender, TranslationState State)>();
+        var probedConnecting = 0;
+        var probeCompleted = false;
+        TranslationState? probeState = null;
+        session.StateChanged += (sender, state) =>
+        {
+            lock (states)
+            {
+                states.Add((sender, state));
+            }
+
+            if (state == TranslationState.Connecting && Interlocked.CompareExchange(ref probedConnecting, 1, 0) == 0)
+            {
+                var probe = Task.Run(() => session.State);
+                probeCompleted = probe.Wait(TimeSpan.FromSeconds(2));
+                if (probeCompleted)
+                {
+                    probeState = probe.GetAwaiter().GetResult();
+                }
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() =>
+        {
+            lock (states)
+            {
+                return states.Any(item => item.State == TranslationState.Listening);
+            }
+        });
+
+        (object? Sender, TranslationState State)[] recorded;
+        lock (states)
+        {
+            recorded = states.ToArray();
+        }
+
+        Assert.True(probeCompleted);
+        Assert.Equal(TranslationState.Connecting, probeState);
+        Assert.Equal(
+            new[] { TranslationState.Connecting, TranslationState.Listening },
+            recorded.Select(item => item.State)
+        );
+        Assert.All(recorded, item => Assert.Same(session, item.Sender));
+        await session.StopAsync();
+    }
+
+    // Given: API キー未登録で Error になったセッション
+    // When: Error から再度 StartAsync を呼ぶ
+    // Then: Connecting のあと Error を一度ずつ通知する
+    [Fact]
+    public async Task StartFromErrorNotifiesConnectingOnceThenError()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, apiKey: null);
+        var states = new List<TranslationState>();
+        session.StateChanged += (_, state) =>
+        {
+            lock (states)
+            {
+                states.Add(state);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() =>
+        {
+            lock (states)
+            {
+                return states.Contains(TranslationState.Error);
+            }
+        });
+        lock (states)
+        {
+            states.Clear();
+        }
+
+        await session.StartAsync();
+        await WaitUntilAsync(() =>
+        {
+            lock (states)
+            {
+                return states.Contains(TranslationState.Error);
+            }
+        });
+
+        TranslationState[] recorded;
+        lock (states)
+        {
+            recorded = states.ToArray();
+        }
+
+        Assert.Equal(new[] { TranslationState.Connecting, TranslationState.Error }, recorded);
+    }
+
+    // Given: Error 通知中の旧 session task と停止用 close gate
+    // When: Error からの Start を排水中に停止し、排水完了後に再開する
+    // Then: 停止状態のあと Connecting へ戻り、新世代の Error と Idle を通知する
+    [Fact]
+    public async Task StopWhileStartDrainsPreviousTaskIsFollowedByConnectingResetAfterDrain()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client, apiKey: null);
+        using var errorHandlerGate = new ManualResetEventSlim();
+        var closeGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var states = new List<TranslationState>();
+        var errorNotificationCount = 0;
+        var closeCallCount = 0;
+        client.OnCloseGracefully = () =>
+            Interlocked.Increment(ref closeCallCount) == 1 ? closeGate.Task : Task.CompletedTask;
+        session.StateChanged += (_, state) =>
+        {
+            lock (states)
+            {
+                states.Add(state);
+            }
+
+            if (state == TranslationState.Error && Interlocked.Increment(ref errorNotificationCount) == 1)
+            {
+                errorHandlerGate.Wait(TimeSpan.FromSeconds(5));
+            }
+        };
+
+        static TranslationState[] SnapshotStates(List<TranslationState> recorded)
+        {
+            lock (recorded)
+            {
+                return recorded.ToArray();
+            }
+        }
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => SnapshotStates(states).Contains(TranslationState.Error));
+
+        var restart = session.StartAsync();
+        await WaitUntilAsync(() =>
+        {
+            var recorded = SnapshotStates(states);
+            var firstError = Array.IndexOf(recorded, TranslationState.Error);
+            return firstError >= 0 && recorded.Skip(firstError + 1).Contains(TranslationState.Connecting);
+        });
+
+        var stop = session.StopAsync();
+        await WaitUntilAsync(() => SnapshotStates(states).Contains(TranslationState.Closing));
+        errorHandlerGate.Set();
+        await WaitUntilAsync(() => SnapshotStates(states).Count(state => state == TranslationState.Error) == 2);
+        closeGate.SetResult();
+
+        await restart.WaitAsync(TimeSpan.FromSeconds(5));
+        await stop.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(
+            new[]
+            {
+                TranslationState.Connecting,
+                TranslationState.Error,
+                TranslationState.Connecting,
+                TranslationState.Closing,
+                TranslationState.Connecting,
+                TranslationState.Error,
+                TranslationState.Idle,
+            },
+            SnapshotStates(states)
+        );
+    }
+
     // Given: Dual.StartAsync 待ちで止まっているセッション
     // When: Stop 中に旧 Start を進め、排水後に再 Start する
     // Then: 旧 sessionTask の世代不一致 ForceClose が新セッションへ飛ばない
@@ -1024,7 +1198,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
         var processedDeltaCount = 0;
-        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
+        session.ContextForTests.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
         client.PublishTranslationLaneInputTranscript(
             RealtimeTranslationOutputLanguage.English,
             "polluting source that should never become authority"
@@ -1339,7 +1513,7 @@ public sealed class InterpretationSessionTests
         await WaitUntilAsync(() => session.State == TranslationState.Listening);
 
         var processedDeltaCount = 0;
-        session.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
+        session.ContextForTests.BeforeAssemblerIngestForTests = () => Interlocked.Increment(ref processedDeltaCount);
 
         client.PublishSourceDelta("Tokyo");
         client.PublishSourceDelta(" Paris");
@@ -2048,7 +2222,7 @@ public sealed class InterpretationSessionTests
     }
 
     // Given: Listening 中にイベント channel が完了する
-    // When: ConsumeEventsAsync が終端を検出する
+    // When: SessionEventConsumer.RunAsync が終端を検出する
     // Then: recoverable として再接続し、新しい epoch で再開する
     [Fact]
     public async Task EventChannelCompletionTriggersReconnect()
@@ -2066,7 +2240,7 @@ public sealed class InterpretationSessionTests
     }
 
     // Given: Listening 中に音声 frame channel が完了する
-    // When: FeedAudioAsync が終端を検出する
+    // When: SessionAudioFeeder.RunAsync が終端を検出する
     // Then: recoverable として再接続する（次 Start で frame channel を張り直す）
     [Fact]
     public async Task AudioFrameChannelCompletionTriggersReconnect()
@@ -2251,6 +2425,7 @@ public sealed class InterpretationSessionTests
 
         Assert.Equal(2, client.StartCount);
         Assert.Equal(UserCopy.Current.Text("error.reconnectBudgetExhausted"), message);
+        Assert.Equal(SessionTerminationKind.ReconnectBudgetExhausted, session.LatestTerminationDiagnostic?.Kind);
     }
 
     // Given: 壁時計だけが大きく進む（NTP 補正やスリープ復帰）
@@ -2598,7 +2773,7 @@ public sealed class InterpretationSessionTests
 
         using var enteredHook = new ManualResetEventSlim(false);
         using var releaseHook = new ManualResetEventSlim(false);
-        session.BeforeAssemblerIngestForTests = () =>
+        session.ContextForTests.BeforeAssemblerIngestForTests = () =>
         {
             enteredHook.Set();
             if (!releaseHook.Wait(TimeSpan.FromSeconds(5)))
@@ -2663,7 +2838,7 @@ public sealed class InterpretationSessionTests
 
         using var enteredHook = new ManualResetEventSlim(false);
         using var releaseHook = new ManualResetEventSlim(false);
-        session.BeforeAssemblerIngestForTests = () =>
+        session.ContextForTests.BeforeAssemblerIngestForTests = () =>
         {
             enteredHook.Set();
             if (!releaseHook.Wait(TimeSpan.FromSeconds(5)))
@@ -3573,12 +3748,12 @@ public sealed class InterpretationSessionTests
     {
         var client = new FakeDualClient();
         using var session = NewSession(client, timeProvider: new MonotonicClock());
-        session.BeforeHealthGenerationBeginForTests = () => _ = session.StopAsync();
+        session.ContextForTests.BeforeHealthGenerationBeginForTests = () => _ = session.StopAsync();
 
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Idle);
 
-        session.BeforeHealthGenerationBeginForTests = null;
+        session.ContextForTests.BeforeHealthGenerationBeginForTests = null;
         client.StartException = new RealtimeTranslationException(RealtimeTranslationErrorKind.FatalServerError);
         await session.StartAsync();
         await WaitUntilAsync(() => session.State == TranslationState.Error);
@@ -3755,7 +3930,7 @@ public sealed class InterpretationSessionTests
                 sourceObserved.TrySetResult();
             }
         };
-        session.BeforeAudioLossRoutingResetForTests = async () =>
+        session.ContextForTests.BeforeAudioLossRoutingResetForTests = async () =>
         {
             client.PublishSourceDelta("こんにちは");
             await sourceObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));

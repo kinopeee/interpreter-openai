@@ -17,6 +17,72 @@
       ]
     },
     {
+      "name": "SessionRuntimeContext",
+      "swift": {
+        "symbol": "SessionRuntimeContext",
+        "path": "RealtimeTranslator/Realtime/SessionRuntimeContext.swift"
+      },
+      "csharp": {
+        "symbol": "SessionRuntimeContext",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionRuntimeContext.cs"
+      }
+    },
+    {
+      "name": "SessionLoopRunner",
+      "swift": {
+        "symbol": "SessionLoopRunner",
+        "path": "RealtimeTranslator/Realtime/SessionLoopRunner.swift"
+      },
+      "csharp": {
+        "symbol": "SessionLoopRunner",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionLoopRunner.cs"
+      }
+    },
+    {
+      "name": "SessionStreamRunner",
+      "swift": {
+        "symbol": "SessionStreamRunner",
+        "path": "RealtimeTranslator/Realtime/SessionStreamRunner.swift"
+      },
+      "csharp": {
+        "symbol": "SessionStreamRunner",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionStreamRunner.cs"
+      }
+    },
+    {
+      "name": "SessionAudioFeeder",
+      "swift": {
+        "symbol": "SessionAudioFeeder",
+        "path": "RealtimeTranslator/Realtime/SessionAudioFeeder.swift"
+      },
+      "csharp": {
+        "symbol": "SessionAudioFeeder",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionAudioFeeder.cs"
+      }
+    },
+    {
+      "name": "SessionEventConsumer",
+      "swift": {
+        "symbol": "SessionEventConsumer",
+        "path": "RealtimeTranslator/Realtime/SessionEventConsumer.swift"
+      },
+      "csharp": {
+        "symbol": "SessionEventConsumer",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionEventConsumer.cs"
+      }
+    },
+    {
+      "name": "SessionTicker",
+      "swift": {
+        "symbol": "SessionTicker",
+        "path": "RealtimeTranslator/Realtime/SessionTicker.swift"
+      },
+      "csharp": {
+        "symbol": "SessionTicker",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionTicker.cs"
+      }
+    },
+    {
       "name": "RealtimeSubtitleAssembler",
       "swift": [
         {

@@ -8,7 +8,7 @@ namespace RealtimeTranslator.Core.Realtime;
 /// <summary>
 /// 音声ルーティング操作の直列化。<c>_routingGate</c> で transport 向けの
 /// routing 変更（select/switch/next-segment/audio-loss reset）を 1 件ずつ通す。
-/// <c>InterpretationSession</c> の <c>_sync</c> ロック契約を引き継ぎ、独自ロックは持たない。
+/// <see cref="SessionRuntimeContext.Sync"/> のロック契約を引き継ぎ、独自ロックは持たない。
 /// </summary>
 internal sealed class AudioRoutingCoordinator : IDisposable
 {
@@ -18,22 +18,26 @@ internal sealed class AudioRoutingCoordinator : IDisposable
     private readonly IDualRealtimeTranslationClient _dualClient;
     private readonly SessionSubtitlePipeline _subtitlePipeline;
     private readonly SessionHealthBookkeeper _healthBookkeeper;
+    private readonly SessionRuntimeContext _testHooks;
 
     public AudioRoutingCoordinator(
         object sync,
         IDualRealtimeTranslationClient dualClient,
         SessionSubtitlePipeline subtitlePipeline,
-        SessionHealthBookkeeper healthBookkeeper
+        SessionHealthBookkeeper healthBookkeeper,
+        SessionRuntimeContext testHooks
     )
     {
         ArgumentNullException.ThrowIfNull(sync);
         ArgumentNullException.ThrowIfNull(dualClient);
         ArgumentNullException.ThrowIfNull(subtitlePipeline);
         ArgumentNullException.ThrowIfNull(healthBookkeeper);
+        ArgumentNullException.ThrowIfNull(testHooks);
         _sync = sync;
         _dualClient = dualClient;
         _subtitlePipeline = subtitlePipeline;
         _healthBookkeeper = healthBookkeeper;
+        _testHooks = testHooks;
     }
 
     public void Dispose()
@@ -57,9 +61,9 @@ internal sealed class AudioRoutingCoordinator : IDisposable
         }
     }
 
-    /// <param name="hook">テスト差し込み（<c>BeforeAudioLossRoutingResetForTests</c>）。</param>
-    public async Task ResetAfterAudioLossAsync(Func<Task>? hook)
+    public async Task ResetAfterAudioLossAsync()
     {
+        var hook = _testHooks.BeforeAudioLossRoutingResetForTests;
         await _routingGate.WaitAsync().ConfigureAwait(false);
         try
         {
