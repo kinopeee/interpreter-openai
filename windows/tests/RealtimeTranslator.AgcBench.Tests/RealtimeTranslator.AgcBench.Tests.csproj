@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RealtimeTranslator.AgcBench.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- AgcBench 本体と同じく ICU を有効にする (FormKC 正規化のテストのため)。 -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RealtimeTranslator.Core\RealtimeTranslator.Core.csproj" />
+    <ProjectReference Include="..\..\tools\RealtimeTranslator.AgcBench\RealtimeTranslator.AgcBench.csproj" />
+  </ItemGroup>
+
+</Project>
