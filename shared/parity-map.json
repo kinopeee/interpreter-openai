@@ -743,6 +743,17 @@
       ]
     },
     {
+      "name": "DualClientShutdownCoordinator",
+      "swift": {
+        "symbol": "DualClientShutdownCoordinator",
+        "path": "RealtimeTranslator/OpenAI/DualClientShutdownCoordinator.swift"
+      },
+      "csharp": {
+        "symbol": "DualClientShutdownCoordinator",
+        "path": "windows/src/RealtimeTranslator.Core/Realtime/DualClientShutdownCoordinator.cs"
+      }
+    },
+    {
       "name": "TranslationPumpSupervisor",
       "swift": {
         "symbol": "TranslationPumpSupervisor",

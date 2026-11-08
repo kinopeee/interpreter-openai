@@ -27,6 +27,7 @@ protocol DualRealtimeTranslationClienting: AnyObject, Sendable {
 /// 原文 transcription 接続と翻訳 lane 群を束ねるオーケストレーター。
 /// 帳簿は `MergedEventBuffer`（merge 配送）、`TranslationFrameQueues`（preroll/pending）、
 /// `TranslationPumpSupervisor`（ポンプ世代）へ分割し、ここは接続調停とルーティングだけを持つ。
+/// 終了・ドレイン処理は `DualClientShutdownCoordinator` が actor 上で実行する。
 actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     static let mergedEventBufferLimit =
         DualRealtimeTranslationClientTuning.default.mergedEventBufferLimit
@@ -50,20 +51,22 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
     private let sourceConnection: RealtimeSourceTranscriptionConnection
     private let connections: [RealtimeTranslationOutputLanguage: RealtimeTranslationConnection]
     private let tuning: DualRealtimeTranslationClientTuning
-    private let translationDrainTimeoutNanoseconds: UInt64
-    private var mergeTask: Task<Void, Never>?
-    private var mergedEvents: MergedEventBuffer
-    private var frameQueues: TranslationFrameQueues
-    private var pump: TranslationPumpSupervisor
-    private(set) var connectionEpoch = 0
+    private let shutdown: DualClientShutdownCoordinator
+    // 以下の終了処理が触る状態は `DualClientShutdownCoordinator` から actor 上で変更するため internal。
+    // actor 隔離により、外部からの変更は `isolated` 引数経由に限られる。
+    var mergeTask: Task<Void, Never>?
+    var mergedEvents: MergedEventBuffer
+    var frameQueues: TranslationFrameQueues
+    var pump: TranslationPumpSupervisor
+    var connectionEpoch = 0
     private(set) var reservedEpoch = 0
-    private var isRunning = false
+    var isRunning = false
     private var appendedFrameCount = 0
     private var sourceSentFrameCount = 0
     private var sourceDeltaCount = 0
-    private var selectedTranslationTarget: RealtimeTranslationOutputLanguage?
+    var selectedTranslationTarget: RealtimeTranslationOutputLanguage?
     /// この世代で handshake した翻訳 lane。未使用 leftover 接続は merge しない。
-    private var startedTranslationTargets: [RealtimeTranslationOutputLanguage] = []
+    var startedTranslationTargets: [RealtimeTranslationOutputLanguage] = []
 
     var events: AsyncStream<RealtimeTranslationStreamEvent> {
         mergedEvents.stream
@@ -136,8 +139,13 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
         self.tuning = tuning
         // drain の base は明示引数が優先。省略時は注入 tuning の既定値を使い、
         // per-frame 予算・cap と同じ設定源から計算されるようにする。
-        self.translationDrainTimeoutNanoseconds =
-            translationDrainTimeoutNanoseconds ?? tuning.defaultTranslationDrainTimeoutNanoseconds
+        shutdown = DualClientShutdownCoordinator(
+            sourceConnection: self.sourceConnection,
+            connections: self.connections,
+            tuning: tuning,
+            translationDrainTimeoutNanoseconds: translationDrainTimeoutNanoseconds
+                ?? tuning.defaultTranslationDrainTimeoutNanoseconds
+        )
         mergedEvents = MergedEventBuffer(tuning: tuning)
         frameQueues = TranslationFrameQueues(
             prerollLimit: tuning.translationPrerollFrameLimit,
@@ -280,123 +288,29 @@ actor DualRealtimeTranslationClient: DualRealtimeTranslationClienting {
             )
     }
 
-    private func resolveCloseDrainTimeoutNanoseconds() -> UInt64 {
-        var pending = frameQueues.pendingCount
-        if pump.isTracked {
-            pending += 1
-        }
-        return tuning.resolveTranslationDrainTimeoutNanoseconds(
-            baseNanoseconds: translationDrainTimeoutNanoseconds,
-            pendingFrameCount: pending
-        )
-    }
-
     /// 翻訳ポンプが現在の待ち行列を処理し終えるまで待つ。決定的なテストのために使う。
     /// 送信が停滞しても `timeoutNanoseconds` で待機だけを打ち切り、送信ポンプ自体は停止しない。
     func waitForTranslationDrain(
         timeoutNanoseconds: UInt64 = DualRealtimeTranslationClient.defaultTranslationDrainTimeoutNanoseconds
     ) async throws {
-        let deadline = ContinuousClock.now + .nanoseconds(Int64(timeoutNanoseconds))
-        let pollInterval = Duration.milliseconds(5)
-        while true {
-            if !pump.isTracked, frameQueues.pendingCount == 0 {
-                return
-            }
-
-            let remaining = deadline - ContinuousClock.now
-            guard remaining > .zero else {
-                if !pump.isTracked, frameQueues.pendingCount == 0 {
-                    return
-                }
-                throw RealtimeTranslationError.recoverableTransportFailure("translation pump drain timeout")
-            }
-
-            // TaskGroupはスコープ終了時にキャンセル済み子タスクの完了も待つ。
-            // pump.value待ちはキャンセルで解けないため、状態を短周期で再確認する。
-            try await Task.sleep(for: min(remaining, pollInterval))
-        }
+        try await shutdown.waitForTranslationDrain(on: self, timeoutNanoseconds: timeoutNanoseconds)
     }
 
     func beginStopDrainCapture() {
-        mergedEvents.beginStopDrainCapture()
+        shutdown.beginStopDrainCapture(on: self)
     }
 
     func acknowledgeConsumedStreamEvent(runToken: Int? = nil) {
-        mergedEvents.acknowledge(runToken: runToken, currentEpoch: connectionEpoch)
+        shutdown.acknowledgeConsumedStreamEvent(on: self, runToken: runToken)
     }
 
     @discardableResult
     func closeGracefully() async -> [RealtimeTranslationStreamEvent] {
-        guard isRunning else {
-            return mergedEvents.takeStopDrainEvents()
-        }
-
-        // consumer 停止後〜ここまでのイベントも落とさない。未武装ならここで武装する。
-        mergedEvents.beginStopDrainCapture()
-
-        // 未送信の翻訳フレームを先に送り、停止時の訳文欠落を防ぐ。
-        // preroll flush 直後は待ち行列が長いので pending 数に応じて予算を伸ばす。
-        // drain 待ち中に届く最終 delta も stopDrainBuffer へ蓄える。
-        try? await waitForTranslationDrain(timeoutNanoseconds: resolveCloseDrainTimeoutNanoseconds())
-
-        isRunning = false
-        pump.invalidate()
-        frameQueues.clearPending()
-        // 原文 close が先に失敗しても翻訳 close を捨てない。Windows の WhenAll と同じく
-        // 全 lane を待ち、未 await の close が次セッションのソケットを閉じるのを防ぐ。
-        var closeFailed = false
-        let closes = connections.values.map { connection in
-            Task { try await connection.closeGracefully() }
-        }
-        do {
-            try await sourceConnection.closeGracefully()
-        } catch {
-            closeFailed = true
-            AppLogger.realtime.error(
-                "Graceful close failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
-            )
-        }
-        for close in closes {
-            do {
-                try await close.value
-            } catch {
-                if !closeFailed {
-                    closeFailed = true
-                    AppLogger.realtime.error(
-                        "Graceful close failed: \(AppLogger.redact(error.localizedDescription), privacy: .public)"
-                    )
-                }
-            }
-        }
-        mergeTask?.cancel()
-        mergeTask = nil
-        // close 失敗でも drain を先に確定し、forceClose で消えないようにする。
-        let drained = mergedEvents.takeStopDrainEvents()
-        mergedEvents.finishStream()
-        if closeFailed {
-            await forceClose()
-        }
-        return drained
+        await shutdown.closeGracefully(on: self)
     }
 
     func forceClose() async {
-        isRunning = false
-        selectedTranslationTarget = nil
-        startedTranslationTargets = []
-        frameQueues.clearAll()
-        pump.reset()
-        // beginStopDrainCapture 済みの窓は残す。reconnect の tearDown / generation
-        // mismatch の forceClose が、stop が close drain へ渡す未読 delta を消さない。
-        mergedEvents.clearYieldWindow()
-        connectionEpoch += 1
-        pump.invalidate()
-        mergeTask?.cancel()
-        mergeTask = nil
-        await sourceConnection.forceClose()
-        for connection in connections.values {
-            await connection.forceClose()
-        }
-        mergedEvents.finishStream()
+        await shutdown.forceClose(on: self)
     }
 
     private func enqueueTranslationFrame(
