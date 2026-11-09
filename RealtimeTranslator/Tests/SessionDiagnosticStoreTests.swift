@@ -129,4 +129,89 @@ final class SessionDiagnosticStoreTests: XCTestCase {
         store.waitForPendingWrites()
         XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "untouched")
     }
+
+    // Given: 書き込み直前に通常のログがシンボリックリンクへ差し替わる
+    // When: 追記を試み、リンクを除去してから再試行する
+    // Then: リンク先の内容・権限は不変で、次の成功時に欠落を報告する
+    func testFileReplacementDoesNotModifyLinkTarget() throws {
+        let root = try XCTUnwrap(directory)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let current = root.appendingPathComponent("diagnostics.log")
+        let backup = root.appendingPathComponent("original.log")
+        let target = root.appendingPathComponent("unrelated.txt")
+        try Data("original".utf8).write(to: current)
+        try Data("untouched".utf8).write(to: target)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: target.path)
+        let store = SessionDiagnosticStore(
+            directory: root,
+            beforeOpeningLog: {
+                guard !FileManager.default.fileExists(atPath: backup.path) else { return }
+                try FileManager.default.moveItem(at: current, to: backup)
+                try FileManager.default.createSymbolicLink(at: current, withDestinationURL: target)
+            })
+        store.record(.attemptStarted(generation: 1, attempt: 1))
+        store.waitForPendingWrites()
+
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "untouched")
+        let attributes = try FileManager.default.attributesOfItem(atPath: target.path)
+        XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o644)
+        XCTAssertEqual(try String(contentsOf: backup, encoding: .utf8), "original")
+
+        try FileManager.default.removeItem(at: current)
+        store.record(.attemptStarted(generation: 1, attempt: 2))
+        store.waitForPendingWrites()
+        let text = try String(contentsOf: current, encoding: .utf8)
+        XCTAssertTrue(text.contains("droppedRecords=1"))
+        XCTAssertTrue(text.contains("attempt=2"))
+    }
+
+    // Given: 開いた保存ディレクトリのパスが別ディレクトリへのリンクへ差し替わる
+    // When: 診断を追記する
+    // Then: 開いた元ディレクトリだけに書き込み、リンク先の内容・権限を変えない
+    func testDirectoryReplacementKeepsWritesInOpenedDirectory() throws {
+        let root = try XCTUnwrap(directory)
+        let logs = root.appendingPathComponent("logs", isDirectory: true)
+        let original = root.appendingPathComponent("original", isDirectory: true)
+        let target = root.appendingPathComponent("unrelated", isDirectory: true)
+        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: target.path)
+        let targetLog = target.appendingPathComponent("diagnostics.log")
+        try Data("untouched".utf8).write(to: targetLog)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: targetLog.path)
+        let store = SessionDiagnosticStore(
+            directory: logs,
+            beforeOpeningLog: {
+                try FileManager.default.moveItem(at: logs, to: original)
+                try FileManager.default.createSymbolicLink(at: logs, withDestinationURL: target)
+            })
+        store.record(.attemptStarted(generation: 1, attempt: 1))
+        store.waitForPendingWrites()
+
+        XCTAssertEqual(try String(contentsOf: targetLog, encoding: .utf8), "untouched")
+        for (url, permissions) in [(target, 0o755), (targetLog, 0o644)] {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, permissions)
+        }
+        let text = try String(contentsOf: original.appendingPathComponent("diagnostics.log"), encoding: .utf8)
+        XCTAssertTrue(text.contains("attempt=1"))
+    }
+
+    // Given: 別ファイルのハードリンクがログ名に置かれる
+    // When: 診断を追記する
+    // Then: 同じinodeを共有する別ファイルの内容・権限を変えない
+    func testDoesNotModifyHardLinkedFile() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let target = directory.appendingPathComponent("unrelated.txt")
+        try Data("untouched".utf8).write(to: target)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: target.path)
+        try FileManager.default.linkItem(at: target, to: directory.appendingPathComponent("diagnostics.log"))
+        let store = SessionDiagnosticStore(directory: directory)
+        store.record(.attemptStarted(generation: 1, attempt: 1))
+        store.waitForPendingWrites()
+
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "untouched")
+        let attributes = try FileManager.default.attributesOfItem(atPath: target.path)
+        XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o644)
+    }
 }

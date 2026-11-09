@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 struct SessionDiagnosticMetrics: Sendable {
@@ -55,6 +56,7 @@ final class SessionDiagnosticStore: @unchecked Sendable {
     private let byteLimit: Int
     private let queue: DispatchQueue
     private let now: @Sendable () -> Date
+    private let beforeOpeningLog: @Sendable () throws -> Void
     private let version: String
     private let lock = NSLock()
     private var pending: [(Date, SessionDiagnosticEvent)] = []
@@ -67,13 +69,15 @@ final class SessionDiagnosticStore: @unchecked Sendable {
         byteLimit: Int = SessionDiagnosticStore.fileByteLimit,
         version: String = AppReleaseVersion.current,
         now: @escaping @Sendable () -> Date = { Date() },
-        queue: DispatchQueue = DispatchQueue(label: "com.realtimetranslator.diagnostics", qos: .utility)
+        queue: DispatchQueue = DispatchQueue(label: "com.realtimetranslator.diagnostics", qos: .utility),
+        beforeOpeningLog: @escaping @Sendable () throws -> Void = {}
     ) {
         self.directory = directory
         self.byteLimit = max(1_024, byteLimit)
         self.version = Self.safeVersion(version)
         self.now = now
         self.queue = queue
+        self.beforeOpeningLog = beforeOpeningLog
     }
 
     func record(_ event: SessionDiagnosticEvent) {
@@ -137,38 +141,77 @@ final class SessionDiagnosticStore: @unchecked Sendable {
                 attributes: [.posixPermissions: 0o700]
             )
         }
-        try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
-        let current = directory.appendingPathComponent("diagnostics.log")
-        let previous = directory.appendingPathComponent("diagnostics.previous.log")
-        for url in [current, previous] {
-            guard let attributes = try? manager.attributesOfItem(atPath: url.path) else { continue }
-            guard attributes[.type] as? FileAttributeType == .typeRegular else {
-                throw CocoaError(.fileWriteInvalidFileName)
-            }
-            if ((attributes[.size] as? NSNumber)?.intValue ?? 0) > byteLimit {
-                try manager.removeItem(at: url)
-            } else {
-                try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-            }
-        }
-        if manager.fileExists(atPath: current.path) {
-            let size = (try manager.attributesOfItem(atPath: current.path)[.size] as? NSNumber)?.intValue ?? 0
-            if size + data.count > byteLimit {
-                if manager.fileExists(atPath: previous.path) {
-                    try manager.removeItem(at: previous)
-                }
-                try manager.moveItem(at: current, to: previous)
+        let directoryDescriptor = Darwin.open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard directoryDescriptor >= 0 else { throw CocoaError(.fileWriteInvalidFileName) }
+        defer { Darwin.close(directoryDescriptor) }
+        var directoryStatus = stat()
+        guard fstat(directoryDescriptor, &directoryStatus) == 0,
+            directoryStatus.st_uid == geteuid(), fchmod(directoryDescriptor, 0o700) == 0
+        else { throw CocoaError(.fileWriteNoPermission) }
+
+        // 検査後もパスを開き直さず、固定したディレクトリを基準に処理する。
+        try beforeOpeningLog()
+        let current = "diagnostics.log"
+        let previous = "diagnostics.previous.log"
+        if let previousHandle = try openLogFile(previous, in: directoryDescriptor, create: false) {
+            defer { try? previousHandle.close() }
+            if try fileSize(previousHandle) > Int64(byteLimit) {
+                try removeLogFile(previous, in: directoryDescriptor)
             }
         }
-        if !manager.fileExists(atPath: current.path) {
-            guard manager.createFile(atPath: current.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
+        guard var handle = try openLogFile(current, in: directoryDescriptor, create: true) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        defer { try? handle.close() }
+        let size = try fileSize(handle)
+        let remainingCapacity = Int64(byteLimit - data.count)
+        if size > Int64(byteLimit) {
+            try removeLogFile(current, in: directoryDescriptor)
+        } else if size > remainingCapacity {
+            try removeLogFile(previous, in: directoryDescriptor)
+            guard renameat(directoryDescriptor, current, directoryDescriptor, previous) == 0 else {
                 throw CocoaError(.fileWriteUnknown)
             }
         }
-        let handle = try FileHandle(forWritingTo: current)
-        defer { try? handle.close() }
-        try handle.seekToEnd()
+        if size > remainingCapacity {
+            try handle.close()
+            guard let replacement = try openLogFile(current, in: directoryDescriptor, create: true) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            handle = replacement
+        }
+        guard try fileSize(handle) <= remainingCapacity else { throw CocoaError(.fileWriteOutOfSpace) }
         try handle.write(contentsOf: data)
+    }
+
+    private func openLogFile(_ name: String, in directoryDescriptor: Int32, create: Bool) throws -> FileHandle? {
+        let flags = O_WRONLY | O_APPEND | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC | (create ? O_CREAT : 0)
+        let descriptor = openat(directoryDescriptor, name, flags, mode_t(0o600))
+        guard descriptor >= 0 else {
+            if !create && errno == ENOENT { return nil }
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+        var status = stat()
+        guard fstat(descriptor, &status) == 0,
+            status.st_mode & S_IFMT == S_IFREG, status.st_uid == geteuid(), status.st_nlink == 1,
+            fchmod(descriptor, 0o600) == 0
+        else {
+            Darwin.close(descriptor)
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        return FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+    }
+
+    private func fileSize(_ handle: FileHandle) throws -> Int64 {
+        var status = stat()
+        guard fstat(handle.fileDescriptor, &status) == 0 else { throw CocoaError(.fileReadUnknown) }
+        return status.st_size
+    }
+
+    private func removeLogFile(_ name: String, in directoryDescriptor: Int32) throws {
+        guard unlinkat(directoryDescriptor, name, 0) == 0 || errno == ENOENT else {
+            throw CocoaError(.fileWriteUnknown)
+        }
     }
 
     private static func safeVersion(_ value: String) -> String {
