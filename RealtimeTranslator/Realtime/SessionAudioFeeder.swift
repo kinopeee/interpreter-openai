@@ -17,9 +17,10 @@ final class SessionAudioFeeder {
         for await frame in context.audioCapture.frames {
             guard context.isCurrentGeneration(generation) else { return }
             guard context.state == .listening else { return }
+            let normalizedPeak = PCM16AudioActivity.normalizedPeakAmplitude(of: frame.pcm16)
             context.healthBookkeeper.recordCapture(
-                hasAudioActivity: PCM16AudioActivity.normalizedPeakAmplitude(of: frame.pcm16)
-                    > context.healthBookkeeper.thresholds.audioActivityPeakFloor
+                hasAudioActivity: normalizedPeak > context.healthBookkeeper.thresholds.audioActivityPeakFloor,
+                normalizedPeak: normalizedPeak
             )
             let queueWaitMilliseconds = max(0, Self.milliseconds(of: frame.capturedAt.duration(to: .now)))
             let atMilliseconds = max(0, Self.milliseconds(of: ReconnectBudget.continuousNow()))

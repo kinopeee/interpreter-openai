@@ -164,6 +164,32 @@ Depot の初回接続は、リポジトリの管理元に応じて設定しま�
 - APIキーはKeychainへ保存し、ログへ出力しません。
 - MVPでは翻訳音声の読み上げは行いません。
 
+### macOS の停止診断ログ
+
+録音開始を試みると、Debug / Release ともに `~/Library/Logs/RealtimeTranslator/` へ内容非保存の診断を自動記録します。
+字幕の保存設定とは独立しており、外部へ自動送信しません。Finder の「移動 → フォルダへ移動」でこのパスを開き、
+不具合報告時は `diagnostics.log` と `diagnostics.previous.log`（存在する場合）を添付してください。
+発生時刻・表示されていた状態・停止／再開操作で復帰したかも添えると切り分けに役立ちます。
+
+- 記録するもの: UTC 時刻、アプリ版、プロセスID、接続世代、接続試行・終了理由・停止検知、約5秒ごとの数値スナップショット。
+- 記録しないもの: 音声データ、原文、訳文、APIキー、認識プロンプト、サーバーの生エラー文、デバイス名。
+- 各ファイルは最大1 MiB、現行と直前の計2ファイル（合計最大2 MiB）。古い記録は自動で上書きします。所有者のみ読み書きできます。
+- ディスク処理は録音経路と分離し、未書込の待ち行列も64件に制限します。保存失敗・混雑時は録音を止めず、
+  次回の書き込み成功時に `droppedRecords` で欠落数を示します。アプリ強制終了などで未書込の末尾が失われる場合があります。
+- 削除したい場合はアプリを終了して上記2ファイルを削除してください。次の録音開始から再作成します。
+
+| 主な項目 | 意味 |
+| --- | --- |
+| `capturedFrames` / `sentFrames` | 接続試行開始から音声feederが受け取ったフレーム数／原文socketへの送信完了数。マイクtapの実行回数やサーバー受領確認ではありません |
+| `intervalPeakPermille` | 前回スナップショット以降にfeederで観測した、ゲイン適用後の入力ピーク最大値（0〜1000）。音声そのものは保存しません |
+| `sourceReceivedEvents` / `translationReceivedEvents` | 現接続の原文／翻訳全laneでdecodeしたイベント数。handshakeなど非字幕イベントも含みます |
+| `sourceProgressCount` / `translationProgressCount` | 現接続で消費した空でない原文／翻訳deltaの数 |
+| `sinceCaptureMs` / `sinceSendSuccessMs` / `sinceReceiveMs` / `sinceSourceProgressMs` | 各処理の最終進捗からの経過時間。未観測は `-` |
+| `detection kind=…` | `captureStalled`、`sendStalled`、`receiveStalled` など既存の停止監視結果 |
+
+これらは停止箇所の切り分け用です。ピークがあることだけで音声認識可能と判断せず、複数項目の推移を併せて確認します。
+本機能は自動復旧や検知条件を変更しません。導入前の障害に遡って診断情報を復元することもできません。
+
 ## Windows版
 
 タスクトレイ常駐のWPFアプリです。エンドポイント、モデル、音声フォーマット、ルーティング、字幕semanticsはmacOS版と同一で、共有契約（`shared/`）のfixtureで同値性を検証しています。

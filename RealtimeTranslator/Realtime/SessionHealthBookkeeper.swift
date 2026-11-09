@@ -15,6 +15,8 @@ final class SessionHealthBookkeeper {
     private let healthNow: ReconnectBudget.Now
     private let wallClockNow: @Sendable () -> TimeInterval
     private let reservedEpochProvider: () async -> Int
+    private let diagnosticSink: (SessionDiagnosticEvent) -> Void
+    private var diagnosticMetrics = SessionDiagnosticMetrics()
 
     private var healthMonitor = SessionHealthMonitor()
     private var healthReceiveCounts: [RealtimeTranslationLane: Int] = [:]
@@ -37,12 +39,14 @@ final class SessionHealthBookkeeper {
         thresholds: SessionHealthThresholds,
         healthNow: @escaping ReconnectBudget.Now,
         wallClockNow: @escaping @Sendable () -> TimeInterval,
-        reservedEpochProvider: @escaping () async -> Int
+        reservedEpochProvider: @escaping () async -> Int,
+        diagnosticSink: @escaping (SessionDiagnosticEvent) -> Void = { SessionDiagnosticStore.shared.record($0) }
     ) {
         self.healthMonitor.thresholds = thresholds
         self.healthNow = healthNow
         self.wallClockNow = wallClockNow
         self.reservedEpochProvider = reservedEpochProvider
+        self.diagnosticSink = diagnosticSink
     }
 
     var thresholds: SessionHealthThresholds { healthMonitor.thresholds }
@@ -59,6 +63,8 @@ final class SessionHealthBookkeeper {
         healthAttemptStart = healthNow()
         healthAttemptEpoch = reservedEpoch
         healthAttemptGeneration = lifecycleGeneration
+        diagnosticMetrics = SessionDiagnosticMetrics()
+        diagnosticSink(.attempt(generation: lifecycleGeneration, epoch: reservedEpoch))
     }
 
     /// handshake 中に接続側の予約 epoch が進んだあと読み直した値で更新する。
@@ -112,21 +118,28 @@ final class SessionHealthBookkeeper {
 
         let (snapshot, detections) = healthMonitor.evaluate(now: now)
         latestHealthSnapshot = snapshot
+        diagnosticMetrics.sourceReceivedEvents = healthReceiveCounts[.source] ?? 0
+        diagnosticMetrics.translationReceivedEvents = Self.healthLanes
+            .filter { $0 != .source }
+            .reduce(0) { $0 + (healthReceiveCounts[$1] ?? 0) }
         for detection in detections {
+            diagnosticSink(.detection(detection))
             #if DEBUG
             AppLogger.session.notice(
                 "DBG_HEALTH \(detection.description, privacy: .public)"
             )
             #endif
         }
-        #if DEBUG
         if lastHealthSnapshotLogAt == nil || now - lastHealthSnapshotLogAt! >= .seconds(5) {
             lastHealthSnapshotLogAt = now
+            diagnosticSink(.snapshot(snapshot, diagnosticMetrics))
+            diagnosticMetrics.intervalPeakPermille = 0
+            #if DEBUG
             AppLogger.session.notice(
                 "DBG_HEALTH_SNAPSHOT \(snapshot.description, privacy: .public)"
             )
+            #endif
         }
-        #endif
         return detections
     }
 
@@ -165,6 +178,7 @@ final class SessionHealthBookkeeper {
         // 1 試行につき 1 件だけ。
         healthAttemptStart = nil
         latestHealthTermination = diagnostic
+        diagnosticSink(.termination(diagnostic))
         #if DEBUG
         AppLogger.session.notice(
             "DBG_HEALTH_TERMINATION \(diagnostic.description, privacy: .public)"
@@ -182,7 +196,14 @@ final class SessionHealthBookkeeper {
 
     // 以下は monitor 記録の直通 forward。now はここで単調時計から読む。
 
-    func recordCapture(hasAudioActivity: Bool) {
+    func recordCapture(hasAudioActivity: Bool, normalizedPeak: Double = 0) {
+        diagnosticMetrics.capturedFrames += 1
+        if normalizedPeak.isFinite {
+            diagnosticMetrics.intervalPeakPermille = max(
+                diagnosticMetrics.intervalPeakPermille,
+                Int((min(1, max(0, normalizedPeak)) * 1_000).rounded())
+            )
+        }
         healthMonitor.recordCapture(now: healthNow(), hasAudioActivity: hasAudioActivity)
     }
 
@@ -191,6 +212,7 @@ final class SessionHealthBookkeeper {
     }
 
     func recordSendSuccess() {
+        diagnosticMetrics.sentFrames += 1
         healthMonitor.recordSendSuccess(now: healthNow())
     }
 

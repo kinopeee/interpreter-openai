@@ -1368,6 +1368,21 @@
   "platformOnly": {
     "swift": [
       {
+        "symbol": "SessionDiagnosticMetrics",
+        "path": "RealtimeTranslator/Logging/SessionDiagnosticStore.swift",
+        "reason": "macOS 配布版のローカル診断専用カウンタ。共有ヘルス判定契約は変更しない"
+      },
+      {
+        "symbol": "SessionDiagnosticEvent",
+        "path": "RealtimeTranslator/Logging/SessionDiagnosticStore.swift",
+        "reason": "macOS ローカル診断の型付き入力。自由文を受け取らない"
+      },
+      {
+        "symbol": "SessionDiagnosticStore",
+        "path": "RealtimeTranslator/Logging/SessionDiagnosticStore.swift",
+        "reason": "macOS Library/Logs への容量制限付き非同期ファイル出力"
+      },
+      {
         "symbol": "InterpretationSessionDelegate",
         "path": "RealtimeTranslator/Realtime/InterpretationSession.swift",
         "reason": "Swift delegate protocol。C# 側はイベント購読に内包"
