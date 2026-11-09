@@ -16,6 +16,14 @@ final class SessionDiagnosticStoreTests: XCTestCase {
         }
     }
 
+    // Given: XCTestが注入する実行環境
+    // When: アプリケーション用診断ストアを要求する
+    // Then: ホームディレクトリのストアを初期化せず無効化する
+    func testApplicationStoreIsDisabledInXCTest() {
+        XCTAssertTrue(AppRuntimeEnvironment.isRunningXCTest())
+        XCTAssertNil(SessionDiagnosticStore.applicationStore)
+    }
+
     // Given: 秘密情報に見える不正なバージョンと型付き診断イベント
     // When: 診断をファイルへ保存する
     // Then: 許可された数値・列挙値だけを保存し、所有者以外の読み取りを許可しない

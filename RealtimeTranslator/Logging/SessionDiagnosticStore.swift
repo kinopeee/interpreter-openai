@@ -44,6 +44,10 @@ final class SessionDiagnosticStore: @unchecked Sendable {
         directory: FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/RealtimeTranslator", isDirectory: true)
     )
+    static var applicationStore: SessionDiagnosticStore? {
+        guard !AppRuntimeEnvironment.isRunningXCTest() else { return nil }
+        return shared
+    }
     static let fileByteLimit = 1_048_576
     static let pendingLimit = 64
 

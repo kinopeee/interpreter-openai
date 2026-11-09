@@ -41,7 +41,9 @@ final class SessionHealthBookkeeper {
         healthNow: @escaping ReconnectBudget.Now,
         wallClockNow: @escaping @Sendable () -> TimeInterval,
         reservedEpochProvider: @escaping () async -> Int,
-        diagnosticSink: @escaping (SessionDiagnosticEvent) -> Void = { SessionDiagnosticStore.shared.record($0) }
+        diagnosticSink: @escaping (SessionDiagnosticEvent) -> Void = {
+            SessionDiagnosticStore.applicationStore?.record($0)
+        }
     ) {
         self.healthMonitor.thresholds = thresholds
         self.healthNow = healthNow
