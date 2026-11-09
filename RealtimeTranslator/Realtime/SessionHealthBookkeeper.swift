@@ -27,6 +27,7 @@ final class SessionHealthBookkeeper {
     private var healthAttemptStart: Duration?
     private var healthAttemptEpoch = 0
     private var healthAttemptGeneration = 0
+    private var lastLoggedAttemptEpoch: Int?
     private var lastHealthSnapshotLogAt: Duration?
     private var connectionCountInGeneration = 0
 
@@ -63,17 +64,26 @@ final class SessionHealthBookkeeper {
         healthAttemptStart = healthNow()
         healthAttemptEpoch = reservedEpoch
         healthAttemptGeneration = lifecycleGeneration
+        lastLoggedAttemptEpoch = nil
         diagnosticMetrics = SessionDiagnosticMetrics()
-        diagnosticSink(.attempt(generation: lifecycleGeneration, epoch: reservedEpoch))
+        diagnosticSink(.attemptStarted(generation: lifecycleGeneration, attempt: connectionCountInGeneration))
     }
 
     /// handshake 中に接続側の予約 epoch が進んだあと読み直した値で更新する。
     func updateAttemptEpoch(_ reservedEpoch: Int) {
         healthAttemptEpoch = reservedEpoch
+        guard healthAttemptStart != nil, lastLoggedAttemptEpoch != reservedEpoch else { return }
+        lastLoggedAttemptEpoch = reservedEpoch
+        diagnosticSink(
+            .attemptEpoch(
+                generation: healthAttemptGeneration, attempt: connectionCountInGeneration, epoch: reservedEpoch
+            )
+        )
     }
 
     /// Listening 確定時に monitor 世代を開始し、受信数・期限をシードする。
     func beginGeneration(generation: Int, epoch: Int, deliveryState: EventDeliveryState) {
+        updateAttemptEpoch(epoch)
         let monitorNow = healthNow()
         healthMonitor.beginGeneration(
             generation: generation,
@@ -165,7 +175,7 @@ final class SessionHealthBookkeeper {
             // 世代未開始（pre-Listening / handshake 失敗）の終了は attempt の
             // 開始時刻・意図 epoch で記録する。monitor の stall 状態には触れない。
             // handshake 中の stop では接続側の予約 epoch が先に進むため記録時に読み直す。
-            healthAttemptEpoch = await reservedEpochProvider()
+            updateAttemptEpoch(await reservedEpochProvider())
             diagnostic = SessionTerminationDiagnostic(
                 kind: kind,
                 connectionDuration: max(.zero, now - attemptStart),

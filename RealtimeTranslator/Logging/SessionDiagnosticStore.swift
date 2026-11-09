@@ -16,15 +16,18 @@ struct SessionDiagnosticMetrics: Sendable {
 
 /// 自由文・音声・認証情報を受け取らない、ローカル診断専用の入力型。
 enum SessionDiagnosticEvent: Sendable {
-    case attempt(generation: Int, epoch: Int)
+    case attemptStarted(generation: Int, attempt: Int)
+    case attemptEpoch(generation: Int, attempt: Int, epoch: Int)
     case snapshot(SessionHealthSnapshot, SessionDiagnosticMetrics)
     case detection(SessionHealthDetection)
     case termination(SessionTerminationDiagnostic)
 
     var description: String {
         switch self {
-        case .attempt(let generation, let epoch):
-            "attempt generation=\(generation) epoch=\(epoch)"
+        case .attemptStarted(let generation, let attempt):
+            "attemptStarted generation=\(generation) attempt=\(attempt)"
+        case .attemptEpoch(let generation, let attempt, let epoch):
+            "attemptEpoch generation=\(generation) attempt=\(attempt) epoch=\(epoch)"
         case .snapshot(let snapshot, let metrics):
             "snapshot \(snapshot.description) \(metrics.description)"
         case .detection(let detection):
@@ -102,7 +105,8 @@ final class SessionDiagnosticStore: @unchecked Sendable {
             droppedRecords = 0
             lock.unlock()
 
-            let line = "\(formatter.string(from: timestamp)) schema=1 appVersion=\(version) "
+            let line =
+                "\(formatter.string(from: timestamp)) schema=1 appVersion=\(version) "
                 + "pid=\(ProcessInfo.processInfo.processIdentifier) droppedRecords=\(dropped) "
                 + "\(event.description)\n"
             do {
