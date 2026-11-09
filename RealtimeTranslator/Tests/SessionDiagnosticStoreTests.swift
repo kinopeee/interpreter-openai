@@ -215,20 +215,23 @@ final class SessionDiagnosticStoreTests: XCTestCase {
         XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o644)
     }
 
-    // Given: currentまたはpreviousの既存ログが所有者読み取り専用
+    // Given: currentまたはpreviousの既存ログが所有者読み取り専用または書き込み専用
     // When: 診断イベントを書き込む
     // Then: 内容を保持して権限を修復し、新しいcurrent行を欠落なく追記する
-    func testReadOnlyLogsAreRepairedBeforeAppending() throws {
-        for readOnlyName in ["diagnostics.log", "diagnostics.previous.log"] {
-            let logDirectory = directory.appendingPathComponent(readOnlyName, isDirectory: true)
+    func testAccessibleLogsAreRepairedBeforeAppending() throws {
+        for (name, mode) in [
+            ("diagnostics.log", 0o400), ("diagnostics.previous.log", 0o400),
+            ("diagnostics.log", 0o200), ("diagnostics.previous.log", 0o200),
+        ] {
+            let logDirectory = directory.appendingPathComponent("\(name)-\(mode)", isDirectory: true)
             try FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
             let current = logDirectory.appendingPathComponent("diagnostics.log")
             let previous = logDirectory.appendingPathComponent("diagnostics.previous.log")
             try Data("existing current\n".utf8).write(to: current)
             try Data("existing previous\n".utf8).write(to: previous)
             try FileManager.default.setAttributes(
-                [.posixPermissions: 0o400],
-                ofItemAtPath: logDirectory.appendingPathComponent(readOnlyName).path
+                [.posixPermissions: mode],
+                ofItemAtPath: logDirectory.appendingPathComponent(name).path
             )
 
             let store = SessionDiagnosticStore(directory: logDirectory)
@@ -246,5 +249,30 @@ final class SessionDiagnosticStoreTests: XCTestCase {
                 XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
             }
         }
+    }
+
+    // Given: 読み書き両方の権限が取り除かれた既存ログ
+    // When: 記録が失敗した後、所有者が権限を戻して再試行する
+    // Then: 安全に開けないファイルは変更せず、復旧時に欠落数を報告する
+    func testInaccessibleLogFailsClosedAndRecovers() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let current = directory.appendingPathComponent("diagnostics.log")
+        try Data("existing\n".utf8).write(to: current)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: current.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: current.path) }
+        let store = SessionDiagnosticStore(directory: directory)
+        store.record(.attemptStarted(generation: 1, attempt: 1))
+        store.waitForPendingWrites()
+        let attributes = try FileManager.default.attributesOfItem(atPath: current.path)
+        XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: current.path)
+        store.record(.attemptStarted(generation: 1, attempt: 2))
+        store.waitForPendingWrites()
+        let text = try String(contentsOf: current, encoding: .utf8)
+        XCTAssertTrue(text.hasPrefix("existing\n"))
+        XCTAssertTrue(text.contains("droppedRecords=1"))
+        XCTAssertTrue(text.contains("attempt=2"))
+        XCTAssertFalse(text.contains("attempt=1"))
     }
 }

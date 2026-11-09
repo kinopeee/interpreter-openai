@@ -185,25 +185,37 @@ final class SessionDiagnosticStore: @unchecked Sendable {
     }
 
     private func openLogFile(_ name: String, in directoryDescriptor: Int32, create: Bool) throws -> FileHandle? {
-        if create, let existing = try openLogFile(name, in: directoryDescriptor, create: false) {
-            try existing.close()
+        let safeFlags = O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC
+        let flags = O_WRONLY | O_APPEND | safeFlags | (create ? O_CREAT : 0)
+        var descriptor = openat(directoryDescriptor, name, flags, mode_t(0o600))
+        if descriptor < 0 && errno == EACCES {
+            let repairDescriptor = openat(directoryDescriptor, name, O_RDONLY | safeFlags)
+            guard repairDescriptor >= 0 else { throw CocoaError(.fileWriteNoPermission) }
+            defer { Darwin.close(repairDescriptor) }
+            try protectLogFile(repairDescriptor)
+            descriptor = openat(directoryDescriptor, name, flags, mode_t(0o600))
         }
-        let accessFlags = create ? O_WRONLY | O_APPEND | O_CREAT : O_RDONLY
-        let flags = accessFlags | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC
-        let descriptor = openat(directoryDescriptor, name, flags, mode_t(0o600))
         guard descriptor >= 0 else {
             if !create && errno == ENOENT { return nil }
             throw CocoaError(.fileWriteInvalidFileName)
         }
+        do {
+            try protectLogFile(descriptor)
+        } catch {
+            Darwin.close(descriptor)
+            throw error
+        }
+        return FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+    }
+
+    private func protectLogFile(_ descriptor: Int32) throws {
         var status = stat()
         guard fstat(descriptor, &status) == 0,
             status.st_mode & S_IFMT == S_IFREG, status.st_uid == geteuid(), status.st_nlink == 1,
             fchmod(descriptor, 0o600) == 0
         else {
-            Darwin.close(descriptor)
             throw CocoaError(.fileWriteNoPermission)
         }
-        return FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
     }
 
     private func fileSize(_ handle: FileHandle) throws -> Int64 {
