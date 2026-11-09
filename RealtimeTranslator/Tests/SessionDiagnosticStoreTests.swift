@@ -214,4 +214,37 @@ final class SessionDiagnosticStoreTests: XCTestCase {
         let attributes = try FileManager.default.attributesOfItem(atPath: target.path)
         XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o644)
     }
+
+    // Given: currentまたはpreviousの既存ログが所有者読み取り専用
+    // When: 診断イベントを書き込む
+    // Then: 内容を保持して権限を修復し、新しいcurrent行を欠落なく追記する
+    func testReadOnlyLogsAreRepairedBeforeAppending() throws {
+        for readOnlyName in ["diagnostics.log", "diagnostics.previous.log"] {
+            let logDirectory = directory.appendingPathComponent(readOnlyName, isDirectory: true)
+            try FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
+            let current = logDirectory.appendingPathComponent("diagnostics.log")
+            let previous = logDirectory.appendingPathComponent("diagnostics.previous.log")
+            try Data("existing current\n".utf8).write(to: current)
+            try Data("existing previous\n".utf8).write(to: previous)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o400],
+                ofItemAtPath: logDirectory.appendingPathComponent(readOnlyName).path
+            )
+
+            let store = SessionDiagnosticStore(directory: logDirectory)
+            store.record(.attemptStarted(generation: 1, attempt: 1))
+            store.waitForPendingWrites()
+
+            let currentText = try String(contentsOf: current, encoding: .utf8)
+            let previousText = try String(contentsOf: previous, encoding: .utf8)
+            XCTAssertTrue(currentText.hasPrefix("existing current\n"))
+            XCTAssertTrue(currentText.contains("droppedRecords=0"))
+            XCTAssertTrue(currentText.contains("attempt=1"))
+            XCTAssertEqual(previousText, "existing previous\n")
+            for url in [current, previous] {
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+            }
+        }
+    }
 }

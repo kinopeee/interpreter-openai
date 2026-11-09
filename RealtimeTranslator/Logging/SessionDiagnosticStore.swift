@@ -185,7 +185,11 @@ final class SessionDiagnosticStore: @unchecked Sendable {
     }
 
     private func openLogFile(_ name: String, in directoryDescriptor: Int32, create: Bool) throws -> FileHandle? {
-        let flags = O_WRONLY | O_APPEND | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC | (create ? O_CREAT : 0)
+        if create, let existing = try openLogFile(name, in: directoryDescriptor, create: false) {
+            try existing.close()
+        }
+        let accessFlags = create ? O_WRONLY | O_APPEND | O_CREAT : O_RDONLY
+        let flags = accessFlags | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC
         let descriptor = openat(directoryDescriptor, name, flags, mode_t(0o600))
         guard descriptor >= 0 else {
             if !create && errno == ENOENT { return nil }
