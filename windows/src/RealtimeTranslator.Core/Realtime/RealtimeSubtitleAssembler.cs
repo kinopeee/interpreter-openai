@@ -378,16 +378,29 @@ public sealed class RealtimeSubtitleAssembler
 
         if (CurrentTranslation.Length > 0)
         {
-            // 旧訳文は確定しないが、次発話の原文が同一セグメントへ連結しないよう境界だけ進める。
             if (_currentSegmentTainted)
             {
                 return AbandonStaleSegment(now);
             }
 
-            AbandonStaleSegment(now);
+            return FinalizeTranslatedPrefix(now);
         }
 
         return null;
+    }
+
+    private RealtimeSubtitleUpdate? FinalizeTranslatedPrefix(DateTimeOffset now)
+    {
+        var translatedEnd = _selectedLane is { } lane ? _translationSourceEnd.GetValueOrDefault(lane) : 0;
+        var offset = BoundaryOffsetMovingWhitespaceToNewSide(translatedEnd);
+        if (offset == 0)
+        {
+            AbandonStaleSegment(now);
+            return null;
+        }
+
+        _sourceText = _sourceText[..offset];
+        return FinalizeCurrent(elapsedHint: null, now);
     }
 
     private RealtimeSubtitleUpdate FinalizeCurrent(int? elapsedHint, DateTimeOffset now)

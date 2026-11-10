@@ -733,6 +733,216 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertFalse(snapshot.current.sourceText.contains("遅延consumerの残骸"))
     }
 
+    func testStopDrainsStaleSourceAndRecordsOnlyTranslatedPrefixOnce() async throws {
+        // Given: 記録を有効にしたsessionに確定待ちのpairがあり、原文だけが続いている
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("transcript-session-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let transcriptURL = directory.appendingPathComponent("session.txt")
+        let transcriptStore = SubtitleTranscriptStore(fileURL: transcriptURL)
+        XCTAssertEqual(transcriptStore.markSessionStart(), .appended)
+
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy(transcriptStore: transcriptStore)
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 60_000_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let epoch = await dual.connectionEpoch
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "停止前の完全ペア", eventID: "stop-prefix-s1", elapsedMs: 10),
+            epoch: epoch
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(
+                delta: "Complete pair before stop",
+                eventID: "stop-prefix-t1",
+                elapsedMs: 20
+            ),
+            epoch: epoch
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText == "停止前の完全ペア"
+                && delegate.latestSnapshot?.current.translatedText == "Complete pair before stop"
+                && delegate.latestSnapshot?.current.state == .live
+        }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "、続きです", eventID: "stop-prefix-s2", elapsedMs: 30),
+            epoch: epoch
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText == "停止前の完全ペア、続きです"
+                && delegate.latestSnapshot?.current.isTranslationCurrent == false
+                && delegate.latestSnapshot?.current.canFinalize == false
+        }
+        dual.closeGracefullyEvents = [
+            RealtimeTranslationStreamEvent(
+                lane: .source,
+                event: .inputTranscriptDelta(
+                    delta: "、停止中の続き",
+                    eventID: "stop-prefix-drain-s3",
+                    elapsedMs: 40
+                ),
+                epoch: epoch
+            )
+        ]
+
+        // When: close drain で追加の原文suffixを取り込んでから停止する
+        await session.stop()
+
+        // Then: 翻訳済みprefixだけを保持し、実ストアには1回だけ記録する
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertEqual(delegate.transcriptAppendResults.filter { $0 == .appended }.count, 1)
+        let transcript = try String(contentsOf: transcriptURL, encoding: .utf8)
+        XCTAssertEqual(transcript.components(separatedBy: "=== 録音開始 ").count - 1, 1)
+        XCTAssertEqual(transcript.components(separatedBy: "--- ").count - 1, 1)
+        XCTAssertTrue(transcript.contains("原文: 停止前の完全ペア"))
+        XCTAssertTrue(transcript.contains("訳文: Complete pair before stop"))
+        XCTAssertFalse(transcript.contains("続きです"))
+        XCTAssertFalse(transcript.contains("停止中の続き"))
+        XCTAssertEqual(delegate.finalizedSnapshots.last?.sourceText, "停止前の完全ペア")
+        XCTAssertEqual(delegate.finalizedSnapshots.last?.translatedText, "Complete pair before stop")
+    }
+
+    func testStopClearsCloseDrainPendingBoundaryBeforeFinalizingTranslatedPrefix() async throws {
+        // Given: 完全ペアのあと CloseGracefully の stop drain で pending boundary が作られる
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("transcript-session-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let transcriptURL = directory.appendingPathComponent("session.txt")
+        let transcriptStore = SubtitleTranscriptStore(fileURL: transcriptURL)
+        XCTAssertEqual(transcriptStore.markSessionStart(), .appended)
+
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy(transcriptStore: transcriptStore)
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 60_000_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let epoch = await dual.connectionEpoch
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(delta: "停止前の完全ペア", eventID: "pending-stop-s1", elapsedMs: 10),
+            epoch: epoch
+        )
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(
+                delta: "Complete pair before stop",
+                eventID: "pending-stop-t1",
+                elapsedMs: 20
+            ),
+            epoch: epoch
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText == "停止前の完全ペア"
+                && delegate.latestSnapshot?.current.translatedText == "Complete pair before stop"
+                && delegate.latestSnapshot?.current.state == .live
+        }
+        dual.closeGracefullyEvents = [
+            RealtimeTranslationStreamEvent(
+                lane: .source,
+                event: .inputTranscriptDelta(
+                    delta: " MacBook",
+                    eventID: "pending-stop-drain-s2",
+                    elapsedMs: 30
+                ),
+                epoch: epoch
+            )
+        ]
+
+        // When: close drain で1語だけのラテン原文を取り込んでから停止する
+        await session.stop()
+
+        // Then: 翻訳済みprefixだけを確定して実ストアに1回だけ記録し、MacBookを含めない
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertEqual(delegate.transcriptAppendResults.filter { $0 == .appended }.count, 1)
+        let transcript = try String(contentsOf: transcriptURL, encoding: .utf8)
+        XCTAssertEqual(transcript.components(separatedBy: "=== 録音開始 ").count - 1, 1)
+        XCTAssertEqual(transcript.components(separatedBy: "--- ").count - 1, 1)
+        XCTAssertTrue(transcript.contains("原文: 停止前の完全ペア"))
+        XCTAssertTrue(transcript.contains("訳文: Complete pair before stop"))
+        XCTAssertFalse(transcript.contains("MacBook"))
+        XCTAssertEqual(delegate.finalizedSnapshots.last?.sourceText, "停止前の完全ペア")
+        XCTAssertEqual(delegate.finalizedSnapshots.last?.translatedText, "Complete pair before stop")
+    }
+
+    func testStopDoesNotFinalizeZeroPrefixWhenTranslationArrivesBeforeSource() async {
+        // Given: 訳文を先に受け取り、close drainで2つ目の原文が届く
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 60_000_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let epoch = await dual.connectionEpoch
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(
+                delta: "Hello",
+                eventID: "stop-zero-prefix-t1",
+                elapsedMs: 10
+            ),
+            epoch: epoch
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText.isEmpty == true
+                && delegate.latestSnapshot?.current.translatedText == "Hello"
+        }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: "こんにちは",
+                eventID: "stop-zero-prefix-s1",
+                elapsedMs: 20
+            ),
+            epoch: epoch
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText == "こんにちは"
+                && delegate.latestSnapshot?.current.translatedText == "Hello"
+                && delegate.latestSnapshot?.current.isTranslationCurrent == true
+        }
+        dual.closeGracefullyEvents = [
+            RealtimeTranslationStreamEvent(
+                lane: .source,
+                event: .inputTranscriptDelta(
+                    delta: "、皆さん",
+                    eventID: "stop-zero-prefix-drain-s2",
+                    elapsedMs: 30
+                ),
+                epoch: epoch
+            )
+        ]
+
+        // When: 2つ目の原文をclose drainで取り込んでから停止する
+        await session.stop()
+
+        // Then: 空prefixや未翻訳suffixを確定記録しない
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertTrue(delegate.finalizedSnapshots.isEmpty)
+    }
+
     func testReconnectFinalizesCompletePairBeforeNewEpoch() async throws {
         // Given: idle finalize 前の完全な原文+訳文ペア
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")
@@ -2270,6 +2480,12 @@ final class InterpretationSessionDelegateSpy: InterpretationSessionDelegate {
     private(set) var latestSnapshot: SubtitleSnapshot?
     private(set) var finalizedSnapshots: [LiveSubtitle] = []
     private(set) var healthDetections: [SessionHealthDetection] = []
+    private let transcriptStore: SubtitleTranscriptStore?
+    private(set) var transcriptAppendResults: [SubtitleTranscriptAppendResult] = []
+
+    init(transcriptStore: SubtitleTranscriptStore? = nil) {
+        self.transcriptStore = transcriptStore
+    }
 
     func interpretationSession(
         _: InterpretationSession,
@@ -2293,6 +2509,14 @@ final class InterpretationSessionDelegateSpy: InterpretationSessionDelegate {
         latestSnapshot = snapshot
         if snapshot.current.state == .finalized {
             finalizedSnapshots.append(snapshot.current)
+            if let transcriptStore {
+                transcriptAppendResults.append(
+                    transcriptStore.appendEntry(
+                        sourceText: snapshot.current.sourceText,
+                        translatedText: snapshot.current.translatedText
+                    )
+                )
+            }
         }
     }
 

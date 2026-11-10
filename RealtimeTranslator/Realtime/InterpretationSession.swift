@@ -219,7 +219,8 @@ final class InterpretationSession {
             let invalidation = context.subtitlePipeline.discardUnconfirmed()
             context.subtitlePipeline.renderNow(invalidation)
         } else {
-            if let tickUpdate = context.subtitlePipeline.tickProcessor(now: Date()) {
+            let flushAt = Date().addingTimeInterval(RealtimeSubtitleAssembler.idleFinalizeInterval)
+            if let tickUpdate = context.subtitlePipeline.flushProcessor(now: flushAt) {
                 context.subtitlePipeline.renderNow(tickUpdate)
             }
             let snapshot = context.subtitlePipeline.aggregator.forceFinalize()

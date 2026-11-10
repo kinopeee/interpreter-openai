@@ -27,7 +27,8 @@ OpenAI Realtime Translation によるリアルタイム字幕アプリ。macOS 2
 ## 原文・翻訳ストリームの契約
 
 - 原文音声は専用transcriptionへ常時送信する。直近4秒のrolling prerollを常時保持し、判定前は原文のみ送信、判定後は選択された `languagePair` の相手言語をtargetとして送る。
-- 言語切替を確定する時点と、原文を分割する位置を分離する。原文上の境界候補を追跡し、切替確定時に候補位置で分割する。候補がない場合の扱い、句読点・Unicode・英西の境界規則は `shared/fixtures/v2/subtitle.json` と両実装の `SourceBoundaryTracker` を参照する。切替判定時点を一律に原文境界にしない。
+- 言語切替を確定する時点と、原文を分割する位置を分離する。原文上の境界候補を追跡し、切替確定時に候補位置で分割する。候補がない場合の扱い、句読点・Unicode・英西の境界規則は `shared/fixtures/v3/subtitle.json` と両実装の `SourceBoundaryTracker` を参照する。切替判定時点を一律に原文境界にしない。
+- idle / stop / reconnect / fatal flush では、現行ペアは原文・訳文全体を確定し、古い訳文は対応する原文prefixのみを確定する。prefixがなければ破棄し、未翻訳suffixは次segmentへ連結しない。
 - Translationセッション付属のtranscriptionを原文authorityにしない。専用transcriptionの低遅延deltaを使い、原文と訳文を常にペア表示する。
 - 原文送信は翻訳送信と分離し、翻訳側の停滞・失敗に巻き込まない。判定後は選択されたtargetだけが同じ音声frame列を受信し、切替時はrolling prerollを新targetへflushする。
 - WebSocket `send` は約5秒でtimeoutし、回復可能なtransport障害として再接続する。
@@ -55,7 +56,7 @@ OpenAI Realtime Translation によるリアルタイム字幕アプリ。macOS 2
 
 ## 共有契約の正本
 
-- `shared/fixtures/v<N>/` は両実装のバージョン付き契約正本。現行の subtitle と audio 契約は v2、その他は v1 とし、Swift テストと Windows 版の同値性を保つ。既存の subtitle v1 と audio v1 も保持し、`scripts/ci-shared-contracts.sh` で全バージョンを検査する。
+- `shared/fixtures/v<N>/` は両実装のバージョン付き契約正本。現行の subtitle は v3、audio は v2、その他は v1 とし、Swift テストと Windows 版の同値性を保つ。既存の subtitle v1/v2 と audio v1/v2 も保持し、`scripts/ci-shared-contracts.sh` で全バージョンを検査する。
 - `shared/parity-map.json` は両実装の契約ドメイン型の対応表。契約ドメイン型の追加・改名・削除・移動は map へ反映し、片側専用の型は `platformOnly` に理由付きで登録する。`scripts/ci-parity.mjs`（`ci-shared-contracts.sh parity` でも可）が file/symbol の実在、fixture 消費、scan 範囲の網羅性を検査し、未登録型は hard fail する。
 
 ## コード整形

@@ -386,13 +386,24 @@ struct RealtimeSubtitleAssembler: Sendable {
             return nil
         }
         if !translation.isEmpty {
-            // 旧訳文は確定しないが、次発話の原文が同一セグメントへ連結しないよう境界だけ進める。
             if currentSegmentTainted {
                 return abandonStaleSegment(now: now)
             }
-            _ = abandonStaleSegment(now: now)
+            return finalizeTranslatedPrefix(now: now)
         }
         return nil
+    }
+
+    private mutating func finalizeTranslatedPrefix(now: Date) -> RealtimeSubtitleUpdate? {
+        let translatedEnd = selectedLane.flatMap { translationSourceEnd[$0] } ?? 0
+        let offset = boundaryOffsetMovingWhitespaceToNewSide(translatedEnd)
+        guard offset > 0 else {
+            _ = abandonStaleSegment(now: now)
+            return nil
+        }
+        let endIndex = String.Index(utf16Offset: offset, in: sourceText)
+        sourceText = String(sourceText[..<endIndex])
+        return finalizeCurrent(elapsedHint: nil, now: now)
     }
 
     private mutating func finalizeCurrent(

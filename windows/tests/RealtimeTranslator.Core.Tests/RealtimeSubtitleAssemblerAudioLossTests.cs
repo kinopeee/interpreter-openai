@@ -29,6 +29,28 @@ public sealed class RealtimeSubtitleAssemblerAudioLossTests
         Assert.False(assembler.IsCurrentSegmentTainted);
     }
 
+    // Given: 音声欠落後に訳文が原文へ追いつかない汚染 segment
+    // When: stale idle finalize 時間を越えて Tick する
+    // Then: 訳文 prefix を確定せず、汚染 segment を無効化する
+    [Fact]
+    public void TaintedStaleSegmentIsInvalidatedInsteadOfFinalizingPrefix()
+    {
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+        assembler.MarkAudioLoss(Origin);
+        assembler.Ingest(Source("こんにちは", "s1"), Origin.AddSeconds(1));
+        assembler.Ingest(Translation("Hello", "t1"), Origin.AddSeconds(1));
+        assembler.Ingest(Source("、皆さん", "s2"), Origin.AddSeconds(2));
+
+        var update = assembler.Tick(Origin.AddSeconds(10));
+
+        Assert.NotNull(update);
+        Assert.True(update.Value.IsInvalidation);
+        Assert.False(update.Value.ShouldFinalize);
+        Assert.Equal(string.Empty, assembler.CurrentSourceText);
+        Assert.False(assembler.IsCurrentSegmentTainted);
+    }
+
     // Given: 音声欠落の汚染窓が期限切れになっている
     // When: 期限後に新しい原文と訳文を受け取り idle finalize する
     // Then: 新しいセグメントは通常どおり確定する

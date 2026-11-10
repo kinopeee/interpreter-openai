@@ -11,9 +11,9 @@ public sealed class RealtimeSubtitleAssemblerTests
 
     // Given: 訳文が付いたあとに原文だけが伸びたセグメント
     // When: 同じ期待 lane を再指定してから idle finalize 間隔を超えて Tick する
-    // Then: 再指定だけでは旧訳文を現行扱いして確定しない
+    // Then: 追いついた原文prefixだけを確定し、未翻訳suffixは含めない
     [Fact]
-    public void IdleTickDoesNotFinalizeStaleTranslationAfterSourceContinues()
+    public void IdleTickFinalizesTranslatedPrefixAfterSourceContinues()
     {
         var assembler = NewAssembler();
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
@@ -32,24 +32,35 @@ public sealed class RealtimeSubtitleAssemblerTests
         Assert.Equal("Hello", continued.Value.TranslatedText);
         Assert.False(continued.Value.IsTranslationCurrent);
         Assert.False(continued.Value.ShouldFinalize);
-        Assert.Null(idle);
+        Assert.NotNull(idle);
+        Assert.Equal("こんにちは", idle.Value.SourceText);
+        Assert.Equal("Hello", idle.Value.TranslatedText);
+        Assert.True(idle.Value.IsTranslationCurrent);
+        Assert.True(idle.Value.ShouldFinalize);
+        Assert.Equal(0, idle.Value.SegmentGeneration);
     }
 
     // Given: 訳文が stale のまま idle したセグメント
     // When: 次の発話の原文が届く
-    // Then: 前の原文へ連結せず、新セグメントとして表示する
+    // Then: 前の訳文prefixを確定し、次の原文は新セグメントとして表示する
     [Fact]
-    public void IdleTickAbandonsStaleTranslationSoNextSourceStartsFresh()
+    public void IdleTickFinalizesStaleTranslatedPrefixBeforeNextSourceStartsFresh()
     {
         var assembler = NewAssembler();
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
         assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
         assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200), Origin);
         assembler.Ingest(Source("、皆さん", "s2", 300), Origin.AddMilliseconds(400));
-        Assert.Null(assembler.Tick(Origin.AddSeconds(9)));
+        var finalized = assembler.Tick(Origin.AddSeconds(9));
 
         var next = assembler.Ingest(Source("ありがとう", "s3", 400), Origin.AddSeconds(9.2));
 
+        Assert.NotNull(finalized);
+        Assert.Equal("こんにちは", finalized.Value.SourceText);
+        Assert.Equal("Hello", finalized.Value.TranslatedText);
+        Assert.True(finalized.Value.IsTranslationCurrent);
+        Assert.True(finalized.Value.ShouldFinalize);
+        Assert.Equal(0, finalized.Value.SegmentGeneration);
         Assert.NotNull(next);
         Assert.Equal("ありがとう", next.Value.SourceText);
         Assert.Equal(string.Empty, next.Value.TranslatedText);
@@ -58,18 +69,18 @@ public sealed class RealtimeSubtitleAssemblerTests
         Assert.Equal(1, next.Value.SegmentGeneration);
     }
 
-    // Given: stale idle で境界だけ進めたあと、次の原文が始まっている
+    // Given: stale idle で訳文prefixを確定したあと、次の原文が始まっている
     // When: 捨てたセグメントより古い elapsed の訳と、新しい訳が届く
     // Then: 遅延訳は次発話に混ぜず、新しい訳だけを現行にする
     [Fact]
-    public void LateTranslationAfterStaleIdleAbandonIsIgnoredByCutoff()
+    public void LateTranslationAfterStaleIdleFinalizeIsIgnoredByCutoff()
     {
         var assembler = NewAssembler();
         assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
         assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
         assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200), Origin);
         assembler.Ingest(Source("、皆さん", "s2", 300), Origin.AddMilliseconds(400));
-        Assert.Null(assembler.Tick(Origin.AddSeconds(9)));
+        var finalized = assembler.Tick(Origin.AddSeconds(9));
         assembler.Ingest(Source("ありがとう", "s3", null), Origin.AddSeconds(9.2));
 
         var late = assembler.Ingest(
@@ -81,10 +92,41 @@ public sealed class RealtimeSubtitleAssemblerTests
             Origin.AddSeconds(9.4)
         );
 
+        Assert.NotNull(finalized);
+        Assert.Equal("こんにちは", finalized.Value.SourceText);
+        Assert.Equal("Hello", finalized.Value.TranslatedText);
+        Assert.True(finalized.Value.ShouldFinalize);
         Assert.Null(late);
         Assert.NotNull(fresh);
         Assert.Equal("Thank you", fresh.Value.TranslatedText);
         Assert.True(fresh.Value.IsTranslationCurrent);
+    }
+
+    // Given: 翻訳済み prefix のあとに未翻訳原文と pending boundary がある
+    // When: pending 中に idle し、candidate を取り除いて再評価する
+    // Then: pending 中は原文を保持し、解除後に訳文 prefix だけを確定する
+    [Fact]
+    public void PendingBoundaryKeepsStaleSourceUntilCandidateIsCleared()
+    {
+        var assembler = NewAssembler();
+        assembler.ExpectLane(RealtimeTranslationOutputLanguage.English);
+        assembler.Ingest(Source("こんにちは", "s1", 100), Origin);
+        assembler.Ingest(Translation(RealtimeTranslationOutputLanguage.English, "Hello", "t1", 200), Origin);
+        assembler.Ingest(Source("、皆さん", "s2", 300), Origin.AddMilliseconds(400));
+        assembler.SetBoundaryCandidatePending(true);
+
+        var pending = assembler.Tick(Origin.AddSeconds(9));
+        var retainedSource = assembler.CurrentSourceText;
+        assembler.SetBoundaryCandidatePending(false);
+        var finalized = assembler.Tick(Origin.AddSeconds(9.1));
+
+        Assert.Null(pending);
+        Assert.Equal("こんにちは、皆さん", retainedSource);
+        Assert.NotNull(finalized);
+        Assert.Equal("こんにちは", finalized.Value.SourceText);
+        Assert.Equal("Hello", finalized.Value.TranslatedText);
+        Assert.True(finalized.Value.IsTranslationCurrent);
+        Assert.True(finalized.Value.ShouldFinalize);
     }
 
     // Given: 原文継続で古くなった訳文のあと、選択 lane の訳文が追いつく

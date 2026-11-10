@@ -112,6 +112,23 @@ final class SessionSubtitlePipeline {
         processor.tick(now: now)
     }
 
+    func flushProcessor(now: Date) -> RealtimeSubtitleUpdate? {
+        let generation = processor.currentSegmentGeneration
+        if let update = processor.tick(now: now) {
+            return update
+        }
+        // 空prefixの黙示破棄を、強制flush時だけ表示側へ伝える。
+        guard processor.currentSegmentGeneration != generation else { return nil }
+        return RealtimeSubtitleUpdate(
+            sourceText: "",
+            translatedText: "",
+            isTranslationCurrent: false,
+            shouldFinalize: false,
+            segmentGeneration: processor.currentSegmentGeneration,
+            isInvalidation: true
+        )
+    }
+
     func takePendingUpdate() -> RealtimeSubtitleUpdate? {
         displayScheduler.takePendingUpdate()
     }
@@ -191,7 +208,7 @@ final class SessionSubtitlePipeline {
         }
 
         let flushAt = Date().addingTimeInterval(RealtimeSubtitleAssembler.idleFinalizeInterval)
-        if let update = processor.tick(now: flushAt) {
+        if let update = flushProcessor(now: flushAt) {
             displayScheduler.renderNow(update)
             return
         }

@@ -272,6 +272,11 @@ public sealed class InterpretationSession : IDisposable
             // commit / session.close 中に届いた最終 delta を assembler へ取り込む。
             await _context.SubtitlePipeline.IngestStopDrainEventsAsync().ConfigureAwait(false);
 
+            lock (_context.Sync)
+            {
+                _context.SubtitlePipeline.ClearBoundaryCandidate();
+            }
+
             // 停止時点で完全ペアが残っていれば確定して見せる（オプトイン字幕記録も含む）。
             _context.SubtitlePipeline.FlushPendingFinalizeIfNeeded();
 
