@@ -323,8 +323,13 @@ final class AppCoordinator: NSObject {
     }
 
     private func recordFinalizedSubtitleIfNeeded(_ subtitle: LiveSubtitle) {
-        guard settings.recordSubtitles else { return }
-        guard subtitle.state == .finalized, !subtitle.isEmpty else { return }
+        guard
+            SubtitleTranscriptRecordingPolicy.shouldRecord(
+                subtitle: subtitle,
+                recordSubtitles: settings.recordSubtitles,
+                state: translationState
+            )
+        else { return }
         // 録音中にオプトインした場合も、最初の確定ペア前に開始マーカーを書く。
         openTranscriptSessionIfNeeded()
         handleTranscriptResult(
