@@ -8,7 +8,7 @@ final class SessionSubtitlePipelineTests: XCTestCase {
         var snapshots: [SubtitleSnapshot] = []
         let (pipeline, aggregator, _) = makePipeline { snapshots.append($0) }
         let eventTime = Date().addingTimeInterval(-10)
-        pipeline.processSubtitleEvent(
+        _ = pipeline.processSubtitleEvent(
             event(
                 .english,
                 .outputTranscriptDelta(delta: "Hello", eventID: "flush-zero-prefix-t1", elapsedMs: 10)
@@ -55,7 +55,7 @@ final class SessionSubtitlePipelineTests: XCTestCase {
         var snapshots: [SubtitleSnapshot] = []
         let (pipeline, aggregator, _) = makePipeline { snapshots.append($0) }
         let eventTime = Date().addingTimeInterval(-10)
-        pipeline.processSubtitleEvent(
+        _ = pipeline.processSubtitleEvent(
             event(
                 .english,
                 .outputTranscriptDelta(delta: "Hello", eventID: "tick-zero-prefix-t1", elapsedMs: 10)
