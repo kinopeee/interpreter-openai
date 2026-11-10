@@ -3053,6 +3053,66 @@ public sealed class InterpretationSessionTests
         }
     }
 
+    // Given: 完全ペアのあと CloseGracefully の stop drain で pending boundary が作られる
+    // When: 利用者が停止する
+    // Then: 翻訳済みprefixだけを1回確定し、MacBookを確定しない
+    [Fact]
+    public async Task StopClearsCloseDrainPendingBoundaryBeforeFinalizingTranslatedPrefix()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("停止前の完全ペア");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Complete pair before stop");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+            }
+        });
+
+        client.OnCloseGracefully = () =>
+        {
+            client.PublishSourceDelta(" MacBook");
+            return Task.CompletedTask;
+        };
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        lock (updates)
+        {
+            var finalized = updates.FindAll(update => update.ShouldFinalize);
+            Assert.Single(finalized);
+            Assert.Equal("停止前の完全ペア", finalized[0].SourceText);
+            Assert.Equal("Complete pair before stop", finalized[0].TranslatedText);
+            Assert.Contains(
+                updates,
+                update =>
+                    update.SourceText.Contains("MacBook", StringComparison.Ordinal)
+                    && !update.IsTranslationCurrent
+                    && !update.ShouldFinalize
+            );
+            Assert.DoesNotContain(
+                updates,
+                update => update.ShouldFinalize && update.SourceText.Contains("MacBook", StringComparison.Ordinal)
+            );
+        }
+    }
+
     // Given: idle finalize 前の完全な原文+訳文ペア
     // When: transport error で再接続し BeginNewEpoch する
     // Then: 捨てる前に ShouldFinalize が発行され、オプトイン字幕記録へ届く
