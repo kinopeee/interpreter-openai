@@ -1418,6 +1418,21 @@
         "reason": "AVAudioEngine tap の yield 結果型"
       },
       {
+        "symbol": "MicrophoneModeProviding",
+        "path": "RealtimeTranslator/Audio/MicrophoneMode.swift",
+        "reason": "macOS のアプリごとのマイクモード API。Windows に相当機能はない"
+      },
+      {
+        "symbol": "SystemMicrophoneModeProvider",
+        "path": "RealtimeTranslator/Audio/MicrophoneMode.swift",
+        "reason": "macOS のアプリごとのマイクモード API。Windows に相当機能はない"
+      },
+      {
+        "symbol": "MicrophoneModeHintPolicy",
+        "path": "RealtimeTranslator/Audio/MicrophoneMode.swift",
+        "reason": "macOS のアプリごとのマイクモード API。Windows に相当機能はない"
+      },
+      {
         "symbol": "CapturedAudioBuffer",
         "path": "RealtimeTranslator/Audio/SpeechAudioPipeline.swift",
         "reason": "AVAudioEngine buffer 管理"
@@ -1456,6 +1471,11 @@
         "symbol": "SubtitlePanelOriginPolicy",
         "path": "RealtimeTranslator/Subtitles/SubtitlePanelOriginPolicy.swift",
         "reason": "位置永続化ポリシー。C# 側は App 層に内包"
+      },
+      {
+        "symbol": "SubtitleTranscriptRecordingPolicy",
+        "path": "RealtimeTranslator/Subtitles/SubtitleTranscriptRecordingPolicy.swift",
+        "reason": "macOS は再配信された字幕 snapshot を扱い、idle 中の再記録を防ぐ。Windows は確定イベントを一度だけ記録"
       },
       {
         "symbol": "SubtitleView",
@@ -1637,7 +1657,7 @@
       {
         "symbol": "SubtitleTranscriptSessionGate",
         "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleTranscriptSessionGate.cs",
-        "reason": "opt-in 記録の開始マーカー/上限通知状態機械。Swift は SubtitleTranscriptStore/InterpretationSession に内包"
+        "reason": "opt-in 記録の開始マーカー/上限通知状態機械。Swift は AppCoordinator が開始マーカー/上限通知状態を管理"
       },
       {
         "symbol": "RealtimeApiKey",

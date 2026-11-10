@@ -731,6 +731,30 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertTrue(snapshot.current.sourceText.contains("こんにちは"))
         XCTAssertEqual(snapshot.current.translatedText, "Hello")
         XCTAssertFalse(snapshot.current.sourceText.contains("遅延consumerの残骸"))
+
+        let finalizedSnapshotsWithStates = zip(delegate.snapshots, delegate.snapshotStates)
+            .filter { $0.0.current.state == .finalized }
+        let acceptedBeforeIdle = finalizedSnapshotsWithStates.filter { snapshot, state in
+            SubtitleTranscriptRecordingPolicy.shouldRecord(
+                subtitle: snapshot.current,
+                recordSubtitles: true,
+                state: state
+            )
+        }
+        let afterIdle = finalizedSnapshotsWithStates.filter { $0.1 == .idle }
+        // Then: idle 前の確定 snapshot は記録でき、idle 後に再配信された確定 snapshot は記録しない
+        XCTAssertGreaterThanOrEqual(acceptedBeforeIdle.count, 1)
+        XCTAssertGreaterThanOrEqual(afterIdle.count, 1)
+        XCTAssertEqual(
+            afterIdle.filter { snapshot, state in
+                SubtitleTranscriptRecordingPolicy.shouldRecord(
+                    subtitle: snapshot.current,
+                    recordSubtitles: true,
+                    state: state
+                )
+            }.count,
+            0
+        )
     }
 
     func testStopDrainsStaleSourceAndRecordsOnlyTranslatedPrefixOnce() async throws {
@@ -2475,8 +2499,10 @@ final class CheckedContinuationBox: @unchecked Sendable {
 @MainActor
 final class InterpretationSessionDelegateSpy: InterpretationSessionDelegate {
     private(set) var states: [TranslationState] = []
+    private(set) var latestDelegateState: TranslationState = .idle
     private(set) var messages: [String] = []
     private(set) var snapshots: [SubtitleSnapshot] = []
+    private(set) var snapshotStates: [TranslationState] = []
     private(set) var latestSnapshot: SubtitleSnapshot?
     private(set) var finalizedSnapshots: [LiveSubtitle] = []
     private(set) var healthDetections: [SessionHealthDetection] = []
@@ -2498,6 +2524,7 @@ final class InterpretationSessionDelegateSpy: InterpretationSessionDelegate {
         _ session: InterpretationSession,
         didUpdateState state: TranslationState
     ) {
+        latestDelegateState = state
         states.append(state)
     }
 
@@ -2506,6 +2533,7 @@ final class InterpretationSessionDelegateSpy: InterpretationSessionDelegate {
         didUpdateSubtitles snapshot: SubtitleSnapshot
     ) {
         snapshots.append(snapshot)
+        snapshotStates.append(latestDelegateState)
         latestSnapshot = snapshot
         if snapshot.current.state == .finalized {
             finalizedSnapshots.append(snapshot.current)

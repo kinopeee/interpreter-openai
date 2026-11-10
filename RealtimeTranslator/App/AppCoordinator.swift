@@ -9,6 +9,10 @@ final class AppCoordinator: NSObject {
 
     private(set) var translationState: TranslationState = .idle
     private(set) var isEditingSubtitlePosition = false
+    private let microphoneModeProvider: any MicrophoneModeProviding
+    private var prefersVoiceIsolation = false
+    private let microphoneModeClock = ContinuousClock()
+    private var lastMicrophoneModeRefresh: ContinuousClock.Instant?
 
     private var menuBarController: MenuBarController!
     private lazy var subtitleWindow = SubtitleWindowController()
@@ -41,8 +45,12 @@ final class AppCoordinator: NSObject {
     /// 現在の録音区間でセッション開始マーカーを既に書いたか。
     private var hasOpenTranscriptSession = false
 
-    init(apiKeyStore: any APIKeyStore = KeychainAPIKeyStore()) {
+    init(
+        apiKeyStore: any APIKeyStore = KeychainAPIKeyStore(),
+        microphoneModeProvider: any MicrophoneModeProviding = SystemMicrophoneModeProvider()
+    ) {
         self.apiKeyStore = apiKeyStore
+        self.microphoneModeProvider = microphoneModeProvider
         super.init()
     }
 
@@ -56,6 +64,14 @@ final class AppCoordinator: NSObject {
 
     var currentSubtitleScreenIndex: Int? { subtitleWindow.currentScreenIndex }
     var isDisplayMirroringActive: Bool { DisplayMirroringDetector.isMirroringActive() }
+    var isVoiceIsolationPreferred: Bool {
+        refreshMicrophoneMode()
+        return prefersVoiceIsolation
+    }
+
+    func showMicrophoneModes() {
+        microphoneModeProvider.showSystemMicrophoneModes()
+    }
 
     func moveSubtitles(toScreenAt index: Int) {
         guard subtitleWindow.moveToScreen(at: index) else { return }
@@ -132,6 +148,7 @@ final class AppCoordinator: NSObject {
             return
         }
 
+        refreshMicrophoneMode()
         hasOpenTranscriptSession = false
         if settings.recordSubtitles {
             openTranscriptSessionIfNeeded()
@@ -323,8 +340,13 @@ final class AppCoordinator: NSObject {
     }
 
     private func recordFinalizedSubtitleIfNeeded(_ subtitle: LiveSubtitle) {
-        guard settings.recordSubtitles else { return }
-        guard subtitle.state == .finalized, !subtitle.isEmpty else { return }
+        guard
+            SubtitleTranscriptRecordingPolicy.shouldRecord(
+                subtitle: subtitle,
+                recordSubtitles: settings.recordSubtitles,
+                state: translationState
+            )
+        else { return }
         // 録音中にオプトインした場合も、最初の確定ペア前に開始マーカーを書く。
         openTranscriptSessionIfNeeded()
         handleTranscriptResult(
@@ -374,8 +396,35 @@ final class AppCoordinator: NSObject {
     }
 
     private func displayedSnapshotWithHints() -> SubtitleSnapshot {
-        guard isShowingMirroringHint else { return lastSnapshot }
-        return lastSnapshot.replacingStatusBanner(UiCopy.text("banner.displayMirroring"))
+        if translationState == .listening {
+            refreshMicrophoneModeIfNeeded()
+        }
+        if isShowingMirroringHint {
+            return lastSnapshot.replacingStatusBanner(UiCopy.text("banner.displayMirroring"))
+        }
+        guard
+            MicrophoneModeHintPolicy.shouldShowHint(
+                state: translationState,
+                statusBanner: lastSnapshot.statusBanner,
+                listeningBanner: UiCopy.text("banner.listening"),
+                prefersVoiceIsolation: prefersVoiceIsolation
+            )
+        else { return lastSnapshot }
+        return lastSnapshot.replacingStatusBanner(UiCopy.text("banner.voiceIsolation"))
+    }
+
+    private func refreshMicrophoneMode() {
+        prefersVoiceIsolation = microphoneModeProvider.prefersVoiceIsolation
+        lastMicrophoneModeRefresh = microphoneModeClock.now
+    }
+
+    private func refreshMicrophoneModeIfNeeded() {
+        if let lastMicrophoneModeRefresh,
+            lastMicrophoneModeRefresh.duration(to: microphoneModeClock.now) < .seconds(2)
+        {
+            return
+        }
+        refreshMicrophoneMode()
     }
 
     private func refreshMirroringHint() {
@@ -392,6 +441,7 @@ extension AppCoordinator: InterpretationSessionDelegate {
         didUpdateState state: TranslationState
     ) {
         translationState = state
+        refreshMicrophoneMode()
         // 新しい接続世代（初回・再接続）や停止で前世代の health 検知を残さない。
         if state == .idle || state == .connecting || state == .reconnecting {
             latestHealthStatus = nil

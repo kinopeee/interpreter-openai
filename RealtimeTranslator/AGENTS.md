@@ -10,6 +10,7 @@
 - `App/`: AppKitライフサイクルと全体調停。SwiftUI `App`へ戻さない。
 - `Security/`: Keychain APIキーストアと環境変数からの初回取り込み。
 - `Audio/RealtimeAudioCaptureService.swift`: AVAudioEngine、24 kHz PCM16変換、100 ms packet化。
+- macOS はアプリごとのマイクモードを保持し、アプリから変更できない。「声を分離」はスピーカーからの相手の声を抑える場合があるため、録音開始時に案内する。
 - `Audio/SpokenLanguage.swift` / `Audio/SpokenLanguageDetector.swift`: 翻訳ペアと、原文deltaの文字種・語の証拠による言語判定。
 - `Realtime/SourceBoundaryTracker.swift`: 切替判定とは独立した原文境界候補の追跡。
 - `OpenAI/`: Realtime Transcription / Translation WebSocket、イベントcodec、選択ペアのdual client。

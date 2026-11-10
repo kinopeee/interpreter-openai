@@ -45,6 +45,7 @@ final class MenuBarController: NSObject {
         startStop.target = self
         startStopItem = startStop
         menu.addItem(startStop)
+        updateMicrophoneModeItem(in: menu)
         menu.addItem(.separator())
 
         let directionItem = NSMenuItem(
@@ -194,6 +195,10 @@ final class MenuBarController: NSObject {
         coordinator?.toggleTranslation()
     }
 
+    @objc private func showMicrophoneModes() {
+        coordinator?.showMicrophoneModes()
+    }
+
     @objc private func exportSubtitles() {
         coordinator?.exportSubtitles()
     }
@@ -217,6 +222,7 @@ final class MenuBarController: NSObject {
 
 extension MenuBarController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
+        updateMicrophoneModeItem(in: menu)
         let hasEntries = coordinator?.hasRecordedSubtitles == true
         for item in menu.items {
             if item.action == #selector(exportSubtitles)
@@ -226,5 +232,19 @@ extension MenuBarController: NSMenuDelegate {
             }
         }
         if let screenSubmenu { populateScreenSubmenu(screenSubmenu) }
+    }
+
+    private func updateMicrophoneModeItem(in menu: NSMenu) {
+        if let item = menu.items.first(where: { $0.action == #selector(showMicrophoneModes) }) {
+            menu.removeItem(item)
+        }
+        guard coordinator?.isVoiceIsolationPreferred == true else { return }
+        let item = NSMenuItem(
+            title: UiCopy.text("menu.microphoneMode.voiceIsolation"),
+            action: #selector(showMicrophoneModes),
+            keyEquivalent: ""
+        )
+        item.target = self
+        menu.insertItem(item, at: 1)
     }
 }
