@@ -732,21 +732,21 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(snapshot.current.translatedText, "Hello")
         XCTAssertFalse(snapshot.current.sourceText.contains("遅延consumerの残骸"))
 
-        let finalizedSnapshotStates = zip(delegate.snapshots, delegate.snapshotStates)
+        let finalizedSnapshotsWithStates = zip(delegate.snapshots, delegate.snapshotStates)
             .filter { $0.0.current.state == .finalized }
-            .map(\.1)
-        let acceptedBeforeIdle = finalizedSnapshotStates.filter { state in
+        let acceptedBeforeIdle = finalizedSnapshotsWithStates.filter { snapshot, state in
             SubtitleTranscriptRecordingPolicy.shouldRecord(
                 subtitle: snapshot.current,
                 recordSubtitles: true,
                 state: state
             )
         }
-        let afterIdle = finalizedSnapshotStates.filter { $0 == .idle }
+        let afterIdle = finalizedSnapshotsWithStates.filter { $0.1 == .idle }
+        // Then: idle 前の確定 snapshot は記録でき、idle 後に再配信された確定 snapshot は記録しない
         XCTAssertGreaterThanOrEqual(acceptedBeforeIdle.count, 1)
         XCTAssertGreaterThanOrEqual(afterIdle.count, 1)
         XCTAssertEqual(
-            afterIdle.filter { state in
+            afterIdle.filter { snapshot, state in
                 SubtitleTranscriptRecordingPolicy.shouldRecord(
                     subtitle: snapshot.current,
                     recordSubtitles: true,
