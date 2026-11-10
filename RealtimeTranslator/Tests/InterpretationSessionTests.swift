@@ -882,6 +882,67 @@ final class InterpretationSessionTests: XCTestCase {
         XCTAssertEqual(delegate.finalizedSnapshots.last?.translatedText, "Complete pair before stop")
     }
 
+    func testStopDoesNotFinalizeZeroPrefixWhenTranslationArrivesBeforeSource() async {
+        // Given: 訳文を先に受け取り、close drainで2つ目の原文が届く
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: FakeRealtimeAudioCaptureService(),
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 60_000_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+        let epoch = await dual.connectionEpoch
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(
+                delta: "Hello",
+                eventID: "stop-zero-prefix-t1",
+                elapsedMs: 10
+            ),
+            epoch: epoch
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText.isEmpty == true
+                && delegate.latestSnapshot?.current.translatedText == "Hello"
+        }
+        dual.emit(
+            target: .english,
+            event: .inputTranscriptDelta(
+                delta: "こんにちは",
+                eventID: "stop-zero-prefix-s1",
+                elapsedMs: 20
+            ),
+            epoch: epoch
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText == "こんにちは"
+                && delegate.latestSnapshot?.current.translatedText == "Hello"
+                && delegate.latestSnapshot?.current.isTranslationCurrent == true
+        }
+        dual.closeGracefullyEvents = [
+            RealtimeTranslationStreamEvent(
+                lane: .source,
+                event: .inputTranscriptDelta(
+                    delta: "、皆さん",
+                    eventID: "stop-zero-prefix-drain-s2",
+                    elapsedMs: 30
+                ),
+                epoch: epoch
+            )
+        ]
+
+        // When: 2つ目の原文をclose drainで取り込んでから停止する
+        await session.stop()
+
+        // Then: 空prefixや未翻訳suffixを確定記録しない
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertTrue(delegate.finalizedSnapshots.isEmpty)
+    }
+
     func testReconnectFinalizesCompletePairBeforeNewEpoch() async throws {
         // Given: idle finalize 前の完全な原文+訳文ペア
         let apiKeyStore = InMemoryAPIKeyStore(initialKey: "sk-test")

@@ -2993,6 +2993,62 @@ public sealed class InterpretationSessionTests
         }
     }
 
+    // Given: 訳文のあとに最初の原文が届き、close drainで次の原文が届く
+    // When: 利用者が録音を停止する
+    // Then: 空prefixと未翻訳suffixを確定しない
+    [Fact]
+    public async Task StopDoesNotFinalizeZeroPrefixWhenTranslationArrivesBeforeSource()
+    {
+        var client = new FakeDualClient();
+        using var session = NewSession(client);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Hello");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.SourceText.Length == 0 && update.TranslatedText == "Hello");
+            }
+        });
+        client.PublishSourceDelta("こんにちは");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText == "こんにちは"
+                    && update.TranslatedText == "Hello"
+                    && update.IsTranslationCurrent
+                    && !update.ShouldFinalize
+                );
+            }
+        });
+        client.OnCloseGracefully = () =>
+        {
+            client.PublishSourceDelta("、皆さん");
+            return Task.CompletedTask;
+        };
+
+        await session.StopAsync();
+
+        Assert.Equal(TranslationState.Idle, session.State);
+        lock (updates)
+        {
+            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+        }
+    }
+
     // Given: 訳文のあと同一言語の原文が伸びて stale になったセグメント
     // When: 利用者が録音を停止する
     // Then: 翻訳済みprefixだけを1回確定し、未翻訳 suffix は確定しない

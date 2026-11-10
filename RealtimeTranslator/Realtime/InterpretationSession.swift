@@ -220,7 +220,7 @@ final class InterpretationSession {
             context.subtitlePipeline.renderNow(invalidation)
         } else {
             let flushAt = Date().addingTimeInterval(RealtimeSubtitleAssembler.idleFinalizeInterval)
-            if let tickUpdate = context.subtitlePipeline.tickProcessor(now: flushAt) {
+            if let tickUpdate = context.subtitlePipeline.flushProcessor(now: flushAt) {
                 context.subtitlePipeline.renderNow(tickUpdate)
             }
             let snapshot = context.subtitlePipeline.aggregator.forceFinalize()
