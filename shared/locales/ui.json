@@ -399,6 +399,11 @@
       "en": "Translated audio: Subtitles only"
     },
     {
+      "key": "menu.microphoneMode.voiceIsolation",
+      "ja": "マイクモード「声を分離」を変更…",
+      "en": "Change Mic Mode (Voice Isolation)…"
+    },
+    {
       "key": "menu.exportSubtitles",
       "ja": "字幕を書き出し…",
       "en": "Export subtitles…"
@@ -502,6 +507,11 @@
       "key": "banner.listening",
       "ja": "録音中… 話してください",
       "en": "Recording… please speak"
+    },
+    {
+      "key": "banner.voiceIsolation",
+      "ja": "マイクモードが「声を分離」です。相手の声も拾うには「標準」にしてください",
+      "en": "Mic Mode is Voice Isolation. Switch to Standard to also pick up other speakers"
     },
     {
       "key": "banner.closing",

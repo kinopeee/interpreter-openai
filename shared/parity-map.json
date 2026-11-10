@@ -1418,6 +1418,21 @@
         "reason": "AVAudioEngine tap の yield 結果型"
       },
       {
+        "symbol": "MicrophoneModeProviding",
+        "path": "RealtimeTranslator/Audio/MicrophoneMode.swift",
+        "reason": "macOS のアプリごとのマイクモード API。Windows に相当機能はない"
+      },
+      {
+        "symbol": "SystemMicrophoneModeProvider",
+        "path": "RealtimeTranslator/Audio/MicrophoneMode.swift",
+        "reason": "macOS のアプリごとのマイクモード API。Windows に相当機能はない"
+      },
+      {
+        "symbol": "MicrophoneModeHintPolicy",
+        "path": "RealtimeTranslator/Audio/MicrophoneMode.swift",
+        "reason": "macOS のアプリごとのマイクモード API。Windows に相当機能はない"
+      },
+      {
         "symbol": "CapturedAudioBuffer",
         "path": "RealtimeTranslator/Audio/SpeechAudioPipeline.swift",
         "reason": "AVAudioEngine buffer 管理"

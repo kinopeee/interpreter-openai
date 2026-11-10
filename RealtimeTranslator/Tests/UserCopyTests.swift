@@ -39,6 +39,26 @@ final class UserCopyTests: XCTestCase {
         )
     }
 
+    // Given: 正本の ui.json に定義したマイクモードの案内とメニュー文言
+    // When: ja / en のカタログから取得する
+    // Then: 指定した両言語の文言がそのまま返る
+    func testMicrophoneModeCopyMatchesBothLocales() throws {
+        let json = try SharedFixtures.uiCatalogJSON()
+        let japanese = try UserCopy.parse(json: json, locale: .ja)
+        let english = try UserCopy.parse(json: json, locale: .en)
+
+        XCTAssertEqual(japanese.text("banner.voiceIsolation"), "マイクモードが「声を分離」です。相手の声も拾うには「標準」にしてください")
+        XCTAssertEqual(
+            english.text("banner.voiceIsolation"),
+            "Mic Mode is Voice Isolation. Switch to Standard to also pick up other speakers"
+        )
+        XCTAssertEqual(japanese.text("menu.microphoneMode.voiceIsolation"), "マイクモード「声を分離」を変更…")
+        XCTAssertEqual(
+            english.text("menu.microphoneMode.voiceIsolation"),
+            "Change Mic Mode (Voice Isolation)…"
+        )
+    }
+
     // Given: アプリバンドルへコピーされた ui.json
     // When: Bundle.main から探す
     // Then: リポジトリフォールバックなしでもカタログが載っている
