@@ -118,7 +118,8 @@ translation lane として分離する。一次信号はセッションが設定
 - 確定直後は `awaitingSourceAfterFinalize` を立て、次の source delta が来るまで訳文 delta を破棄する（保持中の完全ペアを旧 segment の訳文で壊さないため）。
 - 言語切替時は完全ペアがあれば確定し、無ければ buffer をクリアして次 segment を待つ。
 - epoch が一致しない stream event は無視する。
-- 原文が訳文より先行した stale segment は、選択laneで最後に受理した訳文deltaの原文UTF-16終端位置までを確定する。境界の空白は既存の言語切替規則に従って新側へ移し、その suffix は破棄して次の source に連結しない。
+- 訳文が原文に追いついている現行ペアは、idle / stop / reconnect / fatal flush で原文・訳文全体を確定する。
+- 原文が訳文より先行した stale segment は、選択laneで最後に受理した訳文deltaの原文UTF-16終端位置を Unicode scalar 境界に整列した後、境界の空白を既存の言語切替規則に従って新側へ移す。その suffix は破棄して次の source に連結しない。
 - idle、stop、reconnect、fatal flush に同じ stale prefix 規則を適用する。訳文に対応する原文prefixが空なら無言で破棄し、原文だけでは確定しない。boundary candidate が pending の stale segment は待機し、tainted segment は確定しない。
 - stale 表示中の字幕は `isTranslationCurrent = false` かつ `canFinalize = false` のままにする。
 

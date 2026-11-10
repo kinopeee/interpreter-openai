@@ -14,7 +14,7 @@ public sealed class SubtitleFixtureTests
 {
     private static readonly DateTimeOffset Origin = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
-    public static TheoryData<string> ClipCases => SharedFixtures.CaseNames("subtitle", "clip", 2);
+    public static TheoryData<string> ClipCases => SharedFixtures.CaseNames("subtitle", "clip", 3);
 
     public static TheoryData<string> AssemblerCases => AssemblerCaseNames();
 
@@ -46,7 +46,7 @@ public sealed class SubtitleFixtureTests
     public void ClipMatchesFixture(string name)
     {
         // Given: clip fixture
-        var fixture = SharedFixtures.Case("subtitle", "clip", name, 2);
+        var fixture = SharedFixtures.Case("subtitle", "clip", name, 3);
 
         // When/Then: 末尾クリップ結果が一致する
         Assert.Equal(Expand(fixture["expected"]!), SubtitleTailClipper.Clip(Expand(fixture["input"]!)));
