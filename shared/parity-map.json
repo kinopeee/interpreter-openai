@@ -113,7 +113,7 @@
         }
       ],
       "fixtures": [
-        "v2/subtitle"
+        "v3/subtitle"
       ]
     },
     {
@@ -148,7 +148,7 @@
       ],
       "fixtures": [
         "v1/routing",
-        "v2/subtitle"
+        "v3/subtitle"
       ]
     },
     {
@@ -314,7 +314,7 @@
         "path": "windows/src/RealtimeTranslator.Core/Realtime/SessionSubtitlePipeline.cs"
       },
       "fixtures": [
-        "v2/subtitle"
+        "v3/subtitle"
       ]
     },
     {
@@ -340,7 +340,7 @@
         }
       ],
       "fixtures": [
-        "v2/subtitle"
+        "v3/subtitle"
       ]
     },
     {
@@ -1002,7 +1002,7 @@
         "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleAggregator.cs"
       },
       "fixtures": [
-        "v2/subtitle"
+        "v3/subtitle"
       ]
     },
     {
@@ -1077,7 +1077,7 @@
         "path": "windows/src/RealtimeTranslator.Core/Subtitles/SubtitleTailClipper.cs"
       },
       "fixtures": [
-        "v2/subtitle"
+        "v3/subtitle"
       ]
     },
     {

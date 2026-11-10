@@ -9,7 +9,7 @@ final class SubtitleFixtureTests: XCTestCase {
     // Then: 日本語 60 / 英語 120 / 省略記号が一致する
     func testLimitsMatchFixture() throws {
         let limits = try XCTUnwrap(
-            try SharedFixtures.load("subtitle", version: 2)["limits"] as? [String: Any]
+            try SharedFixtures.load("subtitle", version: 3)["limits"] as? [String: Any]
         )
         XCTAssertEqual(
             SharedFixtures.number(limits["japaneseCharacterLimit"]),
@@ -29,8 +29,8 @@ final class SubtitleFixtureTests: XCTestCase {
     // When: 末尾優先でクリップする
     // Then: 期待する表示文字列になる
     func testClipMatchesFixture() throws {
-        for name in try SharedFixtures.caseNames("subtitle", "clip", version: 2) {
-            let fixture = try SharedFixtures.case("subtitle", "clip", name, version: 2)
+        for name in try SharedFixtures.caseNames("subtitle", "clip", version: 3) {
+            let fixture = try SharedFixtures.case("subtitle", "clip", name, version: 3)
             let input = SharedFixtures.fixtureString(try XCTUnwrap(fixture["input"]))
             let expected = SharedFixtures.fixtureString(try XCTUnwrap(fixture["expected"]))
             XCTAssertEqual(SubtitleTailClipper.clip(input), expected)
@@ -42,7 +42,7 @@ final class SubtitleFixtureTests: XCTestCase {
     // Then: 8 秒の idle finalize 間隔が一致する
     func testIdleIntervalMatchesFixture() throws {
         let assembler = try XCTUnwrap(
-            try SharedFixtures.load("subtitle", version: 2)["assembler"] as? [String: Any]
+            try SharedFixtures.load("subtitle", version: 3)["assembler"] as? [String: Any]
         )
         XCTAssertEqual(
             TimeInterval(SharedFixtures.number(assembler["idleFinalizeSeconds"])),
@@ -55,7 +55,7 @@ final class SubtitleFixtureTests: XCTestCase {
     // Then: finalize タイミングと字幕内容が期待どおりになる
     func testAssemblerMatchesFixture() throws {
         let assemblerRoot = try XCTUnwrap(
-            try SharedFixtures.load("subtitle", version: 2)["assembler"] as? [String: Any]
+            try SharedFixtures.load("subtitle", version: 3)["assembler"] as? [String: Any]
         )
         let cases = try XCTUnwrap(assemblerRoot["cases"] as? [Any])
         for caseItem in cases {
@@ -148,7 +148,7 @@ final class SubtitleFixtureTests: XCTestCase {
     // When: routing window / detector / selector / tracker を順に適用する
     // Then: candidate offset と source split が fixture と一致する
     func testBoundaryMatchesFixture() throws {
-        let root = try SharedFixtures.load("subtitle", version: 2)
+        let root = try SharedFixtures.load("subtitle", version: 3)
         let boundary = try XCTUnwrap(root["boundary"] as? [String: Any])
         let cases = try XCTUnwrap(boundary["cases"] as? [Any])
 

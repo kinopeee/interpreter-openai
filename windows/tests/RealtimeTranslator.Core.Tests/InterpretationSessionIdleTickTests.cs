@@ -74,6 +74,79 @@ public sealed class InterpretationSessionIdleTickTests
         await session.StopAsync();
     }
 
+    // Given: 原文が訳文より先行した stale pair を表示する Listening セッション
+    // When: idle finalize 間隔を超えて Tick する
+    // Then: 翻訳済み prefix を確定し、セグメント境界として ResetAudioRouting する
+    [Fact]
+    public async Task IdleTickFinalizesStaleTranslatedPrefixAndResetsAudioRouting()
+    {
+        var client = new FakeDualClient();
+        var clock = new ControllableTimeProvider(DateTimeOffset.Parse("2026-08-16T00:00:00Z"));
+        using var session = NewSession(client, clock);
+        var updates = new List<RealtimeSubtitleUpdate>();
+        session.SubtitleUpdated += (_, update) =>
+        {
+            lock (updates)
+            {
+                updates.Add(update);
+            }
+        };
+
+        await session.StartAsync();
+        await WaitUntilAsync(() => session.State == TranslationState.Listening);
+
+        client.PublishSourceDelta("今日は晴れです");
+        await WaitUntilAsync(() => client.SpokenLanguages.Count > 0);
+        client.PublishTranslationDelta(RealtimeTranslationOutputLanguage.English, "Today is sunny");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update => update.TranslatedText.Length > 0 && !update.ShouldFinalize);
+            }
+        });
+        client.PublishSourceDelta("、続きです");
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                    update.SourceText.Contains("続きです", StringComparison.Ordinal)
+                    && !update.IsTranslationCurrent
+                    && !update.ShouldFinalize
+                );
+            }
+        });
+        var resetsAfterStaleSource = client.ResetAudioRoutingCount;
+
+        clock.Advance(RealtimeSubtitleAssembler.IdleFinalizeInterval + TimeSpan.FromMilliseconds(50));
+
+        await WaitUntilAsync(() =>
+        {
+            lock (updates)
+            {
+                return updates.Exists(update =>
+                        update.ShouldFinalize
+                        && update.SourceText == "今日は晴れです"
+                        && update.TranslatedText == "Today is sunny"
+                    )
+                    && client.ResetAudioRoutingCount > resetsAfterStaleSource;
+            }
+        });
+
+        RealtimeSubtitleUpdate finalized;
+        lock (updates)
+        {
+            finalized = updates.Find(update => update.ShouldFinalize);
+        }
+
+        Assert.Equal("今日は晴れです", finalized.SourceText);
+        Assert.Equal("Today is sunny", finalized.TranslatedText);
+        Assert.True(client.ResetAudioRoutingCount > resetsAfterStaleSource);
+        Assert.Null(client.CurrentTarget);
+        await session.StopAsync();
+    }
+
     // Given: 原文だけ届いて訳文が無い Listening セッション
     // When: idle finalize 間隔を超えて Tick する
     // Then: 不完全ペアは確定せず、ResetAudioRouting も増えない

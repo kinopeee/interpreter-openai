@@ -2995,9 +2995,9 @@ public sealed class InterpretationSessionTests
 
     // Given: 訳文のあと同一言語の原文が伸びて stale になったセグメント
     // When: 利用者が録音を停止する
-    // Then: 旧訳文を ShouldFinalize せず Idle へ戻る（字幕記録へ食い違ったペアを残さない）
+    // Then: 翻訳済みprefixだけを1回確定し、未翻訳 suffix は確定しない
     [Fact]
-    public async Task StopDoesNotFinalizeStalePairAfterSourceContinues()
+    public async Task StopFinalizesTranslatedPrefixAfterSourceContinues()
     {
         var client = new FakeDualClient();
         using var session = NewSession(client);
@@ -3042,7 +3042,14 @@ public sealed class InterpretationSessionTests
         Assert.Equal(TranslationState.Idle, session.State);
         lock (updates)
         {
-            Assert.DoesNotContain(updates, update => update.ShouldFinalize);
+            var finalized = updates.FindAll(update => update.ShouldFinalize);
+            Assert.Single(finalized);
+            Assert.Equal("停止前の完全ペア", finalized[0].SourceText);
+            Assert.Equal("Complete pair before stop", finalized[0].TranslatedText);
+            Assert.DoesNotContain(
+                updates,
+                update => update.ShouldFinalize && update.SourceText.Contains("続きです", StringComparison.Ordinal)
+            );
         }
     }
 

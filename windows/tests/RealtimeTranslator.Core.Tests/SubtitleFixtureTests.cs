@@ -27,7 +27,7 @@ public sealed class SubtitleFixtureTests
     public void LimitsMatchFixture()
     {
         // Given: subtitle clip limits fixture
-        var limits = SharedFixtures.Load("subtitle", 2)["limits"]!.AsObject();
+        var limits = SharedFixtures.Load("subtitle", 3)["limits"]!.AsObject();
 
         // When/Then: clipper 定数が一致する
         Assert.Equal(
@@ -59,7 +59,7 @@ public sealed class SubtitleFixtureTests
     public void IdleIntervalMatchesFixture()
     {
         // Given: assembler idle 設定
-        var assembler = SharedFixtures.Load("subtitle", 2)["assembler"]!.AsObject();
+        var assembler = SharedFixtures.Load("subtitle", 3)["assembler"]!.AsObject();
 
         // When/Then: IdleFinalizeInterval が一致する
         Assert.Equal(
@@ -359,7 +359,7 @@ public sealed class SubtitleFixtureTests
     private static TheoryData<string> AssemblerCaseNames()
     {
         var data = new TheoryData<string>();
-        foreach (var item in SharedFixtures.Load("subtitle", 2)["assembler"]!["cases"]!.AsArray())
+        foreach (var item in SharedFixtures.Load("subtitle", 3)["assembler"]!["cases"]!.AsArray())
         {
             data.Add(SharedFixtures.Text(item?["name"]));
         }
@@ -370,7 +370,7 @@ public sealed class SubtitleFixtureTests
     private static TheoryData<string> BoundaryCaseNames()
     {
         var data = new TheoryData<string>();
-        foreach (var item in SharedFixtures.Load("subtitle", 2)["boundary"]!["cases"]!.AsArray())
+        foreach (var item in SharedFixtures.Load("subtitle", 3)["boundary"]!["cases"]!.AsArray())
         {
             data.Add(SharedFixtures.Text(item?["name"]));
         }
@@ -380,7 +380,7 @@ public sealed class SubtitleFixtureTests
 
     private static JsonObject FindBoundaryCase(string name)
     {
-        foreach (var item in SharedFixtures.Load("subtitle", 2)["boundary"]!["cases"]!.AsArray())
+        foreach (var item in SharedFixtures.Load("subtitle", 3)["boundary"]!["cases"]!.AsArray())
         {
             if (item is JsonObject candidate && SharedFixtures.Text(candidate["name"]) == name)
             {
@@ -393,7 +393,7 @@ public sealed class SubtitleFixtureTests
 
     private static JsonObject FindAssemblerCase(string name)
     {
-        foreach (var item in SharedFixtures.Load("subtitle", 2)["assembler"]!["cases"]!.AsArray())
+        foreach (var item in SharedFixtures.Load("subtitle", 3)["assembler"]!["cases"]!.AsArray())
         {
             if (item is JsonObject candidate && SharedFixtures.Text(candidate["name"]) == name)
             {

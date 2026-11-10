@@ -22,6 +22,26 @@ final class RealtimeSubtitleAssemblerAudioLossTests: XCTestCase {
         XCTAssertFalse(assembler.isCurrentSegmentTainted)
     }
 
+    func testTaintedStaleSegmentIsInvalidatedInsteadOfFinalizingPrefix() {
+        // Given: 音声欠落後に訳文が原文へ追いつかない汚染segment
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        assembler.expectLane(.english)
+        assembler.markAudioLoss(now: origin)
+        _ = assembler.ingest(source("こんにちは", "s1"), now: origin.addingTimeInterval(1))
+        _ = assembler.ingest(translation("Hello", "t1"), now: origin.addingTimeInterval(1))
+        _ = assembler.ingest(source("、皆さん", "s2"), now: origin.addingTimeInterval(2))
+
+        // When: stale idle finalize 時間を越えて評価する
+        let update = assembler.tick(now: origin.addingTimeInterval(10))
+
+        // Then: 訳文prefixを確定せず、汚染segmentを無効化する
+        XCTAssertEqual(update?.isInvalidation, true)
+        XCTAssertEqual(update?.shouldFinalize, false)
+        XCTAssertEqual(assembler.currentSourceText, "")
+        XCTAssertFalse(assembler.isCurrentSegmentTainted)
+    }
+
     func testLossOlderThanWindowAllowsNormalFinalize() {
         // Given: 欠落から8秒を超えて新しいsegmentを開始する
         var assembler = RealtimeSubtitleAssembler()

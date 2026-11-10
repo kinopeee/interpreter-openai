@@ -1,8 +1,8 @@
 # shared/ — 実装非依存の契約とフィクスチャ
 
-`shared/fixtures/v<N>/` contains versioned canonical fixtures. The v2 directory
-currently contains the subtitle source-boundary contract and the audio pipeline
-contract; existing v1 fixtures remain unchanged. CI validates every version
+`shared/fixtures/v<N>/` contains versioned canonical fixtures. The current
+subtitle contract is v3 and the audio pipeline contract is v2; other contracts
+remain v1. Existing v1/v2 fixtures are immutable. CI validates every version
 directory.
 
 macOS(Swift) 版と Windows(C#) 版が同じ挙動を保つための言語中立な正本を置く。
@@ -21,8 +21,11 @@ shared/
 │   ├── subtitle.json  ├── routing.json  ├── privacy.json
 │   ├── api-key.json
 │   └── schema/        # 各 fixture の JSON Schema (draft 2020-12)
-├── fixtures/v2/       # v2 契約（subtitle / audio。v1 は削除せず保持）
-│   ├── subtitle.json  ├── audio.json
+├── fixtures/v2/       # v2 契約（audio。既存 fixture は不変）
+│   ├── audio.json
+│   └── schema/
+├── fixtures/v3/       # v3 契約（subtitle。v1/v2 は不変）
+│   ├── subtitle.json
 │   └── schema/
 └── locales/           # UI 文言の正本（ui-locale.md 参照）。fixtures と違い文言の推敲は通常変更。v1 不変ルールの対象外
     ├── ui.json
@@ -31,7 +34,7 @@ shared/
 
 ## ルール
 
-- fixture-backed な挙動を変える変更は、対象の `shared/fixtures/v<N>/` を更新し、その後に各実装を合わせる。subtitle と audio の契約は v2、その他の契約は v1 が正本（v1 fixture は削除せず保持する）。
+- fixture-backed な挙動を変える変更は、対象の `shared/fixtures/v<N>/` を更新し、その後に各実装を合わせる。subtitle は v3、audio は v2、その他の契約は v1 が正本（既存の v1/v2 fixture は不変）。
 - UI 文言のみの変更（`shared/locales/`、例: `banner.connecting` の標準化）は fixture 更新の対象外。正本は `protocol/ui-locale.md` と `locales/ui.json`。
 - fixture の破壊的変更は新しい `v<N>/` ディレクトリとして追加し、既存バージョンのケースの意味を変えない。
 - fixture を足したら対応する schema も更新する。CI (`shared-contracts`、正本は `scripts/ci-shared-contracts.sh`) が 1:1 対応を検査する。GitHub は `.github/workflows/shared-contracts.yml`、Origin は `.depot/workflows/shared-contracts.yml`。

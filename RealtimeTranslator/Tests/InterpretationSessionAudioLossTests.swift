@@ -132,6 +132,57 @@ final class InterpretationSessionAudioLossTests: XCTestCase {
         await session.stop()
     }
 
+    func testStaleIdleFinalizeResetsDualRouting() async {
+        // Given: 訳文より原文が先行した stale subtitle を表示するsession
+        let audio = FakeRealtimeAudioCaptureService()
+        let dual = FakeDualRealtimeTranslationClient()
+        let delegate = InterpretationSessionDelegateSpy()
+        let session = InterpretationSession(
+            apiKeyStore: InMemoryAPIKeyStore(initialKey: "sk-test"),
+            audioCapture: audio,
+            dualClient: dual,
+            activeTickerIntervalNanoseconds: 20_000_000
+        )
+        session.delegate = delegate
+        await session.start()
+        await waitUntil { session.state == .listening }
+
+        dual.publishSourceDelta("今日は晴れです")
+        await waitUntil { dual.spokenLanguages == [.japanese] }
+        dual.emit(
+            target: .english,
+            event: .outputTranscriptDelta(delta: "Today is sunny", eventID: "stale-idle-t1", elapsedMs: nil)
+        )
+        await waitUntil {
+            delegate.latestSnapshot?.current.translatedText == "Today is sunny"
+                && delegate.latestSnapshot?.current.isTranslationCurrent == true
+        }
+        dual.publishSourceDelta("、続きです")
+        await waitUntil {
+            delegate.latestSnapshot?.current.sourceText == "今日は晴れです、続きです"
+                && delegate.latestSnapshot?.current.isTranslationCurrent == false
+                && delegate.latestSnapshot?.current.canFinalize == false
+        }
+        let resetsAfterStaleSource = dual.resetAudioRoutingCallCount
+
+        // When: stale idle finalize 時間を越えてtickerが動く
+        await waitUntil(timeout: 10) {
+            dual.resetAudioRoutingCallCount > resetsAfterStaleSource
+                && delegate.finalizedSnapshots.contains {
+                    $0.sourceText == "今日は晴れです" && $0.translatedText == "Today is sunny"
+                }
+        }
+
+        // Then: prefixだけを確定してdual routingをresetする
+        XCTAssertGreaterThan(dual.resetAudioRoutingCallCount, resetsAfterStaleSource)
+        XCTAssertTrue(
+            delegate.finalizedSnapshots.contains {
+                $0.sourceText == "今日は晴れです" && $0.translatedText == "Today is sunny"
+            }
+        )
+        await session.stop()
+    }
+
     func testFinalizedSubtitleSurvivesAudioLoss() async {
         // Given: 先に確定した字幕を持つsession
         let audio = FakeRealtimeAudioCaptureService()

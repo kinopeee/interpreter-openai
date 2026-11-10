@@ -352,7 +352,7 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         XCTAssertEqual(update?.isTranslationCurrent, true)
     }
 
-    func testIdleTickDoesNotFinalizeStaleTranslationAfterSourceContinues() {
+    func testIdleTickFinalizesTranslatedPrefixAfterSourceContinues() {
         // Given: 訳文が付いたあとに原文だけが伸びたセグメント
         var assembler = RealtimeSubtitleAssembler()
         assembler.beginNewEpoch(1)
@@ -375,14 +375,18 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         assembler.expectLane(.english)
         let idle = assembler.tick(now: start.addingTimeInterval(9))
 
-        // Then: 同じ期待 lane の再指定だけでは旧訳文を現行に戻して確定しない
+        // Then: 追いついた原文prefixだけを確定し、未翻訳suffixは含めない
         XCTAssertEqual(continued?.sourceText, "こんにちは、皆さん")
         XCTAssertEqual(continued?.translatedText, "Hello")
         XCTAssertEqual(continued?.isTranslationCurrent, false)
-        XCTAssertNil(idle)
+        XCTAssertEqual(idle?.sourceText, "こんにちは")
+        XCTAssertEqual(idle?.translatedText, "Hello")
+        XCTAssertEqual(idle?.isTranslationCurrent, true)
+        XCTAssertEqual(idle?.shouldFinalize, true)
+        XCTAssertEqual(idle?.segmentGeneration, 0)
     }
 
-    func testIdleTickAbandonsStaleTranslationSoNextSourceStartsFresh() {
+    func testIdleTickFinalizesStaleTranslatedPrefixBeforeNextSourceStartsFresh() {
         // Given: 訳文が stale のまま idle したセグメント
         var assembler = RealtimeSubtitleAssembler()
         assembler.beginNewEpoch(1)
@@ -400,7 +404,7 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
             event(.english, .inputTranscriptDelta(delta: "、皆さん", eventID: "s2", elapsedMs: 300)),
             now: start.addingTimeInterval(0.4)
         )
-        XCTAssertNil(assembler.tick(now: start.addingTimeInterval(9)))
+        let finalized = assembler.tick(now: start.addingTimeInterval(9))
 
         // When: 次の発話の原文が届く
         let next = assembler.ingest(
@@ -408,7 +412,12 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
             now: start.addingTimeInterval(9.2)
         )
 
-        // Then: 前の原文へ連結せず、新セグメントとして表示する
+        // Then: 前の訳文prefixを確定し、次の原文は新しいsegmentとして表示する
+        XCTAssertEqual(finalized?.sourceText, "こんにちは")
+        XCTAssertEqual(finalized?.translatedText, "Hello")
+        XCTAssertEqual(finalized?.isTranslationCurrent, true)
+        XCTAssertEqual(finalized?.shouldFinalize, true)
+        XCTAssertEqual(finalized?.segmentGeneration, 0)
         XCTAssertEqual(next?.sourceText, "ありがとう")
         XCTAssertEqual(next?.translatedText, "")
         XCTAssertEqual(next?.isTranslationCurrent, false)
@@ -416,8 +425,8 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
         XCTAssertEqual(next?.segmentGeneration, 1)
     }
 
-    func testLateTranslationAfterStaleIdleAbandonIsIgnoredByCutoff() {
-        // Given: stale idle で境界だけ進めたあと、次の原文が始まっている
+    func testLateTranslationAfterStaleIdleFinalizeIsIgnoredByCutoff() {
+        // Given: stale idle で訳文prefixを確定したあと、次の原文が始まっている
         var assembler = RealtimeSubtitleAssembler()
         assembler.beginNewEpoch(1)
         assembler.expectLane(.english)
@@ -434,7 +443,7 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
             event(.english, .inputTranscriptDelta(delta: "、皆さん", eventID: "s2", elapsedMs: 300)),
             now: start.addingTimeInterval(0.4)
         )
-        XCTAssertNil(assembler.tick(now: start.addingTimeInterval(9)))
+        let finalized = assembler.tick(now: start.addingTimeInterval(9))
         _ = assembler.ingest(
             event(.english, .inputTranscriptDelta(delta: "ありがとう", eventID: "s3", elapsedMs: nil)),
             now: start.addingTimeInterval(9.2)
@@ -450,10 +459,48 @@ final class RealtimeSubtitleAssemblerTests: XCTestCase {
             now: start.addingTimeInterval(9.4)
         )
 
-        // Then: 遅延訳は次発話に混ぜず、新しい訳だけを現行にする
+        // Then: prefixを確定し、cutoff以前の遅延訳は次発話に混ぜず、新しい訳だけを現行にする
+        XCTAssertEqual(finalized?.sourceText, "こんにちは")
+        XCTAssertEqual(finalized?.translatedText, "Hello")
+        XCTAssertEqual(finalized?.shouldFinalize, true)
         XCTAssertNil(late)
         XCTAssertEqual(fresh?.translatedText, "Thank you")
         XCTAssertEqual(fresh?.isTranslationCurrent, true)
+    }
+
+    func testPendingBoundaryKeepsStaleSourceUntilCandidateIsCleared() {
+        // Given: 翻訳済みprefixのあとに未翻訳原文とpending boundaryがある
+        var assembler = RealtimeSubtitleAssembler()
+        assembler.beginNewEpoch(1)
+        assembler.expectLane(.english)
+        let start = Date()
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "こんにちは", eventID: "s1", elapsedMs: 100)),
+            now: start
+        )
+        _ = assembler.ingest(
+            event(.english, .outputTranscriptDelta(delta: "Hello", eventID: "t1", elapsedMs: 200)),
+            now: start.addingTimeInterval(0.2)
+        )
+        _ = assembler.ingest(
+            event(.english, .inputTranscriptDelta(delta: "、皆さん", eventID: "s2", elapsedMs: 300)),
+            now: start.addingTimeInterval(0.4)
+        )
+        assembler.setBoundaryCandidatePending(true)
+
+        // When: pending 中に idle し、その後 candidate を取り除いて再評価する
+        let pending = assembler.tick(now: start.addingTimeInterval(9))
+        let retainedSource = assembler.currentSourceText
+        assembler.setBoundaryCandidatePending(false)
+        let finalized = assembler.tick(now: start.addingTimeInterval(9.1))
+
+        // Then: pending 中は source を保持し、解除後に訳文prefixだけを確定する
+        XCTAssertNil(pending)
+        XCTAssertEqual(retainedSource, "こんにちは、皆さん")
+        XCTAssertEqual(finalized?.sourceText, "こんにちは")
+        XCTAssertEqual(finalized?.translatedText, "Hello")
+        XCTAssertEqual(finalized?.isTranslationCurrent, true)
+        XCTAssertEqual(finalized?.shouldFinalize, true)
     }
 
     func testExpectLaneOverridesFirstOutputEchoLock() {
