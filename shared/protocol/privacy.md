@@ -46,7 +46,7 @@
 | macOS | Keychain |
 | Windows | Credential Manager（`CredWriteW`/`CredReadW`/`CredDeleteW`、`CRED_TYPE_GENERIC`、`CRED_PERSIST_LOCAL_MACHINE`） |
 
-設定ファイルへ書きません。macOS の Debug ビルドでは、Keychain が空の場合に限り初回起動時に環境変数 `OPENAI_API_KEY` から取り込めます。Release ビルドでは環境変数から取り込みません。
+設定ファイルへ書きません。macOS の Debug ビルドでは、各起動時に Keychain が空で環境変数 `OPENAI_API_KEY` が設定されていれば取り込みます。既存キーは上書きしません。別のキーを取り込む場合は保存済みキーを削除してください。Release ビルドでは環境変数から取り込みません。
 
 保存・読み出し・接続直前は同じ正規化を通す。アルゴリズムと期待値は `shared/fixtures/v1/api-key.json` が正本。
 
