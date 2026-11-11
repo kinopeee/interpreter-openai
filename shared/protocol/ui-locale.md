@@ -1,13 +1,18 @@
-Fixture versions are stored in `shared/fixtures/v<N>`. The existing v1 UI and
-privacy contracts remain authoritative for those fixtures; the subtitle
-source-boundary contract is carried by v2.
-# UI 表示言語の契約と実装プラン
+# UI 表示言語の契約と実装記録
+
+## 文書の位置づけ
+
+- **現行契約（§§1–6、§§8–9）**: アプリ枠の表示言語 `uiLanguage` の仕様です。文言の正本は `shared/locales/ui.json` です。このカタログは fixture のバージョン固定ルールの対象外です。字幕記録形式との互換性は `shared/fixtures/v1/transcript.json` で維持します。
+- **完了済み実装記録（§7、§§10–13、§15）**: §7 は実装時のキー棚卸しで、現在の文言の正本ではありません（正本は `shared/locales/ui.json`）。実装手順、変更先、テスト方針、完了条件も導入時の記録です。過去形でない手順やチェック項目も、未実施タスクではありません。フェーズと完了条件は完了済みです。
+- **手動検証（§14）**: ここには検証チェックリストを残します。実施状況は日付付きの [`VALIDATION.md`](../../VALIDATION.md) を参照してください。
+- **後続項目（§16）**: 意図的に延期した機能です。
+
+fixture はドメインごとにバージョン管理します。字幕の原文境界・整列の現行契約は `shared/fixtures/v3/subtitle.json`（[`routing.md`](routing.md)）で、字幕 v1/v2 は過去版として保持されています。
 
 翻訳ペア（`languagePair`）とは独立に、アプリ枠の表示言語を切り替える。
 初回対象は **ja / en**。切替は **再起動後に反映**。スペイン語 UI と実行時切替は対象外。
 
-この文書は契約（両実装が守る不変条件）と、実装時の作業手順・注意・制限を兼ねる。
-実装は **この文書と `shared/locales/ui.json` を先に置き、その後に各実装を合わせる**。
+この文書には現行契約と、実装時の作業手順・注意・制限の記録を区別して収録しています。
 
 ## 1. 決定事項（ロック済み）
 
@@ -109,10 +114,9 @@ shared/locales/ui.schema.json
 
 実行時はキー引きだけ。`.xcstrings` と `.resx` を別管理しない（すぐずれる）。
 
-**`fixtures/v1` には置かない。** fixtures は「v1 の既存ケースは意味を変えない。破壊的変更は `v2/`」が
-ルールであり、UI 文言は推敲で変わり得るため、この不変ルールの対象にしない。
+**`shared/locales/ui.json` は fixture に含めない。** UI 文言は推敲で変わるため、fixture の不変ルールの対象にしない。fixture のバージョンはドメインごとに管理し、既存バージョンは変更しない（詳細は [`shared/README.md`](../README.md) を参照）。
 `shared/locales/` は「キーの追加・文言の改善は通常変更、キーの削除・意味変更は両実装同時」の運用とする。
-CI（`shared-contracts`）は現状 `fixtures/v1` しか検査しないため、`locales/` の schema 検査ステップを追加する。
+`shared-contracts` は fixture と locale の schema を検査します。実行内容は `scripts/ci-shared-contracts.sh` が正本です。
 
 ### 解決器
 
@@ -168,9 +172,9 @@ Windows Core は AOT 対象のため、カタログ読みは既存の `AppSettin
 
 キー命名: `領域.用途`。例: `settings.tab.general`、`menu.startTranslation`、`banner.idle`、`error.authenticationFailed`。
 
-CI（`shared-contracts`）へ `locales/ui.json` の schema 検査ステップを追加する（fixtures の 1:1 ループとは別ステップ）。プレースホルダ一致は上記どおりテスト側（または同ジョブ内の必須カスタム検証）に置く。
+`shared-contracts` は fixtures の 1:1 検査とは別ステップで `ui.schema.json` によるスキーマ検査と `scripts/ci-validate-locales.mjs` によるキー重複・ja/en プレースホルダ一致の検査を実行します。実行定義は `scripts/ci-shared-contracts.sh` と両 workflow を参照してください。
 
-## 7. キー棚卸し
+## 7. 実装時のキー棚卸し（記録）
 
 実装時に `ui.json` へ落とす対象。文言は現行日本語を `ja` の初期値にする。英語は実装フェーズ 4 で入れる。
 
@@ -529,7 +533,7 @@ Preset の `DisplayName` は Core のレコードに日本語が残る。**Id �
 
 ユニットテストでは OS 言語をモックする（実際の macOS/Windows ロケールは CI で制御しない）。
 
-## 14. 手動検証（`VALIDATION.md` へ後で転記）
+## 14. 手動検証チェックリスト（実施状況は `VALIDATION.md`）
 
 1. OS 日本語、`uiLanguage=system` で起動 → メニュー・設定・待機バナーが日本語。ホットキー表記は OS どおり。
 2. 設定で English を選び、**再起動せず** → まだ日本語。ヒントが出る。
@@ -556,6 +560,6 @@ Preset の `DisplayName` は Core のレコードに日本語が残る。**Id �
 
 - スペイン語 UI（`es`）。カタログにロケールを足す拡張点だけ残す（`locales` 配列）
 - 起動中の即時切替、再起動ボタン
-- 字幕記録フォーマットの言語中立化（破壊的変更。`v2/`）
+- 字幕記録フォーマットの言語中立化（破壊的変更。実施する場合はその時点の現行字幕記録（transcript）契約の次版で扱う）
 - OS 標準ダイアログの言語追従（不可能または不安定）
 - prompt/keywords の UI 言語連動（認識品質の問題であり、表示言語ではない）

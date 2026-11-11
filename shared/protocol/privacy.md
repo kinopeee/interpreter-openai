@@ -1,5 +1,7 @@
 # プライバシー・秘密情報の契約（言語中立）
 
+現行の秘密情報・キー処理の期待値は `shared/fixtures/v1/privacy.json` と `shared/fixtures/v1/api-key.json` が正本です。画面に表示するローカライズ済み文言は `shared/locales/ui.json` を参照します。
+
 ## 出力してはいけないもの
 
 以下をログ・status file・アラート・例外メッセージ・テレメトリへ出さない。
@@ -44,7 +46,7 @@
 | macOS | Keychain |
 | Windows | Credential Manager（`CredWriteW`/`CredReadW`/`CredDeleteW`、`CRED_TYPE_GENERIC`、`CRED_PERSIST_LOCAL_MACHINE`） |
 
-`settings.json` などの設定ファイルへ書かない。初回のみ環境変数 `OPENAI_API_KEY` から取り込んでよい。
+設定ファイルへ書きません。macOS の Debug ビルドでは、各起動時に環境変数 `OPENAI_API_KEY` が設定され、Keychain 内に形式検証を通る保存済みキーがない場合に取り込みを試みます。形式検証を通る既存キーは上書きしません。環境変数の値も同じ形式検証を通しますが、OpenAI 側でのキーの有効性確認は行いません。別のキーを取り込む場合は保存済みキーを削除してください。Release ビルドでは環境変数から取り込みません。
 
 保存・読み出し・接続直前は同じ正規化を通す。アルゴリズムと期待値は `shared/fixtures/v1/api-key.json` が正本。
 

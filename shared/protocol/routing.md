@@ -1,14 +1,10 @@
+# 言語判定・ルーティング・字幕整列の契約（言語中立）
+
+この文書は現行の言語判定・ルーティング・字幕契約です。言語判定と routing の現行 fixture は v1、字幕の現行 fixture は `shared/fixtures/v3/subtitle.json` です。字幕 v1/v2 fixture は過去版として保持されています。
+
 ## 原文境界
 
-`SourceBoundaryTracker` stores only a UTF-16 offset in the current assembler
-segment. It uses the detector's unchanged vocabulary, Unicode classes, recent
-windows, and en-es two-observation gate. Whitespace and `¿` / `¡` immediately
-before a candidate belong to the new side. A pending candidate does not block
-idle finalization of a complete current pair (false-positive Latin such as a
-product name). A split records a prefix pair when translation has reached or
-passed the boundary; a stale translation that has not reached the boundary is
-discarded, and the suffix becomes the new current source.
-# 言語判定・ルーティング・字幕整列の契約（言語中立）
+`SourceBoundaryTracker` は現在の assembler segment 内の UTF-16 offset のみを保持します。言語判定器の語彙、Unicode クラス、直近ウィンドウ、英西の2回観測ゲートは変更しません。候補直前の空白と `¿` / `¡` は新しい側に属します。保留中の候補があることだけを理由に、現在のペアが完成していれば idle finalize を止めません（商品名などの誤検知対策）。分割時に訳文が境界へ達しているか通過していれば原文 prefix のペアを記録し、境界に達していない古い訳文は破棄して suffix を新しい原文とします。
 
 ## 言語判定
 

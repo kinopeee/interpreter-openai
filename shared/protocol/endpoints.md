@@ -1,7 +1,7 @@
 # エンドポイントとセッション契約（言語中立）
 
 `AGENTS.md` の不変条件を macOS(Swift) / Windows(C#) 双方の実装が参照できる形へ写したもの。
-両実装はこの文書と `shared/fixtures/v1/` を唯一の正本とする。
+この文書は現行の接続・セッション仕様です。codec、server-error、reconnect、health の期待値は各節で参照する `shared/fixtures/v1/` が現行の正本です。v1 が現行なのはこれらの契約であり、他ドメインの fixture バージョンとは独立しています。
 
 ## 接続先
 
