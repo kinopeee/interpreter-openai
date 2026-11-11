@@ -59,7 +59,7 @@ open RealtimeTranslator.xcodeproj
 Register your API key in one of these ways:
 
 1. Enter and save it in the app Settings via `SecureField` (recommended)
-2. Environment-variable import is for local macOS Debug builds only. On each launch, a set `OPENAI_API_KEY` is imported if Keychain is empty. To import a different key, first delete the saved key in Settings, then set the variable in a non-shared user scheme and launch the app. Remove the variable after import. Release builds do not import it.
+2. Environment-variable import is for local macOS Debug builds only. If `OPENAI_API_KEY` is set, each launch attempts import only when Keychain has no saved key that passes local format validation. To import a different key, first delete the saved key in Settings, then set the variable in a non-shared user scheme and launch the app. The environment value is also format-validated; this does not check whether OpenAI accepts it. Remove the variable after import. Release builds do not import it.
 
 To build and launch from the CLI:
 
@@ -92,7 +92,7 @@ Open Settings from the menu bar. There are three tabs.
 | Translation direction | `Japanese ↔ English` (`ja-en`, default) / `Japanese ↔ Spanish` (`ja-es`) / `English ↔ Spanish` (`en-es`). Translates both ways between the selected languages. Changes apply the next time recording starts. |
 | Display language | `Match system` / `Japanese` / `English`. Saved immediately; applied after you restart the app. Independent of translation direction (`languagePair`). |
 | Consent to send microphone audio to OpenAI | Required before recording. Translation cannot start without consent. |
-| API key | Save or delete in Keychain. On each macOS Debug launch, `OPENAI_API_KEY` is imported only when set and Keychain is empty. Existing keys are never overwritten. Delete a saved key before importing a different one. Release builds do not import it. |
+| API key | Save or delete in Keychain. On each macOS Debug launch, if `OPENAI_API_KEY` is set and no saved key passes local format validation, import is attempted. A format-valid saved key is not overwritten. The environment value is also format-validated; this does not check whether OpenAI accepts it. Delete the saved key before importing a different one. Release builds do not import it. |
 
 ### Speech recognition
 
