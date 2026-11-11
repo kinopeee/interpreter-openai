@@ -70,6 +70,15 @@ The app stores the following data locally:
     Application Support cannot be resolved)
   - Windows:
     `%LOCALAPPDATA%\RealtimeTranslator\transcripts\session.txt`
+- **Session diagnostics (macOS only)**
+  - written locally to `~/Library/Logs/RealtimeTranslator/diagnostics.log` and
+    `diagnostics.previous.log` when a recording attempt starts;
+  - contain timestamps, app version, process ID, and connection generation/epoch
+    counters, connection outcomes, stop detections, and numeric health snapshots;
+    they do not contain audio, source or translated text, API keys, recognition
+    prompts, raw server errors, or device names;
+  - are not sent to OpenAI or the project maintainer. Each file is limited to
+    1 MiB; the current and previous files are rotated as new entries are written.
 
 The app does not save microphone audio. Logs and debug status output are
 designed not to contain API keys, authorization headers, audio, source
@@ -88,7 +97,9 @@ Users can:
 - delete the Windows `%LOCALAPPDATA%\RealtimeTranslator` directory;
 - delete the Windows `HKCU\Software\RealtimeTranslator` registry key containing
   the local installation identifier;
-- delete the macOS Application Support directory shown above; and
+- delete the macOS Application Support directory shown above;
+- quit the app and delete `~/Library/Logs/RealtimeTranslator/diagnostics.log`
+  and `diagnostics.previous.log` (a later recording attempt can recreate them); and
 - reset macOS preferences for `com.realtimetranslator.app`.
 
 Removing the application alone may not remove all operating-system credentials,
@@ -193,6 +204,11 @@ OpenAI側でのAPIデータの取扱いと保持には、OpenAIの規約・ポ�
     （Application Supportを解決できない場合はOSの一時ディレクトリを使用）
   - Windows:
     `%LOCALAPPDATA%\RealtimeTranslator\transcripts\session.txt`
+- **セッション診断ログ（macOSのみ）**
+  - 録音開始を試みたときに、`~/Library/Logs/RealtimeTranslator/diagnostics.log` と
+    `diagnostics.previous.log` へ端末内のみ記録
+  - 時刻、アプリ版、プロセスID、接続世代・epochのカウンター、接続結果、停止検知、数値の健全性スナップショットを含む。音声、原文・訳文、APIキー、認識プロンプト、サーバーの生エラー、デバイス名は含まない
+  - OpenAIやプロジェクト管理者へ送信しない。各ファイルは最大1 MiBで、現行と直前のファイルをローテーション
 
 マイク音声は端末内へ保存しません。ログやデバッグ用status出力には、APIキー、
 Authorizationヘッダー、音声、原文、訳文を含めない設計です。
@@ -211,6 +227,8 @@ Authorizationヘッダー、音声、原文、訳文を含めない設計です�
 - ローカル識別子を含むWindowsレジストリキー
   `HKCU\Software\RealtimeTranslator`を削除する
 - 上記macOS Application Supportディレクトリを削除する
+- アプリを終了して`~/Library/Logs/RealtimeTranslator/diagnostics.log`と
+  `diagnostics.previous.log`を削除する（次回録音開始時に再作成される場合があります）
 - macOSの`com.realtimetranslator.app`設定をリセットする
 
 アプリ本体を削除しただけでは、OSの資格情報、設定、字幕記録、書き出した字幕の
