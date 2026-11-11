@@ -1,6 +1,6 @@
 # Privacy Policy / プライバシーポリシー
 
-Effective date: August 17, 2026
+Effective date: November 11, 2026
 
 ## English
 
@@ -137,6 +137,8 @@ Security-sensitive reports should be sent to the project owner through
 ---
 
 ## 日本語
+
+発効日：2026-11-11
 
 ### 1. 適用範囲
 
