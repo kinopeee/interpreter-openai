@@ -58,12 +58,12 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
     private readonly RealtimeSourceTranscriptionConnection _sourceConnection;
     private readonly Dictionary<RealtimeTranslationOutputLanguage, RealtimeTranslationConnection> _connections;
     private readonly DualRealtimeTranslationClientTuning _clientTuning;
-    private readonly TimeSpan _translationDrainTimeout;
     private readonly object _sync = new();
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly TranslationSendPipeline _sendPipeline;
     private readonly MergedEventBuffer _eventBuffer = new();
     private readonly EventMergePump _mergePump;
+    private readonly DualClientShutdownCoordinator _shutdown;
 
     private int _connectionEpoch;
     private int _reservedEpoch;
@@ -104,11 +104,10 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         _clientTuning = clientTuning ?? DualRealtimeTranslationClientTuning.Default;
         _clientTuning.EnsureValid();
         // 既定 5 秒。送信停滞でも CloseGracefully が session.close へ進める上限。
-        _translationDrainTimeout = translationDrainTimeout ?? _clientTuning.DefaultCloseDrainTimeout;
+        var closeDrainTimeout = translationDrainTimeout ?? _clientTuning.DefaultCloseDrainTimeout;
         _sendPipeline = new TranslationSendPipeline(
             _sync,
             _clientTuning,
-            _translationDrainTimeout,
             target => _connections[target],
             () => _connectionEpoch,
             () => _isRunning,
@@ -121,6 +120,25 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
             () => _sourceConnection.Events,
             target => _connections[target].Events,
             () => _startedTranslationTargets
+        );
+        _shutdown = new DualClientShutdownCoordinator(
+            _sync,
+            _sourceConnection,
+            _connections,
+            _clientTuning,
+            closeDrainTimeout,
+            _lifecycleGate,
+            _sendPipeline,
+            _eventBuffer,
+            _mergePump,
+            () => _isRunning,
+            () => _isRunning = false,
+            () =>
+            {
+                _selectedTranslationTarget = null;
+                _startedTranslationTargets = [];
+            },
+            () => _connectionEpoch += 1
         );
     }
 
@@ -446,181 +464,21 @@ public sealed class DualRealtimeTranslationClient : IDualRealtimeTranslationClie
         return Task.CompletedTask;
     }
 
-    public async Task CloseGracefullyAsync(CancellationToken cancellationToken = default)
-    {
-        ChannelWriter<RealtimeTranslationStreamEvent>? idleWriter = null;
-        lock (_sync)
-        {
-            if (!_isRunning)
-            {
-                // Start 前や ForceClose 後でも Events を完了させる。
-                // 未完了のままだと InterpretationSession の stop drain が
-                // WaitToReadAsync で Closing に固まり、次の録音を開始できない。
-                idleWriter = _eventBuffer.Writer;
-            }
-        }
+    public Task CloseGracefullyAsync(CancellationToken cancellationToken = default) =>
+        _shutdown.CloseGracefullyAsync(cancellationToken);
 
-        if (idleWriter is not null)
-        {
-            idleWriter.TryComplete();
-            return;
-        }
+    public Task ForceCloseAsync() => _shutdown.ForceCloseAsync();
 
-        // 未送信の翻訳フレームを先に送り、停止時の訳文欠落を防ぐ。
-        // preroll flush 直後は待ち行列が長いので pending 数に応じて予算を伸ばす。
-        // 送信が長時間停滞しても cap で close 自体は進める。
-        try
-        {
-            await _sendPipeline
-                .WaitForTranslationDrainAsync(_sendPipeline.ResolveCloseDrainTimeout(), cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (TimeoutException)
-        {
-            // drain できなくても session.close へ進む。
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-
-        Task? pump;
-        CancellationTokenSource pumpCts;
-        lock (_sync)
-        {
-            if (!_isRunning)
-            {
-                return;
-            }
-
-            _isRunning = false;
-            _sendPipeline.ClearPending();
-            (pump, pumpCts) = _sendPipeline.Detach();
-        }
-
-        await pumpCts.CancelAsync().ConfigureAwait(false);
-        await TranslationSendPipeline.AwaitPumpAsync(pump).ConfigureAwait(false);
-
-        Exception? firstError = null;
-        try
-        {
-            await Task.WhenAll(
-                    new[] { _sourceConnection.CloseGracefullyAsync(cancellationToken) }.Concat(
-                        _connections.Values.Select(connection => connection.CloseGracefullyAsync(cancellationToken))
-                    )
-                )
-                .ConfigureAwait(false);
-        }
-#pragma warning disable CA1031 // 最初の close 失敗だけを呼び出し元へ返し、残りの解放は必ず行う。
-        catch (Exception error)
-#pragma warning restore CA1031
-        {
-            firstError = error;
-        }
-
-        await _mergePump.StopEventMergeAsync().ConfigureAwait(false);
-
-        if (firstError is not null)
-        {
-            throw firstError;
-        }
-    }
-
-    public async Task ForceCloseAsync()
-    {
-        Task? pump;
-        CancellationTokenSource pumpCts;
-        lock (_sync)
-        {
-            _isRunning = false;
-            _selectedTranslationTarget = null;
-            _startedTranslationTargets = [];
-            _sendPipeline.ClearAll();
-            _sendPipeline.Reset();
-            _connectionEpoch += 1;
-            (pump, pumpCts) = _sendPipeline.Detach();
-        }
-
-        await pumpCts.CancelAsync().ConfigureAwait(false);
-        await TranslationSendPipeline.AwaitPumpAsync(pump).ConfigureAwait(false);
-
-        Exception? firstError = null;
-        foreach (
-            var close in new Func<Task>[] { _sourceConnection.ForceCloseAsync }.Concat(
-                _connections.Values.Select(connection => (Func<Task>)connection.ForceCloseAsync)
-            )
-        )
-        {
-            try
-            {
-                await close().ConfigureAwait(false);
-            }
-#pragma warning disable CA1031 // 最初の失敗だけを返し、残りの接続と merge は必ず解放する。
-            catch (Exception error)
-#pragma warning restore CA1031
-            {
-                firstError ??= error;
-            }
-        }
-
-        await _mergePump.StopEventMergeAsync().ConfigureAwait(false);
-
-        if (firstError is not null)
-        {
-            throw firstError;
-        }
-    }
-
-    public void Dispose()
-    {
-        CancellationTokenSource? mergeCts;
-        CancellationTokenSource pumpCts;
-        lock (_sync)
-        {
-            _isRunning = false;
-            mergeCts = _eventBuffer.DetachMergeCts();
-            pumpCts = _sendPipeline.Cancellation;
-        }
-
-        // Dispose 経路でも背景タスクを止める。Cancel せず Dispose だけだと loop が残る。
-        try
-        {
-            mergeCts?.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // 二重 Dispose は無視する。
-        }
-
-        mergeCts?.Dispose();
-
-        try
-        {
-            pumpCts.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // 二重 Dispose は無視する。
-        }
-
-        pumpCts.Dispose();
-
-        _lifecycleGate.Dispose();
-        _sourceConnection.Dispose();
-        foreach (var connection in _connections.Values.Distinct())
-        {
-            connection.Dispose();
-        }
-    }
+    public void Dispose() => _shutdown.Dispose();
 
     /// <summary>テスト用。停止時 drain 予算（送信中 frame の +1 を含む）。</summary>
-    internal TimeSpan CloseDrainTimeoutForTests => _sendPipeline.ResolveCloseDrainTimeout();
+    internal TimeSpan CloseDrainTimeoutForTests => _shutdown.ResolveCloseDrainTimeout();
 
     /// <summary>翻訳ポンプが現在の待ち行列を処理し終えるまで待つ。決定的なテストのために使う。</summary>
     internal Task WaitForTranslationDrainAsync(
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default
-    ) => _sendPipeline.WaitForTranslationDrainAsync(timeout, cancellationToken);
+    ) => _shutdown.WaitForTranslationDrainAsync(timeout, cancellationToken);
 
     private void EnsureConnectionsForPair(LanguagePair pair)
     {

@@ -9,7 +9,8 @@ namespace RealtimeTranslator.Core.Realtime;
 /// <summary>
 /// 翻訳送信ポンプの帳簿。<see cref="TranslationFrameQueues"/> と
 /// <see cref="TranslationPumpSupervisor"/> を所有し、enqueue・ポンプループ・
-/// drain 待ち・transport error 発行を束ねる。
+/// transport error 発行を束ねる。drain 待ちと close drain 予算は
+/// <see cref="DualClientShutdownCoordinator"/> が持つ。
 /// すべての状態は呼び出し側と共有する <c>_sync</c> 配下でのみ触れる
 /// （独自ロックは持たない）。接続・epoch・実行中フラグ・merge writer は
 /// provider 経由で lock 内で読む。
@@ -17,8 +18,6 @@ namespace RealtimeTranslator.Core.Realtime;
 internal sealed class TranslationSendPipeline
 {
     private readonly object _sync;
-    private readonly DualRealtimeTranslationClientTuning _clientTuning;
-    private readonly TimeSpan _translationDrainTimeout;
     private readonly TranslationFrameQueues _queues;
     private readonly TranslationPumpSupervisor _pump;
     private readonly Func<RealtimeTranslationOutputLanguage, RealtimeTranslationConnection> _connectionProvider;
@@ -29,7 +28,6 @@ internal sealed class TranslationSendPipeline
     internal TranslationSendPipeline(
         object sync,
         DualRealtimeTranslationClientTuning clientTuning,
-        TimeSpan translationDrainTimeout,
         Func<RealtimeTranslationOutputLanguage, RealtimeTranslationConnection> connectionProvider,
         Func<int> connectionEpochProvider,
         Func<bool> isRunningProvider,
@@ -37,8 +35,6 @@ internal sealed class TranslationSendPipeline
     )
     {
         _sync = sync;
-        _clientTuning = clientTuning;
-        _translationDrainTimeout = translationDrainTimeout;
         _queues = new TranslationFrameQueues(clientTuning);
         _pump = new TranslationPumpSupervisor(clientTuning);
         _connectionProvider = connectionProvider;
@@ -52,6 +48,8 @@ internal sealed class TranslationSendPipeline
     internal bool HaltedForTransportFailure => _pump.HaltedForTransportFailure;
 
     internal bool IsTracked => _pump.IsTracked;
+
+    internal Task? PumpTask => _pump.PumpTask;
 
     internal CancellationTokenSource Cancellation => _pump.Cancellation;
 
@@ -201,87 +199,6 @@ internal sealed class TranslationSendPipeline
                 epoch
             )
         );
-    }
-
-    internal TimeSpan ResolveCloseDrainTimeout()
-    {
-        int pending;
-        lock (_sync)
-        {
-            pending = _queues.PendingCount;
-            // 送信中の 1 frame も予算に含め、preroll 直後の Stop で足りなくならないようにする。
-            if (_pump.IsTracked)
-            {
-                pending += 1;
-            }
-        }
-
-        return _clientTuning.ResolveDrainTimeout(_translationDrainTimeout, pending);
-    }
-
-    /// <summary>翻訳ポンプが現在の待ち行列を処理し終えるまで待つ。決定的なテストのために使う。</summary>
-    /// <remarks>送信が停滞しても timeout（既定5秒、Close時はpending比例）で打ち切る（ポンプTaskを無期限待ちしない）。</remarks>
-    internal async Task WaitForTranslationDrainAsync(
-        TimeSpan? timeout = null,
-        CancellationToken cancellationToken = default
-    )
-    {
-        var deadline = Environment.TickCount64 + (long)(timeout ?? TimeSpan.FromSeconds(5)).TotalMilliseconds;
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            Task? pump;
-            lock (_sync)
-            {
-                if (!_pump.IsTracked && _queues.PendingCount == 0)
-                {
-                    return;
-                }
-
-                pump = _pump.PumpTask;
-            }
-
-            var remainingMs = deadline - Environment.TickCount64;
-            if (remainingMs <= 0)
-            {
-                lock (_sync)
-                {
-                    if (!_pump.IsTracked && _queues.PendingCount == 0)
-                    {
-                        return;
-                    }
-                }
-
-                throw new TimeoutException("translation pump did not drain");
-            }
-
-            if (pump is null)
-            {
-                await Task.Yield();
-                continue;
-            }
-
-            // ポンプ完了とdeadlineを競わせ、停滞したsendで無期限待ちにしない。
-            var delay = Task.Delay((int)Math.Min(remainingMs, int.MaxValue), cancellationToken);
-            var completed = await Task.WhenAny(pump, delay).ConfigureAwait(false);
-            if (completed != pump)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                // timeout と完了が競合したとき、すでに空なら成功扱いにする。
-                lock (_sync)
-                {
-                    if (!_pump.IsTracked && _queues.PendingCount == 0)
-                    {
-                        return;
-                    }
-                }
-
-                throw new TimeoutException("translation pump did not drain");
-            }
-
-            await pump.ConfigureAwait(false);
-        }
     }
 
     internal static async Task AwaitPumpAsync(Task? pump)
