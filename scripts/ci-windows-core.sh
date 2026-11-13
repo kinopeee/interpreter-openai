@@ -15,12 +15,21 @@ cd "$ROOT/windows"
 
 CORE_PROJECT="src/RealtimeTranslator.Core/RealtimeTranslator.Core.csproj"
 CORE_TESTS="tests/RealtimeTranslator.Core.Tests/RealtimeTranslator.Core.Tests.csproj"
+AGC_BENCH="tools/RealtimeTranslator.AgcBench/RealtimeTranslator.AgcBench.csproj"
+AGC_BENCH_TESTS="tests/RealtimeTranslator.AgcBench.Tests/RealtimeTranslator.AgcBench.Tests.csproj"
 
 dotnet restore "$CORE_PROJECT"
 dotnet restore "$CORE_TESTS"
+dotnet restore "$AGC_BENCH"
+dotnet restore "$AGC_BENCH_TESTS"
 dotnet build "$CORE_PROJECT" --configuration Release --no-restore
 dotnet build "$CORE_TESTS" --configuration Release --no-restore
+dotnet build "$AGC_BENCH" --configuration Release --no-restore
+dotnet build "$AGC_BENCH_TESTS" --configuration Release --no-restore
 dotnet test "$CORE_TESTS" --configuration Release --no-build
+dotnet test "$AGC_BENCH_TESTS" --configuration Release --no-build
 
 "$ROOT/scripts/ci-dotnet-audit.sh" "$CORE_PROJECT"
 "$ROOT/scripts/ci-dotnet-audit.sh" "$CORE_TESTS"
+"$ROOT/scripts/ci-dotnet-audit.sh" "$AGC_BENCH"
+"$ROOT/scripts/ci-dotnet-audit.sh" "$AGC_BENCH_TESTS"
